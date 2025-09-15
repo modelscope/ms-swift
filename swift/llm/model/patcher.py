@@ -20,7 +20,7 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from swift.llm import deep_getattr, to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
-from .utils import HfConfigFactory, get_llm_model
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
@@ -74,7 +74,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_llm_model(module, model_meta=model_meta)
+    llm_model = get_lm_head_model(module, model_meta=model_meta)
 
     found = False
     for lm_head in lm_heads:
@@ -294,8 +294,10 @@ def patch_automodel(model_info, model_meta, automodel_class, return_dummy_model,
         if hasattr(cls, '_tp_plan'):  # fix tp_plan
             cls._tp_plan = cls._tp_plan or {}
         if return_dummy_model:
-            with torch.device('meta'):
-                model = cls(copy.deepcopy(kwargs['config']))
+            origin_torch_dtype = torch.get_default_dtype()
+            torch.set_default_dtype(kwargs['config'].torch_dtype)
+            model = cls(copy.deepcopy(kwargs['config']))
+            torch.set_default_dtype(origin_torch_dtype)
         else:
             model = from_pretrained(cls, *args, **kwargs)
         return model

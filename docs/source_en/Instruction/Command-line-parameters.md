@@ -150,7 +150,8 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥vit_gradient_checkpointing: Whether to enable gradient_checkpointing for the vit part during multi-modal model training. Defaults to None, meaning it is set to `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
   - Note: For multimodal models using LoRA training, when `--freeze_vit false` is set and the following warning appears in the command line: `UserWarning: None of the inputs have requires_grad=True. Gradients will be None`, please set `--vit_gradient_checkpointing false`, or raise a related issue. This problem does not occur during full-parameter training.
 - 🔥deepspeed: Defaults to None. It can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration file of ms-swift. You can also provide a path to a custom DeepSpeed configuration file.
-- zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`
+- zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`.
+- deepspeed_autotp_size: DeepSpeed tensor parallelism size, default is 1. When using DeepSpeed AutoTP, the argument `--deepspeed` must be set to 'zero0', 'zero1', or 'zero2'. (Note: This feature only supports full-parameter training.)
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`. In GRPO Training, the default is 1.
@@ -162,7 +163,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥aligner_lr: When training a multimodal large model, this parameter specifies the learning rate for the aligner. By default, it is set to None, which means it equals `learning_rate`.
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
-- 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
+- gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
   - Note: When using DDP without DeepSpeed/FSDP, and `gradient_checkpointing_kwargs` is `None`, it will default to `'{"use_reentrant": false}'`.
 - full_determinism: Ensures reproducible results during training. Note: This will negatively impact performance. Defaults to False.
 - 🔥report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
@@ -173,7 +174,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 - enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
   - Note: This parameter is newly added in "ms-swift>=3.8". If you want to use channel loss in "ms-swift<3.8", please refer to the v3.7 documentation.
-  - Note: This feature is currently not compatible with sequence parallelism and will be fixed later.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
@@ -215,11 +215,11 @@ Other important parameters:
 
 ### Tuner Arguments
 
-- 🔥freeze_llm: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, but with different meanings. In full parameter training, setting freeze_llm to True will freeze some of the LLM weights. In LoRA training, if `target_modules` is set to 'all-linear', setting freeze_llm to True will prevent adding LoRA modules to the LLM part. The default is False.
-- 🔥freeze_vit: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
-  - Note: Here, "vit" refers not only to the vision_tower but also includes the audio_tower.
-- 🔥freeze_aligner: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
-- 🔥 target_modules: Specifies the LoRA modules. The default is `['all-linear']`, but you can also pass layer-name suffixes, e.g. `--target_modules q_proj k_proj v_proj`. This argument is not restricted to LoRA and can be used with other tuners as well.
+- 🔥freeze_llm: This parameter only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm` to `True` will freeze the weights of the LLM component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_llm` to `True` will prevent LoRA modules from being added to the LLM component. The default value is `False`.
+- 🔥freeze_vit: This parameter only applies to multimodal models and can be used in both full-parameter and LoRA training, though with different effects. In full-parameter training, setting `freeze_vit` to `True` will freeze the weights of the ViT component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_vit` to `True` will prevent LoRA modules from being added to the ViT component. The default value is `True`.
+  - Note: The term "ViT" here refers not only to the vision tower but also includes the audio tower.
+- 🔥freeze_aligner: This parameter is only effective for multimodal models and can be used in both full-parameter and LoRA training, with differing outcomes. In full-parameter training, setting `freeze_aligner` to `True` will freeze the weights of the aligner (also known as the projector) component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_aligner` to `True` will prevent LoRA modules from being added to the aligner component. The default value is `True`.
+- 🔥target_modules: Specifies the LoRA modules. The default is `['all-linear']`, but you can also pass layer-name suffixes, e.g. `--target_modules q_proj k_proj v_proj`. This argument is not restricted to LoRA and can be used with other tuners as well.
   - Note: The behavior of the special value `'all-linear'` differs between plain LLMs and multimodal LLMs. For a standard LLM, it automatically locates every linear layer except `lm_head` and attaches a tuner. For a multimodal LLM, it attaches the tuner only to the LLM component by default. This default can be changed with the `freeze_llm`, `freeze_vit`, and `freeze_aligner` options.
 - 🔥target_regex: Specifies a regex expression for LoRA modules, with a default of `None`. If this value is provided, the target_modules parameter becomes ineffective. This parameter is not limited to LoRA and can be used for other tuners.
 - target_parameters: List of parameter names to be replaced with LoRA. This argument behaves similarly to target_modules, but you should pass parameter names instead. This feature requires "peft>=0.17.0". For example, in many Mixture-of-Experts (MoE) layers in Hugging Face Transformers, `nn.Linear` is not used; instead, `nn.Parameter` is used. In such cases, the `target_parameters` argument can be used to apply LoRA.
@@ -455,7 +455,9 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
-- 🔥rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
+- 🔥rpo_alpha: A parameter from the [RPO paper](https://arxiv.org/abs/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
+- ld_alpha: From the [LD-DPO paper](https://arxiv.org/abs/2409.06411). Applies a weight α < 1 to the log-probabilities of tokens that lie beyond the shared prefix of the chosen and rejected responses, thereby mitigating length bias.
+- discopop_tau: Temperature parameter τ from the [DiscoPOP paper](https://arxiv.org/abs/2406.08414) used to scale the log-ratio before the sigmoid modulation. Default 0.05; only active when loss_type is discopop.
   - Note: In "ms-swift<3.8", the default value was `1.`. Starting from "ms-swift>=3.8", the default has been changed to `None`.
 - loss_type: Loss type.
   - DPO: Available options can be found in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Multiple values can be provided to enable mixed training ([MPO](https://arxiv.org/abs/2411.10442)); when multiple values are given, the loss_weights parameter must also be set. Default is `sigmoid`.
@@ -504,6 +506,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 
 
 #### GRPO Arguments
+- beta: KL regularization coefficient; default 0.04. Setting it to 0 disables the reference model.
 - per_device_train_batch_size: The training batch size per device. In GRPO, this refers to the batch size of completions during training.
 - per_device_eval_batch_size: The evaluation batch size per device. In GRPO, this refers to the batch size of completions during evaluation.
 - generation_batch_size: Batch size to use for generation. It defaults to the effective training batch size: per_device_train_batch_size * num_processes * gradient_accumulation_steps`

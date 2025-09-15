@@ -7,6 +7,7 @@ from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -91,7 +92,7 @@ class ModelMeta:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
 
-                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
                         return model_group
 
     def check_requires(self, model_info=None):
@@ -226,7 +227,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_config.keys_to_ignore_at_inference.append('past_key_values')
 
     torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
@@ -323,6 +324,53 @@ def get_model_tokenizer_from_local(model_dir: str,
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
 
+    return model, tokenizer
+
+
+def get_model_tokenizer_sentence_transformers(model_dir: str,
+                                              model_info: ModelInfo,
+                                              model_kwargs: Dict[str, Any],
+                                              load_model: bool = True,
+                                              *,
+                                              tokenizer=None,
+                                              model_config=None,
+                                              automodel_class=None,
+                                              **kwargs):
+    from sentence_transformers import SentenceTransformer
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if load_model:
+        model = SentenceTransformer(
+            model_dir, trust_remote_code=True, model_kwargs={
+                'torch_dtype': torch_dtype,
+            })
+        model.config = model_config
+
+        def enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                output.requires_grad_(True)
+
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        tokenizer = model.tokenizer
+
+        def forward(self, **kwargs):
+            output = self._forward_origin(input=kwargs)
+            return {'last_hidden_state': output['sentence_embedding']}
+
+        if not hasattr(model, '_forward_origin'):
+            model._forward_origin = model.forward
+            model.forward = MethodType(forward, model)
+    else:
+        model = None
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     return model, tokenizer
 
 
@@ -435,7 +483,7 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    model_name = get_model_name(model_id_or_path).lower()
+    model_name = get_model_name(model_id_or_path)
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:

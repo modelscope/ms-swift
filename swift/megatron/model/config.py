@@ -35,6 +35,13 @@ config_mapping = {
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
+    # qwen3_next
+    'linear_num_value_heads': ['linear_num_value_heads'],
+    'linear_num_key_heads': ['linear_num_key_heads'],
+    'linear_key_head_dim': ['linear_key_head_dim'],
+    'linear_value_head_dim': ['linear_value_head_dim'],
+    'linear_conv_kernel_dim': ['linear_conv_kernel_dim'],
+    'full_attention_interval': ['full_attention_interval'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
@@ -43,7 +50,7 @@ config_mapping = {
 }
 
 
-def convert_hf_config(config) -> Dict[str, Any]:
+def convert_hf_config(config, _internal_call=False) -> Dict[str, Any]:
     megatron_config = {}
     for k, hf_keys in config_mapping.items():
         for hf_k in hf_keys:
@@ -61,8 +68,14 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 else:
                     if k == 'kv_lora_rank':
                         megatron_config['multi_latent_attention'] = True
+                    elif k == 'architectures':
+                        if _internal_call:
+                            k = 'llm_architectures'
                     megatron_config[k] = hf_v
                 break
+    for key in ['text_config', 'llm_config', 'thinker_config']:
+        if hasattr(config, key):
+            megatron_config.update(convert_hf_config(getattr(config, key), _internal_call=True))
     # compat llama3
     if getattr(config, 'rope_scaling', None) is not None:
         if isinstance(config.rope_scaling, int):

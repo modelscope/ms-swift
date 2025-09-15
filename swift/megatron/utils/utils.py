@@ -11,8 +11,10 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 from peft.utils.other import ModulesToSaveWrapper
+from torch import nn
 
-from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
+from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
+                         get_model_parameter_info)
 
 logger = get_logger()
 
@@ -20,7 +22,7 @@ logger = get_logger()
 def find_all_linears(model):
 
     def _cond(name, module):
-        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear)):
+        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
             return True
         return False
 
@@ -35,13 +37,64 @@ def find_embedding(model):
     return find_layers(model, lambda name, module: isinstance(module, LanguageModelEmbedding))
 
 
+def get_multimodal_target_regex(
+    args,
+    model,
+    *,
+    freeze_llm: bool = False,
+    freeze_vit: bool = True,
+    freeze_aligner: bool = True,
+) -> str:
+    modules = []
+    visual_cls = args.megatron_model_meta.visual_cls
+    vision_tower = [f'visual.{vit}' for vit in visual_cls.vision_tower]
+    aligner = [f'visual.{_aligner}' for _aligner in visual_cls.aligner]
+    if not freeze_llm:
+        modules.append('language_model')
+    if not freeze_vit:
+        modules += vision_tower
+    if not freeze_aligner:
+        modules += aligner
+    assert len(modules) > 0, f'modules: {modules}'
+
+    res = []
+    for module in modules:
+        rejected_modules = []
+        if not freeze_vit:
+            for _aligner in aligner:
+                if _aligner.startswith(f'{module}.'):
+                    rejected_modules.append(_aligner)
+
+        sub_module = deep_getattr(model, module)
+        if sub_module is None:
+            continue
+        target_modules = find_all_linears(sub_module)
+        if not target_modules:
+            continue
+        target_modules = [tm for tm in target_modules if tm]
+        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+
+    return rf'^({"|".join(res)})$'
+
+
 def get_target_modules(args, model):
     if isinstance(args.target_modules, str):
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        target_modules.remove('all-linear')
-        target_modules += find_all_linears(model)
+        if args.model_meta.is_multimodal:
+            return get_multimodal_target_regex(
+                args,
+                model,
+                freeze_llm=args.freeze_llm,
+                freeze_vit=args.freeze_vit,
+                freeze_aligner=args.freeze_aligner,
+            )
+        else:
+            target_modules.remove('all-linear')
+            target_modules += find_all_linears(model)
     if 'all-embedding' in target_modules:
         target_modules.remove('all-embedding')
         target_modules += find_embedding(model)

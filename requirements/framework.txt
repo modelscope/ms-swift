@@ -32,7 +32,7 @@ sortedcontainers>=1.5.9
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<4.56
+transformers>=4.33,<4.58
 transformers_stream_generator
 trl>=0.15,<0.21
 uvicorn

@@ -31,6 +31,9 @@ class RLHFMegatronArgumentsMixin:
 @dataclass
 class MegatronTunerMixin:
     train_type: Literal['lora', 'full'] = 'full'
+    freeze_llm: bool = False
+    freeze_vit: bool = True
+    freeze_aligner: bool = True
     # full
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_parameters_regex: Optional[str] = None
@@ -71,6 +74,8 @@ class MegatronTunerMixin:
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
+        if self.target_regex:
+            self.target_modules = self.target_regex
 
 
 @dataclass
@@ -86,6 +91,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_prefetch_factor: int = 10
 
     architectures: Optional[str] = None
+    llm_architectures: Optional[str] = None
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
@@ -93,6 +99,17 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
+
+    # visual
+    vit_gradient_checkpointing: bool = True
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    # qwen3_next
+    linear_num_value_heads: Optional[int] = None
+    linear_num_key_heads: Optional[int] = None
+    linear_key_head_dim: Optional[int] = None
+    linear_value_head_dim: Optional[int] = None
+    linear_conv_kernel_dim: Optional[int] = None
+    layer_types: Optional[List[str]] = None
 
 
 @dataclass
@@ -185,7 +202,8 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
-    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
+    position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
+    mrope_section: Optional[List[int]] = None
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     rotary_interleaved: Optional[bool] = None
@@ -376,10 +394,14 @@ class MegatronArguments(ExtraMegatronArguments):
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+        if self.gradient_checkpointing_kwargs is not None:
+            self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
+        if self.position_embedding_type is None:
+            self.position_embedding_type = 'rope'
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
         self._init_moe()

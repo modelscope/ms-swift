@@ -238,11 +238,11 @@ class LLMInfer(BaseUI):
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
-                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
+                command.extend([f'--{e}'] + kwargs[e])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
-                command.extend([f'--{e}', f'{" ".join(all_args)}'])
+                command.extend([f'--{e}'] + all_args)
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
                 command.extend([f'--{e}', f'{kwargs[e]}'])
@@ -251,10 +251,10 @@ class LLMInfer(BaseUI):
             command.extend(['--port', f'{deploy_args.port}'])
         if more_params_cmd != '':
             params += f'{more_params_cmd.strip()} '
-            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.strip() for param in more_params_cmd.split('--')]
             more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
             for param in more_params_cmd:
-                command.extend([f'--{param[0]}', ' '.join(param[1:])])
+                command.extend([f'--{param[0]}'] + param[1:])
         all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
@@ -345,6 +345,18 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
+    def parse_text(cls, messages):
+        prepared_msgs = []
+        for message in messages:
+            if isinstance(message, tuple):
+                query = message[0].replace('<', '&lt;').replace('>', '&gt;').replace('*', '&ast;')
+                response = message[1].replace('<', '&lt;').replace('>', '&gt;').replace('*', '&ast;')
+                prepared_msgs.append((query, response))
+            else:
+                prepared_msgs.append(message)
+        return prepared_msgs
+
+    @classmethod
     def send_message(cls, running_task, template_type, prompt: str, image, video, audio, infer_request: InferRequest,
                      infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
 
@@ -367,8 +379,10 @@ class LLMInfer(BaseUI):
                 infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
-                value=None), gr.update(value=None), infer_request
+            chatbot_content = cls._replace_tag_with_media(infer_request)
+            chatbot_content = cls.parse_text(chatbot_content)
+            yield '', chatbot_content, gr.update(value=None), gr.update(value=None), gr.update(
+                value=None), infer_request
             return
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
@@ -407,5 +421,7 @@ class LLMInfer(BaseUI):
                 continue
             stream_resp_with_history += chunk.choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
-                value=None), gr.update(value=None), infer_request
+            chatbot_content = cls._replace_tag_with_media(infer_request)
+            chatbot_content = cls.parse_text(chatbot_content)
+            yield '', chatbot_content, gr.update(value=None), gr.update(value=None), gr.update(
+                value=None), infer_request

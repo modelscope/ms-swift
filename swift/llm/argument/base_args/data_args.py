@@ -27,10 +27,8 @@ class DataArguments:
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
-    dataset: List[str] = field(
-        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(
-        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    dataset: List[str] = field(default_factory=list)
+    val_dataset: List[str] = field(default_factory=list)
     split_dataset_ratio: float = 0.
 
     data_seed: int = 42

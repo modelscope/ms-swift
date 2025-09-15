@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import megatron.legacy
 import torch
@@ -12,11 +12,14 @@ from megatron.training import get_args, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
-from ..gpt_model import GPTModel
+if TYPE_CHECKING:
+    from .gpt_model import GPTModel
+    from .mm_gpt import MultimodalGPTModel
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
+def model_provider(pre_process=True,
+                   post_process=True) -> Union['GPTModel', 'MultimodalGPTModel', megatron.legacy.model.GPTModel]:
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
@@ -68,6 +71,8 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     else:  # using core models
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
+        elif args.megatron_model_meta.get_transformer_layer_spec is not None:
+            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config)
         else:
             if args.num_experts:
                 # Define the decoder block spec
@@ -97,7 +102,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             # qwen2_moe
             for layer_spec in transformer_layer_spec.layer_specs:
                 layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
-        model = GPTModel(
+        model = args.megatron_model_meta.model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
             vocab_size=args.padded_vocab_size,

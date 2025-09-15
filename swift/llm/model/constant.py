@@ -15,8 +15,11 @@ class LLMModelType:
     qwen3 = 'qwen3'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
+    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
+    qwen3_next = 'qwen3_next'
+    qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
 
@@ -130,6 +133,9 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    gemma_emb = 'gemma_emb'
+    ernie_thinking = 'ernie_thinking'
+    longchat = 'longchat'
 
 
 class BertModelType:
@@ -236,6 +242,7 @@ class MLLMModelType:
     got_ocr2 = 'got_ocr2'
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
+    step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'

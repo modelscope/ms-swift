@@ -3,6 +3,7 @@
 import math
 from contextlib import contextmanager
 from dataclasses import fields
+from typing import Any, Dict
 
 import torch
 import torch.nn as nn
@@ -39,17 +40,23 @@ def _test_params_sum(model):
     logger.info(f'zero_count: {zero_count}')
 
 
-def _find_modules(model, recurse: bool = True):
+def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
+    ignore_modules = ignore_modules or []
+    for k in ignore_modules:
+        if prefix.startswith(k):
+            return []
+    else:
+        named_children = list(model.named_children())
+
     modules = []
-    children = list(model.children())
-    for module in children:
+    for n, module in named_children:
         if module.__class__ is nn.ModuleList:
-            modules += _find_modules(module, False)
+            modules += _find_modules(module, False, prefix=f'{prefix}{n}.', ignore_modules=ignore_modules)
         elif recurse:
-            modules += _find_modules(module)
+            modules += _find_modules(module, prefix=f'{prefix}{n}.', ignore_modules=ignore_modules)
         else:
             modules.append(module)
-    if not children:
+    if not named_children:
         modules.append(model)
     return modules
 
@@ -78,34 +85,71 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
             hook.remove()
 
 
+def get_examples(is_multimodal: bool) -> Dict[str, Any]:
+    if is_multimodal:
+        data = {
+            'messages': [{
+                'role': 'user',
+                'content': '<image>describe the image.'
+            }, {
+                'role':
+                'assistant',
+                'content':
+                'The image depicts a close-up of a kitten with striking features. '
+                'The kitten has a white and gray coat with distinct black stripes, '
+                'particularly noticeable on its face and ears. Its eyes are large '
+                'and expressive, with a captivating blue hue that stands out against '
+                "the darker fur around them. The kitten's nose is small and pink, "
+                'and it has long, delicate whiskers extending from either side of its mouth. '
+                "The background is blurred, drawing attention to the kitten's face and "
+                'making it the focal point of the image. The overall impression is '
+                'one of cuteness and charm.'
+            }],
+            'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+        }
+    else:
+        data = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Introduction to ms-swift.'
+                },
+                {
+                    'role':
+                    'assistant',
+                    'content':
+                    'ms-swift is an official framework provided by the ModelScope community for fine-tuning '
+                    'and deploying large language models and multi-modal large models.'
+                },
+            ]
+        }
+    return data
+
+
 def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
+    hf_model.eval()
+    mg_model.eval()
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
     template.set_mode('train')
-    inputs = template.encode({
-        'messages': [
-            {
-                'role': 'user',
-                'content': 'Introduction to ms-swift.'
-            },
-            {
-                'role':
-                'assistant',
-                'content':
-                'ms-swift is an official framework provided by the ModelScope community for fine-tuning '
-                'and deploying large language models and multi-modal large models.'
-            },
-        ]
-    })
+    template.register_post_encode_hook([hf_model])
+    is_multimodal = template.model_meta.is_multimodal
+    inputs = get_examples(is_multimodal)
+    inputs = template.encode(inputs)
     inputs = to_device(template.data_collator([inputs]), 'cuda')
 
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
-    share_embedding = mg_model.share_embeddings_and_output_weights
-    hf_modules = _find_modules(hf_model)
+    mg_language_model = mg_model.language_model if is_multimodal else mg_model
+    share_embedding = mg_language_model.share_embeddings_and_output_weights
+    model_arch = hf_model.model_meta.model_arch
+    ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
+
+    hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
+        inputs.pop('text_position_ids', None)
         hf_logits = hf_model(**inputs).logits
-    hf_model = hf_model.to('cpu')
+    hf_model.to('cpu')
 
     input_ids = inputs['input_ids']
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
@@ -116,15 +160,15 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
-    mg_model.config.fp8 = None  # compat fp8
-    mg_modules = _find_modules(mg_model)
+    mg_language_model.config.fp8 = None  # compat fp8
+    mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
+    kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
+    if 'position_ids' not in kwargs:
+        kwargs['position_ids'] = position_ids
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
         mg_logits = mg_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            packed_seq_params=packed_seq_params)
+            input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
 
     token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
     mean_diff = token_mean_diff.mean().item()
@@ -135,6 +179,8 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_tokens = mg_logits.argmax(-1)
     print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
     print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
+    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+    print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
 convert_kwargs = {
@@ -175,6 +221,9 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
+    extra_args['model_info'] = args.model_info
+    extra_args['model_meta'] = args.model_meta
+    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
@@ -182,7 +231,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template)
+        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
@@ -217,6 +266,9 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
+    extra_args['model_info'] = args.model_info
+    extra_args['model_meta'] = args.model_meta
+    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
@@ -234,7 +286,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:
-            test_convert_precision(hf_model, mg_model, template)
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model
         logger.info('Successfully transferred MG model weights to HF model.')
         ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load

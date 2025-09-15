@@ -44,9 +44,9 @@ class AttnImpl:
             attn_impl_keys = [attn_impl_keys]
         attn_impl_keys = attn_impl_keys or AttnImpl.attn_impl_keys
         for key in attn_impl_keys:
-            HfConfigFactory.set_config_attr(config, key, attn_impl, ensure_set=False)
+            HfConfigFactory.set_config_attr(config, key, attn_impl, include_vit=True, ensure_set=False)
         for key in AttnImpl.use_flash_attn_keys:
-            HfConfigFactory.set_config_attr(config, key, use_flash_attn, ensure_set=False)
+            HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
 
 
 @dataclass
@@ -88,6 +88,7 @@ class HfConfigFactory:
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
                           attr_name: str,
+                          include_vit: bool = False,
                           parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
         if isinstance(config, dict):
@@ -96,8 +97,10 @@ class HfConfigFactory:
             keys = dir(config)
         else:
             return []
-
-        if attr_name in keys and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+        config_keys = [None, 'language_config', 'llm_config', 'text_config']
+        if include_vit:
+            config_keys += ['vit_config', 'vision_config', 'audio_config']
+        if attr_name in keys and parent_key in config_keys:
             res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
@@ -106,7 +109,7 @@ class HfConfigFactory:
                     v = config[k]
                 else:
                     v = getattr(config, k)
-                res += HfConfigFactory._get_config_attrs(v, attr_name, k)
+                res += HfConfigFactory._get_config_attrs(v, attr_name, include_vit, k)
         return res
 
     @staticmethod
@@ -119,9 +122,11 @@ class HfConfigFactory:
         return False
 
     @staticmethod
-    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str) -> Optional[Any]:
+    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
+                        attr_name: str,
+                        include_vit: bool = False) -> Optional[Any]:
         """Get the value of the attribute named attr_name."""
-        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if len(attrs) == 0:
             return None
         else:
@@ -131,9 +136,10 @@ class HfConfigFactory:
     def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
                         attr_name: str,
                         value: Any,
+                        include_vit: bool = False,
                         ensure_set: bool = True) -> int:
         """Set all the attr_name attributes to value."""
-        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if ensure_set and len(attrs) == 0:
             attrs.append((config, None))
         for config, _ in attrs:
@@ -324,10 +330,10 @@ def git_clone_github(github_url: str,
         local_repo_name = github_url.rsplit('/', 1)[1]
     github_url = f'{github_url}.git'
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    with safe_ddp_context(None, use_barrier=True):
-        if not is_local_master():
-            return local_repo_path
+    with safe_ddp_context('git_clone', use_barrier=True):
         repo_existed = os.path.exists(local_repo_path)
+        if not is_local_master() and repo_existed:
+            return local_repo_path
         if repo_existed:
             command = ['git', '-C', local_repo_path, 'fetch']
             subprocess_run(command)
@@ -350,7 +356,17 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
-def get_llm_model(model: torch.nn.Module, model_meta=None):
+def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
+    """Get LLM model, this function can be used to get the llm module from a multi-modal model.
+
+    Args:
+        model: The model instance
+        model_meta: The model_meta information
+        inner_backbone: Get inner backbone model, like `QwenModel` or `LlamaModel`
+
+    Returns:
+
+    """
     from swift.tuners import SwiftModel
     from peft import PeftModel
     from accelerate.utils import extract_model_from_parallel
@@ -369,6 +385,12 @@ def get_llm_model(model: torch.nn.Module, model_meta=None):
 
     if 'CausalLM' not in llm_model.__class__.__name__:
         llm_model = model
+
+    if inner_backbone:
+        if hasattr(llm_model, 'thinker'):
+            llm_model = llm_model.thinker.model
+        else:
+            llm_model = llm_model.model
     return llm_model
 
 

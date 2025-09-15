@@ -11,7 +11,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
@@ -587,14 +587,6 @@ register_model(
                 Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
             ]),
             ModelGroup([
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
-            ],
-                       tags=['coding']),
-            ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
             ])
@@ -602,6 +594,25 @@ register_model(
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_coder,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       tags=['coding']),
+        ],
+        TemplateType.qwen3_coder,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 
@@ -624,6 +635,26 @@ register_model(
         requires=['transformers>=4.51'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
 
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
@@ -631,9 +662,19 @@ def patch_qwen_vl_utils(vision_process):
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
+    res = {}
     for key in [
-            'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
-            'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
+            'image_factor',
+            'min_pixels',
+            'max_pixels',
+            'max_ratio',
+            'video_min_pixels',
+            'video_max_pixels',
+            'video_total_pixels',
+            'frame_factor',
+            'fps',
+            'fps_min_frames',
+            'fps_max_frames',
     ]:
         type_func = float if key == 'fps' else int
         default_value = getattr(vision_process, key.upper(), None)
@@ -652,6 +693,7 @@ def patch_qwen_vl_utils(vision_process):
         if isinstance(backends, dict):
             backends['decord'] = _new_read_video_decord
     vision_process._patch = True
+    return res
 
 
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
@@ -660,16 +702,11 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
     if model is not None:
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        if hasattr(base_model.model, 'embed_tokens'):
-            embed_tokens = base_model.model.embed_tokens
-        else:
-            embed_tokens = base_model.model.language_model.embed_tokens
-        patch_output_clone(embed_tokens)
-        patch_output_to_input_device(embed_tokens)
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
 
 
@@ -785,7 +822,8 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
     kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:

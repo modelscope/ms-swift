@@ -11,15 +11,15 @@ from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from math import ceil
 from queue import Queue
-from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import json
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
@@ -33,14 +33,13 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.llm.model.utils import get_llm_model
-from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
@@ -49,7 +48,8 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
+                    make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
                     patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 from .vllm_client import VLLMClient
 
@@ -87,10 +87,6 @@ class AsyncGenerateCallback(TrainerCallback):
 @dataclass
 class DataCache:
     results: DataType
-
-
-def identity_data_collator(features):
-    return features
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -194,8 +190,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
-
+        chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
+        self.chord_sft_iterator = None
+        if chord_sft_dataset is not None:
+            self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
                 self.accelerator.num_processes // self.args.num_generations
@@ -251,7 +250,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
-        self.enable_server_multi_turn = self.args.multi_turn_scheduler is not None
+        self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
@@ -298,7 +297,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -308,9 +307,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if len(args.reward_weights) != len(reward_funcs):
                 raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
                                  f'functions ({len(reward_funcs)})')
-            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
+            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32).to(self.accelerator.device)
         else:
-            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+            self.reward_weights = torch.ones(
+                len(self.reward_func_names), dtype=torch.float32).to(self.accelerator.device)
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
             n=1,
@@ -326,9 +326,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-        self.padding_free = self.template.padding_free
-        self.template.padding_free = False
-        self.template.packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -394,6 +391,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Record the number of samples that need to be padded for even distribution across processes
         self.rollout_pad_count = 0
 
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
+
+    def _get_train_sampler(self, train_dataset=None):
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            return RepeatSampler(
+                data_source=train_dataset or self.train_dataset,
+                mini_repeat_count=self.num_generations,
+                batch_size=self.args.generation_batch_size // self.num_generations,
+                repeat_count=self.num_iterations * self.args.steps_per_generation * sequence_parallel.world_size,
+                shuffle=self.shuffle_dataset,
+                seed=self.args.seed,
+            )
+        else:
+            return super()._get_train_sampler(train_dataset)
+
     @patch_profiling_decorator
     def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
                                                                 Any]]) -> dict[str, Union[torch.Tensor, Any]]:
@@ -412,11 +427,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
-            generate_every = self.args.steps_per_generation * self.num_iterations
+            num_rollout_samples = self.args.steps_per_generation * self.template.sequence_parallel_size
+            generate_every = num_rollout_samples * self.num_iterations
             if self._step % generate_every == 0 or self._buffered_inputs is None:
                 generation_batch = self._generate_and_score_completions(generation_batch)
                 self._buffered_inputs = generation_batch  # < this is the change
-            inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
+            inputs = self._buffered_inputs[self._step % num_rollout_samples]
             self._step += 1
         else:
             inputs = self._generate_and_score_completions(generation_batch)
@@ -512,6 +528,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
+        vllm_template = copy(self.template)
+        vllm_template.padding_free = False
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -527,7 +545,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enable_sleep_mode=self.args.sleep_level > 0,
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
-                template=self.template,
+                disable_cascade_attn=self.args.vllm_disable_cascade_attn,
+                load_format='dummy',
+                template=vllm_template,
                 distributed_executor_backend='external_launcher',
             )
         return engine
@@ -536,14 +556,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _template_context(self, template: Template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
-        mode = template.mode
-        if mode in {'vllm', 'pt', 'lmdeploy'}:
-            template.set_mode('train')
         template.max_length = None
         try:
             yield
         finally:
-            template.set_mode(mode)
             template.max_length = max_length
 
     @patch_profiling_decorator
@@ -697,7 +713,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
         # Step 4: Handle multi-turn colocate
-        return self._sync_multi_turn_infer(inputs, rollout_outputs, request_config)
+        return self._colocate_multi_turn_infer(inputs, rollout_outputs, request_config)
 
     def async_generate_rollout(self, all_inputs):
         current_queue = self._queue
@@ -725,6 +741,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
+        if self.template.truncation_strategy == 'raise':
+            inputs = self.resample_encode_failed_inputs(inputs)
+        inputs = self._preprocess_inputs(inputs)
         all_inputs = gather_object(inputs)
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm(skip_async_check=True)
@@ -818,12 +837,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self.resample_encode_failed_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
-        total_advantages, rewards_std = self._score_completions(inputs)
+        total_rewards_per_func = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
-            inputs, total_advantages = self._dynamic_sampling(inputs, total_advantages, rewards_std)  # noqa
+            inputs, total_rewards_per_func = self._dynamic_sampling(inputs, total_rewards_per_func)  # noqa
+        total_advantages = self._compute_advantages(inputs, total_rewards_per_func)
 
         local_advantages = self.get_even_process_data(total_advantages)
         assert len(local_advantages) == len(inputs)
@@ -874,16 +894,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return batch_encoded_inputs
 
     @patch_profiling_decorator
-    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Score completions using all reward functions and compute advantages
+    def _score_completions(self, inputs: DataType) -> torch.Tensor:
+        """Score completions using all reward functions.
 
         Args:
             inputs: List of input examples, each containing a 'messages' list with conversation history
 
         Returns:
-            Tuple containing:
-            - advantages: Tensor of shape (num_examples,) with computed advantages
-            - rewards_std: Tensor of shape (num_examples,) with group standard deviations
+            rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with all reward values
         """
         device = self.accelerator.device
         # If using gym environment, extract rewards directly from inputs
@@ -896,24 +914,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Compute rewards using reward functions
             local_rewards_per_func = self._compute_rewards_per_func(inputs)
 
-        # Gather rewards and prompt_ids across processes with padding
-        local_rewards_list = [row.tolist() for row in local_rewards_per_func]
+        # gather rewards
+        if not self.dynamic_num_samples:
+            total_rewards_per_func = gather(local_rewards_per_func)
+        else:
+            # gather_object to avoid shape mismatch
+            local_rewards_list = [row.tolist() for row in local_rewards_per_func]
+            total_rewards_per_func = gather_object(local_rewards_list)
+            total_rewards_per_func = torch.tensor(
+                total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
-        # gather objects
-        total_rewards_per_func = gather_object(local_rewards_list)
-        total_prompt_ids = None
-        total_request_ids = None
-        if self.dynamic_num_samples:
-            total_prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
-            total_request_ids = gather_object([inp['request_id'] for inp in inputs])
-        total_rewards_per_func = torch.tensor(
-            total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
-
-        # Compute advantages based on prompt_id grouping
-        total_advantages, total_rewards_std = self._compute_advantages(total_rewards_per_func, total_prompt_ids,
-                                                                       total_request_ids)
-
-        return total_advantages, total_rewards_std
+        return total_rewards_per_func
 
     def _compute_rewards_per_func(self, inputs: DataType) -> torch.Tensor:
         """Compute rewards using all reward functions"""
@@ -948,12 +959,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self,
-                            rewards_per_func: torch.Tensor,
-                            prompt_ids: Optional[List[str]] = None,
-                            request_ids: Optional[List[str]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
         """
-        Compute advantages for policy gradient training.
+        Compute advantages for RL training.
 
         Supports two modes:
         1. **Default grouped mode** (no prompt_ids / request_ids provided)
@@ -965,17 +973,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         - Handles dynamic sample sizes where multiple request_ids may share the same prompt.
 
         Args:
+            inputs (DataType):
+                Input data samples.
             rewards_per_func (torch.Tensor):
                 Reward values for each reward function, shape `(N, num_reward_funcs)`.
-            prompt_ids (List[str], optional):
-                Prompt identifiers for each sample.
-            request_ids (List[str], optional):
-                Request identifiers for each sample.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]:
-                - **advantages**: Computed advantages, shape `(N,)`.
-                - **rewards_std**: Standard deviation used for normalization, shape `(N,)`.
+            **advantages** (torch.Tensor):
+                Computed advantages, shape `(N,)`.
         """
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
@@ -1011,15 +1016,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Step 0. Aggregate final reward using reward weights
         device = self.accelerator.device
-        if not self.use_gym_env:
-            rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
-        else:
-            rewards = rewards_per_func.squeeze(1)
+        rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
 
         # --------------------------------------------------
         # Case 1: Default grouped mode
         # --------------------------------------------------
-        if not prompt_ids or not request_ids:
+        if not self.dynamic_num_samples:
             grouped_rewards = rewards.view(-1, self.num_generations)
             group_rewards_mean = grouped_rewards.mean(dim=1)
             group_rewards_std = grouped_rewards.std(dim=1)
@@ -1038,13 +1040,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages, group_rewards_std
+            return advantages
 
         # --------------------------------------------------
         # Case 2: Request-aware mode
         # --------------------------------------------------
         else:
-            assert self.dynamic_num_samples
+            prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            request_ids = gather_object([inp['request_id'] for inp in inputs])
             assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
             device = self.accelerator.device
 
@@ -1081,7 +1084,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
             indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
             advantages = request_advantages[indices_in_unique]
-            rewards_std = prompt_stds[indices_in_unique]
 
             # Step 5. Log metrics for unique request_ids
             log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
@@ -1089,10 +1091,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Step 6. Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages, rewards_std
+            return advantages
 
     @patch_profiling_decorator
-    def _dynamic_sampling(self, inputs, advantages, rewards_std):
+    def _dynamic_sampling(self, inputs, rewards_per_func):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
 
@@ -1101,31 +1103,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Args:
             inputs: local input data samples
-            advantages: Computed advantages for global data samples
-            rewards_std: Group standard deviations for global data samples
+            rewards_per_func: reward per function for global data samples
 
         Returns:
-            tuple: (inputs, advantages) with zero-variance groups replaced by resampled data
+            tuple: (inputs, rewards_per_func) with zero-variance groups replaced by resampled data
         """
         # DAPO https://arxiv.org/abs/2503.14476
         # Replaces samples with zero-reward-variance groups (std=0)
         resample_count = 0
         valid_samples = []
-        valid_advantages = []
-        origin_data = (inputs, advantages)
+        valid_rewards_per_func = []
+        origin_data = (inputs, rewards_per_func)
 
         while resample_count < self.args.max_resample_times:
+            rewards_std = self.compute_std(inputs, rewards_per_func)
             valid_mask = (rewards_std > 0)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
-            valid_advantages.append(advantages[valid_mask])
+            valid_rewards_per_func.append(rewards_per_func[valid_mask])
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
-            advantages, rewards_std = self._score_completions(inputs)
+            rewards_per_func = self._score_completions(inputs)
             resample_count += 1
 
         if len(valid_samples) >= self.args.generation_batch_size:
@@ -1134,12 +1136,45 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 (self.accelerator.process_index + 1) * len(inputs),
             )
             inputs = valid_samples[:self.args.generation_batch_size][process_slice]
-            advantages = torch.cat(valid_advantages)[:self.args.generation_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
-            inputs, advantages = origin_data
+            inputs, rewards_per_func = origin_data
 
-        return inputs, advantages
+        return inputs, rewards_per_func
+
+    def compute_std(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
+        """Compute the standard deviation of the rewards per function."""
+        device = self.accelerator.device
+        rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+
+        if not self.dynamic_num_samples:
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            return group_rewards_std
+        else:
+            prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            request_ids = gather_object([inp['request_id'] for inp in inputs])
+            device = self.accelerator.device
+            unique_indices = self._get_last_indices(request_ids)
+            unique_request_ids = [request_ids[i] for i in unique_indices.cpu()]
+            unique_prompt_ids = [prompt_ids[i] for i in unique_indices.cpu()]
+
+            unique_rewards = rewards[unique_indices]
+            prompt_to_indices = {}
+            for idx, pid in enumerate(unique_prompt_ids):
+                prompt_to_indices.setdefault(pid, []).append(idx)
+
+            prompt_stds = torch.zeros(len(unique_rewards), device=device)
+            for pid, idxs in prompt_to_indices.items():
+                idx_tensor = torch.tensor(idxs, device=device)
+                r_group = unique_rewards[idx_tensor]
+                prompt_stds[idx_tensor] = r_group.std()
+            rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
+            indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
+            rewards_std = prompt_stds[indices_in_unique]
+
+            return rewards_std
 
     def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
         """
@@ -1160,22 +1195,59 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                            in the generation process. The number of chunks equals spg.
         """
         # Slice to keep only the local part of the data
+        if self.template.sequence_parallel_size == 1:
+            mode: str = 'train' if self.model.training else 'eval'
+            spg: int = self.args.steps_per_generation if mode == 'train' else 1
 
-        mode: str = 'train' if self.model.training else 'eval'
-        spg: int = self.args.steps_per_generation if mode == 'train' else 1
+            chunk_size: int = len(inputs) // spg
+            remainder: int = len(inputs) % spg
+            spg_chunks: List[DataType] = []
 
-        chunk_size: int = len(inputs) // spg
-        remainder: int = len(inputs) % spg
-        spg_chunks: List[DataType] = []
+            start_idx: int = 0
+            for i in range(spg):
+                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+                end_idx: int = start_idx + current_chunk_size
+                spg_chunks.append(inputs[start_idx:end_idx])
+                start_idx = end_idx
 
-        start_idx: int = 0
-        for i in range(spg):
-            current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
-            end_idx: int = start_idx + current_chunk_size
-            spg_chunks.append(inputs[start_idx:end_idx])
-            start_idx = end_idx
+            return spg_chunks
+        else:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            """Split by mini batches for GRPO sequence parallel training"""
+            output = [None] * sequence_parallel.sp_world_size
+            # gather inputs within a sp group
+            dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
+            if sequence_parallel.rp_world_size > 1:
+                output_rp = [None] * sequence_parallel.rp_world_size
+                output = [p for sublist in output for p in sublist]
+                dist.all_gather_object(output_rp, output, group=sequence_parallel.rp_group)
+                output = output_rp
+            output = [p for sublist in output for p in sublist]
+            inputs = output
 
-        return spg_chunks
+            mode = 'train' if self.model.training else 'eval'
+            spg = self.args.steps_per_generation * sequence_parallel.world_size if mode == 'train' else 1
+
+            if mode == 'eval':
+                # TODO only take the first bs rows, because eval does not support loop
+                bs = self.args.per_device_eval_batch_size
+                inputs = inputs[:bs]
+                spg = 1
+
+            # Use the new dynamic splitting logic
+            chunk_size: int = len(inputs) // spg
+            remainder: int = len(inputs) % spg
+            spg_chunks: List[DataType] = []
+
+            start_idx: int = 0
+            for i in range(spg):
+                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+                end_idx: int = start_idx + current_chunk_size
+                spg_chunks.append(inputs[start_idx:end_idx])
+                start_idx = end_idx
+
+            spg_chunks = to_device(spg_chunks, device=self.accelerator.device)
+            return spg_chunks
 
     @contextmanager
     def null_ref_context(self):
@@ -1212,7 +1284,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
-                batch_encoded_inputs = [template.encode(data) for data in batch]
+                batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
@@ -1220,6 +1292,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+
+            if self.template.padding_free:
+                position_ids = batch_encoded_inputs.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = batch_encoded_inputs.get('position_ids')
+                position_ids = position_ids.squeeze()
+                assert position_ids is not None
+                lengths = torch.diff(
+                    torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                               torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                advantages_stacked = torch.stack([data['advantages'] for data in batch])
+                all_advandages = torch.repeat_interleave(advantages_stacked, lengths)
+            else:
+                all_advandages = torch.stack([data['advantages'] for data in batch])
 
             batch_encoded_inputs.update({
                 'completion_mask':
@@ -1229,7 +1315,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'logits_to_keep':
                 logits_to_keep,
                 'advantages':
-                torch.stack([data['advantages'] for data in batch])
+                all_advandages
             })
 
             with torch.no_grad():
@@ -1403,8 +1489,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.delta is not None:
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        if self.template.padding_free:
+            advantages = advantages[-coef_1.shape[1]:]
+            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+        else:
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
@@ -1461,6 +1552,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
+        if mode == 'train' and self.chord_sft_iterator is not None:
+            loss = compute_chord_loss(self, grpo_loss=loss)
 
         return loss, metrics_data
 
@@ -1624,78 +1717,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Update metrics
         self._update_metrics(aggregated_metrics)
 
-    @contextmanager
-    def padding_free_context(self, model: torch.nn.Module):
-        ctx = {}
+    def _get_per_token_logps_and_entropies_sp(
+            self,
+            model: torch.nn.Module,
+            inputs: 'DataType',
+            compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Get per token logps for GRPO sequence parallel training"""
+        try:
+            from trl.trainer.utils import selective_log_softmax
+        except ImportError:
+            raise ImportError('trl is required for GRPO training. Please install it with: pip install trl')
 
-        def _padding_free_input_hook(module, args, kwargs):
-            attention_mask = kwargs['attention_mask']
-            # used in _padding_free_output_hook
-            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-            if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
-                # llm models
-                kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
-                kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
-            else:
-                # mllm models
-                kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
-                kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
-            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
-            kwargs.pop('attention_mask', None)
-            return args, kwargs
+        from swift.trainers.sequence_parallel.utils import GatherLoss
+        from swift.trainers.sequence_parallel import sequence_parallel
 
-        def _padding_free_output_hook(module, args, kwargs, result):
-            position_ids = kwargs['position_ids']
-            seq_lengths = []
-            pos = position_ids[0]
-            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+        # original logits to keep
+        logits_to_keep = inputs['logits_to_keep']
+        input_ids = inputs['input_ids']
+        inputs = {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask'
+            ]
+        }
+        sequence_parallel.prepare_inputs(inputs)
+        with self._template_context(self.template):
+            output = model(**inputs)
+            logits = output.logits
+        # split input_ids to labels
+        position_ids = sequence_parallel.real_position_ids
+        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(
+            None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
-            if len(resets) == 0:
-                # Only one sequence in this batch item
-                seq_lengths = [pos.max().item() + 1]
-            else:
-                # Multiple sequences
-                start = 0
-                for end in resets:
-                    seq_lengths.append(end - start)
-                    start = end
-                seq_lengths.append(pos.shape[0] - start)
+        labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
+        logits = logits / self.temperature
+        per_token_logps = selective_log_softmax(logits, labels)
+        entropies = None
+        per_token_logps, _ = GatherLoss.apply(per_token_logps, labels, 1, position_ids)
+        if compute_entropy:
+            entropies = entropy_from_logits(logits)
+            entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
 
-            max_length = max(seq_lengths)
-            last_hidden_state = result.last_hidden_state.squeeze(0)
-            unpacked_logits = []
-
-            start = 0
-            for length in seq_lengths:
-                seq_state = last_hidden_state[start:start + length]
-                padding = torch.zeros(
-                    (max_length - length,
-                     last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
-                # re-padding
-                if ctx['padding_left']:
-                    seq_state = torch.cat((padding, seq_state), dim=0)
-                else:
-                    seq_state = torch.cat((seq_state, padding), dim=0)
-                unpacked_logits.append(seq_state)
-                start += length
-            result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
-            return result
-
-        if self.padding_free:
-            llm_model = get_llm_model(model)
-            if hasattr(llm_model, 'thinker'):
-                base_model = llm_model.thinker.model
-            else:
-                base_model = llm_model.model
-            remove_handle1 = base_model.register_forward_pre_hook(
-                _padding_free_input_hook, with_kwargs=True, prepend=True)
-            remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
-        yield
-        if self.padding_free:
-            remove_handle1.remove()
-            remove_handle2.remove()
+        per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
+        if compute_entropy:
+            entropies = entropies[:, -logits_to_keep - 1:-1]
+        # ignore the last token
+        return per_token_logps, entropies
 
     @patch_profiling_decorator
     def _get_per_token_logps_and_entropies(self,
@@ -1721,6 +1789,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                   model,
                                                   inputs,
                                                   compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if self.template.sequence_parallel_size > 1:
+            return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         unwrapped_model = self.accelerator.unwrap_model(model)
@@ -1734,13 +1804,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if can_use_super:
             # save memory
-            with self.padding_free_context(model):
-                if hasattr(super(), '_get_per_token_logps_and_entropies'):
-                    logps, entropies = super()._get_per_token_logps_and_entropies(
-                        model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
-                else:
-                    logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
-                    entropies = None
+            if hasattr(super(), '_get_per_token_logps_and_entropies'):
+                logps, entropies = super()._get_per_token_logps_and_entropies(
+                    model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
+            else:
+                logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+                entropies = None
         else:
             inputs = {
                 k: v
@@ -1751,8 +1820,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
                 inputs['logits_to_keep'] = logits_to_keep + 1
-            with self._template_context(self.template), self.padding_free_context(model):
-                logits = model(**inputs).logits
+            logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
             logits = logits[:, -(logits_to_keep + 1):-1, :]
             logits = logits / self.temperature
@@ -1956,7 +2024,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return [RolloutOutput(response=r) for r in res]
 
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
+        if self.template.sequence_parallel_size == 1:
+            return (self.num_iterations > 1
+                    or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0)
+        else:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
+                    (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
 
     @property
     def _queue(self):
@@ -2299,6 +2373,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs_count = gather_object(outputs_count)[0]  # Broadcast count to all processes
             if outputs_count != len(all_requests):
                 self.dynamic_num_samples = True
+                if self.args.dynamic_sample:
+                    logger.warning('Mismatch between returned samples and requests detected. '
+                                   'With --dynamic_sample enabled, only the last valid sample of each '
+                                   f'{self.args.generation_batch_size}-sized batch will be kept; '
+                                   'some requests may therefore be dropped.')
             # Initialize empty outputs for non-main processes
             if not self.accelerator.is_main_process:
                 all_outputs = [None] * outputs_count
@@ -2320,7 +2399,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             # For global inputs, only main process keeps outputs
-            outputs = outputs if self.accelerator.is_main_process else []
+            outputs = all_outputs if self.accelerator.is_main_process else []
 
         return outputs
 
@@ -2420,7 +2499,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for data in inputs:
             # Extract required metadata fields
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
-            request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
+            if 'uuid' not in request_data:
+                request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
             # Preserve additional fields for multi-turn async scenarios
             if self.args.vllm_server_pass_dataset:
                 # data_dict is already concatenated inside async engine
@@ -2517,6 +2597,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return input_data
 
         if not self.dynamic_num_samples:
+            if self.async_generate and not outputs:
+                # In async generation, only the main process receives outputs; non-main ranks get an empty list.
+                return outputs
             assert len(inputs) == len(outputs)
             return [
                 merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)
@@ -2537,80 +2620,109 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
-    def _sync_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
-                               request_config: RequestConfig) -> List[RolloutOutput]:
+    def _colocate_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
+                                   request_config: RequestConfig) -> List[RolloutOutput]:
         """
-        Handles multi-turn inference when not using async engine.
+        Handles multi-turn inference under colocate mode.
 
         This method iteratively rolls out turns until all dialogues are finished
         according to the multi_turn_scheduler.
         """
         orig_size = len(inputs)
-        rollout_outputs: List[RolloutOutput] = [None] * orig_size  # Preallocate to preserve order
-
+        # Preallocate to preserve order
+        rollout_outputs: List[RolloutOutput] = [None] * orig_size
+        rollout_infos = [{} for _ in range(orig_size)]
+        response_token_ids = [[] for _ in range(orig_size)]
+        response_loss_mask = [[] for _ in range(orig_size)]
+        is_continuations = [False] * orig_size
         # Attach index to inputs for tracking
-        for i, input_data in enumerate(inputs):
-            input_data['index'] = i
-
+        requests = self.inputs2requests(inputs)
+        index_to_infer = list(range(orig_size))
         current_turn = 1
         outputs = first_turn_rollout_outputs
         while True:
-            has_local_data = bool(len(inputs) > 0)
+            has_local_data = bool(len(index_to_infer) > 0)
             has_global_data = gather_object([has_local_data])
             if not any(has_global_data):
                 break
-
-            for i, output in enumerate(outputs):
-                input_data = deepcopy(inputs[i])
-                if output and output.messages:
-                    messages = output.messages
+            assert len(index_to_infer) == len(outputs)
+            for index, output in zip(index_to_infer, outputs):
+                messages = requests[index].messages
+                if messages[-1]['content'] is None:
+                    # for continuation, we add dummy response, remove here
+                    remove_response(messages)
+                # Get model response
+                response = output.response
+                response_choice = response.choices[0]
+                # Update conversation history
+                completion = response_choice.message.content
+                is_continuation = is_continuations[index] = False
+                if messages[-1]['role'] == 'assistant':
+                    messages[-1]['content'] += completion
+                    is_continuation = is_continuations[index] = True
                 else:
-                    response = output.response
-                    choice = response.choices[0]
-                    messages = input_data['messages']
-                    if (current_turn == 1 or not messages[-1]['content'] or messages[-1]['content'] == '<None>'):
-                        remove_response(messages)
-                    messages.append({'role': 'assistant', 'content': choice.message.content})
+                    messages.append({'role': 'assistant', 'content': completion})
 
-                input_data['messages'] = messages
-                index = input_data['index']
-                rollout_outputs[index] = output
-                rollout_outputs[index].messages = messages
-
+            current_requests = [requests[index] for index in index_to_infer]
             # Determine which dialogues are finished
             should_stops = [
                 self.multi_turn_scheduler.check_finished(req, output.response.choices[0], current_turn)
-                for req, output in zip(self.inputs2requests(inputs), outputs)
+                for req, output in zip(current_requests, outputs)
             ]
 
             # Prepare pending inputs for next turn
-            pending_inputs = []
-            for stop, _input, output in zip(should_stops, inputs, outputs):
+            next_turn_index_to_infer = []
+            for stop, index, output in zip(should_stops, index_to_infer, outputs):
+                if self.args.max_turns:
+                    stop = stop or (current_turn >= self.args.max_turns)
                 if stop:
+                    rollout_outputs[index] = RolloutOutput(
+                        response=output.response,
+                        messages=requests[index].messages,
+                        response_token_ids=response_token_ids[index],
+                        response_loss_mask=response_loss_mask[index],
+                        rollout_infos={
+                            **rollout_infos[index], 'num_turns': current_turn
+                        })
                     continue
-                index = _input['index']
-                step_result = self.multi_turn_scheduler.step(
-                    self.inputs2requests([_input])[0], output.response.choices[0], current_turn)
+                is_continuation = is_continuations[index]
+                step_result = self.multi_turn_scheduler.step(requests[index], output.response.choices[0], current_turn)
+                current_request: RolloutInferRequest = step_result['infer_request']
+                # Track response tokens and masks
+                return_token_id = False
+                if 'response_token_ids' in step_result:
+                    if is_continuation and response_token_ids[index]:
+                        response_token_ids[index][-1].extend(step_result['response_token_ids'])
+                    else:
+                        response_token_ids[index].append(step_result['response_token_ids'])
+                    return_token_id = True
+                if 'response_loss_mask' in step_result:
+                    assert return_token_id, 'You must return response_token_ids with response_loss_mask return'
+                    assert len(step_result['response_loss_mask']) == len(step_result['response_token_ids']), \
+                        'response_loss_mask must have the same length as response_token_ids'
+                    if is_continuation and response_loss_mask[index]:
+                        response_loss_mask[index][-1].extend(step_result['response_loss_mask'])
+                    else:
+                        response_loss_mask[index].append(step_result['response_loss_mask'])
 
-                if 'response_token_ids' in step_result and step_result['response_token_ids']:
-                    rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
-                    if 'response_loss_mask' in step_result and step_result['response_loss_mask']:
-                        rollout_outputs[index].response_loss_mask.append(step_result['response_loss_mask'])
+                if 'rollout_infos' in step_result:
+                    # Always overwrite the rollout info for this step.
+                    # If you need to keep all step-wise details, switch to append or merge instead.
+                    rollout_infos[index].update(step_result['rollout_infos'])
+                if current_request.messages[-1]['role'] == 'assistant':
+                    # for continuation, we add dummy response, add here
+                    current_request.messages.append({'role': 'assistant', 'content': None})
 
-                if 'rollout_infos' in step_result and step_result['rollout_infos']:
-                    rollout_outputs[index].rollout_infos.update(step_result['rollout_infos'])
-
-                pending_input = {**asdict(step_result['infer_request']), 'index': index}
-                pending_inputs.append(pending_input)
-
-            inputs = pending_inputs
+                requests[index] = current_request
+                next_turn_index_to_infer.append(index)
             current_turn += 1
-
+            infer_requests = [requests[index] for index in next_turn_index_to_infer]
             # Rollout for the next turn
-            outputs = self._rollout(inputs if has_local_data else [], request_config)
+            outputs = self._rollout(infer_requests if has_local_data else [], request_config)
+            index_to_infer = next_turn_index_to_infer
 
         assert all(o is not None for o in rollout_outputs)
-        return rollout_outputs
+        return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
     def get_even_process_data(self, global_data: List[T]) -> List[T]:
         """
