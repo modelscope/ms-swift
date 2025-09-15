@@ -798,38 +798,35 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel, register_eval_model, unregister_eval_model  # registry here
+        from ..llm.eval.utils import EvalModel  # registry here
         from evalscope import TaskConfig, run_task
 
         self.model.eval()
 
-        # Register current model+template with a lightweight key to avoid passing the whole torch model
-        model_key = f'swift_eval_model_{os.getpid()}_{self.state.global_step}'
-        register_eval_model(model_key, self.model, self.template)
+        task_config_kwargs = dict(
+            model=f'model-step{self.state.global_step}',
+            model_args=dict(
+                model=self.model,
+                template=self.template,
+            ),
+            eval_type='swift_custom',
+            datasets=self.args.eval_dataset,
+            dataset_args=self.args.eval_dataset_args,
+            limit=self.args.eval_limit,
+            work_dir=os.path.join(self.args.output_dir, 'eval'),
+            eval_batch_size=self.args.per_device_eval_batch_size,
+            generation_config=self.args.eval_generation_config or {'max_tokens': 512},
+        )
+        task_config_kwargs.update(self.args.extra_eval_args or {})
+        task_config = TaskConfig(**task_config_kwargs)
+        # start evaluation
+        eval_report = run_task(task_config)
+        # convert to dict
+        eval_dict = {f'test_{k}': v.score for k, v in eval_report.items()}
+        self.log(eval_dict)
 
-        try:
-            task_config_kwargs = dict(
-                model=f'model-step{self.state.global_step}',
-                model_args=dict(model_ref=model_key, ),
-                eval_type='swift_custom',
-                datasets=self.args.eval_dataset,
-                dataset_args=self.args.eval_dataset_args,
-                limit=self.args.eval_limit,
-                work_dir=os.path.join(self.args.output_dir, 'eval'),
-                eval_batch_size=self.args.per_device_eval_batch_size,
-                generation_config=self.args.eval_generation_config or {'max_tokens': 512},
-            )
-            task_config_kwargs.update(self.args.extra_eval_args or {})
-            task_config = TaskConfig(**task_config_kwargs)
-            # start evaluation
-            eval_report = run_task(task_config)
-            # convert to dict
-            eval_dict = {f'test_{k}': v.score for k, v in eval_report.items()}
-            self.log(eval_dict)
-            return eval_dict
-        finally:
-            unregister_eval_model(model_key)
-            self.model.train()
+        self.model.train()
+        return eval_dict
 
     def prepare_logits_to_keep(self, inputs):
         labels = inputs['labels']
