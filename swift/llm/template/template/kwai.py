@@ -291,3 +291,4 @@ class KeyeVLTemplate(Template):
 
 # Register the Keye VL template
 register_template(KeyeTemplateMeta(MLLMTemplateType.keye_vl, template_cls=KeyeVLTemplate))
+register_template(KeyeTemplateMeta(MLLMTemplateType.keye_vl_1_5, template_cls=KeyeVLTemplate))

@@ -194,6 +194,7 @@ class MLLMTemplateType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
 
     idefics3 = 'idefics3'
