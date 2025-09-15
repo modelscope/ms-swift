@@ -6,6 +6,7 @@ from ..base import Template
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
+from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -20,9 +21,10 @@ class ERNIETemplateMeta(TemplateMeta):
 register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
 
-class ErnieThinkingTemplate(Template):
+class ErnieThinkingTemplate(ThinkingTemplate):
 
-    def _preprocess_inputs(self, inputs) -> None:
+    def _swift_prepare_inputs(self, inputs) -> None:
+        super()._swift_prepare_inputs(inputs)
         for message in inputs.messages:
             if message['role'] == 'assistant':
                 if '<response>' not in message['content']:

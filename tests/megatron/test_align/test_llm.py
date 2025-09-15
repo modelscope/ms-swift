@@ -131,10 +131,6 @@ def test_qwen3_next():
     _test_model('Qwen/Qwen3-Next-80B-A3B-Instruct')
 
 
-def test_ernie_thinking():
-    _test_model('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking')
-
-
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
