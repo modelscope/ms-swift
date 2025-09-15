@@ -260,13 +260,6 @@ def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
-        # https://github.com/modelscope/ms-swift/issues/5812
-        def init_method(self, *args, **kwargs):
-            super(cls, self).__init__(*args, **kwargs)
-
-        if '__init__' not in cls.__dict__:
-            cls.__init__ = init_method
-
         __init__ = cls.__init__
 
         def __new_init__(self, *args, **kwargs):
@@ -280,12 +273,47 @@ def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs
         cls.__init__ = __init__
         return res
 
+    def get_all_subclasses(cls, include_root=True):
+        subclass_list = []
+
+        def recurse(cl):
+            for subclass in cl.__subclasses__():
+                subclass_list.append(subclass)
+                recurse(subclass)
+
+        recurse(cls)
+
+        ret = set(subclass_list)
+        if include_root:
+            ret.add(cls)
+        return ret
+
+    def create_default_init(cls):
+        """Create a default __init__ method that calls super().__init__"""
+
+        def default_init(self, *args, **kwargs):
+            super(cls, self).__init__(*args, **kwargs)
+
+        return default_init
+
+    patched_classes = []
+    for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+        if '__init__' not in subclass.__dict__:
+            subclass.__init__ = create_default_init(subclass)
+            patched_classes.append(subclass)
+
     PreTrainedModel.from_pretrained = _new_from_pretrained
 
     try:
         yield
     finally:
         PreTrainedModel.from_pretrained = classmethod(from_pretrained)
+        for subclass in patched_classes:
+            try:
+                if '__init__' in subclass.__dict__:
+                    del subclass.__init__
+            except (AttributeError, TypeError):
+                pass
 
 
 @contextmanager
