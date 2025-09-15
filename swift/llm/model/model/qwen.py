@@ -1125,10 +1125,9 @@ def patch_qwen3_sequence_classification():
         if '__init__' not in cls.__dict__:  # avoid patch twice
 
             def init_method(self, *args, **kwargs):
-                from transformers.models.qwen3.modeling_qwen3 import Qwen3ForSequenceClassification
-                super(Qwen3ForSequenceClassification, self).__init__(*args, **kwargs)
+                super(cls, self).__init__(*args, **kwargs)
 
-            Qwen3ForSequenceClassification.__init__ = init_method
+            cls.__init__ = init_method
 
     except ImportError:
         return
