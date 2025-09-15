@@ -166,6 +166,11 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
+        if self.mode == 'vllm':
+            if media_type == 'image':
+                return ['(<image>./</image>)\n']
+            else:
+                return ['(<video>./</video>)\n']
         load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=self.max_num_frames)
         image_context = super().replace_tag('image', index, inputs)
         if media_type == 'image':
