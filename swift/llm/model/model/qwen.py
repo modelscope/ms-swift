@@ -1117,7 +1117,7 @@ register_model(
         task_type='reranker'))
 
 
-def patch_Qwen3SeqClassification():
+def patch_qwen3_sequence_classification():
     # https://github.com/modelscope/ms-swift/issues/5812
     try:
         from transformers.models.qwen3.modeling_qwen3 import Qwen3ForSequenceClassification
@@ -1134,4 +1134,4 @@ def patch_Qwen3SeqClassification():
         return
 
 
-patch_Qwen3SeqClassification()
+patch_qwen3_sequence_classification()
