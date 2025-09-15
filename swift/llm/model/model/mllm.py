@@ -205,7 +205,6 @@ register_model(
         requires=['keye_vl_utils'],
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.keye_vl_1_5,
@@ -214,9 +213,9 @@ register_model(
                 Model('Kwai-Keye/Keye-VL-1_5-8B', 'Kwai-Keye/Keye-VL-1_5-8B'),
             ]),
         ],
-        TemplateType.keye_vl_1_5,
+        TemplateType.keye_vl,
         get_model_tokenizer_keye_vl,
-        model_arch=ModelArch.keye_vl_1_5,
+        model_arch=ModelArch.keye_vl,
         architectures=['KeyeVL1_5ForConditionalGeneration'],
         tags=['vision'],
         requires=['keye_vl_utils>=1.5.2'],

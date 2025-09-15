@@ -616,6 +616,20 @@ def test_keye_vl():
     assert response == response2
 
 
+def test_keye_vl_1_5():
+    pt_engine = PtEngine('Kwai-Keye/Keye-VL-1_5-8B')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine.default_template.template_backend = 'swift'
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 def test_dots_ocr():
     # https://github.com/modelscope/ms-swift/issues/2122
     pt_engine = PtEngine('rednote-hilab/dots.ocr')

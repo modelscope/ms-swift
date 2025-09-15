@@ -78,7 +78,6 @@ class MLLMModelArch:
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
     keye_vl = 'keye_vl'
-    keye_vl_1_5 = 'keye_vl_1_5'
 
     midashenglm = 'midashenglm'
     step_audio2_mini = 'step_audio2_mini'
@@ -665,14 +664,6 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.keye_vl,
-        language_model='model',
-        aligner='mlp_AR',
-        vision_tower='visual',
-    ))
-
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.keye_vl_1_5,
         language_model='model',
         aligner='mlp_AR',
         vision_tower='visual',
