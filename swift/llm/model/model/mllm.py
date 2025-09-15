@@ -206,14 +206,6 @@ register_model(
     ))
 
 
-def get_model_tokenizer_keye_vl_1_5(model_dir: str, *args, **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    from keye_vl_utils import vision_process
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    return model, processor
-
-
 register_model(
     ModelMeta(
         MLLMModelType.keye_vl_1_5,
