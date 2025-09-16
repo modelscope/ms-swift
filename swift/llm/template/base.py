@@ -825,7 +825,16 @@ class Template(ProcessorMixin):
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
-            return self.video_placeholder
+            if self.mode == 'vllm':
+                # https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/vision_language.py
+                from vllm.assets.video import video_to_ndarrays, video_get_metadata
+                num_frames = get_env_args('vllm_num_frames', int, 16)
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = [(video_data, video_metadatas)]
+                return self.video_placeholder
+            else:
+                return self.video_placeholder
         elif media_type == 'audio':
             return self.audio_placeholder
 
