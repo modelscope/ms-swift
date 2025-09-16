@@ -255,65 +255,93 @@ def _patch_sequence_classification(model, model_meta):
 
 
 @contextmanager
-def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs):
+def patch_automodel_for_sequence_classification(model_info=None,
+                                                model_meta=None,
+                                                patch_from_pretrained=True,
+                                                patch_missing_init=True,
+                                                **kwargs):
+    """
+    Context manager for patching AutoModel sequence classification.
+
+    Args:
+        model_info: Model information
+        model_meta: Model metadata
+        patch_from_pretrained (bool): Whether to patch PreTrainedModel.from_pretrained
+        patch_missing_init (bool): Whether to patch missing __init__ methods
+        **kwargs: Additional keyword arguments
+    """
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
-    @classmethod
-    def _new_from_pretrained(cls, *args, **kwargs):
-        __init__ = cls.__init__
+    # Patch 1: from_pretrained method
+    _new_from_pretrained = None
+    if patch_from_pretrained:
 
-        def __new_init__(self, *args, **kwargs):
-            __init__(self, *args, **kwargs)
-            _patch_sequence_classification(self, model_meta)
+        @classmethod
+        def _new_from_pretrained(cls, *args, **kwargs):
+            __init__ = cls.__init__
 
-        cls.__init__ = __new_init__
-        if hasattr(cls, '_tp_plan'):  # fix tp_plan
-            cls._tp_plan = cls._tp_plan or {}
-        res = from_pretrained(cls, *args, **kwargs)
-        cls.__init__ = __init__
-        return res
+            def __new_init__(self, *args, **kwargs):
+                __init__(self, *args, **kwargs)
+                _patch_sequence_classification(self, model_meta)
 
-    def get_all_subclasses(cls, include_root=True):
-        subclass_list = []
+            cls.__init__ = __new_init__
+            if hasattr(cls, '_tp_plan'):  # fix tp_plan
+                cls._tp_plan = cls._tp_plan or {}
+            res = from_pretrained(cls, *args, **kwargs)
+            cls.__init__ = __init__
+            return res
 
-        def recurse(cl):
-            for subclass in cl.__subclasses__():
-                subclass_list.append(subclass)
-                recurse(subclass)
-
-        recurse(cls)
-
-        ret = set(subclass_list)
-        if include_root:
-            ret.add(cls)
-        return ret
-
-    def create_default_init(cls):
-        """Create a default __init__ method that calls super().__init__"""
-
-        def default_init(self, *args, **kwargs):
-            super(cls, self).__init__(*args, **kwargs)
-
-        return default_init
-
+    # Patch 2: missing __init__ methods
+    # https://github.com/modelscope/ms-swift/pull/5820
     patched_classes = []
-    for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-        if '__init__' not in subclass.__dict__:
-            subclass.__init__ = create_default_init(subclass)
-            patched_classes.append(subclass)
+    if patch_missing_init:
 
-    PreTrainedModel.from_pretrained = _new_from_pretrained
+        def get_all_subclasses(cls, include_root=True):
+            subclass_list = []
+
+            def recurse(cl):
+                for subclass in cl.__subclasses__():
+                    subclass_list.append(subclass)
+                    recurse(subclass)
+
+            recurse(cls)
+
+            ret = set(subclass_list)
+            if include_root:
+                ret.add(cls)
+            return ret
+
+        def create_default_init(cls):
+            """Create a default __init__ method that calls super().__init__"""
+
+            def default_init(self, *args, **kwargs):
+                super(cls, self).__init__(*args, **kwargs)
+
+            return default_init
+
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module, include_root=False):
+            if '__init__' not in subclass.__dict__:
+                subclass.__init__ = create_default_init(subclass)
+                patched_classes.append(subclass)
+
+    # Apply patches
+    if patch_from_pretrained:
+        PreTrainedModel.from_pretrained = _new_from_pretrained
 
     try:
         yield
     finally:
-        PreTrainedModel.from_pretrained = classmethod(from_pretrained)
-        for subclass in patched_classes:
-            try:
-                if '__init__' in subclass.__dict__:
-                    del subclass.__init__
-            except (AttributeError, TypeError):
-                pass
+        # Restore patches
+        if patch_from_pretrained:
+            PreTrainedModel.from_pretrained = classmethod(from_pretrained)
+
+        if patch_missing_init:
+            for subclass in patched_classes:
+                try:
+                    if '__init__' in subclass.__dict__:
+                        del subclass.__init__
+                except (AttributeError, TypeError):
+                    pass
 
 
 @contextmanager
