@@ -114,6 +114,8 @@ class LLMModelType:
     skywork_o1 = 'skywork_o1'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'

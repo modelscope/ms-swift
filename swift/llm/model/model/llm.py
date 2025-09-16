@@ -372,3 +372,28 @@ register_model(
         architectures=['LongcatFlashForCausalLM'],
         requires=['transformers>=4.54,<4.56'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ling2,
+        [
+            ModelGroup([
+                Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
+                Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
+            ])
+        ],
+        TemplateType.ling2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['BailingMoeV2ForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ring2,
+        [ModelGroup([
+            Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
+        ])],
+        TemplateType.ring2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['BailingMoeV2ForCausalLM'],
+    ))

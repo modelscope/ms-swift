@@ -222,13 +222,16 @@ class SglangEngine(InferEngine):
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                 request_config: RequestConfig) -> ChatCompletionResponse:
-        output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
+        engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
+        output = await self.engine.async_generate(**engine_inputs, sampling_params=generation_config)
         output['prompt_token_ids'] = inputs['input_ids']
         return self._create_chat_completion_response(output, inputs, template, request_config.return_details)
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
-        result_generator = await self.engine.async_generate(**inputs, sampling_params=generation_config, stream=True)
+        engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
+        result_generator = await self.engine.async_generate(
+            **engine_inputs, sampling_params=generation_config, stream=True)
         infer_streamer = InferStreamer(template)
         async for output in result_generator:
             res = self._create_chat_completion_stream_response(output, template, infer_streamer)
