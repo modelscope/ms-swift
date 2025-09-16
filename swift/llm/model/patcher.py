@@ -334,7 +334,6 @@ def patch_automodel_for_sequence_classification(model_info=None,
                 subclass.__init__ = create_default_init(subclass)
                 patched_classes.append(subclass)
 
-    # Apply patches
     if patch_from_pretrained:
         PreTrainedModel.from_pretrained = _new_from_pretrained
 
