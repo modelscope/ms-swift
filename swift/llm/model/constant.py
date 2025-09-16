@@ -186,6 +186,7 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    internvl3_hf = 'internvl3_hf'
     internvl3_5 = 'internvl3_5'
     internvl3_5_gpt = 'internvl3_5_gpt'
     interns1 = 'interns1'
