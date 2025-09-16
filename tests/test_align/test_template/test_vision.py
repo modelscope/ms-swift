@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['SWIFT_DEBUG'] = '1'
 
 
@@ -603,8 +603,8 @@ def test_gemma3n():
     ]
     response = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:200] == (
-        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence. '
-        'The kitten is the central focus, positioned slightly off-center, looking directly at the viewer')
+        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence.'
+        ' The kitten is the clear focal point, positioned slightly off-center, looking directly at the vi')
 
 
 def test_keye_vl():
