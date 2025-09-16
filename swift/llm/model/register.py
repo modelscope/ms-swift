@@ -250,19 +250,19 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
-        # fix seq_cls
-        if model_info.task_type == 'seq_cls' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
-        elif model_info.task_type == 'reranker' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
+        with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
+            if model_info.task_type == 'seq_cls' and automodel_class is None:
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                except ValueError:
+                    model = None
+            elif model_info.task_type == 'reranker' and automodel_class is None:
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                except ValueError:
+                    model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
         model_meta = kwargs['model_meta']
