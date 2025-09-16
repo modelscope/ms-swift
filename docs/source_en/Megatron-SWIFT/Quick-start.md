@@ -46,14 +46,14 @@ Recommended Operating Environment:
 
 |        | Range | Recommended | Notes |
 |--------------|--------------|-------------|--------------------|
-| python       | >=3.9        | 3.10        |                    |
+| python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.6.0/2.7.1    |                    |
 | transformer_engine    | >=2.3       |         |                  |
 | apex |   |  0.1 | |
 | megatron_core    | >=0.12       | 0.13      |                  |
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.51.3      |                    |
+| transformers | >=4.33       | 4.56.1      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
