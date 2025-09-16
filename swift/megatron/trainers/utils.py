@@ -127,6 +127,8 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
         for key, val in batch.items():
             if key not in keys:
                 continue
+            if args.task_type == 'seq_cls' and key == 'labels':
+                continue
             if val is not None:
                 if key == 'decoder_input':
                     batch[key] = _split_tokens_decoder_input(val, packed_seq_params.cu_seqlens_q)
