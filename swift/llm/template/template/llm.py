@@ -385,3 +385,24 @@ register_template(
         chat_sep=['</longcat_s>'],
         suffix=['</longcat_s>'],
     ))
+
+
+@dataclass
+class Ling2TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<role>SYSTEM</role>detailed thinking off<|role_end|>'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: ['<role>SYSTEM</role>{{SYSTEM}}\ndetailed thinking off<|role_end|>'])
+    prompt: Prompt = field(default_factory=lambda: ['<role>HUMAN</role>{{QUERY}}<|role_end|><role>ASSISTANT</role>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|role_end|>'])
+    suffix: Prompt = field(default_factory=lambda: ['<|role_end|>'])
+
+
+register_template(Ling2TemplateMeta(LLMTemplateType.ling2))
+
+register_template(
+    Ling2TemplateMeta(
+        LLMTemplateType.ring2,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}<|role_end|>'],
+        response_prefix='<think>',
+    ))
