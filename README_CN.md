@@ -130,7 +130,7 @@ pip install -e .
 | vllm         | >=0.5.1      | 0.10.1.1                | 推理/部署              |
 | sglang       | >=0.4.6      | 0.4.10.post2         | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.9.2.post1                 | 推理/部署              |
-| evalscope    | >=0.11       |                     | 评测                 |
+| evalscope    | >=1.0       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
