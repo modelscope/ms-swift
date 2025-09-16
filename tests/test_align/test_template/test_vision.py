@@ -693,8 +693,34 @@ def test_internvl3_hf():
         'The image is a close-up of a cute kitten with large, expressive blue eyes. '
         'The kitten has a mix of white and gray fur, with darker stripes and patches on its face and ears. '
         'Its whiskers are clearly visible, and it has a soft, fluffy appearance. '
-        "The background is blurred, emphasizing the kitten's face and features. "
-        "The overall style is artistic and whimsical, with a focus on the kitten's adorable and innocent expression.")
+        'The background is blurred, emphasizing the kitten\'s face and features. '
+        'The overall style is artistic and whimsical, with a focus on the kitten\'s adorable and innocent expression.')
+
+
+def test_internvl3_5_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3_5-1B-HF')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == (
+        'The image shows a close-up of a young kitten with a fluffy, white and gray coat. '
+        'The kitten has large, expressive eyes and appears to be looking directly at the camera. '
+        'Its ears are perked up, and it has whiskers that are clearly visible. '
+        'The background is blurred, emphasizing the kitten as the main subject. '
+        'The lighting is soft, highlighting the kitten\'s features and giving the image a warm, gentle appearance.')
+
+
+def test_internvl_gpt_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF')
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == (
+        'The image shows a close-up of a small kitten with a fluffy coat. '
+        'The kitten has a mix of white and gray fur, with darker gray stripes on its head and ears. '
+        'Its eyes are large, round, and a striking shade of blue, giving it an adorable and curious look. '
+        "The kitten's tiny nose is pink, and its whiskers are prominently visible against a softly blurred background. "
+        'The overall impression is of an innocent and charming young cat.')
 
 
 def test_minicpmv4_5():
@@ -771,4 +797,6 @@ if __name__ == '__main__':
     # test_internvl3_5()
     # test_minicpmv4_5()
     # test_keye_vl_1_5()
-    test_internvl3_hf()
+    # test_internvl3_hf()
+    # test_internvl3_5_hf()
+    test_internvl_gpt_hf()

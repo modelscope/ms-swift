@@ -403,9 +403,22 @@ register_model(
         tags=['vision', 'video'],
     ))
 
+
+def get_model_tokenizer_internvl_hf(*args, **kwargs):
+
+    from transformers import AutoModelForImageTextToText
+    if not kwargs['automodel_class']:
+        kwargs['automodel_class'] = AutoModelForImageTextToText
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+
+    if model is not None:
+        patch_output_clone(model.model.language_model.get_input_embeddings())
+    return model, processor
+
+
 register_model(
     ModelMeta(
-        MLLMModelType.internvl3_hf,
+        MLLMModelType.internvl_hf,
         [
             ModelGroup([
                 Model('OpenGVLab/InternVL3-1B-hf', 'OpenGVLab/InternVL3-1B-hf'),
@@ -416,12 +429,39 @@ register_model(
                 Model('OpenGVLab/InternVL3-38B-hf', 'OpenGVLab/InternVL3-38B-hf'),
                 Model('OpenGVLab/InternVL3-78B-hf', 'OpenGVLab/InternVL3-78B-hf'),
             ]),
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-HF', 'OpenGVLab/InternVL3_5-1B-HF'),
+                Model('OpenGVLab/InternVL3_5-2B-HF', 'OpenGVLab/InternVL3_5-2B-HF'),
+                Model('OpenGVLab/InternVL3_5-4B-HF', 'OpenGVLab/InternVL3_5-4B-HF'),
+                Model('OpenGVLab/InternVL3_5-8B-HF', 'OpenGVLab/InternVL3_5-8B-HF'),
+                Model('OpenGVLab/InternVL3_5-14B-HF', 'OpenGVLab/InternVL3_5-14B-HF'),
+                Model('OpenGVLab/InternVL3_5-38B-HF', 'OpenGVLab/InternVL3_5-38B-HF'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-HF', 'OpenGVLab/InternVL3_5-30B-A3B-HF'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-HF', 'OpenGVLab/InternVL3_5-241B-A28B-HF'),
+            ]),
         ],
-        TemplateType.internvl2_5,
-        get_model_tokenizer_internvl,
-        architectures=['AutoModelForImageTextToText'],
+        TemplateType.internvl_hf,
+        get_model_tokenizer_internvl_hf,
+        architectures=['InternVLForConditionalGeneration'],
         model_arch=ModelArch.internvl,
         requires=['transformers>=4.52.1', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl_gpt_hf,
+        [
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF',
+                      'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF'),
+            ]),
+        ],
+        TemplateType.internvl_hf,
+        get_model_tokenizer_internvl_hf,
+        architectures=['InternVLForConditionalGeneration'],
+        model_arch=ModelArch.internvl,
+        requires=['transformers>=4.55.0', 'timm'],
         tags=['vision', 'video'],
     ))
 
