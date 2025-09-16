@@ -9,5 +9,5 @@ pip install git+https://github.com/modelscope/ms-swift.git
 pip install timm deepspeed -U
 pip install qwen_vl_utils qwen_omni_utils keye_vl_utils -U
 pip install decord librosa icecream soundfile -U
-pip install liger_kernel nvitop pre-commit math_verify py-spy wandb swanlab -U
+pip install liger_kernel nvitop pre-commit math_verify==0.5.2 py-spy wandb swanlab -U
 # flash-attn: https://github.com/Dao-AILab/flash-attention/releases
