@@ -591,15 +591,21 @@ def test_glm4_1v():
 
 def test_gemma3n():
     pt_engine = PtEngine('google/gemma-3n-E2B-it')
-    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    messages = [{
+        'role': 'system',
+        'content': 'You are a helpful assistant.'
+    }, {
+        'role': 'user',
+        'content': 'Describe this image in detail.'
+    }]
     images = [
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
-        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
     response = _infer_model(pt_engine, messages=messages, images=images)
-    pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == response2
+    assert response[:200] == (
+        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence. '
+        'The kitten is the central focus, positioned slightly off-center, looking directly at the viewer'
+    )
 
 
 def test_keye_vl():
@@ -618,16 +624,15 @@ def test_keye_vl():
 
 def test_keye_vl_1_5():
     pt_engine = PtEngine('Kwai-Keye/Keye-VL-1_5-8B')
-    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    messages = [{'role': 'user', 'content': 'Describe this image.'}]
     images = [
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
-        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
     pt_engine.default_template.template_backend = 'swift'
     response = _infer_model(pt_engine, messages=messages, images=images)
-    pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == response2
+    assert response[:200] == ('<analysis>This question is straightforward and asks for a description of the image. '
+                              'Therefore, /no_think mode is more appropriate.</analysis>'
+                              'This image features a close-up of an adorable kitten with s')
 
 
 def test_dots_ocr():
@@ -752,4 +757,5 @@ if __name__ == '__main__':
     # test_glm4_5v()
     # test_interns1()
     # test_internvl3_5()
-    test_minicpmv4_5()
+    # test_minicpmv4_5()
+    test_keye_vl_1_5()

@@ -143,8 +143,13 @@ class Gemma3nTemplate(Gemma3Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
-            return ['<start_of_image>']
+            if self.mode == 'vllm':
+                return ['<image_soft_token>']
+            else:
+                return ['<start_of_image>']
         elif media_type == 'audio':
+            if self.mode == 'vllm':
+                raise ValueError('Audio is not supported in vLLM')
             inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<start_of_audio>']
         else:
