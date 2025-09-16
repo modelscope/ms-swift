@@ -143,8 +143,13 @@ class Gemma3nTemplate(Gemma3Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
-            return ['<start_of_image>']
+            if self.mode == 'vllm':
+                return ['<image_soft_token>']
+            else:
+                return ['\n\n<start_of_image>']
         elif media_type == 'audio':
+            if self.mode == 'vllm':
+                raise ValueError('Audio is not supported in vLLM')
             inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<start_of_audio>']
         else:
@@ -170,14 +175,15 @@ class Gemma3nTemplate(Gemma3Template):
         # Handle images
         if inputs.images:
             idx_list = findall(input_ids, self.boi_token_id)
-            img_tokens = self._tokenize(processor.full_image_sequence)
+            img_tokens = self._tokenize(processor.full_image_sequence[2:])
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 lambda _: img_tokens)
 
             # Process images
             processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
             image_inputs = processor.image_processor(inputs.images, **processor_kwargs)
-            image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
+            image_inputs['pixel_values'] = torch.as_tensor(
+                np.array(image_inputs['pixel_values']), dtype=self.model_info.torch_dtype)
             if 'num_crops' in image_inputs:
                 image_inputs.pop('num_crops')
             encoded.update(image_inputs)
