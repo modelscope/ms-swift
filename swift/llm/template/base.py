@@ -1130,8 +1130,8 @@ class Template(ProcessorMixin):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'
-            assert response_role in {'assistant'}, f'response_role: {response_role}'
+            assert query_role in {'user', 'tool'}, f'query_role: "{query_role}"'
+            assert response_role in {'assistant'}, f'response_role: "{response_role}"'
             if query_role == 'tool':
                 prompt = query
                 query = ''

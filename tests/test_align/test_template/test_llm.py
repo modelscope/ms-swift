@@ -639,6 +639,22 @@ def test_qwen3_next():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_ring2():
+    pt_engine = PtEngine('inclusionAI/Ring-mini-2.0')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_ling2():
+    pt_engine = PtEngine('inclusionAI/Ling-mini-2.0')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -686,4 +702,6 @@ if __name__ == '__main__':
     # test_glm4_5()
     # test_devstral()
     # test_gpt_oss()
-    test_qwen3_next()
+    # test_qwen3_next()
+    test_ring2()
+    test_ling2()

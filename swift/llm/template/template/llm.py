@@ -357,3 +357,24 @@ register_template(
         chat_sep=['</longcat_s>'],
         suffix=['</longcat_s>'],
     ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ling2,
+        prefix=['<role>SYSTEM</role>detailed thinking off<|role_end|>'],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}\ndetailed thinking off<|role_end|>'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<|role_end|><role>ASSISTANT</role>'],
+        chat_sep=['<|role_end|>'],
+        suffix=['<|role_end|>'],
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ring2,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
+        chat_sep=[],
+        suffix=['<|endoftext|>'],
+        response_prefix='<think>\n',
+    ))

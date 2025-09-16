@@ -32,6 +32,7 @@ export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
 # The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
+git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 ```
 
@@ -57,7 +58,6 @@ Recommended Operating Environment:
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
-| deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
 ## Quick Start Example

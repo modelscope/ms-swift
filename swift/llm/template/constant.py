@@ -85,6 +85,8 @@ class LLMTemplateType:
     phi4 = 'phi4'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
