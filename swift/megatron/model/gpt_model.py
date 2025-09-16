@@ -96,7 +96,7 @@ class GPTModel(McoreGPTModel):
                 init_method=config.init_method,
                 bias=False,
                 skip_bias_add=False,
-                gather_output=not self.parallel_output,
+                gather_output=True,
                 skip_weight_param_allocation=self.pre_process and self.share_embeddings_and_output_weights,
                 embedding_activation_buffer=self.embedding_activation_buffer,
                 grad_output_buffer=self.grad_output_buffer,

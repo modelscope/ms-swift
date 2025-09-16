@@ -8,6 +8,7 @@ from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
@@ -19,7 +20,31 @@ logger = get_logger()
 class MegatronTrainer(BaseMegatronTrainer):
 
     def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None):
-        pass
+        args = self.args
+        assert args.padding_free, 'Currently only padding_free is supported.'
+        last_token = packed_seq_params.cu_seqlens_q[1:packed_seq_params.num_samples + 1] - 1
+        logits = output_tensor[0, last_token]
+        num_labels = args.num_labels
+        acc = None
+        if args.problem_type == 'regression':
+            loss_fct = MSELoss()
+            if num_labels == 1:
+                loss = loss_fct(logits.squeeze(), labels.squeeze())
+            else:
+                loss = loss_fct(logits, labels)
+        elif args.problem_type == 'single_label_classification':
+            loss_fct = CrossEntropyLoss()
+            logits = logits.view(-1, num_labels)
+            labels = labels.view(-1)
+            loss = loss_fct(logits, labels)
+            acc = (logits.detach().argmax(dim=-1) == labels).float().mean()
+        elif args.problem_type == 'multi_label_classification':
+            loss_fct = BCEWithLogitsLoss()
+            loss = loss_fct(logits, labels)
+        return loss, {
+            'loss': loss,
+            'acc': acc,
+        }
 
     # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self,
@@ -115,12 +140,14 @@ class MegatronTrainer(BaseMegatronTrainer):
         timers('batch-generator').stop()
         loss_scale = data.pop('loss_scale', None)
         channels = data.pop('channel', None)
+        labels = data.get('labels')
+        if self.args.task_type == 'seq_cls':
+            data.pop('labels', None)
         with self.stimer:
             output_tensor = model(**data)
-        labels = data.get('labels')
         packed_seq_params = data.get('packed_seq_params')
         if self.args.task_type == 'seq_cls':
-            loss_func = self.seq_cls_loss_func(output_tensor, labels=labels, packed_seq_params=packed_seq_params)
+            loss_func = partial(self.seq_cls_loss_func, labels=labels, packed_seq_params=packed_seq_params)
         else:
             loss_func = partial(
                 self.loss_func,
