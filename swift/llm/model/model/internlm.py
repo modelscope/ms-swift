@@ -268,6 +268,11 @@ register_model(
                 Model('OpenGVLab/InternVL2_5-26B-MPO', 'OpenGVLab/InternVL2_5-26B-MPO'),
                 Model('OpenGVLab/InternVL2_5-38B-MPO', 'OpenGVLab/InternVL2_5-38B-MPO'),
                 Model('OpenGVLab/InternVL2_5-78B-MPO', 'OpenGVLab/InternVL2_5-78B-MPO'),
+            ]),
+            # hf format
+            ModelGroup([
+                Model('OpenGVLab/InternVL2_5-2B-MPO-hf', 'OpenGVLab/InternVL2_5-2B-MPO-hf'),
+                Model('OpenGVLab/InternVL2_5-8B-MPO-hf', 'OpenGVLab/InternVL2_5-8B-MPO-hf'),
             ])
         ],
         TemplateType.internvl2_5,
@@ -321,6 +326,16 @@ register_model(
                 Model('OpenGVLab/InternVL3-14B-AWQ', 'OpenGVLab/InternVL3-14B-AWQ'),
                 Model('OpenGVLab/InternVL3-38B-AWQ', 'OpenGVLab/InternVL3-38B-AWQ'),
                 Model('OpenGVLab/InternVL3-78B-AWQ', 'OpenGVLab/InternVL3-78B-AWQ'),
+            ]),
+            # hf format
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B-hf', 'OpenGVLab/InternVL3-1B-hf'),
+                Model('OpenGVLab/InternVL3-2B-hf', 'OpenGVLab/InternVL3-2B-hf'),
+                Model('OpenGVLab/InternVL3-8B-hf', 'OpenGVLab/InternVL3-8B-hf'),
+                Model('OpenGVLab/InternVL3-9B-hf', 'OpenGVLab/InternVL3-9B-hf'),
+                Model('OpenGVLab/InternVL3-14B-hf', 'OpenGVLab/InternVL3-14B-hf'),
+                Model('OpenGVLab/InternVL3-38B-hf', 'OpenGVLab/InternVL3-38B-hf'),
+                Model('OpenGVLab/InternVL3-78B-hf', 'OpenGVLab/InternVL3-78B-hf'),
             ]),
         ],
         TemplateType.internvl2_5,
@@ -378,6 +393,17 @@ register_model(
                 Model('OpenGVLab/InternVL3_5-30B-A3B', 'OpenGVLab/InternVL3_5-30B-A3B'),
                 Model('OpenGVLab/InternVL3_5-241B-A28B', 'OpenGVLab/InternVL3_5-241B-A28B'),
             ]),
+            # hf format
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-HF', 'OpenGVLab/InternVL3_5-1B-HF'),
+                Model('OpenGVLab/InternVL3_5-2B-HF', 'OpenGVLab/InternVL3_5-2B-HF'),
+                Model('OpenGVLab/InternVL3_5-4B-HF', 'OpenGVLab/InternVL3_5-4B-HF'),
+                Model('OpenGVLab/InternVL3_5-8B-HF', 'OpenGVLab/InternVL3_5-8B-HF'),
+                Model('OpenGVLab/InternVL3_5-14B-HF', 'OpenGVLab/InternVL3_5-14B-HF'),
+                Model('OpenGVLab/InternVL3_5-38B-HF', 'OpenGVLab/InternVL3_5-38B-HF'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-HF', 'OpenGVLab/InternVL3_5-30B-A3B-HF'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-HF', 'OpenGVLab/InternVL3_5-241B-A28B-HF'),
+            ]),
         ],
         TemplateType.internvl3_5,
         get_model_tokenizer_internvl,
@@ -393,6 +419,8 @@ register_model(
         [
             ModelGroup([
                 Model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview', 'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'),
+                Model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF',
+                      'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF'),
             ]),
         ],
         TemplateType.internvl3_5_gpt,

@@ -603,9 +603,8 @@ def test_gemma3n():
     ]
     response = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:200] == (
-        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence. '
-        'The kitten is the central focus, positioned slightly off-center, looking directly at the viewer'
-    )
+        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence.'
+        ' The kitten is the clear focal point, positioned slightly off-center, looking directly at the vi')
 
 
 def test_keye_vl():
@@ -685,6 +684,19 @@ def test_internvl3_5():
         assert response == response2
 
 
+def test_internvl3_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-1B-hf')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == (
+        'The image is a close-up of a cute kitten with large, expressive blue eyes. '
+        'The kitten has a mix of white and gray fur, with darker stripes and patches on its face and ears. '
+        'Its whiskers are clearly visible, and it has a soft, fluffy appearance. '
+        "The background is blurred, emphasizing the kitten's face and features. "
+        "The overall style is artistic and whimsical, with a focus on the kitten's adorable and innocent expression.")
+
+
 def test_minicpmv4_5():
     pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
     images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
@@ -758,4 +770,5 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    test_keye_vl_1_5()
+    # test_keye_vl_1_5()
+    test_internvl3_hf()
