@@ -386,7 +386,6 @@ register_template(
         suffix=['</longcat_s>'],
     ))
 
-
 register_template(
     TemplateMeta(
         LLMTemplateType.ling2,
@@ -397,14 +396,13 @@ register_template(
         suffix=['<|role_end|>'],
     ))
 
-
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
-        chat_sep=['<|endoftext|>'],
+        chat_sep=[],
         suffix=['<|endoftext|>'],
         response_prefix='<think>\n',
     ))
