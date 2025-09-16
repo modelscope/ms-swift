@@ -6,8 +6,8 @@ pip install "lmdeploy>=0.5" -U
 pip install autoawq -U --no-deps
 pip install auto_gptq optimum bitsandbytes "gradio<5.33" -U
 pip install git+https://github.com/modelscope/ms-swift.git
-pip install timm -U
-pip install "deepspeed" -U
-pip install qwen_vl_utils qwen_omni_utils decord librosa icecream soundfile -U
+pip install timm deepspeed -U
+pip install qwen_vl_utils qwen_omni_utils keye_vl_utils -U
+pip install decord librosa icecream soundfile -U
 pip install liger_kernel nvitop pre-commit math_verify py-spy wandb swanlab -U
 # flash-attn: https://github.com/Dao-AILab/flash-attention/releases
