@@ -604,8 +604,7 @@ def test_gemma3n():
     response = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:200] == (
         'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence. '
-        'The kitten is the central focus, positioned slightly off-center, looking directly at the viewer'
-    )
+        'The kitten is the central focus, positioned slightly off-center, looking directly at the viewer')
 
 
 def test_keye_vl():
@@ -751,7 +750,7 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
-    # test_gemma3n()
+    test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
