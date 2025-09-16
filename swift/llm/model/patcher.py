@@ -270,6 +270,7 @@ def patch_automodel_for_sequence_classification(model_info=None,
         patch_missing_init (bool): Whether to patch missing __init__ methods
         **kwargs: Additional keyword arguments
     """
+    model_config = kwargs.get('model_config', None)
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     # Patch 1: from_pretrained method
@@ -319,7 +320,16 @@ def patch_automodel_for_sequence_classification(model_info=None,
 
             return default_init
 
-        for subclass in get_all_subclasses(torch.nn.modules.module.Module, include_root=False):
+        if model_config is not None:
+            # we should import in advance so that get_all_subclasses can find the class
+            archs = model_config.architectures
+            for arch in archs:
+                try:
+                    getattr(transformers, arch)
+                except AttributeError:
+                    continue
+
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
             if '__init__' not in subclass.__dict__:
                 subclass.__init__ = create_default_init(subclass)
                 patched_classes.append(subclass)
