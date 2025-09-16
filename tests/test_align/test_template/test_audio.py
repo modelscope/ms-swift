@@ -86,9 +86,9 @@ def test_midashenglm():
 
 def test_step_audio2_mini():
     pt_engine = PtEngine('stepfun-ai/Step-Audio-2-mini')
-    messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
+    messages = [{'role': 'user', 'content': '<audio>Caption the audio'}]
     response = _infer_model(pt_engine, messages=messages)
-    assert response == '<中文>今天天气真好呀。'
+    assert response == 'A woman says "今天天气真好呀" in Mandarin.'
 
 
 if __name__ == '__main__':

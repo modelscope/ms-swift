@@ -3,7 +3,9 @@ import hashlib
 import inspect
 import math
 import os
+import random
 import re
+from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict
@@ -250,13 +252,6 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
-    def _preprocess_inputs_reranker(
-        self,
-        inputs: StdTemplateInputs,
-    ) -> None:
-        # TODO: remove
-        return
-
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
@@ -369,7 +364,7 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
-        if margin:
+        if margin is not None:
             encoded['margin'] = float(margin)
         return encoded
 
@@ -387,54 +382,24 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        inputs = inputs.chosen  # TODO: refactor
         _encoded = {}
         labels = []
-        inference = len(inputs.messages) == 1
-        if inference:
-            inputs.messages.append({'role': 'assistant', 'content': ''})
 
-        def split_multi_medias(_inputs):
-            _content = _inputs.messages[-2]['content']
-            image_size = len(re.findall('<image>', _content))
-            video_size = len(re.findall('<video>', _content))
-            audio_size = len(re.findall('<audio>', _content))
-            _inputs.images = inputs.images[:image_size]
-            assert len(_inputs.images) == image_size
-            inputs.images = inputs.images[image_size:]
-            _inputs.videos = inputs.videos[:video_size]
-            assert len(_inputs.videos) == video_size
-            inputs.videos = inputs.videos[video_size:]
-            _inputs.audios = inputs.audios[:audio_size]
-            assert len(_inputs.audios) == audio_size
-            inputs.audios = inputs.audios[audio_size:]
-
-        if not inference:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
+        if self.is_training:
+            anchor = inputs.chosen
             anchor_encoded = self._encode_truncated(anchor)
             for key in anchor_encoded:
                 _encoded[f'anchor_{key}'] = anchor_encoded[key]
-            positive = deepcopy(inputs)
-            positive.messages[-2]['content'] = positive.messages[-1]['content']
-            positive.messages[-1]['content'] = ''
-            positive.rejected_response = []
-            split_multi_medias(positive)
+            positive = inputs.positive
+            if isinstance(positive, list):
+                positive = positive[0]
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
                 _encoded[f'negative_{key}'] = []
-            labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+            labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-            for i in range(rejected_len):
-                negative = deepcopy(inputs)
-                negative.messages[-2]['content'] = negative.rejected_response[i]
-                negative.messages[-1]['content'] = ''
-                negative.rejected_response = []
-                split_multi_medias(negative)
+            for negative in inputs.negative:
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
@@ -442,46 +407,35 @@ class Template(ProcessorMixin):
 
             _encoded['labels'] = labels
         else:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
+            anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        inputs = inputs.chosen  # TODO: refactor
-        self._preprocess_inputs_reranker(inputs)
-        _encoded = {}
+        chosen = inputs.chosen
+        instruction = chosen.system
+
+        _encoded = defaultdict(list)
         labels = []
 
-        positive = deepcopy(inputs)
-        positive.rejected_response = []
-        if '{doc}' in positive.messages[-2]['content']:
-            positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
-                '{doc}', inputs.messages[-1]['content'])
-            positive.messages.pop(-1)
-        positive_encoded = self._encode_truncated(positive)
-        for key in positive_encoded:
-            _encoded[f'positive_{key}'] = positive_encoded[key]
-            _encoded[f'negative_{key}'] = []
-        labels.append(1)
+        for positive in inputs.positive:
+            if instruction is not None and positive.system is None:
+                positive.system = instruction
+            positive.messages = chosen.messages + positive.messages
+            positive_encoded = self._encode_truncated(positive)
+            labels.append(1)
+            for key in positive_encoded:
+                _encoded[key].append(positive_encoded[key])
 
-        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-        for i in range(rejected_len):
-            negative = deepcopy(inputs)
-            if '{doc}' in negative.messages[-2]['content']:
-                negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
-                    '{doc}', negative.rejected_response[i])
-                negative.messages.pop(-1)
-            else:
-                negative.messages[-1]['content'] = negative.rejected_response[i]
-            negative.rejected_response = []
+        for negative in inputs.negative:
+            if instruction is not None and negative.system is None:
+                negative.system = instruction
+            negative.messages = chosen.messages + negative.messages
             negative_encoded = self._encode_truncated(negative)
-            for key in negative_encoded:
-                _encoded[f'negative_{key}'].append(negative_encoded[key])
             labels.append(0)
+            for key in negative_encoded:
+                _encoded[key].append(negative_encoded[key])
 
         _encoded['labels'] = labels
         return _encoded
@@ -1046,7 +1000,7 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
+            system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
@@ -1260,7 +1214,7 @@ class Template(ProcessorMixin):
         inputs.messages = deepcopy(inputs.messages)
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.task_type != 'seq_cls'):
+                and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (
@@ -1571,31 +1525,26 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        import os
+        max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
         max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels = []
+        labels_list = []
         new_batch = []
         for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = min(max_negative_samples, len(value_list))
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
+            labels = b.pop('labels')
+            positive_num = sum(labels)
+            negative_num = len(labels) - positive_num
+            max_positive = min(positive_num, max_positive_samples)
+            max_negative = min(negative_num, max_negative_samples)
+            for i in random.sample(range(positive_num), max_positive):
+                new_batch.append({'input_ids': b['input_ids'][i]})
+                labels_list.append(1)
+                for j in random.sample(range(negative_num), max_negative):
+                    new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
+                    labels_list.append(0)
 
-            indexes = ['positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
         res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
+        if labels_list:
+            res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         return res
 
     def _seq_cls_data_collator(self,
@@ -1667,8 +1616,9 @@ class Template(ProcessorMixin):
             'loss_scale',
             'position_ids',
             'token_type_ids',
+            'attention_mask_2d',
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1683,8 +1633,8 @@ class Template(ProcessorMixin):
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
         if not self.padding_free and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            if not self.use_megatron:
-                res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+            attention_mask_key = 'attention_mask_2d' if self.use_megatron else 'attention_mask'
+            res[attention_mask_key] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
@@ -1955,6 +1905,8 @@ class Template(ProcessorMixin):
             else:
                 flash_attention_forward = _origin_flash_attention_forward
             kwargs['position_ids'] = position_ids
+            if args and isinstance(args[0], torch.Tensor):
+                kwargs['position_ids'] = kwargs['position_ids'].to(args[0].device)
             return flash_attention_forward(*args, **kwargs)
 
         modeling_module._flash_attention_forward = _flash_attention_forward
@@ -1977,7 +1929,7 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
@@ -2005,11 +1957,13 @@ class Template(ProcessorMixin):
             if image_embeds is not None:
                 image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if video_embeds is not None:
                 video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
 

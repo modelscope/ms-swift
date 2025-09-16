@@ -36,19 +36,24 @@ class ThinkingTemplate(Template):
     with_answer = False
     no_think_prefix = ''  # for hybrid thinking model
     history_think_prefix = ''
+    add_no_think_prefix_after_tool = True
 
     def _swift_prepare_inputs(self, inputs):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
 
         if self.no_think_prefix and self.use_chat_template:
-            for i, message in enumerate(messages):
+            pre_role = ''
+            for message in messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    # During multi-turn SFT training/validation:
-                    # If the message has no <think> block and does not start with the no_think_prefix,
-                    # prepend the no_think_prefix to the content.
-                    if not message['content'].startswith(('<think>', self.no_think_prefix)):
+                    if pre_role == 'tool' and not self.add_no_think_prefix_after_tool:
+                        pass
+                    elif not message['content'].startswith(('<think>', self.no_think_prefix)):
+                        # During multi-turn SFT training/validation:
+                        # If the message has no <think> block and does not start with the no_think_prefix,
+                        # prepend the no_think_prefix to the content.
                         message['content'] = self.no_think_prefix + message['content']
+                pre_role = message['role']
 
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.

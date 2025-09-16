@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
@@ -47,7 +47,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
         res.append(f'{self.start_token}assistant{self.end_token}\n\n')
         return assistant_content, res
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         assert user_message is not None
         user_content = user_message['content']
         tool_descs = [json.dumps(tool, ensure_ascii=False, indent=4) for tool in tools]
@@ -59,7 +59,7 @@ Respond in the format {"name": function name, "parameters": dictionary of argume
 
 {user_content}"""  # noqa
         user_message['content'] = new_user_content
-        return system
+        return system or ''
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         tool_calls = []

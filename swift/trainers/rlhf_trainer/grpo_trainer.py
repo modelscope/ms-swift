@@ -997,7 +997,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             rewards_std = group_rewards.std(-1).mean().item()
-            is_std_zero = torch.isclose(rewards.std(dim=0), torch.zeros_like(rewards.std(dim=0)))
+            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
 
             self._metrics[mode]['reward'].append(rewards_mean)
             self._metrics[mode]['reward_std'].append(rewards_std)

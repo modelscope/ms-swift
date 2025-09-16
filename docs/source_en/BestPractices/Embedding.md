@@ -46,19 +46,22 @@ The source code for the loss functions can be found [here](https://github.com/mo
 ## Dataset Format
 
 > **Note:**
-> 1. The `<image>` tag in the multimodal section below can appear in any position within `query`, `response`, or `rejected_response`. It is only required that the number of tags matches the number of values in `images`.
-> 2. The correspondence between tags and `images` follows the order: first matching the `<image>` tags in `query`, then those in `response`, and finally parsing the `<image>` tags in `rejected_response` sequentially.
-> 3. `query` represents the anchor sample, `response` represents the positive or contrastive sample, and `rejected_response` corresponds to hard negative samples.
-> 4. The `<video>` and `<audio>` tags are also supported, enabling native support for video and audio embeddings.
+> 1. The `<image>` tag can appear anywhere inside `messages`/`positive_messages`/`negative_messages`. Each group has its own image fields: `images`/`positive_images`/`negative_images` to provide paths or URLs.
+> 2. There is no longer any cross-field ordering requirement. Alignment rules:
+>    - `images` length equals the number of `<image>` tags in `messages`.
+>    - `positive_images` and `negative_images` are both list-of-list. Their outer lengths equal the lengths of `positive_messages` and `negative_messages` respectively. For each outer item, the inner list length equals the number of `<image>` tags in that message sequence.
+> 3. `messages` is the anchor sample; `positive_messages` and `negative_messages` are each a list of messages (hence one more `[]`). Accordingly, `positive_images`/`negative_images` are also list-of-list and align item-by-item.
+> 4. `<video>` and `<audio>` are supported as well. Follow the same rules via `videos`/`positive_videos`/`negative_videos` and `audios`/`positive_audios`/`negative_audios`.
+> 5. Current constraint: the outer length of `positive_messages` must be 1 (i.e., provide exactly one positive). Accordingly, the outer length of `positive_images` must also be 1.
 
 ### Format for Cosine Similarity Loss
 
 ```json lines
 # LLM
-{"query": "sentence1", "response": "sentence2", "label": 0.8}
+{"messages": [{"role": "user", "content": "sentence1"}], "positive_messages": [[{"role": "user", "content": "sentence2"}]], "label": 0.8}
 # MLLM
-{"query": "<image>", "response": "<image>sentence", "images": ["/some/images1.jpg", "/some/images2.jpg"], "label": 0.7}
-{"query": "sentence1", "response": "<image>sentence2", "images": ["/some/images1.jpg"], "label": 0.7}
+{"messages": [{"role": "user", "content": "<image>"}], "images": ["/some/images1.jpg"], "positive_messages": [[{"role": "user", "content": "<image>sentence"}]], "positive_images": [["/some/images2.jpg"]], "label": 0.7}
+{"messages": [{"role": "user", "content": "sentence1"}], "positive_messages": [[{"role": "user", "content": "<image>sentence2"}]], "positive_images": [["/some/images.jpg"]], "label": 0.7}
 ```
 
 The eval metrics are the Pearson and Spearman's Rank Correlation Coefficient of the embeddings' euclidean distance/dot production and so on, totally 8 values.
@@ -67,31 +70,31 @@ The eval metrics are the Pearson and Spearman's Rank Correlation Coefficient of 
 
 ```json lines
 # LLM
-{"query": "sentence1", "response": "sentence2", "label": 1}
+{"messages": [{"role": "user", "content": "sentence1"}], "positive_messages": [[{"role": "user", "content": "sentence2"}]], "label": 1}
 # MLLM
-{"query": "<image>", "response": "sentence", "images": "/some/images.jpg", "label": 1}
-{"query": "<image>sentence1", "response": "sentence2", "images": "/some/images.jpg", "label": 0}
+{"messages": [{"role": "user", "content": "<image>"}], "images": ["/some/images1.jpg"], "positive_messages": [[{"role": "user", "content": "<image>sentence"}]], "positive_images": [["/some/images2.jpg"]], "label": 1}
+{"messages": [{"role": "user", "content": "sentence1"}], "positive_messages": [[{"role": "user", "content": "<image>sentence2"}]], "positive_images": [["/some/images.jpg"]], "label": 0}
 ```
 
 ### Format for InfoNCE
 
 ```json lines
 # LLM
-{"query": "sentence1", "response": "sentence2"}
+{"messages": [{"role": "user", "content": "sentence1"}], "positive_messages": [[{"role": "user", "content": "sentence2"}]]}
 # MLLM
-{"query": "<image>", "response": "sentence", "images": "/some/images.jpg"}
-{"query": "<image>sentence1", "response": "<image>sentence2", "rejected_response": ["<image>sentence1", "<image>sentence2"], "images": ["/some/images.jpg", "/some/images.jpg", "/some/images.jpg", "/some/images.jpg"]}
+{"messages": [{"role": "user", "content": "<image>"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "user", "content": "sentence"}]]}
+{"messages": [{"role": "user", "content": "<image>sentence1"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "user", "content": "<image>sentence2"}]], "positive_images": [["/some/positive_images.jpg"]], "negative_messages": [[{"role": "user", "content": "<image><image>sentence3"}], [{"role": "user", "content": "<image>sentence4"}]], "negative_images": [["/some/negative_images1.jpg", "/some/negative_images2.jpg"], ["/some/negative_images3.jpg"]]}
 ```
 
 InfoNCE loss supports the following environment variables:
 1. `INFONCE_TEMPERATURE`: The temperature parameter. If not set, the default value is 0.01.
-2. `INFONCE_USE_BATCH`: Determines whether to use `rejected_response` within the sample (hard negative samples) or to use all `responses` within a batch. The default is `True`, which means using responses within the batch.
-3. `INFONCE_HARD_NEGATIVES`: The number of hard negatives. If not set, all samples in `rejected_response` will be used. Since the lengths may not be consistent, a for loop will be used to compute the loss (which is slower). If set to a specific number, and there are not enough samples, the missing number will be randomly sampled. If there are excess samples, the first `INFONCE_HARD_NEGATIVES` will be selected.
-4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is set to False. When enabled, it checks if a sample's similarity is greater than the positive sample's similarity plus 0.1. If so, the sample's similarity is set to -inf to prevent the leakage of the positive sample.
+2. `INFONCE_USE_BATCH`: Use `negative_messages` within the sample (hard negatives) or use other samples in the batch as in-batch negatives. The default is `True`, which means using in-batch negatives.
+3. `INFONCE_HARD_NEGATIVES`: The number of hard negatives. If not set, all provided `negative_messages` will be used. Since the lengths may vary, a for loop will be used to compute the loss (slower). If set to a specific number, missing items will be randomly sampled, and excess items will be truncated to the first `INFONCE_HARD_NEGATIVES`.
+4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is `False`. When enabled, it checks `positive_similarity + 0.1`; any sample with similarity larger than this threshold will have its similarity set to `-inf` to prevent positive leakage.
 
-> It is also possible to set the number of hard negatives to be equal in the dataset, so that even if not set, the for loop method will not be used, thereby speeding up computation.
+> You can also make the number of hard negatives equal across samples in the dataset, which avoids the for-loop computation and speeds up training even if `INFONCE_HARD_NEGATIVES` is not set.
 >
-> `rejected_response` can also be omitted. In this case, `INFONCE_USE_BATCH` remains `True` and will use other samples within the batch as rejected responses.
+> `negative_messages` can be omitted. In this case, keep `INFONCE_USE_BATCH=True` to use in-batch negatives (other samples in the batch) as negatives.
 
 The evaluation of InfoNCE loss includes the following metrics:
 - mean_neg: The average of all hard negatives
@@ -120,3 +123,83 @@ If you've used other models to train embedding from scratch (for example, the or
 https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
 
 Please modify the template here to match the model's own template to ensure the final embeddings align correctly. It's particularly important to note that the template for the gme model is different from the chatml template for the `qwen2-vl` or `qwen2.5-vl` series. In its inference code, the ending character is `<|endoftext|>` rather than `<|im_end|>`.
+
+## Advanced
+
+- Qwen3-Embedding Custom Instruction:
+  - By default, there is no instruction; the input prompt is: `{Query}<|endoftext|>`.
+  - You can add an instruction via the system message, changing the prompt to: `{Instruction} {Query}<|endoftext|>`.
+  - Example:
+
+```json lines
+{"messages": [
+  {"role": "system", "content": "Answer in English and list key points briefly."},
+  {"role": "user", "content": "Introduce Qwen3-Embedding"}
+]}
+```
+
+> Note: The Qwen3-Embedding template prepends the system content to the first user message and uses `<|endoftext|>` as the ending token.
+
+### Before/After Examples
+
+- Without Instruction:
+
+  Input data (messages):
+
+  ```json lines
+  {"messages": [
+    {"role": "user", "content": "What is Qwen3-Embedding?"}
+  ]}
+  ```
+
+  After template conversion (actual prompt sent to the model):
+
+  ```text
+  What is Qwen3-Embedding?<|endoftext|>
+  ```
+
+- With Instruction:
+
+  Input data (messages with system):
+
+  ```json lines
+  {"messages": [
+    {"role": "system", "content": "Answer in English and list key points briefly."},
+    {"role": "user", "content": "What is Qwen3-Embedding?"}
+  ]}
+  ```
+
+  After template conversion (actual prompt sent to the model):
+
+  ```text
+  Answer in English and list key points briefly. What is Qwen3-Embedding?<|endoftext|>
+  ```
+
+- Positive/Negative behave the same:
+
+  If a system message is provided within a positive/negative sequence, it is prepended to that sequence’s first user content; if no system is provided, nothing is prepended.
+
+  Input (one positive with system, one negative without):
+
+  ```json lines
+  {
+    "messages": [
+      {"role": "user", "content": "Anchor"}
+    ],
+    "positive_messages": [[
+      {"role": "system", "content": "Instruction"},
+      {"role": "user", "content": "Positive"}
+    ]],
+    "negative_messages": [[
+      {"role": "user", "content": "Negative"}
+    ]]
+  }
+  ```
+
+  After template conversion (actual prompts):
+
+  ```text
+  Anchor<|endoftext|>
+  Instruction Positive<|endoftext|>
+  Negative<|endoftext|>
+  ```
