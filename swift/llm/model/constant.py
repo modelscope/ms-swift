@@ -245,6 +245,7 @@ class MLLMModelType:
     step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
 
     phi3_vision = 'phi3_vision'
