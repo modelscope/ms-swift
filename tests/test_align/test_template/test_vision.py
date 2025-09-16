@@ -763,7 +763,7 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
-    # test_gemma3n()
+    test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()

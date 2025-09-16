@@ -204,7 +204,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         assert media_type in ['image', 'video']
         if media_type == 'video':
             if self.mode == 'vllm':
-                return ['<video>']
+                return Template.replace_tag(self, 'video', index, inputs)
             else:
                 return [[-200]]
         else:
