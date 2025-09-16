@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING, List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
@@ -55,8 +55,9 @@ class MistralAgentTemplate(BaseAgentTemplate):
             res.append(context)
         return assistant_content, res
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
+        system = system or ''
         return f"""{system}[AVAILABLE_TOOLS]{' '.join(tool_descs)}[/AVAILABLE_TOOLS]"""
 
     def _format_tool_calls(self, tool_call_messages):

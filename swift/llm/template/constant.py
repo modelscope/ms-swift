@@ -15,6 +15,7 @@ class LLMTemplateType:
     qwen3 = 'qwen3'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
+    qwen3_coder = 'qwen3_coder'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
@@ -85,6 +86,8 @@ class LLMTemplateType:
     phi4 = 'phi4'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
@@ -95,6 +98,7 @@ class LLMTemplateType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
     aya = 'aya'

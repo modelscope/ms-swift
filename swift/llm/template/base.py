@@ -364,7 +364,7 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
-        if margin:
+        if margin is not None:
             encoded['margin'] = float(margin)
         return encoded
 
@@ -977,7 +977,7 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
+            system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
@@ -1061,8 +1061,8 @@ class Template(ProcessorMixin):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'
-            assert response_role in {'assistant'}, f'response_role: {response_role}'
+            assert query_role in {'user', 'tool'}, f'query_role: "{query_role}"'
+            assert response_role in {'assistant'}, f'response_role: "{response_role}"'
             if query_role == 'tool':
                 prompt = query
                 query = ''
@@ -1191,7 +1191,7 @@ class Template(ProcessorMixin):
         inputs.messages = deepcopy(inputs.messages)
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.task_type != 'seq_cls'):
+                and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (
@@ -1882,6 +1882,8 @@ class Template(ProcessorMixin):
             else:
                 flash_attention_forward = _origin_flash_attention_forward
             kwargs['position_ids'] = position_ids
+            if args and isinstance(args[0], torch.Tensor):
+                kwargs['position_ids'] = kwargs['position_ids'].to(args[0].device)
             return flash_attention_forward(*args, **kwargs)
 
         modeling_module._flash_attention_forward = _flash_attention_forward
@@ -1904,7 +1906,7 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
@@ -1932,11 +1934,13 @@ class Template(ProcessorMixin):
             if image_embeds is not None:
                 image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if video_embeds is not None:
                 video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
 
