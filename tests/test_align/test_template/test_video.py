@@ -173,13 +173,23 @@ def test_glm4_5v():
 
 
 def test_keye_vl():
-    pt_engine = PtEngine('Kwai-Keye/Keye-VL-8B-Preview', attn_impl='flash_attention_2')
-    messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
+    pt_engine = PtEngine('Kwai-Keye/Keye-VL-8B-Preview')
+    messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     assert response == response2
+
+
+def test_keye_vl_1_5():
+    pt_engine = PtEngine('Kwai-Keye/Keye-VL-1_5-8B')
+    messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response[:200] == ('The video features a young child sitting on a bed, engrossed in '
+                              'reading a book. The child is wearing a light blue sleeveless top and pink '
+                              'pants. The book appears to be a hardcover with illustrations, ')
 
 
 def test_ovis2_5():
@@ -241,9 +251,10 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
     # test_glm4_1v()  # bug now, wait model fix
-    # test_keye_vl()
+    test_keye_vl()
+    test_keye_vl_1_5()
     # test_glm4_5v()
     # test_ovis2_5()
     # test_interns1()
     # test_internvl3_5()
-    test_minicpmv4_5()
+    # test_minicpmv4_5()
