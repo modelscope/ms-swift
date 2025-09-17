@@ -400,6 +400,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         infer_request.messages.append({'role': 'user', 'content': query})
         if cropped_img:
             infer_request.images.append(cropped_img)
+        # override the images
         extra_info['images'] = infer_request.images
 
         # Return dictionary format according to new MultiTurnScheduler interface
