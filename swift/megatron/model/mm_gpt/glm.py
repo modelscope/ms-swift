@@ -37,8 +37,8 @@ def convert_mcore2hf_glm4_5v(hf_model, mg_model):
 
 class Glm4_5vVit(HuggingFaceModule):
     module_mapping = {'model.visual': 'visual'}
-    vision_tower = ['visual']
-    aligner = ['visual.merger']
+    _vision_tower = ['visual']
+    _aligner = ['visual.merger']
 
     def __init__(self, config):
         from transformers.models.glm4v_moe import Glm4vMoeTextModel

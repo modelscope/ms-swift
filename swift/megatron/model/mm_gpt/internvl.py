@@ -27,8 +27,8 @@ def convert_mcore2hf_internvl3(hf_model, mg_model):
 
 class Internvl3Vit(HuggingFaceModule):
     module_mapping = {'vision_model': 'vision_model', 'mlp1': 'mlp1'}
-    vision_tower = ['vision_model']
-    aligner = ['mlp1']
+    _vision_tower = ['vision_model']
+    _aligner = ['mlp1']
 
     def __init__(self, config):
         model_cls = []
@@ -83,7 +83,7 @@ def convert_hf2mcore_internvl_hf(hf_model, mg_model):
     mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.visual.load_state_dict(hf_model.vision_tower.state_dict())
+    mg_model.visual.vision_tower.load_state_dict(hf_model.vision_tower.state_dict())
     mg_model.visual.multi_modal_projector.load_state_dict(hf_model.multi_modal_projector.state_dict())
 
 
@@ -98,14 +98,14 @@ def convert_mcore2hf_internvl_hf(hf_model, mg_model):
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
 
-    hf_model.vision_tower.load_state_dict(mg_model.visual.visual.state_dict())
+    hf_model.vision_tower.load_state_dict(mg_model.visual.vision_tower.state_dict())
     hf_model.multi_modal_projector.load_state_dict(mg_model.visual.multi_modal_projector.state_dict())
 
 
 class InternvlHfVit(HuggingFaceModule):
-    module_mapping = {'model.vision_tower': 'visual', 'model.multi_modal_projector': 'multi_modal_projector'}
-    vision_tower = ['visual']
-    aligner = ['multi_modal_projector']
+    module_mapping = {'model.vision_tower': 'vision_tower', 'model.multi_modal_projector': 'multi_modal_projector'}
+    _vision_tower = ['vision_tower']
+    _aligner = ['multi_modal_projector']
 
     def __init__(self, config):
         model_cls = []
@@ -127,24 +127,24 @@ class InternvlHfVit(HuggingFaceModule):
         input_ids = kwargs['input_ids']
         pixel_values = kwargs.get('pixel_values')
         model = self._hf_model[0]
-        device = model.model.visual
+        device = self.vision_tower.device
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
             image_features = model.model.get_image_features(
                 pixel_values,
-                vision_feature_layer=self.config.vision_feature_layer,
-                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+                vision_feature_layer=self.model_config.vision_feature_layer,
+                vision_feature_select_strategy=self.model_config.vision_feature_select_strategy,
             )
-            special_image_mask = input_ids == self.config.image_token_id
+            special_image_mask = input_ids == self.model_config.image_token_id
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         else:
-            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
+            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=self.vision_tower.dtype)
             image_features = model.model.get_image_features(
                 dummy_pixel_values,
-                vision_feature_layer=self.config.vision_feature_layer,
-                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+                vision_feature_layer=self.model_config.vision_feature_layer,
+                vision_feature_select_strategy=self.model_config.vision_feature_select_strategy,
             )
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return inputs_embeds
