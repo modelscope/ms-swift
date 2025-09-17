@@ -200,14 +200,38 @@ def test_ovis2_5():
     print(f'response: {response}')
 
 
+def run_hf(model, processor, messages):
+    inputs = processor.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors='pt').to(
+            model.device, dtype=torch.bfloat16)
+    generate_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    decoded_output = processor.decode(generate_ids[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
+    return decoded_output
+
+
 def test_interns1():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
-    messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
+    query = 'Describe this video in detail.'
+    messages = [{'role': 'user', 'content': f'<video>{query}'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
-    assert response == response2
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'video',
+                'url': videos[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == ('<think>' + response2)[:len(response)]
 
 
 def test_internvl3_5():
@@ -251,10 +275,10 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
     # test_glm4_1v()  # bug now, wait model fix
-    test_keye_vl()
-    test_keye_vl_1_5()
+    # test_keye_vl()
+    # test_keye_vl_1_5()
     # test_glm4_5v()
     # test_ovis2_5()
-    # test_interns1()
+    test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()

@@ -311,8 +311,8 @@ class InternvlhfTemplate(Internvl2Template):
                 image_video_patches.append(video_pixel_values[start:end])
                 image_seq_length = self.processor.image_seq_length
                 num_patches = list(video_num_patches[current_patch:end_patch])
-                video_prompt = '\n'.join(
-                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>"
+                video_prompt = ''.join(
+                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>\n"
                     for i in range(len(num_patches)))
                 img_tokens = self.processor.encode(video_prompt, add_special_tokens=False)
             return img_tokens
@@ -331,21 +331,23 @@ class InternvlhfTemplate(Internvl2Template):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeddings = model.model.vision_tower.embeddings
-            lm_embeddings = model.model.language_model.get_input_embeddings()
-            vit_embeds = vit_embeddings(pixel_values)[0].to(device=device)
-            special_image_mask = inputs_embeds == lm_embeddings(
-                torch.tensor(self.image_token_id, dtype=torch.long, device=inputs_embeds.device))
-            special_image_mask = special_image_mask.all(-1)
-            special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = model.model.get_image_features(
-                pixel_values, vision_feature_layer=-1, vision_feature_select_strategy='default')
+                pixel_values,
+                vision_feature_layer=self.config.vision_feature_layer,
+                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+            )
+            special_image_mask = input_ids == self.config.image_token_id
+            special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
-            vit_embeds = model.model.vision_tower.embeddings(dummy_pixel_values)[0].to(device=device)
-            inputs_embeds += vit_embeds.mean() * 0.
+            image_features = model.model.get_image_features(
+                dummy_pixel_values,
+                vision_feature_layer=self.config.vision_feature_layer,
+                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+            )
+            inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
 
