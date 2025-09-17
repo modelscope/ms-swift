@@ -193,10 +193,6 @@ register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_
 
 class InternvlhfTemplate(Internvl2Template):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.image_token_id = self.processor.tokenizer.encode(self.processor.image_token)[0]
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in ['image', 'video']
@@ -210,12 +206,6 @@ class InternvlhfTemplate(Internvl2Template):
                 return ['<IMG_CONTEXT>']
             else:
                 return ['<img>', [-100], '</img>\n']
-
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        if inputs.system is None and self.template_meta.response_prefix == '<think>':
-            inputs.system = self.InternS1DefaultThinkinngSystem
-
-        return super()._swift_encode(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.image_utils import make_flat_list_of_images, concatenate_list
@@ -357,6 +347,12 @@ class InternS1Template(InternvlhfTemplate, ThinkingTemplate):
                                       'Your response should reflect deep understanding and precise logical thinking, '
                                       'making your solution path and reasoning clear to others. '
                                       'Please put your thinking process within <think>...</think> tags.')
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is None and self.template_meta.response_prefix == '<think>':
+            inputs.system = self.InternS1DefaultThinkinngSystem
+
+        return super()._swift_encode(inputs)
 
 
 # disable_thinking: response_prefix=''
