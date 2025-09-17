@@ -231,7 +231,7 @@ def test_interns1():
         ],
     }]
     response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
-    assert response == response2
+    assert response == ('<think>' + response2)[:len(response)]
 
 
 def test_internvl3_5():

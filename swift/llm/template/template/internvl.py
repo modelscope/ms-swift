@@ -311,8 +311,8 @@ class InternvlhfTemplate(Internvl2Template):
                 image_video_patches.append(video_pixel_values[start:end])
                 image_seq_length = self.processor.image_seq_length
                 num_patches = list(video_num_patches[current_patch:end_patch])
-                video_prompt = '\n'.join(
-                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>"
+                video_prompt = ''.join(
+                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>\n"
                     for i in range(len(num_patches)))
                 img_tokens = self.processor.encode(video_prompt, add_special_tokens=False)
             return img_tokens
