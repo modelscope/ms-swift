@@ -41,11 +41,14 @@ class KeyeVLTemplate(Template):
             video = inputs.videos[index]
             if os.path.isdir(video):
                 video = [os.path.join(video, fname) for fname in os.listdir(video)]
-            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
+            video, video_kwargs = fetch_video({'video': video})
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
-            inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
+            for k, v in video_kwargs.items():
+                if k not in inputs.mm_processor_kwargs:
+                    inputs.mm_processor_kwargs[k] = []
+                inputs.mm_processor_kwargs[k].append(v)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -62,25 +65,24 @@ class KeyeVLTemplate(Template):
                     media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    kwargs = {}
-                    if hasattr(processor, 'video_processor'):
-                        processor_func = processor.video_processor
-                    else:
-                        processor_func = processor.image_processor
-                        kwargs['images'] = None
-                    media_inputs = processor_func(videos=mm_data, return_tensors='pt', do_resize=False, **kwargs)
+                    split_token = self._tokenize('\n')[0]
+                    media_inputs = processor(
+                        text=['\n'.join(['<|video_pad|>'] * len(mm_data))],
+                        videos=mm_data,
+                        return_tensors='pt',
+                        **inputs.mm_processor_kwargs)
+                    splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
-                    fps = inputs.mm_processor_kwargs['fps']
-                    media_inputs['second_per_grid_ts'] = [
-                        processor.image_processor.temporal_patch_size / tmp for tmp in fps
-                    ]
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
 
                 def _get_new_tokens(i):
-                    token_len = (media_grid_thw[i].prod() // merge_length)
-                    return [media_token] * token_len
+                    if media_type == 'images':
+                        token_len = (media_grid_thw[i].prod() // merge_length)
+                        return [media_token] * token_len
+                    else:
+                        return splited_tokens[i]
 
                 input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                     _get_new_tokens)

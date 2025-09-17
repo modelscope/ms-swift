@@ -629,9 +629,9 @@ def test_keye_vl_1_5():
     ]
     pt_engine.default_template.template_backend = 'swift'
     response = _infer_model(pt_engine, messages=messages, images=images)
-    assert response[:200] == ('<analysis>This question is straightforward and asks for a description of the image. '
-                              'Therefore, /no_think mode is more appropriate.</analysis>'
-                              'This image features a close-up of an adorable kitten with s')
+    assert response[:200] == ('<analysis>This question is straightforward and asks for a '
+                              'description of the image, which is a fixed task. Therefore, /no_think mode is more '
+                              'appropriate.</analysis>This image features a close-up of an')
 
 
 def test_dots_ocr():
@@ -790,13 +790,13 @@ if __name__ == '__main__':
     # test_kimi_vl_thinking()
     # test_glm4_1v()
     # test_gemma3n()
-    # test_keye_vl()
+    test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    # test_keye_vl_1_5()
+    test_keye_vl_1_5()
     # test_internvl3_hf()
     # test_internvl3_5_hf()
-    test_internvl_gpt_hf()
+    # test_internvl_gpt_hf()
