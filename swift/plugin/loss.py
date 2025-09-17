@@ -652,12 +652,7 @@ def listwise_generative_reranker_loss(outputs,
     negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
 
     # Create binary classification logits for each sample
-    # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
-    binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
-
-    # Convert to relevance scores using softmax (probability of positive class)
-    binary_probs = torch.softmax(binary_logits, dim=1)
-    relevance_scores = binary_probs[:, 1]  # Probability of positive class [batch_size]
+    logits = positive_logits - negative_logits
 
     # Find positive sample indices to determine group boundaries
     positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1)
@@ -684,7 +679,7 @@ def listwise_generative_reranker_loss(outputs,
             group_end = len(labels)
 
         # Extract group relevance scores and labels
-        group_scores = relevance_scores[group_start:group_end]  # [group_size]
+        group_scores = logits[group_start:group_end]  # [group_size]
         group_labels = labels[group_start:group_end]  # [group_size]
 
         # Skip groups that are too small
@@ -695,9 +690,7 @@ def listwise_generative_reranker_loss(outputs,
         if group_labels[0] != 1:
             continue  # Skip malformed groups
 
-        # Convert relevance scores to logits for cross-entropy loss
-        # We use log to convert probabilities back to logits, then apply temperature
-        group_logits = torch.log(group_scores + 1e-8) / temperature  # Add small epsilon for numerical stability
+        group_logits = group_scores / temperature
 
         # The positive document is always at index 0 within the group
         target = torch.tensor(0, dtype=torch.long, device=logits.device)

@@ -587,14 +587,6 @@ register_model(
                 Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
             ]),
             ModelGroup([
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
-            ],
-                       tags=['coding']),
-            ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
             ])
@@ -602,6 +594,25 @@ register_model(
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_coder,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       tags=['coding']),
+        ],
+        TemplateType.qwen3_coder,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 
@@ -622,6 +633,26 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
     ))
 
 
@@ -646,19 +677,25 @@ def patch_qwen_vl_utils(vision_process):
             'fps_max_frames',
     ]:
         type_func = float if key == 'fps' else int
-        if not hasattr(vision_process, key.upper()):
+        default_value = getattr(vision_process, key.upper(), None)
+        if default_value is None:
+            # Skip keys not supported by the specific vision_process implementation
             continue
-        val = get_env_args(key, type_func, getattr(vision_process, key.upper()))
+        val = get_env_args(key, type_func, default_value)
         setattr(vision_process, key.upper(), val)
         res[key] = val
-    _read_video_decord = vision_process._read_video_decord
+    # Patch decord video reader if available
+    _read_video_decord = getattr(vision_process, '_read_video_decord', None)
+    if _read_video_decord is not None:
 
-    def _new_read_video_decord(ele: dict):
-        from swift.llm import load_file
-        ele['video'] = load_file(ele['video'])
-        return _read_video_decord(ele)
+        def _new_read_video_decord(ele: dict):
+            from swift.llm import load_file
+            ele['video'] = load_file(ele['video'])
+            return _read_video_decord(ele)
 
-    vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
+        backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
+        if isinstance(backends, dict):
+            backends['decord'] = _new_read_video_decord
     vision_process._patch = True
     return res
 

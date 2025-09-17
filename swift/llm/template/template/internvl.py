@@ -191,20 +191,18 @@ class Internvl3_5GPTTemplate(Internvl2Template, GptTemplate):
 register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_cls=Internvl3_5GPTTemplate))
 
 
-class InternS1Template(Internvl2Template, ThinkingTemplate):
-    image_token_id = 152957
-    InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
-                                      'You approach problems through systematic thinking and rigorous reasoning. '
-                                      'Your response should reflect deep understanding and precise logical thinking, '
-                                      'making your solution path and reasoning clear to others. '
-                                      'Please put your thinking process within <think>...</think> tags.')
+class InternvlhfTemplate(Internvl2Template):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_token_id = self.processor.tokenizer.encode(self.processor.image_token)[0]
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in ['image', 'video']
         if media_type == 'video':
             if self.mode == 'vllm':
-                return ['<video>']
+                return Template.replace_tag(self, 'video', index, inputs)
             else:
                 return [[-200]]
         else:
@@ -247,14 +245,14 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
             images = make_flat_list_of_images(images)
             image_inputs = self.processor.image_processor(images=images, crop_to_patches=True, return_tensors='pt')
             image_num_patches = image_inputs.pop('num_patches')
-            image_pixel_values = image_inputs.pop('pixel_values')
+            image_pixel_values = image_inputs.pop('pixel_values').to(self.model_info.torch_dtype)
             image_num_patches_indices = np.cumsum(image_num_patches)
         if videos:
             video_idx_list = findall(input_ids, -200)
             videos, _ = load_video_hf(videos)
             videos = make_batched_videos(videos)
             video_inputs = self.processor.video_processor(videos=videos, return_tensors='pt')
-            video_pixel_values = video_inputs.pop('pixel_values_videos')
+            video_pixel_values = video_inputs.pop('pixel_values_videos').to(self.model_info.torch_dtype)
             num_frames_per_video = [len(video) for video in video_pixel_values]
             video_num_patches = [1 for frames in num_frames_per_video for _ in range(frames)]
             video_patch_indices = np.cumsum(num_frames_per_video)
@@ -351,6 +349,16 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         return {'inputs_embeds': inputs_embeds}
 
 
+class InternS1Template(InternvlhfTemplate, ThinkingTemplate):
+    InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
+                                      'You approach problems through systematic thinking and rigorous reasoning. '
+                                      'Your response should reflect deep understanding and precise logical thinking, '
+                                      'making your solution path and reasoning clear to others. '
+                                      'Please put your thinking process within <think>...</think> tags.')
+
+
 # disable_thinking: response_prefix=''
 register_template(
     ChatmlTemplateMeta(MLLMTemplateType.interns1, template_cls=InternS1Template, response_prefix='<think>'))
+
+register_template(ChatmlTemplateMeta(MLLMTemplateType.internvl_hf, template_cls=InternvlhfTemplate))

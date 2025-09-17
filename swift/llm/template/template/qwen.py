@@ -17,7 +17,7 @@ from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
-from ..template_inputs import StdTemplateInputs
+from ..template_inputs import StdTemplateInputs, TemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
@@ -68,15 +68,23 @@ register_template(
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template='qwen3_coder'))
+
 
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs_reranker(inputs)
-        query = inputs.messages[-2]['content']
-        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
-        inputs.messages[-2]['content'] = user_message
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
+        else:
+            instruction = self.instruction
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
+        return inputs
 
 
 qwen3_reranker_system = (
@@ -240,6 +248,10 @@ class Qwen2VLTemplate(Template):
     use_model = True
     support_padding_free = True
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.transformers_version = version.parse(transformers.__version__)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image, fetch_video
@@ -313,16 +325,9 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def forward_context(self, model, inputs):
-        position_ids = inputs['position_ids']
-        inputs['position_ids'] = position_ids[1:]
-        inputs['text_position_ids'] = text_position_ids = position_ids[0]
-        transformers_version = version.parse(transformers.__version__)
-        if transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
-            # https://github.com/huggingface/transformers/pull/40194
-            inputs.update(get_packed_seq_params(text_position_ids))
+        if not self.padding_free or self.transformers_version >= version.parse('4.53.0.dev'):
             return super().forward_context(model, inputs)
-        if not self.padding_free:
-            return super().forward_context(model, inputs)
+        text_position_ids = inputs['text_position_ids']
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':
@@ -370,11 +375,14 @@ class Qwen2VLTemplate(Template):
             get_rope_index = base_model.get_rope_index
         else:
             get_rope_index = base_model.model.get_rope_index
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
         position_ids, _ = get_rope_index(
             inputs['input_ids'],
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
-            attention_mask=inputs.get('attention_mask'),
+            attention_mask=attention_mask,
             **kwargs)
         return self._concat_text_position_ids(position_ids)
 
@@ -382,6 +390,13 @@ class Qwen2VLTemplate(Template):
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free and self.is_training:
             res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            if self.transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
+                # https://github.com/huggingface/transformers/pull/40194
+                res.update(get_packed_seq_params(text_position_ids))
         return res
 
 
@@ -812,11 +827,11 @@ class Ovis2_5Template(ThinkingTemplate):
             visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
             inputs_embeds[input_ids == VISUAL_ATOM_ID] = visual_embeds
         elif is_deepspeed_enabled():
-            media_inputs = model.visual_tokenizer.preprocess(
+            pixel_values, grid_thws = model.visual_tokenizer.preprocess(
                 Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
-            media_inputs = to_device(media_inputs, input_ids.device)
-            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
-            visual_tokens = model.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            pixel_values = pixel_values.to(device=inputs_embeds.device)
+            grid_thws = grid_thws.to(device=inputs_embeds.device)
+            visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
             inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
 

@@ -323,7 +323,7 @@ register_dataset(
         tags=['chat', 'coding', '🔥']))
 
 
-class StsbPreprocessor(ResponsePreprocessor):
+class StsbPreprocessor(RowPreprocessor):
 
     def __init__(self, sim_threshold: Optional[float] = None):
         self.sim_threshold = sim_threshold
@@ -331,12 +331,18 @@ class StsbPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row = {
-            'query': row['sentence1'],
-            'response': row['sentence2'],
+            'messages': [{
+                'role': 'user',
+                'content': row['sentence1']
+            }],
+            'positive_messages': [[{
+                'role': 'user',
+                'content': row['sentence2']
+            }]],
             'label': row['score'],
         }
         if self.sim_threshold is None or float(row['label']) >= self.sim_threshold:
-            return super().preprocess(row)
+            return row
         else:
             return None
 
@@ -378,19 +384,18 @@ register_dataset(
         tags=['similarity', '🔥']))
 
 
-class MTEBRerankPreprocessor(ResponsePreprocessor):
+class MTEBRerankPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
 
-        expanded_rows = []
-        for positive in positives:
-            expanded_row = {'query': query, 'response': positive, 'rejected_response': negatives}
-            expanded_rows.append(super().preprocess(expanded_row))
+        messages = [{'role': 'user', 'content': query}]
+        positive_messages = [[{'role': 'assistant', 'content': positive}] for positive in positives]
+        negative_messages = [[{'role': 'assistant', 'content': negative}] for negative in negatives]
 
-        return expanded_rows
+        return {'messages': messages, 'positive_messages': positive_messages, 'negative_messages': negative_messages}
 
 
 register_dataset(

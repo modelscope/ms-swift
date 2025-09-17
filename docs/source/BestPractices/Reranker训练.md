@@ -66,21 +66,54 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ## 数据集格式
 
 ```json lines
-{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-...
+{"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
 ```
 
 **字段说明：**
-- `query`：查询文本
-- `response`：与查询相关的正例文档
-- `rejected_response`：与查询不相关的负例文档列表，支持多个负例
+- `messages`：查询文本
+- `positive_messages`：与查询相关的正例文档列表，支持多个正例
+- `negative_messages`：与查询不相关的负例文档列表，支持多个负例
+
+**环境变量配置：**
+- `MAX_POSITIVE_SAMPLES`：每个query的最大正例数量（默认：1）
+- `MAX_NEGATIVE_SAMPLES`：每个query的最大负例数量（默认：7）
+
+> 默认会从每条数据中取出`MAX_POSITIVE_SAMPLES`条正样本和`MAX_NEGATIVE_SAMPLES`条负样本，每条正样本会和`MAX_NEGATIVE_SAMPLES`条负样本组成一个group，因此每条数据会扩展成`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`条数据。
+> 如果数据中正例/负例数量不足，会取全部正例/负例，如果数据中正例和负例数量超过`MAX_POSITIVE_SAMPLES`和`MAX_NEGATIVE_SAMPLES`，会进行随机采样。
+> **IMPORTANT**：展开后的数据会放在同一个batch中，因此每个设备上的实际批处理大小（effective batch size）将是 `per_device_train_batch_size` × `MAX_POSITIVE_SAMPLES` × (1 + `MAX_NEGATIVE_SAMPLES`)。请注意调整 `per_device_train_batch_size` 以避免显存不足。
 
 ## 脚手架
 
 SWIFT提供了两个脚手架训练脚本：
 
-- [Pointwise分类式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker.sh)
-- [Pointwise生成式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
-- [Listwise分类式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
-- [Listwise生成式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+- [Pointwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
+- [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
+- [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
+- [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+## 高级功能
+
+- Qwen3-Reranker 自定义 Instruction：
+  - 默认模板如下：
+
+```text
+<|im_start|>system
+Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>
+<|im_start|>user
+<Instruct>: {Instruction}
+<Query>: {Query}
+<Document>: {Document}<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+```
+
+- 默认 Instruction：
+  - `Given a web search query, retrieve relevant passages that answer the query`
+
+- Instruction 优先级（就近覆盖）：
+  - `positive_messages`/`negative_messages` 内提供的 `system` > 主 `messages` 的 `system` > 默认 Instruction。
+  - 即：若某个 positive/negative 的消息序列内包含 `system`，则优先使用该条；否则若主 `messages` 含 `system` 则使用之；两者都未提供时，使用默认 Instruction。
