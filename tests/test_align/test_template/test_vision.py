@@ -629,9 +629,9 @@ def test_keye_vl_1_5():
     ]
     pt_engine.default_template.template_backend = 'swift'
     response = _infer_model(pt_engine, messages=messages, images=images)
-    assert response[:200] == ('<analysis>This question is straightforward and asks for a '
-                              'description of the image, which is a fixed task. Therefore, /no_think mode is more '
-                              'appropriate.</analysis>This image features a close-up of an')
+    assert response[:200] == ('<analysis>This question is straightforward and asks for a description of the image. '
+                              'Therefore, /no_think mode is more appropriate.</analysis>'
+                              'This image features a close-up of an adorable kitten with s')
 
 
 def test_dots_ocr():
