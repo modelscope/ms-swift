@@ -1,4 +1,4 @@
-# 20GiB
+# 24GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Kwai-Keye/Keye-VL-1_5-8B \
