@@ -291,6 +291,14 @@ class KeyeVLTemplate(Template):
 
 # Register the Keye VL template
 register_template(KeyeTemplateMeta(MLLMTemplateType.keye_vl, template_cls=KeyeVLTemplate))
+
+
+class KeyeVL1_5Template(KeyeVLTemplate):
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return super(KeyeVLTemplate, self)._post_encode(model, inputs)
+
+
 register_template(
     KeyeTemplateMeta(
-        MLLMTemplateType.keye_vl_1_5, template_cls=KeyeVLTemplate, default_system='You are a helpful assistant.'))
+        MLLMTemplateType.keye_vl_1_5, template_cls=KeyeVL1_5Template, default_system='You are a helpful assistant.'))
