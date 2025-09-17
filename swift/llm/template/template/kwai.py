@@ -46,9 +46,7 @@ class KeyeVLTemplate(Template):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
             for k, v in video_kwargs.items():
-                if k not in inputs.mm_processor_kwargs:
-                    inputs.mm_processor_kwargs[k] = []
-                inputs.mm_processor_kwargs[k].append(v)
+                inputs.mm_processor_kwargs.setdefault(k, []).append(v)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
