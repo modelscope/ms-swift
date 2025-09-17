@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
-from megatron.training import get_args, get_tokenizer
+from megatron.training import get_args
 from PIL import Image
 
 from swift.llm import ModelType, Template, to_device
