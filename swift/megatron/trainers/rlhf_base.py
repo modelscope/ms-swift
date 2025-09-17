@@ -107,3 +107,8 @@ class MegatronRLHFTrainer(MegatronTrainer):
             yield ref_model
             if args.ref_adapter_load:
                 self.peft_model.set_adapter('default')
+
+    @contextmanager
+    def offload_context(self):
+        # TODO: offload
+        yield

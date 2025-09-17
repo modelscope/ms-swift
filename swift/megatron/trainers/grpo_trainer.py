@@ -20,6 +20,7 @@ from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
 from .trainer import MegatronTrainer
 from .utils import get_batch
+
 try:
     from mbridge import AutoBridge
 except ImportError:
@@ -30,61 +31,22 @@ logger = get_logger()
 
 class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
-    def __init__(self, args: MegatronRLHFArguments):
+    def __init__(self, args: MegatronRLHFArguments, template):
         MegatronRLHFTrainer().__init__(self, args)
-        # TODO: init vllm
         self.args = args
-        self.processing_class = self.processor
+        self.hf_model_dir = args.model_info.model_dir
+        self.process_index = torch.distributed.get_rank()
+        self.processing_class = self.template.processor
         # set up reward funcs
-        reward_funcs = args.reward_funcs
-        if not isinstance(reward_funcs, list):
-            reward_funcs = [reward_funcs]
-        if reward_funcs:
-            for i, reward_func in enumerate(reward_funcs):
-                if reward_func in orms:
-                    reward_func_class = orms[reward_func]
-                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_kwargs = {
-                        key: getattr(args, key)
-                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
-                    }
-                    if 'tokenizer' in reward_func_args:
-                        reward_func_kwargs['tokenizer'] = self.processing_class
-                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
-                elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
-        self.reward_funcs = reward_funcs
-        self.reward_func_names = []
-        for reward_func in reward_funcs:
-            if inspect.isfunction(reward_func):
-                reward_func_name = reward_func.__name__
-            else:
-                reward_func_name = reward_func.__class__.__name__
-            self.reward_func_names.append(reward_func_name)
-        # TODO: reward model
+        self.prepare_rewards()
         # TODO: multi turn scheduler(colocate multi turn)
         self._prepare_rollout_engine(self.unwrapped_model)
-        self.num_generations = args.num_generations  # G in the GRPO paper
-        self.temperature = args.temperature
-        self.loss_type = args.loss_type
-        self.max_completion_length = args.max_completion_length
-        self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
-        self.top_entropy_quantile = args.top_entropy_quantile
-        self.importance_sampling_level = args.importance_sampling_level
-        self.enable_offload = False
-        self.use_gym_env = False
-        # batch size
-        self.global_batch_size = args.global_batch_size
-        self.mini_batch_size = args.mini_batch_size
-        self.micro_batch_size = args.micro_batch_size
-        self.local_path = 'Qwen/Qwen2.5-7B-Instruct' # debug
+        self._init_grpo_params()
         if args.use_mbridge:
             # debug: use mbridge to convert mcore to hf
             from transformers import AutoConfig
-            hf_config = AutoConfig.from_pretrained(self.local_path, trust_remote_code=True)
+            hf_config = AutoConfig.from_pretrained(self.hf_model_dir, trust_remote_code=True)
             bridge = AutoBridge.from_pretrained(hf_config)
-            tf_config = bridge.config
             self.bridge = bridge
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
@@ -144,19 +106,21 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 res.append(self.ref_forward(ref_model, data_iterator))
         return iter(res)
 
-    def forward_step(self, data_iterator, model):
-
-        with torch.no_grad():
-            data = next(data_iterator)
-
-        ref_logps = data.pop('logps')
-        with self.stimer:
-            output_tensor = model(**data)
-        return output_tensor, partial(
-            self.loss_func,
-            ref_logps=ref_logps,
-            labels=data.get('labels'),
-            packed_seq_params=data.get('packed_seq_params'))
+    def _init_grpo_params(self):
+        args = self.args
+        self.num_generations = args.num_generations  # G in the GRPO paper
+        self.temperature = args.temperature
+        self.loss_type = args.loss_type
+        self.max_completion_length = args.max_completion_length
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+        self.top_entropy_quantile = args.top_entropy_quantile
+        self.importance_sampling_level = args.importance_sampling_level
+        self.enable_offload = False
+        # batch size
+        self.global_batch_size = args.global_batch_size
+        self.mini_batch_size = args.mini_batch_size
+        self.micro_batch_size = args.micro_batch_size
 
     def _prepare_rollout_engine(self, model):
         args = self.args
@@ -211,36 +175,91 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 context = self.offload_context if self.enable_offload else nullcontext
 
                 with context():
-                    self.engine = self.prepare_vllm(model)
+                    self.engine = self.prepare_vllm()
                     if self.args.sleep_level > 0:
                         self.engine.engine.sleep(self.args.sleep_level)
 
-
-    def prepare_vllm(self, model):
+    def prepare_vllm(self):
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
+        args = self.args
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
-        data_parallel_rank = mpu.get_data_parallel_rank()
 
-        with Swift.grpo_context(model, self.template.processor):
-            engine = GRPOVllmEngine(
-                model.model_dir,
-                model.model_info.torch_dtype,
-                model_type=model.model_meta.model_type,
-                use_async_engine=False,  # TODO: async engine for colocate
-                tensor_parallel_size=self.vllm_tensor_parallel_size,
-                gpu_memory_utilization=self.vllm_gpu_memory_utilization,
-                enable_prefix_caching=self.args.vllm_enable_prefix_caching,
-                max_num_seqs=max_num_seqs,
-                enforce_eager=self.args.vllm_enforce_eager,
-                limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
-                enable_sleep_mode=self.args.sleep_level > 0,
-                max_model_len=self.args.vllm_max_model_len,
-                seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
-                disable_cascade_attn=self.args.vllm_disable_cascade_attn,
-                load_format='dummy',
-                template=copy(self.template),
-                distributed_executor_backend='external_launcher',
-            )
+        engine = GRPOVllmEngine(
+            self.hf_model_dir,
+            args.torch_dtype,
+            model_type=args.model_type,
+            use_async_engine=False,  # TODO: async engine for colocate
+            tensor_parallel_size=self.vllm_tensor_parallel_size,
+            gpu_memory_utilization=self.vllm_gpu_memory_utilization,
+            enable_prefix_caching=self.args.vllm_enable_prefix_caching,
+            max_num_seqs=max_num_seqs,
+            enforce_eager=self.args.vllm_enforce_eager,
+            limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
+            enable_sleep_mode=self.args.sleep_level > 0,
+            max_model_len=self.args.vllm_max_model_len,
+            seed=self.process_index // self.vllm_tensor_parallel_size,
+            disable_cascade_attn=self.args.vllm_disable_cascade_attn,
+            load_format='dummy',
+            template=self.template,
+            distributed_executor_backend='external_launcher',
+        )
         return engine
+
+    def prepare_rewards(self):
+        # TODO: reward model
+        args = self.args
+        reward_funcs = args.reward_funcs
+        if not isinstance(reward_funcs, list):
+            reward_funcs = [reward_funcs]
+        if reward_funcs:
+            for i, reward_func in enumerate(reward_funcs):
+                if reward_func in orms:
+                    reward_func_class = orms[reward_func]
+                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    if 'tokenizer' in reward_func_args:
+                        reward_func_kwargs['tokenizer'] = self.processing_class
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
+                elif not callable(reward_func):
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+        self.reward_funcs = reward_funcs
+        self.reward_func_names = []
+        for reward_func in reward_funcs:
+            if inspect.isfunction(reward_func):
+                reward_func_name = reward_func.__name__
+            else:
+                reward_func_name = reward_func.__class__.__name__
+            self.reward_func_names.append(reward_func_name)
+
+    def _move_model_to_vllm(self):
+        # TODO: LoRA, server
+        per_tensor_params = self.bridge.export_weights(self.unwrapped_model)
+        self.engine.inner_model.load_weights(per_tensor_params)
+
+    def forward_step(self, data_iterator, model):
+        # train_batch_size
+
+        # step1: rollout
+
+        # step2: compute old logps
+
+        # step3: compute ref logps
+
+        # step4: compute rewards/advantages
+
+        # return: output_tensor, loss_func
+
+        data = next(data_iterator)
+        ref_logps = data.pop('logps')
+        with self.stimer:
+            output_tensor = model(**data)
+        return output_tensor, partial(
+            self.loss_func,
+            ref_logps=ref_logps,
+            labels=data.get('labels'),
+            packed_seq_params=data.get('packed_seq_params'))
