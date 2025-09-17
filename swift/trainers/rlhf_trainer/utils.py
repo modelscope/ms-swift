@@ -2,23 +2,27 @@
 import functools
 import math
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from dataclasses import asdict, dataclass
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import datasets
+import json
 import torch
 import torch.nn.functional as F
+from msgspec import field
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
+from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader
 from transformers import Trainer
 
-from swift.utils import is_swanlab_available, is_wandb_available
+from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
     import wandb
@@ -27,6 +31,14 @@ if is_swanlab_available():
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
+
+TensorLoRARequest = None
+if is_vllm_available():
+    from vllm.lora.request import LoRARequest
+
+    class TensorLoRARequest(LoRARequest):
+        peft_config: dict = field(default=None)
+        lora_tensors: dict = field(default=None)
 
 
 def round_robin(num_reqs, num_workers):
@@ -367,6 +379,224 @@ def patch_save_last_checkpoint():
         RepeatSampler.old_len_func = origin_len_func
 
 
+def get_gather_if_zero3_context(trainer):
+    deepspeed_plugin = trainer.accelerator.state.deepspeed_plugin
+    zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+    if zero_stage_3:
+        import deepspeed
+        gather_if_zero3 = deepspeed.zero.GatheredParameters
+    else:
+        gather_if_zero3 = nullcontext
+    return gather_if_zero3
+
+
+def patch_vllm_load_adapter():
+    # from vllm.lora.worker_manager import WorkerLoRAManager
+    from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
+    from vllm.lora.models import LoRAModel
+    from vllm.lora.utils import get_adapter_absolute_path
+    from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+
+    def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
+        """
+        code borrowed from verl.utils.vllm.utils.py
+        based on vllm.lora.worker_manager.WorkerLoRAManager._load_adapter, support load adapter with lora tensors
+        Reason:
+        VLLM does not support adding LoRA from tensors directly. It only supports adding LoRA via file paths.
+        To synchronize the LoRA tensors of the actor model, we need to find a workaround to enable VLLM to
+        load memory-based LoRA tensors.
+        """
+        try:
+            supported_lora_modules = self._adapter_manager.supported_lora_modules
+            packed_modules_mapping = self._adapter_manager.packed_modules_mapping
+            expected_lora_modules: list[str] = []
+            for module in supported_lora_modules:
+                if module in packed_modules_mapping:
+                    expected_lora_modules.extend(packed_modules_mapping[module])
+                else:
+                    expected_lora_modules.append(module)
+            expected_lora_modules = list(set(expected_lora_modules))
+            # this is the patch
+            lora_tensors = None
+            from vllm.lora.peft_helper import PEFTHelper
+            if isinstance(lora_request, TensorLoRARequest):
+                peft_config = lora_request.peft_config
+                lora_tensors = lora_request.lora_tensors
+                peft_helper = PEFTHelper.from_dict(peft_config)
+            else:
+                lora_path = get_adapter_absolute_path(lora_request.lora_path)
+                peft_helper = PEFTHelper.from_local_dir(lora_path, self.max_position_embeddings)
+            # Validates the LoRA configuration against requirements before
+            # loading weights, throwing an exception if validation fails.
+            peft_helper.validate_legal(self.lora_config)
+            # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
+            # to ensure correct loading of lora weights.
+            model = self._adapter_manager.model
+            hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if isinstance(lora_request, TensorLoRARequest):  # this is the patch
+                lora = self._lora_model_cls.from_lora_tensors(
+                    lora_model_id=lora_request.lora_int_id,
+                    tensors=lora_tensors,
+                    peft_helper=peft_helper,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    embeddings=None,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+            else:
+                lora = self._lora_model_cls.from_local_checkpoint(
+                    lora_path,
+                    expected_lora_modules,
+                    peft_helper=peft_helper,
+                    lora_model_id=lora_request.lora_int_id,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+        except Exception as e:
+            raise e
+        if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
+            raise ValueError(f'LoRA added vocab size {lora.extra_vocab_size} is greater than '
+                             f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
+        return lora
+
+    def patched_get_lora_tokenizer(self: TokenizerGroup, lora_request: LoRARequest):
+        # since we pass dummy path, skip get tokenizer from path
+        return self.tokenizer
+
+    if not hasattr(LRUCacheWorkerLoRAManager, '_old_load_adapter'):
+        _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
+        LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
+        LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
+        TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
+        TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
+
+
+# FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py
+class FlattenedTensorMetadata(BaseModel):
+    """Metadata for a tensor in a flattened bucket"""
+    name: str
+    shape: Tuple[int, ...]
+    dtype: str
+    start_idx: int
+    end_idx: int
+    numel: int
+
+    @field_validator('shape', mode='before')
+    @classmethod
+    def ensure_shape_tuple(cls, v: Any) -> Tuple[int, ...]:
+        # accept tuple/list, torch.Size, or other iterable of ints
+        if torch is not None and isinstance(v, torch.Size):
+            return tuple(int(x) for x in v)
+        if isinstance(v, (list, tuple)):
+            return tuple(int(x) for x in v)
+        if isinstance(v, Iterable):
+            return tuple(int(x) for x in v)
+        raise ValueError('shape must be an iterable of ints (e.g. tuple/list/torch.Size)')
+
+    @field_validator('dtype', mode='before')
+    @classmethod
+    def ensure_dtype_str(cls, v: Any) -> str:
+        # accept torch.dtype or str
+        if torch is not None and isinstance(v, torch.dtype):
+            return str(v)
+        if isinstance(v, str):
+            return v
+        raise ValueError('dtype must be a torch.dtype or str')
+
+
+class FlattenedTensorBucket:
+    """
+    A bucket that flattens multiple tensors into a single tensor for efficient processing
+    while preserving all metadata needed for reconstruction.
+    """
+
+    def __init__(
+        self,
+        named_tensors: List[Tuple[str, torch.Tensor]] = None,
+        flattened_tensor: torch.Tensor = None,
+        metadata: List[FlattenedTensorMetadata] = None,
+    ):
+        """
+        Initialize a tensor bucket from a list of named tensors OR from pre-flattened data.
+        Args:
+            named_tensors: List of (name, tensor) tuples (for creating new bucket)
+            flattened_tensor: Pre-flattened tensor (for reconstruction)
+            metadata: Pre-computed metadata (for reconstruction)
+        """
+        if named_tensors is not None:
+            # Create bucket from named tensors
+            self.metadata: List[FlattenedTensorMetadata] = [None] * len(named_tensors)
+            self.flattened_tensor: torch.Tensor = None
+
+            if not named_tensors:
+                raise ValueError('Cannot create empty tensor bucket')
+
+            # Collect metadata and flatten tensors
+            current_idx = 0
+            flattened_tensors: List[torch.Tensor] = [None] * len(named_tensors)
+
+            for i, (name, tensor) in enumerate(named_tensors):
+                flattened = tensor.flatten()
+                flattened_tensors[i] = flattened
+
+                # Store metadata
+
+                numel = flattened.numel()
+                metadata_obj = FlattenedTensorMetadata(
+                    name=name,
+                    shape=tuple(tensor.shape),
+                    dtype=str(tensor.dtype),
+                    start_idx=current_idx,
+                    end_idx=current_idx + numel,
+                    numel=numel,
+                )
+                self.metadata[i] = metadata_obj
+                current_idx += numel
+
+            # Concatenate all flattened tensors
+            self.flattened_tensor = torch.cat(flattened_tensors, dim=0)
+        else:
+            # Initialize from pre-flattened data
+            if flattened_tensor is None or metadata is None:
+                raise ValueError('Must provide either named_tensors or both flattened_tensor and metadata')
+            self.flattened_tensor = flattened_tensor
+            self.metadata = metadata
+
+    def get_flattened_tensor(self) -> torch.Tensor:
+        """Get the flattened tensor containing all bucket tensors"""
+        return self.flattened_tensor
+
+    def get_metadata(self) -> List[FlattenedTensorMetadata]:
+        """Get metadata for all tensors in the bucket"""
+        return self.metadata
+
+    def reconstruct_tensors(self) -> Dict[str, torch.Tensor]:
+        """
+        Reconstruct original tensors from flattened tensor with optimized performance.
+        Uses memory-efficient operations to minimize allocations and copies.
+        """
+        # preallocate the result list
+        reconstructed = {}
+
+        for meta in self.metadata:
+            tensor = self.flattened_tensor[meta.start_idx:meta.end_idx].reshape(meta.shape)
+            dtype = getattr(torch, meta.dtype.split('.')[-1])
+            # batch dtype conversion (if needed)
+            if tensor.dtype != dtype:
+                tensor = tensor.to(dtype)
+
+            reconstructed[meta.name] = tensor
+
+        return reconstructed
+
+
 def identity_data_collator(features):
     """Identity data collator that returns features as-is without any processing."""
     return features
@@ -517,3 +747,13 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
+
+
+def peft_config_to_dict(peft_config):
+    if not isinstance(peft_config, dict):
+        peft_config = asdict(peft_config)
+    # turn set to list to serializable
+    if 'target_modules' in peft_config and isinstance(peft_config['target_modules'], set):
+        peft_config['target_modules'] = list(peft_config['target_modules'])
+
+    return peft_config

@@ -51,6 +51,7 @@ class GKDConfig(SwiftArgumentsMixin, HfGKDConfig):
 @dataclass
 class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     stop_words: List[str] = field(default_factory=list)
+    lora_rank: int = 8  # for vllm lora adapter
 
     def __post_init__(self):
         GRPOArgumentsMixin.__post_init__(self)
