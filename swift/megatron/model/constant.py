@@ -11,6 +11,7 @@ class MLLMMegatronModelType:
     ovis2_5 = 'ovis2_5'
 
     internvl3 = 'internvl3'
+    internvl_hf = 'internvl_hf'
     glm4_5v = 'glm4_5v'
 
 

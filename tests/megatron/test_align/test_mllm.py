@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _test_model(model_id, **kwargs):
@@ -55,6 +55,10 @@ def test_internvl3_5_moe():
     _test_model('OpenGVLab/InternVL3_5-30B-A3B')
 
 
+def test_internvl3_hf():
+    _test_model('OpenGVLab/InternVL3-1B-hf')
+
+
 def test_glm4_5v():
     _test_model('ZhipuAI/GLM-4.5V')
 
@@ -70,5 +74,6 @@ if __name__ == '__main__':
     # test_internvl3()
     # test_internvl3_5()
     # test_internvl3_5_moe()
+    test_internvl3_hf()
     # test_glm4_5v()
-    test_ovis2_5()
+    # test_ovis2_5()
