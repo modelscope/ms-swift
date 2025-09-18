@@ -68,8 +68,8 @@ def convert_mcore2hf_qwen3_vl(hf_model, mg_model):
 
 class Qwen3VL_Vit(HuggingFaceModule):
     module_mapping = {'visual': 'visual'}
-    vision_tower = ['visual']
-    aligner = ['visual.merger', 'visual.deepstack_merger_list']
+    _vision_tower = ['visual']
+    _aligner = ['visual.merger', 'visual.deepstack_merger_list']
 
     def __init__(self, config):
         from transformers.models.qwen3_vl import Qwen3VLTextModel
