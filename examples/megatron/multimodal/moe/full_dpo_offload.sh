@@ -1,11 +1,12 @@
-# 28s/it; 4 * 75GiB
+# 10s/it; 8 * 80GiB
 # use mcore==0.13
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-megatron sft \
+megatron rlhf \
+    --rlhf_type dpo \
     --load InternVL3_5-30B-A3B-mcore \
-    --dataset 'swift/RLAIF-V-Dataset' \
+    --dataset 'swift/RLAIF-V-Dataset#20000' \
     --train_type full \
     --tensor_model_parallel_size 4 \
     --expert_tensor_parallel_size 1 \
@@ -30,7 +31,7 @@ megatron sft \
     --save megatron_output/InternVL3_5-30B-A3B \
     --eval_interval 200 \
     --save_interval 200 \
-    --max_length 32768 \
+    --max_length 16384 \
     --max_epochs 1 \
     --num_workers 8 \
     --dataset_num_proc 8 \
@@ -42,7 +43,7 @@ megatron sft \
     --freeze_aligner true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.5 \
+    --optimizer_offload_fraction 0.6 \
     --attention_backend flash \
     --beta 0.1 \
     --loss_type sigmoid
