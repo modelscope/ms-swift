@@ -54,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
-    test_convert_dtype: str = None
+    test_convert_dtype: Optional[str] = None
 
     # push to ms hub
     push_to_hub: bool = False
