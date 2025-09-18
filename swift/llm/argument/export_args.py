@@ -115,8 +115,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
-        self.test_convert_dtype = self.test_convert_dtype or self.torch_dtype
-        self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
+        self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype or self.torch_dtype)
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
         if self.to_cached_dataset:
