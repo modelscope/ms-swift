@@ -54,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
-    test_convert_dtype: str = 'float32'
+    test_convert_dtype: str = None
 
     # push to ms hub
     push_to_hub: bool = False
@@ -115,6 +115,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
+        self.test_convert_dtype = self.test_convert_dtype or self.torch_dtype
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
