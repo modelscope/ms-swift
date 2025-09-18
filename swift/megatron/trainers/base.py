@@ -37,8 +37,9 @@ logger = get_logger()
 
 class BaseMegatronTrainer(ABC):
 
-    def __init__(self, args):
+    def __init__(self, args, template):
         self.args = args
+        self.template = template
         self.stimer = StragglerDetector()
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
