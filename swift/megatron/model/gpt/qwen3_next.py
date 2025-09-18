@@ -377,19 +377,14 @@ class Qwen3NextSelfAttention(SelfAttention):
 class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
+        assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
         args = get_args()
-        if args.sequence_parallel and args.tensor_model_parallel_size > 1 or args.context_parallel_size > 1:
-            if args.context_parallel_size == 1:
-                group = mpu.get_tensor_model_parallel_group()
-            elif not args.sequence_parallel or args.tensor_model_parallel_size == 1:
-                group = mpu.get_context_parallel_group()
-            else:
-                group = mpu.get_tensor_and_context_parallel_group()
-            hidden_states = gather_from_sequence_parallel_region(hidden_states, group=group)
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+            hidden_states = gather_from_sequence_parallel_region(hidden_states)
         seq_len = hidden_states.shape[0]
         packed_seq_params = kwargs.get('packed_seq_params')
         thd_format = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
@@ -417,8 +412,8 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
             res = res.transpose(0, 1)
-        if args.sequence_parallel and args.tensor_model_parallel_size > 1 or args.context_parallel_size > 1:
-            res = scatter_to_sequence_parallel_region(res, group=group)
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+            res = scatter_to_sequence_parallel_region(res)
         return res, None
 
 
