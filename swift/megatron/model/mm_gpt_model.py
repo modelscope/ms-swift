@@ -92,6 +92,7 @@ class MultimodalGPTModel(MegatronModule):
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
             decoder_input = None
+            kwargs = {}
         return self.language_model(
             input_ids=input_ids,
             position_ids=position_ids,
