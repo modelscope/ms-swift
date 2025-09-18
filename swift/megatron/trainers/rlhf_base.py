@@ -13,7 +13,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.utils import get_current_device, get_logger
 from .trainer import MegatronTrainer
-from .utils import get_batch, train_step
+from .utils import get_batch
 
 logger = get_logger()
 
@@ -112,7 +112,3 @@ class MegatronRLHFTrainer(MegatronTrainer):
     def offload_context(self):
         # TODO: offload
         yield
-
-    def _patch_megatron(self):
-        super()._patch_megatron()
-        self._origin_train_step = train_step
