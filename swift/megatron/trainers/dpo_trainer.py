@@ -35,8 +35,8 @@ class DummyDPOTrainer(DPOTrainer):
 
 class MegatronDPOTrainer(MegatronTrainer):
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, args, template):
+        super().__init__(args, template)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
