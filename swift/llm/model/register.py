@@ -7,6 +7,7 @@ from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -249,19 +250,19 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
-        # fix seq_cls
-        if model_info.task_type == 'seq_cls' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
-        elif model_info.task_type == 'reranker' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
+        with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
+            if model_info.task_type == 'seq_cls' and automodel_class is None:
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                except ValueError:
+                    model = None
+            elif model_info.task_type == 'reranker' and automodel_class is None:
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                except ValueError:
+                    model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
         model_meta = kwargs['model_meta']
@@ -323,6 +324,53 @@ def get_model_tokenizer_from_local(model_dir: str,
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
 
+    return model, tokenizer
+
+
+def get_model_tokenizer_sentence_transformers(model_dir: str,
+                                              model_info: ModelInfo,
+                                              model_kwargs: Dict[str, Any],
+                                              load_model: bool = True,
+                                              *,
+                                              tokenizer=None,
+                                              model_config=None,
+                                              automodel_class=None,
+                                              **kwargs):
+    from sentence_transformers import SentenceTransformer
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if load_model:
+        model = SentenceTransformer(
+            model_dir, trust_remote_code=True, model_kwargs={
+                'torch_dtype': torch_dtype,
+            })
+        model.config = model_config
+
+        def enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                output.requires_grad_(True)
+
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        tokenizer = model.tokenizer
+
+        def forward(self, **kwargs):
+            output = self._forward_origin(input=kwargs)
+            return {'last_hidden_state': output['sentence_embedding']}
+
+        if not hasattr(model, '_forward_origin'):
+            model._forward_origin = model.forward
+            model.forward = MethodType(forward, model)
+    else:
+        model = None
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     return model, tokenizer
 
 

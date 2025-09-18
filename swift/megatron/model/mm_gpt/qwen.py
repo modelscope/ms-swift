@@ -1,5 +1,6 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
-from megatron.training import get_args, get_tokenizer
+from megatron.training import get_args
 from PIL import Image
 
 from swift.llm import ModelType, Template, to_device
@@ -47,8 +48,8 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
     module_mapping = {'visual': 'visual'}
-    vision_tower = ['visual']
-    aligner = ['visual.merger']
+    _vision_tower = ['visual']
+    _aligner = ['visual.merger']
     version = 'v2_5'
 
     def __init__(self, config):
@@ -98,8 +99,8 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
     module_mapping = {
         'thinker': 'thinker',
     }
-    vision_tower = ['thinker.audio_tower', 'thinker.visual']
-    aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
+    _vision_tower = ['thinker.audio_tower', 'thinker.visual']
+    _aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
 
     def __init__(self, config):
         from transformers.models.qwen2_5_omni import Qwen2_5OmniThinkerTextModel
@@ -183,8 +184,8 @@ def convert_mcore2hf_ovis2_5(hf_model, mg_model):
 
 class Ovis2_5Vit(HuggingFaceModule):
     module_mapping = {'visual_tokenizer': 'visual_tokenizer', 'vte': 'vte'}
-    vision_tower = ['visual_tokenizer.vit', 'vte']
-    aligner = ['visual_tokenizer.head']
+    _vision_tower = ['visual_tokenizer.vit', 'vte']
+    _aligner = ['visual_tokenizer.head']
 
     def __init__(self, config):
         from transformers.models import Qwen3ForCausalLM
@@ -206,11 +207,11 @@ class Ovis2_5Vit(HuggingFaceModule):
         for i, indicator_id in enumerate(INDICATOR_IDS):
             inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
         if pixel_values is None:
-            media_inputs = self.visual_tokenizer.preprocess(
+            pixel_values, grid_thws = self.visual_tokenizer.preprocess(
                 Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
-            media_inputs = to_device(media_inputs, input_ids.device)
-            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
-            visual_tokens = self.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            pixel_values = pixel_values.to(device=inputs_embeds.device)
+            grid_thws = grid_thws.to(device=inputs_embeds.device)
+            visual_tokens = self.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
             inputs_embeds += visual_embeds.mean() * 0.
         else:

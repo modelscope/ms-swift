@@ -60,12 +60,13 @@ class PtEngine(InferEngine):
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
             **kwargs):
+        download_model = kwargs.pop('download_model', True)
         self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,
             model_type=model_type,
-            download_model=True,
+            download_model=download_model,
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
@@ -86,7 +87,7 @@ class PtEngine(InferEngine):
     def _post_init(self, template=None):
         super()._post_init(template)
         self.engine = self.model  # dummy
-        self.generation_config = self.model.generation_config
+        self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
         self._task_pool = {}
         self._task_thread = None

@@ -319,15 +319,6 @@ class GLM4_5VTemplate(GLM4_5Template):
             attention_mask=inputs.get('attention_mask'))
         return self._concat_text_position_ids(position_ids)
 
-    def forward_context(self, model, inputs):
-        position_ids = inputs['position_ids']
-        inputs['position_ids'] = position_ids[1:]
-        inputs['text_position_ids'] = text_position_ids = position_ids[0]
-        # https://github.com/huggingface/transformers/pull/40194
-        if text_position_ids.shape[0] == 1:
-            inputs.update(get_packed_seq_params(text_position_ids))
-        return super().forward_context(model, inputs)
-
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
@@ -341,6 +332,13 @@ class GLM4_5VTemplate(GLM4_5Template):
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free and self.is_training:
             res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            # https://github.com/huggingface/transformers/pull/40194
+            if text_position_ids.shape[0] == 1:
+                res.update(get_packed_seq_params(text_position_ids))
         return res
 
 

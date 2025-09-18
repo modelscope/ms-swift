@@ -121,7 +121,8 @@ class RerankerTrainer(Trainer):
     def _preprocess_generative_reranker_logits(self, logits, labels):
         """
         Preprocess logits for generative reranker to reduce memory usage.
-        Extract only the yes/no token logits instead of keeping the full vocab logits.
+        Extract only the yes/no token logits at the last valid (non -100) timestep
+        for each sample, avoiding padded timesteps created by multi-GPU gather.
         """
         import torch
         import os
@@ -142,14 +143,25 @@ class RerankerTrainer(Trainer):
             # Fallback: return full logits if token conversion fails
             return logits
 
-        # Extract only the yes/no token logits from the last position
-        # This dramatically reduces memory usage
+        # Extract only the yes/no token logits from the last non -100 position per sample
+        # Shapes: logits [batch, seq_len, vocab]
         if len(logits.shape) == 3:
-            # Extract directly from last position: [batch_size, seq_len, vocab_size] -> [batch_size, 2]
-            positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
-            negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
-            # Return as [batch_size, 2] tensor instead of full [batch_size, seq_len, vocab_size]
-            logits = torch.stack([negative_logits, positive_logits], dim=1)
+            batch_size, _, vocab_size = logits.shape
+
+            # Identify padded rows whose entire vocab logits are -100
+            row_is_pad = (logits == -100).all(dim=-1)  # [batch, seq_len]
+            valid_mask = ~row_is_pad
+            lengths = valid_mask.long().sum(dim=1) - 1
+            lengths = torch.clamp(lengths, min=0)
+            last_indices = lengths.to(device=logits.device)
+
+            # Gather the logits at the last valid index for each sample: [batch, vocab]
+            gather_index = last_indices.view(batch_size, 1, 1).expand(batch_size, 1, vocab_size)
+            last_step_logits = torch.gather(logits, dim=1, index=gather_index).squeeze(1)
+
+            positive_logits = last_step_logits[:, positive_token_id]
+            negative_logits = last_step_logits[:, negative_token_id]
+            logits = positive_logits - negative_logits
             return logits
         else:
             # Unexpected shape, return as-is
@@ -162,26 +174,7 @@ class RerankerTrainer(Trainer):
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from swift.plugin.loss import calculate_reranker_metrics
-
-        # Check if we're using generative reranker (point-wise or list-wise)
-        if self.args.loss_type in {'generative_reranker', 'listwise_generative_reranker'}:
-            # For generative reranker, predictions are now [batch_size, 2] from preprocessing
-            # We need to handle this differently
-            predictions = eval_prediction.predictions
-            if len(predictions.shape) == 2 and predictions.shape[1] == 2:
-                # Predictions are already preprocessed [batch_size, 2] format
-                # Apply softmax to get probabilities
-                import numpy as np
-                exp_logits = np.exp(predictions - np.max(predictions, axis=1, keepdims=True))
-                probabilities = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
-                relevance_scores = probabilities[:, 1]  # Positive class probability
-                return calculate_reranker_metrics(relevance_scores, eval_prediction.label_ids)
-            else:
-                # Fallback to original method if preprocessing didn't work
-                raise ValueError('Unexpected predictions shape')
-        else:
-            # For standard reranker (point-wise or list-wise)
-            return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
+        return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
@@ -397,6 +390,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
                 aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
+                    if num_items_in_batch is not None:
+                        aux_loss = aux_loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
 
         if getattr(self.args, 'average_tokens_across_devices',

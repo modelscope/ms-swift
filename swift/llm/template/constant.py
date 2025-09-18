@@ -15,6 +15,7 @@ class LLMTemplateType:
     qwen3 = 'qwen3'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
+    qwen3_coder = 'qwen3_coder'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
@@ -85,6 +86,8 @@ class LLMTemplateType:
     phi4 = 'phi4'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
@@ -95,6 +98,7 @@ class LLMTemplateType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
     aya = 'aya'
@@ -155,6 +159,7 @@ class MLLMTemplateType:
     internvl3_5 = 'internvl3_5'
     internvl3_5_gpt = 'internvl3_5_gpt'
     interns1 = 'interns1'
+    internvl_hf = 'internvl_hf'
 
     xcomposer2 = 'ixcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -193,8 +198,10 @@ class MLLMTemplateType:
     got_ocr2 = 'got_ocr2'
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
+    step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
 
     idefics3 = 'idefics3'

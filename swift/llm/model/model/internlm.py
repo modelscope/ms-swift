@@ -268,7 +268,7 @@ register_model(
                 Model('OpenGVLab/InternVL2_5-26B-MPO', 'OpenGVLab/InternVL2_5-26B-MPO'),
                 Model('OpenGVLab/InternVL2_5-38B-MPO', 'OpenGVLab/InternVL2_5-38B-MPO'),
                 Model('OpenGVLab/InternVL2_5-78B-MPO', 'OpenGVLab/InternVL2_5-78B-MPO'),
-            ])
+            ]),
         ],
         TemplateType.internvl2_5,
         get_model_tokenizer_internvl,
@@ -404,51 +404,81 @@ register_model(
     ))
 
 
-def get_model_tokenizer_interns1(model_dir: str,
-                                 model_info: ModelInfo,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+def get_model_tokenizer_interns1(*args, **kwargs):
+    from transformers.modeling_utils import PreTrainedModel
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None and not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
+        old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
 
-    if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
-        # patch: bnb backward shape mismatch bug
-        if model is not None and model.model.language_model is not None:
-            model.model.language_model.output.state.force_no_igemmlt = True
+        def patched_enable_input_require_grads(self):
 
-    if model is not None:
-        patch_output_clone(model.model.language_model.get_input_embeddings())
+            def make_inputs_require_grads(module, input, output):
+                if isinstance(output, tuple):
+                    output[0].requires_grad_(True)
+                else:
+                    output.requires_grad_(True)
 
-        def patch_output0_clone(module: torch.nn.Module):
-            """Clone the output, to avoid the inplace problem"""
+            self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
 
-            def _clone_hook(module, input, output):
-                output = list(output)
-                output[0] = output[0].requires_grad_(True).clone()
-                output = tuple(output)
-                return output
-
-            module.register_forward_hook(_clone_hook)
-
-        patch_output0_clone(model.model.vision_tower.get_input_embeddings())
-        from transformers.modeling_utils import PreTrainedModel
-        if not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
-            old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
-
-            def patched_enable_input_require_grads(self):
-
-                def make_inputs_require_grads(module, input, output):
-                    if isinstance(output, tuple):
-                        output[0].requires_grad_(True)
-                    else:
-                        output.requires_grad_(True)
-
-                self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
-
-            PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
-            PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
+        PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
+        PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
     return model, processor
 
+
+def get_model_tokenizer_internvl_hf(*args, **kwargs):
+    from transformers import AutoModelForImageTextToText
+    kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModelForImageTextToText
+    return get_model_tokenizer_interns1(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl_hf,
+        [
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B-hf', 'OpenGVLab/InternVL3-1B-hf'),
+                Model('OpenGVLab/InternVL3-2B-hf', 'OpenGVLab/InternVL3-2B-hf'),
+                Model('OpenGVLab/InternVL3-8B-hf', 'OpenGVLab/InternVL3-8B-hf'),
+                Model('OpenGVLab/InternVL3-9B-hf', 'OpenGVLab/InternVL3-9B-hf'),
+                Model('OpenGVLab/InternVL3-14B-hf', 'OpenGVLab/InternVL3-14B-hf'),
+                Model('OpenGVLab/InternVL3-38B-hf', 'OpenGVLab/InternVL3-38B-hf'),
+                Model('OpenGVLab/InternVL3-78B-hf', 'OpenGVLab/InternVL3-78B-hf'),
+            ]),
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-HF', 'OpenGVLab/InternVL3_5-1B-HF'),
+                Model('OpenGVLab/InternVL3_5-2B-HF', 'OpenGVLab/InternVL3_5-2B-HF'),
+                Model('OpenGVLab/InternVL3_5-4B-HF', 'OpenGVLab/InternVL3_5-4B-HF'),
+                Model('OpenGVLab/InternVL3_5-8B-HF', 'OpenGVLab/InternVL3_5-8B-HF'),
+                Model('OpenGVLab/InternVL3_5-14B-HF', 'OpenGVLab/InternVL3_5-14B-HF'),
+                Model('OpenGVLab/InternVL3_5-38B-HF', 'OpenGVLab/InternVL3_5-38B-HF'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-HF', 'OpenGVLab/InternVL3_5-30B-A3B-HF'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-HF', 'OpenGVLab/InternVL3_5-241B-A28B-HF'),
+            ]),
+        ],
+        TemplateType.internvl_hf,
+        get_model_tokenizer_internvl_hf,
+        architectures=['InternVLForConditionalGeneration'],
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.52.1', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl_gpt_hf,
+        [
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF',
+                      'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF'),
+            ]),
+        ],
+        TemplateType.internvl_hf,
+        get_model_tokenizer_internvl_hf,
+        architectures=['InternVLForConditionalGeneration'],
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.55.0', 'timm'],
+        tags=['vision', 'video'],
+    ))
 
 register_model(
     ModelMeta(
