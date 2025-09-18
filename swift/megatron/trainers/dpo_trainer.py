@@ -36,7 +36,7 @@ class DummyDPOTrainer(DPOTrainer):
 
 class MegatronDPOTrainer(MegatronRLHFTrainer):
 
-    def __init__(self, args):
+    def __init__(self, args, template):
         super().__init__(args)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
 

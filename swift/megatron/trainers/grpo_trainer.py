@@ -3,8 +3,9 @@ import gc
 import inspect
 from collections import namedtuple
 from contextlib import contextmanager, nullcontext
+from copy import copy
 from functools import partial
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import torch
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
@@ -15,12 +16,14 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_model, get_timers, training
 from megatron.training.checkpointing import load_checkpoint
-from megatron.training.training import (cuda_graph_capture, cuda_graph_set_manual_hooks,
-                                        get_tensor_shapes_adjust_fn_for_distillation, has_nvidia_modelopt)
+from megatron.training.training import cuda_graph_capture, cuda_graph_set_manual_hooks
 from megatron.training.utils import (logical_and_across_model_parallel_group,
                                      reduce_max_stat_across_model_parallel_group, unwrap_model)
 from torch.distributed.nn import all_reduce
+from vllm.distributed import parallel_state as vllm_ps
 
+from swift.llm import RequestConfig
+from swift.llm.infer.protocol import RolloutOutput
 from swift.plugin import orms
 from swift.trainers.rlhf_trainer import GRPOTrainer, VLLMClient
 from swift.utils import get_current_device, get_logger, is_vllm_available
@@ -34,32 +37,53 @@ try:
 except ImportError:
     pass
 
+try:
+    from megatron.post_training.algos.distillation import (
+        get_tensor_shapes_adjust_fn_for_distillation, )
+
+    has_nvidia_modelopt = True
+except ImportError:
+    has_nvidia_modelopt = False
+
 logger = get_logger()
+"""
+TODO:
+    1. compute rewards
+    2. compute advantages
+    3. compute ref/old logps
+    4. loss
+
+
+FUTURE TODO:
+    1. server mode
+    2. offload model/optimizer
+    3. DAPO (dynamic sampling)
+    4. entropy mask
+    5. reward model
+    6. multi turn
+"""
 
 
 class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronRLHFArguments, template):
-        MegatronRLHFTrainer().__init__(self, args)
+        super().__init__(args, template)
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
-        self.process_index = torch.distributed.get_rank()
         self.processing_class = self.template.processor
         # set up reward funcs
         self.prepare_rewards()
         # TODO: multi turn scheduler(colocate multi turn)
-        self._prepare_rollout_engine(self.unwrapped_model)
         self._init_grpo_params()
-        if args.use_mbridge:
-            # debug: use mbridge to convert mcore to hf
-            from transformers import AutoConfig
-            hf_config = AutoConfig.from_pretrained(self.hf_model_dir, trust_remote_code=True)
-            bridge = AutoBridge.from_pretrained(hf_config)
-            self.bridge = bridge
+        self._prepare_rollout_engine()
+
+        # debug: use mbridge to convert mcore to hf
+        self.bridge = None
 
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
-        args = get_args()
+        # TODO：GRPO policy loss
+        args: MegatronRLHFArguments = get_args()
         num_samples = packed_seq_params.num_samples
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
@@ -100,7 +124,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return loss, reporting_metric
 
     def _replace_data_iterator(self, data_iterator):
-        args = get_args()
+        # rollout the train_batch_size, split to mini-batches
+        data = next(data_iterator)
+        data = self._generate_and_score_completions(data)
+        # step1: rollout
+
+        # step2: compute old logps
+
+        # step3: compute ref logps
+
+        # step4: compute rewards/advantages
+
+        args: MegatronRLHFArguments = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
         res = []
         with torch.no_grad(), self.null_ref_context() as ref_model:
@@ -110,6 +145,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _init_grpo_params(self):
         args = self.args
+        # distributed params
+        self.world_size = torch.distributed.get_world_size()
+        self.process_index = torch.distributed.get_rank()
+
+        # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
         self.temperature = args.temperature
         self.loss_type = args.loss_type
@@ -123,15 +163,25 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.mini_batch_size = args.mini_batch_size
         self.micro_batch_size = args.micro_batch_size
+        self.per_device_rollout_batch_size = self.global_batch_size // self.world_size
+        # sampling params
+        self.request_config = RequestConfig(
+            n=1,
+            max_tokens=args.max_completion_length,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty,
+            stop=args.stop_words,
+            return_details=True)
 
-    def _prepare_rollout_engine(self, model):
+    def _prepare_rollout_engine(self):
         args = self.args
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.use_vllm = args.use_vllm
         self.async_generate = args.async_generate
-        vllm_client = getattr(args, 'vllm_client') or getattr(self, 'vllm_client')  # for external vllm
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
         self.enable_offload = False
@@ -143,56 +193,30 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
-            if self.vllm_mode == 'server':
-                self.vllm_client: VLLMClient = vllm_client
-                if self.accelerator.is_main_process:
-                    self.vllm_client.get_engine_type()
-                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
-                    use_gym_env = [self.vllm_client.use_gym_env]
-                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
-                else:
-                    vllm_use_async_engine = [False]
-                    use_gym_env = [False]
-                    enable_multi_turn = [self.enable_server_multi_turn]
-                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
-                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
-                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
-                if self.use_gym_env:
-                    self.reward_func_names = ['gym_reward']
+            assert self.vllm_mode == 'colocate'  # TODO: server mode
 
-            elif self.vllm_mode == 'colocate':
-                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
-                    raise ValueError(
-                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
-                        f'({self.accelerator.num_processes}) evenly.')
+            if not self.world_size % self.vllm_tensor_parallel_size == 0:
+                raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
+                                 f'({self.world_size}) evenly.')
 
-                if self.vllm_tensor_parallel_size > 1:
-                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
-                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
-                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
-                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
-                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
-                    ])
-                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
-                context = self.offload_context if self.enable_offload else nullcontext
+            self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+            context = self.offload_context if self.enable_offload else nullcontext
 
-                with context():
-                    self.engine = self.prepare_vllm()
-                    if self.args.sleep_level > 0:
-                        self.engine.engine.sleep(self.args.sleep_level)
+            with context():
+                self.engine = self.prepare_vllm()
+                if self.args.sleep_level > 0:
+                    self.engine.engine.sleep(self.args.sleep_level)
 
     def prepare_vllm(self):
-        from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = (
-            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
+        max_num_seqs = self.per_device_rollout_batch_size * self.vllm_tensor_parallel_size
 
         engine = GRPOVllmEngine(
             self.hf_model_dir,
             args.torch_dtype,
             model_type=args.model_type,
-            use_async_engine=False,  # TODO: async engine for colocate
+            use_async_engine=False,
             tensor_parallel_size=self.vllm_tensor_parallel_size,
             gpu_memory_utilization=self.vllm_gpu_memory_utilization,
             enable_prefix_caching=self.args.vllm_enable_prefix_caching,
@@ -207,6 +231,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             template=self.template,
             distributed_executor_backend='external_launcher',
         )
+        if self.vllm_tensor_parallel_size > 1:
+            self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         return engine
 
     def prepare_rewards(self):
@@ -240,20 +266,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _move_model_to_vllm(self):
         # TODO: LoRA, server
-        per_tensor_params = self.bridge.export_weights(self.unwrapped_model)
-        self.engine.inner_model.load_weights(per_tensor_params)
+        if self.bridge is None:
+            self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
+        per_tensor_params = self.bridge.export_weights([self.unwrapped_model])
+        self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
 
     def forward_step(self, data_iterator, model):
         # train_batch_size
-
-        # step1: rollout
-
-        # step2: compute old logps
-
-        # step3: compute ref logps
-
-        # step4: compute rewards/advantages
-
         # return: output_tensor, loss_func
 
         data = next(data_iterator)
@@ -272,9 +291,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         # borrowed from Megatron-LM 0.13
-        """Single training step."""
-        args = get_args()
+        # get train_batch_size Rollout / ref/old logps / reward / advantage
+        # split to mini_batches (iter mini_batch)
+        data_iterator = self._replace_data_iterator(data_iterator)
+
+        args: MegatronRLHFArguments = get_args()
         timers = get_timers()
+        batch = next(data_iterator)
+        batch = self._generate_and_score_completions(batch)
+
+        # split to mini-batches
 
         # CUDA Graph capturing only executes once, when it's the first training iteration.
         if args.curr_iteration == args.iteration and args.external_cuda_graph:
@@ -404,3 +430,76 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 num_zeros_in_grad,
             )
         return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+
+    def _generate_and_score_completions(self, batch):
+        batch = self._generate_completions(batch)
+        # total_rewards_per_func = self._score_completions(batch)
+        # TODO: dynamic sampling
+        # total_advantages = self._compute_advantages(batch, total_rewards_per_func)
+        # batch = self._prepare_batch_inputs(batch)
+        return batch
+
+    def _generate_completions(self, batch):
+        # TODO: server mode
+        assert self.vllm_mode == 'colocate'
+        # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
+        if self.engine.inner_model_executor.is_sleeping:
+            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
+            # Load weights only (faster and reduces memory peak)
+            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            self.engine.engine.wake_up(**kwargs)
+
+        # Step 2: Load model weights
+        self._move_model_to_vllm()
+
+        if (self.engine.inner_model_executor.is_sleeping
+                and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+            self.engine.engine.wake_up(tags=['kv_cache'])
+
+        batch = self.preprocess_rollout_data(batch)
+        output: List[RolloutOutput] = self._rollout(batch)
+        batch = self.postprocess_rollout_data(output)
+        return batch
+
+    def preprocess_rollout_data(self, batch):
+        if self.vllm_tensor_parallel_size == 1:
+            return batch
+
+        gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
+        torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
+        flattened_batch = [p for sublist in gathered_batch for p in sublist]
+        return flattened_batch
+
+    def _rollout(self, batch) -> List[RolloutOutput]:
+        request_config = self._get_request_config()
+        # TODO: server mode
+        rollout_outputs = self._colocate_rollout(batch, request_config)
+        return rollout_outputs
+
+    def postprocess_rollout_data(self, batch):
+        if self.vllm_tensor_parallel_size == 1:
+            return batch
+        local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
+        orig_size = len(batch) // self.vllm_tensor_parallel_size
+        tp_slice = slice(local_rank_in_group * orig_size, (local_rank_in_group + 1) * orig_size)
+        return batch[tp_slice]
+
+    def _get_request_config(self) -> RequestConfig:
+        request_config = copy(self.request_config)
+        if self.args.vllm_mode == 'colocate' and self.vllm_tensor_parallel_size > 1:
+            # Set request_config.seed
+            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
+            #   otherwise, the program may hang.
+            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
+            #   otherwise, identical completions will be generated.
+            batch_size = self.per_device_rollout_batch_size
+            batch_size *= self.vllm_tensor_parallel_size
+            # Since the TP (Tensor Parallelism) group gathers the inputs,
+            # multiply the batch size by the TP parallel size.
+            request_config.seed = batch_size * (self.process_index // self.vllm_tensor_parallel_size)
+
+        return request_config
+
+    def _colocate_rollout(self, batch, request_config: RequestConfig):
+        outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
+        return outputs
