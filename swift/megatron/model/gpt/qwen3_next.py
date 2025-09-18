@@ -405,7 +405,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
             hidden_states = hidden_states.transpose(0, 1)
             attention_mask = kwargs.get('attention_mask')
             if attention_mask is not None:
-                attention_mask = kwargs['attention_mask'].sum(dim=(1, 3)) > 0
+                attention_mask = attention_mask.sum(dim=(1, 3)) > 0
         res = super().forward(hidden_states=hidden_states, attention_mask=attention_mask)
         if thd_format and not args.packing:
             res = res[attention_mask][:, None]
