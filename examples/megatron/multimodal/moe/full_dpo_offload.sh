@@ -11,6 +11,7 @@ megatron rlhf \
     --tensor_model_parallel_size 4 \
     --expert_tensor_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
+    --decoder_first_pipeline_num_layers 23 \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 4 \
     --moe_permute_fusion true \
