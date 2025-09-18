@@ -1,4 +1,4 @@
-# 10s/it; 8 * 80GiB
+# 16s/it; 8 * 80GiB
 # use mcore==0.13
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
@@ -19,7 +19,7 @@ megatron rlhf \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
-    --global_batch_size 2 \
+    --global_batch_size 4 \
     --packing true \
     --recompute_granularity full \
     --recompute_method uniform \
@@ -44,7 +44,7 @@ megatron rlhf \
     --freeze_aligner true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.6 \
+    --optimizer_offload_fraction 0.65 \
     --attention_backend flash \
     --rpo_alpha 0.1 \
     --beta 0.1 \
