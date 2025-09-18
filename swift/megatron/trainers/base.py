@@ -269,7 +269,7 @@ class BaseMegatronTrainer(ABC):
         if visual is None:
             return
         args = get_args()
-        for vision_tower in visual.vision_tower:
+        for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
             if args.vit_gradient_checkpointing:
                 try:
@@ -724,8 +724,8 @@ class BaseMegatronTrainer(ABC):
     def _init_multimodal_full(args):
         visual_cls = args.megatron_model_meta.visual_cls
         if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
-            vision_tower = [f'visual.{vit}' for vit in visual_cls.vision_tower]
-            aligner = [f'visual.{_aligner}' for _aligner in visual_cls.aligner]
+            vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
+            aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:
                 args.freeze_parameters.append('language_model')
             if args.freeze_vit:

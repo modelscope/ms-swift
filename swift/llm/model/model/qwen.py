@@ -552,6 +552,9 @@ register_model(
                 Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
+            ModelGroup([
+                Model('iic/Tongyi-DeepResearch-30B-A3B', 'Alibaba-NLP/Tongyi-DeepResearch-30B-A3B'),
+            ])
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -696,6 +699,8 @@ def patch_qwen_vl_utils(vision_process):
         backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
         if isinstance(backends, dict):
             backends['decord'] = _new_read_video_decord
+        elif backends is None:  # keye_vl
+            vision_process._read_video_decord = _new_read_video_decord
     vision_process._patch = True
     return res
 

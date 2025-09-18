@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
-from megatron.training import get_args, get_tokenizer
+from megatron.training import get_args
 from PIL import Image
 
 from swift.llm import ModelType, Template, to_device
@@ -48,8 +48,8 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
     module_mapping = {'visual': 'visual'}
-    vision_tower = ['visual']
-    aligner = ['visual.merger']
+    _vision_tower = ['visual']
+    _aligner = ['visual.merger']
     version = 'v2_5'
 
     def __init__(self, config):
@@ -99,8 +99,8 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
     module_mapping = {
         'thinker': 'thinker',
     }
-    vision_tower = ['thinker.audio_tower', 'thinker.visual']
-    aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
+    _vision_tower = ['thinker.audio_tower', 'thinker.visual']
+    _aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
 
     def __init__(self, config):
         from transformers.models.qwen2_5_omni import Qwen2_5OmniThinkerTextModel
@@ -184,8 +184,8 @@ def convert_mcore2hf_ovis2_5(hf_model, mg_model):
 
 class Ovis2_5Vit(HuggingFaceModule):
     module_mapping = {'visual_tokenizer': 'visual_tokenizer', 'vte': 'vte'}
-    vision_tower = ['visual_tokenizer.vit', 'vte']
-    aligner = ['visual_tokenizer.head']
+    _vision_tower = ['visual_tokenizer.vit', 'vte']
+    _aligner = ['visual_tokenizer.head']
 
     def __init__(self, config):
         from transformers.models import Qwen3ForCausalLM
