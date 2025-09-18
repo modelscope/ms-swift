@@ -193,6 +193,9 @@ register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_
 
 class InternvlhfTemplate(Internvl2Template):
 
+    def init_env_args(self):
+        Template.init_env_args(self)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in ['image', 'video']
