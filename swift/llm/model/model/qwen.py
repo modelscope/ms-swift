@@ -553,6 +553,9 @@ register_model(
                 Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
+            ModelGroup([
+                Model('iic/Tongyi-DeepResearch-30B-A3B', 'Alibaba-NLP/Tongyi-DeepResearch-30B-A3B'),
+            ])
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -684,19 +687,27 @@ def patch_qwen_vl_utils(vision_process):
             'video_min_token_num',
     ]:
         type_func = float if key == 'fps' else int
-        if not hasattr(vision_process, key.upper()):
+        default_value = getattr(vision_process, key.upper(), None)
+        if default_value is None:
+            # Skip keys not supported by the specific vision_process implementation
             continue
-        val = get_env_args(key, type_func, getattr(vision_process, key.upper()))
+        val = get_env_args(key, type_func, default_value)
         setattr(vision_process, key.upper(), val)
         res[key] = val
-    _read_video_decord = vision_process._read_video_decord
+    # Patch decord video reader if available
+    _read_video_decord = getattr(vision_process, '_read_video_decord', None)
+    if _read_video_decord is not None:
 
-    def _new_read_video_decord(ele: dict):
-        from swift.llm import load_file
-        ele['video'] = load_file(ele['video'])
-        return _read_video_decord(ele)
+        def _new_read_video_decord(ele: dict):
+            from swift.llm import load_file
+            ele['video'] = load_file(ele['video'])
+            return _read_video_decord(ele)
 
-    vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
+        backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
+        if isinstance(backends, dict):
+            backends['decord'] = _new_read_video_decord
+        elif backends is None:  # keye_vl
+            vision_process._read_video_decord = _new_read_video_decord
     vision_process._patch = True
     return res
 

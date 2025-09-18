@@ -191,20 +191,14 @@ class Internvl3_5GPTTemplate(Internvl2Template, GptTemplate):
 register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_cls=Internvl3_5GPTTemplate))
 
 
-class InternS1Template(Internvl2Template, ThinkingTemplate):
-    image_token_id = 152957
-    InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
-                                      'You approach problems through systematic thinking and rigorous reasoning. '
-                                      'Your response should reflect deep understanding and precise logical thinking, '
-                                      'making your solution path and reasoning clear to others. '
-                                      'Please put your thinking process within <think>...</think> tags.')
+class InternvlhfTemplate(Internvl2Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in ['image', 'video']
         if media_type == 'video':
             if self.mode == 'vllm':
-                return ['<video>']
+                return Template.replace_tag(self, 'video', index, inputs)
             else:
                 return [[-200]]
         else:
@@ -212,12 +206,6 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                 return ['<IMG_CONTEXT>']
             else:
                 return ['<img>', [-100], '</img>\n']
-
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        if inputs.system is None and self.template_meta.response_prefix == '<think>':
-            inputs.system = self.InternS1DefaultThinkinngSystem
-
-        return super()._swift_encode(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.image_utils import make_flat_list_of_images, concatenate_list
@@ -247,14 +235,14 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
             images = make_flat_list_of_images(images)
             image_inputs = self.processor.image_processor(images=images, crop_to_patches=True, return_tensors='pt')
             image_num_patches = image_inputs.pop('num_patches')
-            image_pixel_values = image_inputs.pop('pixel_values')
+            image_pixel_values = image_inputs.pop('pixel_values').to(self.model_info.torch_dtype)
             image_num_patches_indices = np.cumsum(image_num_patches)
         if videos:
             video_idx_list = findall(input_ids, -200)
             videos, _ = load_video_hf(videos)
             videos = make_batched_videos(videos)
             video_inputs = self.processor.video_processor(videos=videos, return_tensors='pt')
-            video_pixel_values = video_inputs.pop('pixel_values_videos')
+            video_pixel_values = video_inputs.pop('pixel_values_videos').to(self.model_info.torch_dtype)
             num_frames_per_video = [len(video) for video in video_pixel_values]
             video_num_patches = [1 for frames in num_frames_per_video for _ in range(frames)]
             video_patch_indices = np.cumsum(num_frames_per_video)
@@ -313,8 +301,8 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                 image_video_patches.append(video_pixel_values[start:end])
                 image_seq_length = self.processor.image_seq_length
                 num_patches = list(video_num_patches[current_patch:end_patch])
-                video_prompt = '\n'.join(
-                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>"
+                video_prompt = ''.join(
+                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>\n"
                     for i in range(len(num_patches)))
                 img_tokens = self.processor.encode(video_prompt, add_special_tokens=False)
             return img_tokens
@@ -333,24 +321,42 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeddings = model.model.vision_tower.embeddings
-            lm_embeddings = model.model.language_model.get_input_embeddings()
-            vit_embeds = vit_embeddings(pixel_values)[0].to(device=device)
-            special_image_mask = inputs_embeds == lm_embeddings(
-                torch.tensor(self.image_token_id, dtype=torch.long, device=inputs_embeds.device))
-            special_image_mask = special_image_mask.all(-1)
-            special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = model.model.get_image_features(
-                pixel_values, vision_feature_layer=-1, vision_feature_select_strategy='default')
+                pixel_values,
+                vision_feature_layer=self.config.vision_feature_layer,
+                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+            )
+            special_image_mask = input_ids == self.config.image_token_id
+            special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
-            vit_embeds = model.model.vision_tower.embeddings(dummy_pixel_values)[0].to(device=device)
-            inputs_embeds += vit_embeds.mean() * 0.
+            image_features = model.model.get_image_features(
+                dummy_pixel_values,
+                vision_feature_layer=self.config.vision_feature_layer,
+                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+            )
+            inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
+
+
+class InternS1Template(InternvlhfTemplate, ThinkingTemplate):
+    InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
+                                      'You approach problems through systematic thinking and rigorous reasoning. '
+                                      'Your response should reflect deep understanding and precise logical thinking, '
+                                      'making your solution path and reasoning clear to others. '
+                                      'Please put your thinking process within <think>...</think> tags.')
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is None and self.template_meta.response_prefix == '<think>':
+            inputs.system = self.InternS1DefaultThinkinngSystem
+
+        return super()._swift_encode(inputs)
 
 
 # disable_thinking: response_prefix=''
 register_template(
     ChatmlTemplateMeta(MLLMTemplateType.interns1, template_cls=InternS1Template, response_prefix='<think>'))
+
+register_template(ChatmlTemplateMeta(MLLMTemplateType.internvl_hf, template_cls=InternvlhfTemplate))

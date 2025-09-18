@@ -114,6 +114,8 @@ class LLMModelType:
     skywork_o1 = 'skywork_o1'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -133,6 +135,8 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    gemma_emb = 'gemma_emb'
+    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
 
@@ -186,8 +190,10 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    internvl_hf = 'internvl_hf'
     internvl3_5 = 'internvl3_5'
     internvl3_5_gpt = 'internvl3_5_gpt'
+    internvl_gpt_hf = 'internvl_gpt_hf'
     interns1 = 'interns1'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -245,6 +251,7 @@ class MLLMModelType:
     step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
 
     phi3_vision = 'phi3_vision'

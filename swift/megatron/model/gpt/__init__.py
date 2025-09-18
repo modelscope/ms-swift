@@ -55,6 +55,7 @@ register_megatron_model(
             ModelType.ernie,
             ModelType.glm4_5,
             ModelType.deepseek_v3_1,
+            ModelType.ernie_thinking,
         ],
         model_cls=GPTModel,
         convert_hf_config=convert_gpt_hf_config,
