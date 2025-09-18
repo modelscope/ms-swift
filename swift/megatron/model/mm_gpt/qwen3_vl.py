@@ -311,7 +311,10 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
             Union[Tensor, Tuple[Tensor, Tensor]]: The output hidden states tensor of shape
             [s, b, h], and optionally the updated context tensor if cross-attention is used.
         """
-
+        if deepstack_visual_embeds is not None:
+            assert len(deepstack_visual_embeds) <= len(
+                self.layers), (f'len(deepstack_visual_embeds): {len(deepstack_visual_embeds)}, '
+                               f'len(self.layers): {len(self.layers)}.')
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
         # Delete the obsolete reference to the initial input tensor if necessary
