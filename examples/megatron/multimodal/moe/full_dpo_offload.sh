@@ -30,8 +30,8 @@ megatron rlhf \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --save megatron_output/InternVL3_5-30B-A3B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 500 \
+    --save_interval 500 \
     --max_length 16384 \
     --max_epochs 1 \
     --num_workers 8 \
