@@ -36,8 +36,14 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         with self._patch_dataloader(kwargs['data_collator']):
             new_kwargs = {
                 k: v
-                for k, v in kwargs.items()
-                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset', 'callbacks']
+                for k, v in kwargs.items() if k in [
+                    'train_dataset',
+                    'data_collator',
+                    'reward_model',
+                    'value_model',
+                    'eval_dataset',
+                    'callbacks',
+                ]
             }
             parameters = inspect.signature(ppo_trainer_init).parameters
             if 'config' in parameters:
@@ -69,7 +75,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             return super()._save_checkpoint(*args, **kwargs)
         finally:
             self.model = backup_model
-    
+
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # https://github.com/huggingface/trl/issues/2122
         backup_model = self.model
