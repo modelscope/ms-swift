@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 import torch
 import torch.nn as nn
+from megatron.training import get_args
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
@@ -169,22 +170,28 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
         mg_logits = mg_model(
             input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
-
-    token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
-    mean_diff = token_mean_diff.mean().item()
-    max_diff = (mg_logits - hf_logits).abs().max().item()
-    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
-    mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
-    max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
-    print(f'token_mean_diff: {token_mean_diff}')
-    print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
-    print(f'mean_diff (with loss): {mean_diff_with_loss}, max_diff (with loss): {max_diff_with_loss} '
-          '(Please check that mean_diff is less than 0.1).')
-    hf_tokens = hf_logits.argmax(-1)
-    mg_tokens = mg_logits.argmax(-1)
-    print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
-    print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
-    print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
+    args = get_args()
+    if args.task_type == 'seq_cls':
+        mg_logits = mg_logits[:, -1]
+        mean_diff = (mg_logits - hf_logits).abs().mean().item()
+        max_diff = (mg_logits - hf_logits).abs().max().item()
+        print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+    else:
+        token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
+        mean_diff = token_mean_diff.mean().item()
+        max_diff = (mg_logits - hf_logits).abs().max().item()
+        loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+        mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
+        max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
+        print(f'token_mean_diff: {token_mean_diff}')
+        print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+        print(f'mean_diff (with loss): {mean_diff_with_loss}, max_diff (with loss): {max_diff_with_loss} '
+              '(Please check that mean_diff is less than 0.1).')
+        hf_tokens = hf_logits.argmax(-1)
+        mg_tokens = mg_logits.argmax(-1)
+        print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
+        print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
+        print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
 convert_kwargs = {
@@ -258,14 +265,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
-    adapter_config = MegatronArguments.load_tuner_config(adapter_load)
-    adapter_config['adapter_load'] = adapter_load
-    if args.mcore_model:
-        adapter_config['load'] = args.mcore_model
+    extra_config = MegatronArguments.load_args_config(adapter_load or args.mcore_model)
+    extra_config['adapter_load'] = adapter_load
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
-        **adapter_config,
+        **extra_config,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
