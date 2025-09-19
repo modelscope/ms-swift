@@ -26,6 +26,7 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from packaging import version
 
+from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -271,6 +272,7 @@ class BaseMegatronTrainer(ABC):
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
             if args.vit_gradient_checkpointing:
+                dynamic_gradient_checkpointing(module, False)
                 try:
                     module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()

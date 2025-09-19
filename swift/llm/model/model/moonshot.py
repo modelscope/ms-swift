@@ -40,7 +40,6 @@ def get_model_tokenizer_kimi_vl(model_dir, *args, **kwargs):
         pass
     model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     if model is not None:
-        patch_output_clone(model.language_model.model.embed_tokens)
         patch_get_input_embeddings(model.vision_tower, 'patch_embed')
     return model, processor
 
