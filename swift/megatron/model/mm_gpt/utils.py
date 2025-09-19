@@ -61,7 +61,8 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         super().__init__(config)
         args = get_args()
         model_dir = args.model_info.model_dir
-        kwargs = {'attn_impl': 'flash_attn'} if args.attention_backend.name == 'flash' else {}
+        attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
+        kwargs = {'attn_impl': attn_impl} if args.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []
         if not isinstance(ignore_init_model_cls, list):
             ignore_init_model_cls = [ignore_init_model_cls]

@@ -136,7 +136,7 @@ Running Environment:
 | vllm         | >=0.5.1      | 0.10.1.1                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.4.10.post2         | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.9.2.post1                 | Inference/Deployment                      |
-| evalscope    | >=0.11       |                     | Evaluation                                |
+| evalscope    | >=1.0       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).

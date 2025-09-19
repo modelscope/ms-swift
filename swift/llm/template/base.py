@@ -784,7 +784,16 @@ class Template(ProcessorMixin):
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
-            return self.video_placeholder
+            if self.mode == 'vllm':
+                # https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/vision_language.py
+                from vllm.assets.video import video_to_ndarrays, video_get_metadata
+                num_frames = get_env_args('vllm_num_frames', int, 16)
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = [(video_data, video_metadatas)]
+                return self.video_placeholder
+            else:
+                return self.video_placeholder
         elif media_type == 'audio':
             return self.audio_placeholder
 
@@ -1089,8 +1098,8 @@ class Template(ProcessorMixin):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'
-            assert response_role in {'assistant'}, f'response_role: {response_role}'
+            assert query_role in {'user', 'tool'}, f'query_role: "{query_role}"'
+            assert response_role in {'assistant'}, f'response_role: "{response_role}"'
             if query_role == 'tool':
                 prompt = query
                 query = ''
