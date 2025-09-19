@@ -17,6 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
+    perform_initialization: bool = True
     rlhf_type: Literal['dpo', 'grpo'] = 'dpo'
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
@@ -354,7 +355,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_load_rng: bool = False
     finetune: bool = False
     ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
-    no_initialization: bool = True
+    no_initialization: bool = False
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
 

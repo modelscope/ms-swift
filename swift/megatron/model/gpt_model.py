@@ -91,6 +91,80 @@ class GPTModel(McoreGPTModel):
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
 
+        # Set tensor_model_parallel attributes for all parameters
+        # This is needed for mbridge to correctly identify TP parameters
+        # self._set_tensor_model_parallel_attributes()
+
+    def _set_tensor_model_parallel_attributes(self):
+        """Set tensor_model_parallel attributes for all parameters.
+
+        This method ensures that all parameters have the correct tensor_model_parallel
+        attributes set, which is required for mbridge to correctly identify TP parameters
+        during weight export.
+        """
+        from megatron.core.tensor_parallel.layers import set_tensor_model_parallel_attributes
+
+        # Get tensor parallel size
+        from megatron.core import parallel_state
+        tp_size = parallel_state.get_tensor_model_parallel_world_size()
+
+        if tp_size <= 1:
+            return  # No tensor parallelism, no need to set attributes
+
+        # Set attributes for all parameters
+        for name, param in self.named_parameters():
+            if not hasattr(param, 'tensor_model_parallel'):
+                # Determine if this parameter should be tensor parallel
+                is_tp_param = self._is_tensor_parallel_parameter(name, param)
+                if is_tp_param:
+                    # Determine partition dimension based on parameter name
+                    partition_dim = self._get_partition_dimension(name, param)
+                    set_tensor_model_parallel_attributes(param, True, partition_dim, 1)
+                else:
+                    # Set default attributes for non-TP parameters
+                    setattr(param, 'tensor_model_parallel', False)
+                    setattr(param, 'partition_dim', -1)
+                    setattr(param, 'partition_stride', 1)
+
+    def _is_tensor_parallel_parameter(self, name: str, param) -> bool:
+        """Determine if a parameter should be tensor parallel based on its name and shape."""
+        # Parameters that are typically tensor parallel
+        tp_patterns = [
+            'weight',  # Linear layer weights
+            'qkv_proj.weight',  # QKV projection weights
+            'dense.weight',  # Dense layer weights
+            'fc1.weight',  # MLP first layer weights
+            'fc2.weight',  # MLP second layer weights
+            'gate_proj.weight',  # Gate projection weights
+            'up_proj.weight',  # Up projection weights
+            'down_proj.weight',  # Down projection weights
+        ]
+
+        # Check if parameter name matches any TP pattern
+        for pattern in tp_patterns:
+            if pattern in name:
+                return True
+
+        # Special cases for bias parameters in TP layers
+        if 'bias' in name and any(pattern in name for pattern in tp_patterns):
+            return True
+
+        return False
+
+    def _get_partition_dimension(self, name: str, param) -> int:
+        """Get the partition dimension for a tensor parallel parameter."""
+        # Column parallel layers (partition along output dimension)
+        if any(pattern in name
+               for pattern in ['qkv_proj.weight', 'gate_proj.weight', 'up_proj.weight', 'fc1.weight', 'dense.weight']):
+            return 0  # Partition along output dimension
+
+        # Row parallel layers (partition along input dimension)
+        if any(pattern in name for pattern in ['down_proj.weight', 'fc2.weight']):
+            return 1  # Partition along input dimension
+
+        # Default to partition along output dimension
+        return 0
+
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):
         if self.attention_scaling == 1.:

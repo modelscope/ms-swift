@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import time
+from contextlib import contextmanager
 from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
-from megatron.training import get_args
+from megatron.training import get_args, get_wandb_writer
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
@@ -150,3 +152,18 @@ def get_batch(data_iterator):
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch
+
+
+@contextmanager
+def profiling_context(trainer, name: str):
+    start_time = time.perf_counter()
+    yield
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+
+    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
+    wandb_writer = get_wandb_writer()
+    if wandb_writer and trainer.is_main_process:
+        wandb_writer.log(profiling_metrics)
+
+    # TODO: add swanlab support
