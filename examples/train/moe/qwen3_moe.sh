@@ -1,5 +1,9 @@
 # If you don't want to train the router, set:
 # `--target_modules q_proj k_proj v_proj o_proj gate_proj up_proj down_proj`
+
+# Note: If you need to use DeepSpeed ZeRO-2/ZeRO-3 but encounter hangs
+# try using transformers==4.51.3
+
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
