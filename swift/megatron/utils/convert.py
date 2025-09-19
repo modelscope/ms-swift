@@ -173,13 +173,17 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
     mean_diff = token_mean_diff.mean().item()
     max_diff = (mg_logits - hf_logits).abs().max().item()
+    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+    mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
+    max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
     print(f'token_mean_diff: {token_mean_diff}')
-    print(f'mean_diff: {mean_diff}, max_diff: {max_diff} (Please check that mean_diff is less than 0.1).')
+    print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+    print(f'mean_diff (with loss): {mean_diff_with_loss}, max_diff (with loss): {max_diff_with_loss} '
+          '(Please check that mean_diff is less than 0.1).')
     hf_tokens = hf_logits.argmax(-1)
     mg_tokens = mg_logits.argmax(-1)
     print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
     print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
-    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
     print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
