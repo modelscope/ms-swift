@@ -247,10 +247,16 @@ class VllmArguments:
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
-            'disable_cascade_attn': self.vllm_disable_cascade_attn
+            'disable_cascade_attn': self.vllm_disable_cascade_attn,
+            'num_labels': self.num_labels,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
+        elif 'reranker' in self.task_type:
+            kwargs['task_type'] = self.task_type
+        elif self.task_type == 'seq_cls':
+            kwargs['task_type'] = self.task_type
+
         return kwargs
 
 

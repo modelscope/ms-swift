@@ -413,31 +413,36 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        chosen = inputs.chosen
-        instruction = chosen.system
+        if self.is_training:
+            chosen = inputs.chosen
+            instruction = chosen.system
 
-        _encoded = defaultdict(list)
-        labels = []
+            _encoded = defaultdict(list)
+            labels = []
 
-        for positive in inputs.positive:
-            if instruction is not None and positive.system is None:
-                positive.system = instruction
-            positive.messages = chosen.messages + positive.messages
-            positive_encoded = self._encode_truncated(positive)
-            labels.append(1)
-            for key in positive_encoded:
-                _encoded[key].append(positive_encoded[key])
+            for positive in inputs.positive:
+                if instruction is not None and positive.system is None:
+                    positive.system = instruction
+                positive.messages = chosen.messages + positive.messages
+                positive_encoded = self._encode_truncated(positive)
+                labels.append(1)
+                for key in positive_encoded:
+                    _encoded[key].append(positive_encoded[key])
 
-        for negative in inputs.negative:
-            if instruction is not None and negative.system is None:
-                negative.system = instruction
-            negative.messages = chosen.messages + negative.messages
-            negative_encoded = self._encode_truncated(negative)
-            labels.append(0)
-            for key in negative_encoded:
-                _encoded[key].append(negative_encoded[key])
+            for negative in inputs.negative:
+                if instruction is not None and negative.system is None:
+                    negative.system = instruction
+                negative.messages = chosen.messages + negative.messages
+                negative_encoded = self._encode_truncated(negative)
+                labels.append(0)
+                for key in negative_encoded:
+                    _encoded[key].append(negative_encoded[key])
 
-        _encoded['labels'] = labels
+            _encoded['labels'] = labels
+        else:
+            anchor = inputs.chosen
+            _encoded = self._encode_truncated(anchor)
+            _encoded.pop('labels', None)
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1181,6 +1186,8 @@ class Template(ProcessorMixin):
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+            # For multi-modal models, images do not need to be pre processed here
+            # vllm/lmdeploy/sglang will handle the logic
             encoded = Template._encode(self, inputs)
             keys = ['images', 'audios', 'videos']
             if self.mode == 'vllm':
@@ -1525,26 +1532,32 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
-        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels_list = []
-        new_batch = []
-        for b in batch:
-            labels = b.pop('labels')
-            positive_num = sum(labels)
-            negative_num = len(labels) - positive_num
-            max_positive = min(positive_num, max_positive_samples)
-            max_negative = min(negative_num, max_negative_samples)
-            for i in random.sample(range(positive_num), max_positive):
-                new_batch.append({'input_ids': b['input_ids'][i]})
-                labels_list.append(1)
-                for j in random.sample(range(negative_num), max_negative):
-                    new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
-                    labels_list.append(0)
+        if self.is_training:
+            max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
+            max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+            labels_list = []
+            new_batch = []
+            for b in batch:
+                labels = b.pop('labels', None)
+                positive_num = sum(labels)
+                negative_num = len(labels) - positive_num
+                max_positive = min(positive_num, max_positive_samples)
+                max_negative = min(negative_num, max_negative_samples)
+                for i in random.sample(range(positive_num), max_positive):
+                    new_batch.append({'input_ids': b['input_ids'][i]})
+                    labels_list.append(1)
+                    for j in random.sample(range(negative_num), max_negative):
+                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
+                        labels_list.append(0)
 
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels_list:
-            res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+            res = self._data_collator(new_batch, padding_to=padding_to)
+            if labels_list:
+                res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+        else:
+            new_batch = []
+            for b in batch:
+                new_batch.append({'input_ids': b['input_ids']})
+            res = self._data_collator(new_batch, padding_to=padding_to)
         return res
 
     def _seq_cls_data_collator(self,

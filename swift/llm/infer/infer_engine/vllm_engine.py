@@ -80,6 +80,7 @@ class VllmEngine(InferEngine):
         reasoning_parser: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
+        num_labels: Optional[int] = None,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -101,6 +102,7 @@ class VllmEngine(InferEngine):
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
+            num_labels=num_labels,
             task_type=task_type)[1]
         self._post_init(template)
 
@@ -168,6 +170,10 @@ class VllmEngine(InferEngine):
     ) -> None:
         if task == 'embedding':
             task = 'embed'
+        elif task == 'seq_cls':
+            task = 'classify'
+        elif task == 'reranker':
+            task = 'score'
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
@@ -202,7 +208,12 @@ class VllmEngine(InferEngine):
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
             architectures = arch_mapping[self.model_meta.model_type]
-            engine_kwargs['hf_overrides'] = {'architectures': architectures}
+        engine_kwargs['hf_overrides'] = {
+            "architectures": ["Qwen3ForSequenceClassification"],
+            "classifier_from_token": ["no", "yes"],
+            "is_original_qwen3_reranker": True,
+            }
+            # {'architectures': architectures}
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
@@ -339,6 +350,21 @@ class VllmEngine(InferEngine):
                     pooling_params = PoolingParams(task='embed')
                 else:
                     pooling_params = PoolingParams()
+                return self.engine.encode(llm_inputs, pooling_params, request_id)
+            elif self.task_type == 'seq_cls':
+                from vllm.pooling_params import PoolingParams
+                # if 'task' in inspect.signature(PoolingParams).parameters:
+                #     pooling_params = PoolingParams(task='classify')
+                # else:
+                #     pooling_params = PoolingParams()
+                return self.engine.encode(llm_inputs)
+            elif self.task_type in ('reranker', 'generative_reranker'):
+                from vllm.pooling_params import PoolingParams
+                if 'task' in inspect.signature(PoolingParams).parameters:
+                    pooling_params = PoolingParams(task='score', activation=True)
+                else:
+                    pooling_params = PoolingParams()
+                # return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
@@ -549,6 +575,30 @@ class VllmEngine(InferEngine):
             prompt_token_ids=prompt_token_ids,
             images_size=images_size)
 
+    def _create_seq_cls_response(
+        self,
+        result,
+        template,
+        request_id,
+    ) -> ChatCompletionResponse:
+        assert result is not None
+        num_generated_tokens = 0
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+        choices = []
+        data = result.outputs.data
+        choice = ChatCompletionResponseChoice(
+                index=0,
+                message=ChatMessage(
+                    role='assistant', content=data.cpu().numpy().tolist()),
+                finish_reason='stop')
+        choices.append(choice)
+        return ChatCompletionResponse(
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            id=request_id,
+            prompt_token_ids=result.prompt_token_ids)
+
     async def _infer_full_async(
         self,
         template: Template,
@@ -566,6 +616,8 @@ class VllmEngine(InferEngine):
             pass
         if self.task_type == 'embedding':
             return self._create_embedding_response(result, template, generation_config, request_id)
+        elif self.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
+            return self._create_seq_cls_response(result, template, request_id)
         else:
             return self._create_chat_completion_response(result, inputs, template, request_config, request_id)
 

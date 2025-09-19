@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import pickle
 import time
+import os
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -335,6 +336,20 @@ class PtEngine(InferEngine):
         elif template.task_type == 'embedding':
             preds = logits
             logprobs = [None] * len(preds)
+        elif template.task_type in ('reranker', 'generative_reranker'):
+            positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+            negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+            token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
+            token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
+            batch_scores = logits[:, -1, :]
+            true_vector = batch_scores[:, token_true_id]
+            false_vector = batch_scores[:, token_false_id]
+            batch_scores = torch.stack([false_vector, true_vector], dim=1)
+            batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
+            preds = batch_scores[:, 1].exp().tolist()
+            if not isinstance(preds[0], list):
+                preds = [preds]
+            logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported task_type: {template.task_type}')
 
@@ -521,7 +536,7 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm', 'embedding'
+                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
                                                                            } else self._infer_full
                 res = infer_func(**kwargs)
             else:
