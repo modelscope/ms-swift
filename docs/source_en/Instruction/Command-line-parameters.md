@@ -668,6 +668,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - mcore_model: Path to the mcore format model. Default is None.
 - mcore_adapters: List of paths to mcore format model adapters, default is empty list.
 - thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
+- test_convert_dtype: The dtype used for testing weight conversion precision, defaults to `torch_dtype`.
 - 🔥test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).
 - hub_model_id: Model ID for pushing, default is None.
