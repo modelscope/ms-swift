@@ -42,7 +42,7 @@ class KimiVLVit(HuggingFaceModule):
         if pixel_values is not None and pixel_values.size(0) > 0:
             pixel_values = pixel_values.to(model.vision_tower.dtype)
             image_features: torch.Tensor = model._extract_image_features(pixel_values, kwargs['image_grid_hws'])
-            inputs_embeds = inputs_embeds.to(image_features[0].dtype)
+            inputs_embeds = inputs_embeds.to(image_features[0].dtype).clone()
             inputs_embeds = model._merge_with_image_features(inputs_embeds, input_ids, image_features)
         else:
             image_processor = self.processor.image_processor
