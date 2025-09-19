@@ -31,6 +31,7 @@ register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
 
 class KimiVLTemplate(Template):
     placeholder_tokens = ['<|media_pad|>']
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -84,8 +85,8 @@ class KimiVLTemplate(Template):
             image_processor = self.processor.image_processor
             dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
             image_inputs = image_processor([dummy_image], return_tensors='pt')
-            image_features: torch.Tensor = model._extract_image_features(image_inputs['pixel_values'],
-                                                                         image_inputs['image_grid_hws'])
+            pixel_values = image_inputs['pixel_values'].to(model.vision_tower.dtype)
+            image_features: torch.Tensor = model._extract_image_features(pixel_values, image_inputs['image_grid_hws'])
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
