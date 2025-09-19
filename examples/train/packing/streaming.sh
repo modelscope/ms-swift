@@ -1,8 +1,6 @@
 # 4 * 36GB
 # A demo using the Hugging Face dataset
 # The first model weights will be saved around step 70.
-pip install "transformers==4.51.*"
-
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
