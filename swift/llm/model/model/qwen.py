@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
@@ -678,6 +679,12 @@ def patch_qwen_vl_utils(vision_process):
             'fps',
             'fps_min_frames',
             'fps_max_frames',
+            # qwen3_vl
+            'image_max_token_num',
+            'image_min_token_num',
+            'spatial_merge_size',
+            'video_max_token_num',
+            'video_min_token_num',
     ]:
         type_func = float if key == 'fps' else int
         default_value = getattr(vision_process, key.upper(), None)
@@ -806,6 +813,45 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2_5_VLForConditionalGeneration'],
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.12')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
+    return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl,
+        [],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=[],  # TODO
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLMoeForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.12')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
+    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_moe_vl,
+        [],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_moe_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLMoeForConditionalGeneration'],
+        requires=[],  # TODO
         tags=['vision', 'video']))
 
 register_model(

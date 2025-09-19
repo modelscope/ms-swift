@@ -3,7 +3,7 @@ import torch
 from megatron.training import get_args
 from PIL import Image
 
-from swift.llm import ModelType, Template, to_device
+from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import convert_hf2mcore

@@ -14,7 +14,7 @@ from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
 if TYPE_CHECKING:
     from .gpt_model import GPTModel
-    from .mm_gpt import MultimodalGPTModel
+    from .mm_gpt_model import MultimodalGPTModel
 
 
 # Code borrowed from NVIDIA/Megatron-LM
