@@ -3,8 +3,6 @@ import inspect
 from contextlib import contextmanager
 from typing import Optional
 
-import transformers
-from packaging import version
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, Trainer
 from trl import PPOTrainer as HFPPOTrainer
@@ -38,8 +36,14 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         with self._patch_dataloader(kwargs['data_collator']):
             new_kwargs = {
                 k: v
-                for k, v in kwargs.items()
-                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset', 'callbacks']
+                for k, v in kwargs.items() if k in [
+                    'train_dataset',
+                    'data_collator',
+                    'reward_model',
+                    'value_model',
+                    'eval_dataset',
+                    'callbacks',
+                ]
             }
             parameters = inspect.signature(ppo_trainer_init).parameters
             if 'config' in parameters:
@@ -63,7 +67,14 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
 
     def _save_checkpoint(self, *args, **kwargs):
         kwargs.pop('metrics', None)
-        return super()._save_checkpoint(*args, **kwargs)
+
+        backup_model = self.model
+        try:
+            # Unwrap model if needed
+            self.model = self.accelerator.unwrap_model(self.model)
+            return super()._save_checkpoint(*args, **kwargs)
+        finally:
+            self.model = backup_model
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # https://github.com/huggingface/trl/issues/2122
