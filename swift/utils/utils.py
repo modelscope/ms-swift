@@ -366,18 +366,24 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
                 value = json.load(f)
         else:  # json str
             try:
-                try:
-                    # fix malformed json string, e.g., incorrect quotation marks
-                    value = json_repair.repair_json(value)
-                except Exception:
-                    if strict:
-                        logger.error(f"Unable to repair json string: '{value}'")
-                        raise
                 value = json.loads(value)
             except json.JSONDecodeError:
-                if strict:
-                    logger.error(f"Unable to parse string: '{value}'")
-                    raise
+                try:
+                    # fix malformed json string, e.g., incorrect quotation marks
+                    old_value = value
+                    value = json_repair.repair_json(value)
+                    logger.warning(f"Unable to parse json string, try to repair it, "
+                                   f"the string before and after repair are '{old_value}' | '{value}'")
+                    try:
+                        value = json.loads(value)
+                    except json.JSONDecodeError:
+                        if strict:
+                            logger.error(f"Unable to parse json string: '{value}'")
+                            raise
+                except Exception:
+                    if strict:
+                        logger.error(f"Unable to parse json string: '{value}', and try to repair failed")
+                        raise
     return value
 
 
