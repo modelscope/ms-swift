@@ -57,6 +57,7 @@ class MegatronDPOTrainer(MegatronTrainer):
     def _forward_step_helper(model, inputs):
         args = get_args()
         if mpu.is_pipeline_first_stage():
+            assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
             micro_batch_size = 1  # use qkv_format 'thd'
             seq_length = inputs['input_ids'].shape[1]
             if args.sequence_parallel:
