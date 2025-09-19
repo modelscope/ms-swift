@@ -7,6 +7,7 @@ import torch
 from PIL import Image
 from torch import nn as nn
 
+from swift.utils import is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -81,7 +82,7 @@ class KimiVLTemplate(Template):
             image_features: torch.Tensor = model._extract_image_features(pixel_values, inputs['image_grid_hws'])
             inputs_embeds = inputs_embeds.to(image_features[0].dtype)
             inputs_embeds = model._merge_with_image_features(inputs_embeds, input_ids, image_features)
-        else:
+        elif is_deepspeed_enabled():
             image_processor = self.processor.image_processor
             dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
             image_inputs = image_processor([dummy_image], return_tensors='pt')

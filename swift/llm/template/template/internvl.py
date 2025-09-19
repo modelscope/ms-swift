@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from ast import Tuple
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
 import torch
 from torch import nn
