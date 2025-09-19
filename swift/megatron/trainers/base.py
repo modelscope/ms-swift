@@ -26,6 +26,7 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from packaging import version
 
+from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -269,9 +270,10 @@ class BaseMegatronTrainer(ABC):
         if visual is None:
             return
         args = get_args()
-        for vision_tower in visual.vision_tower:
+        for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
             if args.vit_gradient_checkpointing:
+                dynamic_gradient_checkpointing(module, False)
                 try:
                     module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
@@ -724,8 +726,8 @@ class BaseMegatronTrainer(ABC):
     def _init_multimodal_full(args):
         visual_cls = args.megatron_model_meta.visual_cls
         if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
-            vision_tower = [f'visual.{vit}' for vit in visual_cls.vision_tower]
-            aligner = [f'visual.{_aligner}' for _aligner in visual_cls.aligner]
+            vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
+            aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:
                 args.freeze_parameters.append('language_model')
             if args.freeze_vit:

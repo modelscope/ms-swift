@@ -1,9 +1,11 @@
 # 8 * 60GiB, 10s/it
+
 # Note: linear-attention does not support padding_free.
 # Therefore, if you enable padding_free (the default),
 # padding_free will be toggled off/on around the linear-attention sections.
 
-# Note: Enabling packing is not recommended, as it can easily cause OOM (out-of-memory) errors.
+# Note: In Qwen3-Next's mcore implementation, enabling --packing disables the removal of padding_free during the linear-attention stage.
+# This can improve training efficiency and memory usage, but it makes different sequences visible to each other.
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \

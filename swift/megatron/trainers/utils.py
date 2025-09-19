@@ -9,7 +9,6 @@ from megatron.training import get_args
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
-from swift.utils import get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
