@@ -33,6 +33,7 @@ register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
 class KimiVLTemplate(Template):
     placeholder_tokens = ['<|media_pad|>']
     support_padding_free = True
+    skip_prompt = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
