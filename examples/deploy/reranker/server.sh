@@ -7,4 +7,3 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
     --infer_backend vllm \
     --task_type reranker \
     --vllm_enforce_eager true \
-    
