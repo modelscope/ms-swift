@@ -337,16 +337,19 @@ class PtEngine(InferEngine):
             preds = logits
             logprobs = [None] * len(preds)
         elif template.task_type in ('reranker', 'generative_reranker'):
-            positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
-            negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-            token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
-            token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
-            batch_scores = logits[:, -1, :]
-            true_vector = batch_scores[:, token_true_id]
-            false_vector = batch_scores[:, token_false_id]
-            batch_scores = torch.stack([false_vector, true_vector], dim=1)
-            batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
-            preds = batch_scores[:, 1].exp().tolist()
+            if template.task_type == 'generative_reranker':
+                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+                token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
+                token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
+                batch_scores = logits[:, -1, :]
+                true_vector = batch_scores[:, token_true_id]
+                false_vector = batch_scores[:, token_false_id]
+                batch_scores = torch.stack([false_vector, true_vector], dim=1)
+                batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
+                preds = batch_scores[:, 1].exp().tolist()
+            else:
+                preds = logits.tolist()
             if not isinstance(preds[0], list):
                 preds = [preds]
             logprobs = [None] * len(preds)

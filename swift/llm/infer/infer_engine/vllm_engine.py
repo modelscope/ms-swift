@@ -208,11 +208,11 @@ class VllmEngine(InferEngine):
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
             architectures = arch_mapping[self.model_meta.model_type]
-        engine_kwargs['hf_overrides'] = {
-            "architectures": ["Qwen3ForSequenceClassification"],
-            "classifier_from_token": ["no", "yes"],
-            "is_original_qwen3_reranker": True,
-            }
+        #engine_kwargs['hf_overrides'] = {
+        #    "architectures": ["Qwen3ForSequenceClassification"],
+        #    "classifier_from_token": ["no", "yes"],
+        #    "is_original_qwen3_reranker": True,
+        #    }
             # {'architectures': architectures}
         engine_args = engine_cls(
             model=self.model_dir,
@@ -353,11 +353,11 @@ class VllmEngine(InferEngine):
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.task_type == 'seq_cls':
                 from vllm.pooling_params import PoolingParams
-                # if 'task' in inspect.signature(PoolingParams).parameters:
-                #     pooling_params = PoolingParams(task='classify')
-                # else:
-                #     pooling_params = PoolingParams()
-                return self.engine.encode(llm_inputs)
+                if 'task' in inspect.signature(PoolingParams).parameters:
+                    pooling_params = PoolingParams(task='classify')
+                else:
+                    pooling_params = PoolingParams()
+                return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.task_type in ('reranker', 'generative_reranker'):
                 from vllm.pooling_params import PoolingParams
                 if 'task' in inspect.signature(PoolingParams).parameters:
