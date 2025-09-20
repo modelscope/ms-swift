@@ -7,7 +7,7 @@ from transformers import AutoModel, AutoModelForSequenceClassification
 
 from swift.llm import TemplateType
 from swift.utils import get_device
-from ..constant import MLLMModelType, LLMModelType
+from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
@@ -95,16 +95,6 @@ register_model(
         requires=['transformers>=4.44.0'],
     ))
 
-
-def get_model_tokenizer_bge_reranker(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.bge_reranker,
@@ -116,6 +106,6 @@ register_model(
             ]),
         ],
         TemplateType.bge_reranker,
-        get_model_tokenizer_bge_reranker,
+        get_model_tokenizer_with_flash_attn,
         architectures=['XLMRobertaForSequenceClassification'],
     ))

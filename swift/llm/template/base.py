@@ -252,6 +252,9 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        return {}
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,

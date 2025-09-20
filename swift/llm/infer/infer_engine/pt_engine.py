@@ -2,9 +2,9 @@
 import asyncio
 import hashlib
 import inspect
+import os
 import pickle
 import time
-import os
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -328,6 +328,9 @@ class PtEngine(InferEngine):
         elif 'last_hidden_state' in output:
             # embeddings
             logits = output['last_hidden_state']
+        else:
+            raise NotImplementedError('Only support `logits` or `hidden_state` in output.')
+
         if template.task_type == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
         elif template.task_type == 'prm':
@@ -338,6 +341,7 @@ class PtEngine(InferEngine):
             logprobs = [None] * len(preds)
         elif template.task_type in ('reranker', 'generative_reranker'):
             if template.task_type == 'generative_reranker':
+                # Qwen3-reranker like
                 positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
                 negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
                 token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
@@ -539,8 +543,9 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
-                                                                           } else self._infer_full
+                infer_func = self._infer_forward if template.task_type in {
+                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
+                } else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []

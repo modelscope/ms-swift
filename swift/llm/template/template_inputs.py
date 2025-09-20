@@ -272,18 +272,15 @@ class TemplateInputs:
                 setattr(self, key, StdTemplateInputs.from_dict(value_dict))
             else:
                 res = []
-                try:
-                    for i in range(len(value_dict['messages'])):
-                        kwargs = {}
-                        for k in all_keys:
-                            val = value_dict.get(k)
-                            if val is None:
-                                continue
-                            kwargs[k] = val[i]
-                        res.append(StdTemplateInputs.from_dict(kwargs))
-                    setattr(self, key, res)
-                except:
-                    print()
+                for i in range(len(value_dict['messages'])):
+                    kwargs = {}
+                    for k in all_keys:
+                        val = value_dict.get(k)
+                        if val is None:
+                            continue
+                        kwargs[k] = val[i]
+                    res.append(StdTemplateInputs.from_dict(kwargs))
+                setattr(self, key, res)
 
     @staticmethod
     def _compat_rejected_response(inputs: Dict[str, Any]):

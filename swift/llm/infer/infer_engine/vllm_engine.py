@@ -30,6 +30,7 @@ try:
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
     import vllm
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
+    from vllm.pooling_params import PoolingParams
 except Exception:
     raise
 
@@ -172,7 +173,7 @@ class VllmEngine(InferEngine):
             task = 'embed'
         elif task == 'seq_cls':
             task = 'classify'
-        elif task == 'reranker':
+        elif task in ('reranker', 'generative_reranker'):
             task = 'score'
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
@@ -208,12 +209,8 @@ class VllmEngine(InferEngine):
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
             architectures = arch_mapping[self.model_meta.model_type]
-        #engine_kwargs['hf_overrides'] = {
-        #    "architectures": ["Qwen3ForSequenceClassification"],
-        #    "classifier_from_token": ["no", "yes"],
-        #    "is_original_qwen3_reranker": True,
-        #    }
-            # {'architectures': architectures}
+            engine_kwargs['hf_overrides'] = {'architectures': architectures}
+        engine_kwargs.update(self.default_template.prepare_engine_kwargs())
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
@@ -344,27 +341,29 @@ class VllmEngine(InferEngine):
             mm_processor_kwargs = inputs.get('mm_processor_kwargs')
             if mm_processor_kwargs:
                 llm_inputs['mm_processor_kwargs'] = mm_processor_kwargs
+
+            has_task_arg = 'task' in inspect.signature(PoolingParams).parameters
+            has_activation_arg = 'activation' in inspect.signature(PoolingParams).parameters
             if self.task_type == 'embedding':
-                from vllm.pooling_params import PoolingParams
-                if 'task' in inspect.signature(PoolingParams).parameters:
+                if has_task_arg:
                     pooling_params = PoolingParams(task='embed')
                 else:
                     pooling_params = PoolingParams()
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.task_type == 'seq_cls':
-                from vllm.pooling_params import PoolingParams
-                if 'task' in inspect.signature(PoolingParams).parameters:
+                if has_task_arg:
                     pooling_params = PoolingParams(task='classify')
                 else:
                     pooling_params = PoolingParams()
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.task_type in ('reranker', 'generative_reranker'):
-                from vllm.pooling_params import PoolingParams
-                if 'task' in inspect.signature(PoolingParams).parameters:
-                    pooling_params = PoolingParams(task='score', activation=True)
-                else:
-                    pooling_params = PoolingParams()
-                # return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
+                task_arg = {}
+                activation_arg = {}
+                if has_task_arg:
+                    task_arg = {'task': 'score'}
+                if has_activation_arg:
+                    activation_arg = {'activation': True}
+                pooling_params = PoolingParams(**task_arg, **activation_arg)
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
@@ -587,10 +586,7 @@ class VllmEngine(InferEngine):
         choices = []
         data = result.outputs.data
         choice = ChatCompletionResponseChoice(
-                index=0,
-                message=ChatMessage(
-                    role='assistant', content=data.cpu().numpy().tolist()),
-                finish_reason='stop')
+            index=0, message=ChatMessage(role='assistant', content=data.tolist()), finish_reason='stop')
         choices.append(choice)
         return ChatCompletionResponse(
             model=self.model_name,

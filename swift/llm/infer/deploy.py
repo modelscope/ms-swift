@@ -34,7 +34,6 @@ class SwiftDeploy(SwiftInfer):
         self.app.get('/v1/models')(self.get_available_models)
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
-        self.app.post('/v1/rerankers')(self.create_chat_completion)
         self.app.post('/v1/embeddings')(self.create_embedding)
 
     def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
@@ -145,38 +144,6 @@ class SwiftDeploy(SwiftInfer):
             default_val = getattr(default_request_config, key)
             if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):
                 setattr(request_config, key, default_val)
-
-    async def create_reranker_completion(self,
-                                     request: ChatCompletionRequest,
-                                     raw_request: Request,
-                                     *,
-                                     return_cmpl_response: bool = False):
-        args = self.args
-        error_msg = (await self._check_model(request) or self._check_api_key(raw_request)
-                     or self._check_max_logprobs(request))
-        if error_msg:
-            return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
-        infer_kwargs = self.infer_kwargs.copy()
-        adapter_path = args.adapter_mapping.get(request.model)
-        if adapter_path:
-            infer_kwargs['adapter_request'] = AdapterRequest(request.model, adapter_path)
-
-        infer_request, request_config = request.parse()
-        self._set_request_config(request_config)
-        request_info = {'response': '', 'infer_request': infer_request.to_printable()}
-
-        try:
-            res_or_gen = await self.infer([infer_request], request_config, template=self.template, **infer_kwargs)
-        except Exception as e:
-            import traceback
-            logger.info(traceback.format_exc())
-            return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
-
-        if hasattr(res_or_gen, 'choices'):
-            # instance of ChatCompletionResponse
-            return self._post_process(request_info, res_or_gen, return_cmpl_response)
-        else:
-            return res_or_gen
 
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,

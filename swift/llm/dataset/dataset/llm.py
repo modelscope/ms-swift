@@ -395,10 +395,6 @@ class MTEBRerankPreprocessor(RowPreprocessor):
         positive_messages = [[{'role': 'assistant', 'content': positive}] for positive in positives]
         negative_messages = [[{'role': 'assistant', 'content': negative}] for negative in negatives]
 
-        import numpy as np 
-        if np.random.random() < 0.5:
-            negative_messages = []
-
         return {'messages': messages, 'positive_messages': positive_messages, 'negative_messages': negative_messages}
 
 
