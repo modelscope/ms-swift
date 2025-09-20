@@ -658,14 +658,38 @@ def test_glm4_5v():
     assert response == response2
 
 
+def run_hf(model, processor, messages):
+    inputs = processor.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors='pt').to(
+            model.device, dtype=torch.bfloat16)
+    generate_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    decoded_output = processor.decode(generate_ids[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
+    return decoded_output
+
+
 def test_interns1():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
     images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
-    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == response2
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == '<think>' + response2
 
 
 def test_internvl3_5():
@@ -687,40 +711,70 @@ def test_internvl3_5():
 def test_internvl3_hf():
     pt_engine = PtEngine('OpenGVLab/InternVL3-1B-hf')
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
     response = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == (
-        'The image is a close-up of a cute kitten with large, expressive blue eyes. '
-        'The kitten has a mix of white and gray fur, with darker stripes and patches on its face and ears. '
-        'Its whiskers are clearly visible, and it has a soft, fluffy appearance. '
-        'The background is blurred, emphasizing the kitten\'s face and features. '
-        'The overall style is artistic and whimsical, with a focus on the kitten\'s adorable and innocent expression.')
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
 
 
 def test_internvl3_5_hf():
     pt_engine = PtEngine('OpenGVLab/InternVL3_5-1B-HF')
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
     response = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == (
-        'The image shows a close-up of a young kitten with a fluffy, white and gray coat. '
-        'The kitten has large, expressive eyes and appears to be looking directly at the camera. '
-        'Its ears are perked up, and it has whiskers that are clearly visible. '
-        'The background is blurred, emphasizing the kitten as the main subject. '
-        'The lighting is soft, highlighting the kitten\'s features and giving the image a warm, gentle appearance.')
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
 
 
 def test_internvl_gpt_hf():
     pt_engine = PtEngine('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF')
-    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     response = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == (
-        'The image shows a close-up of a small kitten with a fluffy coat. '
-        'The kitten has a mix of white and gray fur, with darker gray stripes on its head and ears. '
-        'Its eyes are large, round, and a striking shade of blue, giving it an adorable and curious look. '
-        "The kitten's tiny nose is pink, and its whiskers are prominently visible against a softly blurred background. "
-        'The overall impression is of an innocent and charming young cat.')
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
 
 
 def test_minicpmv4_5():
@@ -793,10 +847,10 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
-    # test_interns1()
+    test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
     # test_keye_vl_1_5()
-    # test_internvl3_hf()
-    # test_internvl3_5_hf()
+    test_internvl3_hf()
+    test_internvl3_5_hf()
     test_internvl_gpt_hf()

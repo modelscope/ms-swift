@@ -404,16 +404,31 @@ register_model(
     ))
 
 
-def get_model_tokenizer_internvl_hf(*args, **kwargs):
-
-    from transformers import AutoModelForImageTextToText
-    if not kwargs['automodel_class']:
-        kwargs['automodel_class'] = AutoModelForImageTextToText
+def get_model_tokenizer_interns1(*args, **kwargs):
+    from transformers.modeling_utils import PreTrainedModel
     model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None and not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
+        old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
 
-    if model is not None:
-        patch_output_clone(model.model.language_model.get_input_embeddings())
+        def patched_enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                if isinstance(output, tuple):
+                    output[0].requires_grad_(True)
+                else:
+                    output.requires_grad_(True)
+
+            self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
+
+        PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
+        PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
     return model, processor
+
+
+def get_model_tokenizer_internvl_hf(*args, **kwargs):
+    from transformers import AutoModelForImageTextToText
+    kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModelForImageTextToText
+    return get_model_tokenizer_interns1(*args, **kwargs)
 
 
 register_model(
@@ -443,7 +458,7 @@ register_model(
         TemplateType.internvl_hf,
         get_model_tokenizer_internvl_hf,
         architectures=['InternVLForConditionalGeneration'],
-        model_arch=ModelArch.internvl,
+        model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.52.1', 'timm'],
         tags=['vision', 'video'],
     ))
@@ -460,57 +475,10 @@ register_model(
         TemplateType.internvl_hf,
         get_model_tokenizer_internvl_hf,
         architectures=['InternVLForConditionalGeneration'],
-        model_arch=ModelArch.internvl,
+        model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.55.0', 'timm'],
         tags=['vision', 'video'],
     ))
-
-
-def get_model_tokenizer_interns1(model_dir: str,
-                                 model_info: ModelInfo,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
-        # patch: bnb backward shape mismatch bug
-        if model is not None and model.model.language_model is not None:
-            model.model.language_model.output.state.force_no_igemmlt = True
-
-    if model is not None:
-        patch_output_clone(model.model.language_model.get_input_embeddings())
-
-        def patch_output0_clone(module: torch.nn.Module):
-            """Clone the output, to avoid the inplace problem"""
-
-            def _clone_hook(module, input, output):
-                output = list(output)
-                output[0] = output[0].requires_grad_(True).clone()
-                output = tuple(output)
-                return output
-
-            module.register_forward_hook(_clone_hook)
-
-        patch_output0_clone(model.model.vision_tower.get_input_embeddings())
-        from transformers.modeling_utils import PreTrainedModel
-        if not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
-            old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
-
-            def patched_enable_input_require_grads(self):
-
-                def make_inputs_require_grads(module, input, output):
-                    if isinstance(output, tuple):
-                        output[0].requires_grad_(True)
-                    else:
-                        output.requires_grad_(True)
-
-                self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
-
-            PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
-            PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
-    return model, processor
-
 
 register_model(
     ModelMeta(

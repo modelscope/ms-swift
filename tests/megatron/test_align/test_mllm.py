@@ -55,12 +55,28 @@ def test_internvl3_5_moe():
     _test_model('OpenGVLab/InternVL3_5-30B-A3B')
 
 
+def test_internvl3_hf():
+    _test_model('OpenGVLab/InternVL3-1B-hf')
+
+
+def test_internvl3_5_hf():
+    _test_model('OpenGVLab/InternVL3_5-1B-HF')
+
+
+def test_internvl3_5_moe_hf():
+    _test_model('OpenGVLab/InternVL3_5-30B-A3B-HF')
+
+
 def test_glm4_5v():
     _test_model('ZhipuAI/GLM-4.5V')
 
 
 def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
+
+
+def test_kimi_vl():
+    _test_model('moonshotai/Kimi-VL-A3B-Thinking-2506')
 
 
 if __name__ == '__main__':
@@ -70,5 +86,9 @@ if __name__ == '__main__':
     # test_internvl3()
     # test_internvl3_5()
     # test_internvl3_5_moe()
+    # test_internvl3_hf()
+    # test_internvl3_5_hf()
+    # test_internvl3_5_moe_hf()
     # test_glm4_5v()
-    test_ovis2_5()
+    # test_ovis2_5()
+    test_kimi_vl()
