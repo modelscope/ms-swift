@@ -14,6 +14,7 @@ import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
+import json_repair
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -367,9 +368,17 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
             try:
                 value = json.loads(value)
             except json.JSONDecodeError:
-                if strict:
-                    logger.error(f"Unable to parse string: '{value}'")
-                    raise
+                try:
+                    # fix malformed json string, e.g., incorrect quotation marks
+                    old_value = value
+                    value = json_repair.repair_json(value)
+                    logger.warning(f'Unable to parse json string, try to repair it, '
+                                   f"the string before and after repair are '{old_value}' | '{value}'")
+                    value = json.loads(value)
+                except Exception:
+                    if strict:
+                        logger.error(f"Unable to parse json string: '{value}', and try to repair failed")
+                        raise
     return value
 
 

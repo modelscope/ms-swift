@@ -12,6 +12,7 @@ fastapi
 gradio>=3.40.0
 importlib_metadata
 jieba
+json_repair
 matplotlib
 modelscope>=1.23
 nltk
