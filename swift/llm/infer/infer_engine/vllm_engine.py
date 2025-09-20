@@ -82,6 +82,7 @@ class VllmEngine(InferEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
         num_labels: Optional[int] = None,
+        reranker_use_activation: bool = True,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -94,6 +95,7 @@ class VllmEngine(InferEngine):
             self.default_adapter_request = AdapterRequest('default', adapters[0])
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
+        self.reranker_use_activation = reranker_use_activation
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -210,6 +212,7 @@ class VllmEngine(InferEngine):
         if self.model_meta.model_type in arch_mapping:
             architectures = arch_mapping[self.model_meta.model_type]
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
+        self.default_template.set_mode('vllm')
         engine_kwargs.update(self.default_template.prepare_engine_kwargs())
         engine_args = engine_cls(
             model=self.model_dir,
@@ -361,7 +364,7 @@ class VllmEngine(InferEngine):
                 activation_arg = {}
                 if has_task_arg:
                     task_arg = {'task': 'score'}
-                if has_activation_arg:
+                if has_activation_arg and self.reranker_use_activation:
                     activation_arg = {'activation': True}
                 pooling_params = PoolingParams(**task_arg, **activation_arg)
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
@@ -578,16 +581,33 @@ class VllmEngine(InferEngine):
         self,
         result,
         template,
+        request_config,
         request_id,
     ) -> ChatCompletionResponse:
         assert result is not None
-        num_generated_tokens = 0
-        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
-        data = result.outputs.data
-        choice = ChatCompletionResponseChoice(
-            index=0, message=ChatMessage(role='assistant', content=data.tolist()), finish_reason='stop')
-        choices.append(choice)
+        preds = result.outputs.data
+        if preds.dim() == 1:
+            preds = preds.unsqueeze(0)
+        if self.task_type == 'seq_cls':
+            top_logprobs = request_config.top_logprobs or 20
+            preds, logprobs = template.decode_seq_cls(preds, top_logprobs)
+        else:
+            logprobs = [None] * len(preds)
+        num_prompt_token_ids = 0
+        num_generated_tokens = 0
+        for i, pred in enumerate(preds):
+            num_prompt_token_ids += len(result.prompt_token_ids)
+            num_generated_tokens += 1
+            if isinstance(pred, torch.Tensor):
+                pred = pred.tolist()
+            choices.append(
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=pred, tool_calls=None),
+                    finish_reason='stop',
+                    logprobs=logprobs[i]))
+        usage_info = self._get_usage_info(num_prompt_token_ids, num_generated_tokens)
         return ChatCompletionResponse(
             model=self.model_name,
             choices=choices,
@@ -613,7 +633,7 @@ class VllmEngine(InferEngine):
         if self.task_type == 'embedding':
             return self._create_embedding_response(result, template, generation_config, request_id)
         elif self.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
-            return self._create_seq_cls_response(result, template, request_id)
+            return self._create_seq_cls_response(result, template, request_config, request_id)
         else:
             return self._create_chat_completion_response(result, inputs, template, request_config, request_id)
 

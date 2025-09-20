@@ -89,9 +89,11 @@ class Qwen3RerankerTemplate(Template):
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         if self.mode == 'vllm':
             return {
-                'architectures': ['Qwen3ForSequenceClassification'],
-                'classifier_from_token': ['no', 'yes'],
-                'is_original_qwen3_reranker': True,
+                'hf_overrides': {
+                    'architectures': ['Qwen3ForSequenceClassification'],
+                    'classifier_from_token': ['no', 'yes'],
+                    'is_original_qwen3_reranker': True,
+                }
             }
         else:
             return super().prepare_engine_kwargs()

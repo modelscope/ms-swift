@@ -12,6 +12,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
@@ -77,6 +78,7 @@ class PtEngine(InferEngine):
             task_type=task_type,
             model_kwargs=model_kwargs,
             **kwargs)
+        self.reranker_use_activation = kwargs.pop('reranker_use_activation', True)
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
             adapters = [adapters]
@@ -351,9 +353,12 @@ class PtEngine(InferEngine):
                 false_vector = batch_scores[:, token_false_id]
                 batch_scores = torch.stack([false_vector, true_vector], dim=1)
                 batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
-                preds = batch_scores[:, 1].exp().tolist()
+                preds = batch_scores[:, 1].exp()
             else:
-                preds = logits.tolist()
+                preds = logits
+                if self.reranker_use_activation:
+                    preds = F.sigmoid(preds)
+            preds = preds.tolist()
             if not isinstance(preds[0], list):
                 preds = [preds]
             logprobs = [None] * len(preds)
