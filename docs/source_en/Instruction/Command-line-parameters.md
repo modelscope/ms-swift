@@ -594,6 +594,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
 - metric: Evaluate the results of the inference, currently supporting 'acc' and 'rouge'. The default is None, meaning no evaluation is performed.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
+- reranker_use_activation: Use sigmoid after reranker score, default True.
 
 ### Deployment Arguments
 
