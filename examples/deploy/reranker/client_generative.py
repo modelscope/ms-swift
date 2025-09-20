@@ -27,7 +27,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
         'content': 'what is the capital of China?',
     }, {
         'role': 'assistant',
-        'content': 'It is Beijing.',
+        'content': 'Beijing.',
     }]
     infer(client, model, messages)
 

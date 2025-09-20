@@ -347,26 +347,20 @@ class VllmEngine(InferEngine):
 
             has_task_arg = 'task' in inspect.signature(PoolingParams).parameters
             has_activation_arg = 'activation' in inspect.signature(PoolingParams).parameters
-            if self.task_type == 'embedding':
+            task_mapping = {
+                'embedding': 'embed',
+                'seq_cls': 'classify',
+                'reranker': 'score',
+                'generative_reranker': 'score',
+            }
+            if self.task_type in task_mapping:
+                pooling_kwargs = {}
                 if has_task_arg:
-                    pooling_params = PoolingParams(task='embed')
-                else:
-                    pooling_params = PoolingParams()
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
-            elif self.task_type == 'seq_cls':
-                if has_task_arg:
-                    pooling_params = PoolingParams(task='classify')
-                else:
-                    pooling_params = PoolingParams()
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
-            elif self.task_type in ('reranker', 'generative_reranker'):
-                task_arg = {}
-                activation_arg = {}
-                if has_task_arg:
-                    task_arg = {'task': 'score'}
-                if has_activation_arg and self.reranker_use_activation:
-                    activation_arg = {'activation': True}
-                pooling_params = PoolingParams(**task_arg, **activation_arg)
+                    pooling_kwargs['task'] = task_mapping[self.task_type]
+                if self.task_type in ('reranker', 'generative_reranker') and \
+                        has_activation_arg and self.reranker_use_activation:
+                    pooling_kwargs['activation'] = True
+                pooling_params = PoolingParams(**pooling_kwargs)
                 return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)

@@ -250,11 +250,7 @@ class VllmArguments:
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
             'num_labels': self.num_labels,
         }
-        if self.task_type == 'embedding':
-            kwargs['task_type'] = 'embedding'
-        elif 'reranker' in self.task_type:
-            kwargs['task_type'] = self.task_type
-        elif self.task_type == 'seq_cls':
+        if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
             kwargs['task_type'] = self.task_type
 
         return kwargs
