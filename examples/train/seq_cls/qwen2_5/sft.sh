@@ -3,8 +3,8 @@
 # You can also specify `--model Qwen/Qwen2.5-0.5B-Instruct --use_chat_template true`.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen3-0.6B \
-    --train_type full \
+    --model Qwen/Qwen2.5-0.5B \
+    --train_type lora \
     --dataset 'DAMO_NLP/jd:cls#2000' \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
