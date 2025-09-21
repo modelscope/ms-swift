@@ -1,10 +1,10 @@
-# 2 * 72GiB; 4.1s/it
+# 4 * 60GiB; 7.5s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
-    --dataset 'tany0699/garbage265' \
+    --dataset 'tany0699/garbage265#20000' \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
     --packing true \
@@ -14,7 +14,7 @@ megatron sft \
     --split_dataset_ratio 0.01 \
     --micro_batch_size 2 \
     --global_batch_size 4 \
-    --model_kwargs '{"max_pixels", 1003520}' \
+    --model_kwargs '{"max_pixels": 1003520}' \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
@@ -25,12 +25,13 @@ megatron sft \
     --min_lr 1e-6 \
     --max_epochs 1 \
     --save megatron_output/Qwen2.5-VL-7B-Instruct \
-    --save_interval 200 \
+    --save_interval 500 \
+    --eval_interval 500 \
     --vit_gradient_checkpointing true \
     --max_length 8192 \
     --num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
-    --dataset_num_proc 8 \
-    --num_labels 265 \
+    --dataset_num_proc 32 \
+    --num_labels 266 \
     --task_type seq_cls \
