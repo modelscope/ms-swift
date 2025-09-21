@@ -15,7 +15,7 @@ from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from transformers import Trainer
 
 from swift.utils import is_swanlab_available, is_wandb_available
@@ -447,7 +447,7 @@ def get_chord_sft_dataloader(trainer,
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:
-            dataloader_params['sampler'] = sampler_fn(trainer, dataset)
+            dataloader_params['sampler'] = sampler_fn(dataset)
         dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
         dataloader_params['prefetch_factor'] = trainer.args.dataloader_prefetch_factor
         if is_training:
@@ -474,7 +474,7 @@ def make_chord_sft_dataset(trainer, chord_sft_dataset):
             dataset=chord_sft_dataset,
             description='Training',
             batch_size=trainer.args.chord_sft_per_device_train_batch_size,
-            sampler_fn=Trainer._get_train_sampler,
+            sampler_fn=RandomSampler,
             is_training=True,
         )
         return create_cyclic_iterator(chord_sft_dataloader)
@@ -503,6 +503,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         sft_inputs = to_device(trainer.template.data_collator(sft_inputs), trainer.accelerator.device)
 
         labels = sft_inputs.pop('labels')
+        loss_scale = sft_inputs.pop('loss_scale', None)
         outputs = trainer.model(**sft_inputs)
         chord_sft_loss = per_token_loss_func(outputs, labels)
 
@@ -510,6 +511,11 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
             per_token_probs = torch.exp(-chord_sft_loss)
             phi = per_token_probs * (1 - per_token_probs)
             chord_sft_loss *= phi
+
+        if loss_scale is not None:
+            loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+            chord_sft_loss *= loss_scale
+
         num_items_in_batch = (labels[:, 1:] != -100).sum()
         chord_sft_loss = chord_sft_loss.sum() / num_items_in_batch
     else:

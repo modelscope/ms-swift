@@ -24,6 +24,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.llm import to_device
+from swift.plugin.loss_scale.loss_scale import LossScale
 from swift.utils import get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
@@ -112,7 +113,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -943,9 +944,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not self.loss_scale.is_binary:
+            if not self.loss_scale.is_loss_scale_binary:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if self.loss_scale.is_binary:
+        if self.loss_scale.is_loss_scale_binary:
             loss_scale = None
         return input_ids, labels, loss_scale
 
