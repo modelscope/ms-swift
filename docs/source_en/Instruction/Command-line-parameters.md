@@ -612,6 +612,8 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - Rollout Parameters
   - multi_turn_scheduler: Multi-turn GRPO parameter; pass the corresponding plugin name, and make sure to implement it in plugin/multi_turn.py.
   - max_turns: Maximum number of rounds for multi-turn GRPO. The default is None, which means there is no limit.
+  - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
+  - vllm_max_lora_rank: LoRA parameter for the vLLM engine. Must be greater than or equal to the training lora_rank; it is recommended to set them equal. Defaults to 16.
 
 ### Rollout Arguments
 The rollout parameters inherit from the [deployment parameters](#deployment-arguments).

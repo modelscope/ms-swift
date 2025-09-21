@@ -194,6 +194,20 @@ To configure the external vLLM server during training, use the following paramet
 --vllm_server_port <service_port> \
 --vllm_server_timeout <timeout> \
 ```
+
+#### Weight-Sync Acceleration
+Swift 3.9 optimizes weight synchronization for LoRA training, achieving ~10× speed-up over Swift 3.8.
+
+To enable the optimized LoRA weight sync, add the following arguments to your rollout command:
+
+```bash
+    --vllm_enable_lora true
+    --vllm_max_lora_rank xxx # set to the same value as lora_rank in the training script
+```
+Note: For multimodal model training, vLLM supports loading adapters only for the language-model part. If you need to train the ViT layers of a multimodal model (freeze_vit false), set `vllm_enable_lora false`.
+
+For implementation details, please refer to the [PR](https://github.com/modelscope/ms-swift/pull/5773)
+
 ## logged metrics
 - completions/mean_length: The average length of generated completions.
 - completions/min_length: The minimum length among generated completions.
