@@ -24,7 +24,6 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.llm import to_device
-from swift.plugin.loss_scale.loss_scale import LossScale
 from swift.utils import get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
@@ -88,6 +87,7 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
+        from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
