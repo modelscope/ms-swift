@@ -267,6 +267,10 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - Note: If you use a non-streaming dataset, this parameter will automatically calculate train_iters for you, so there is no need to pass `train_iters` manually.
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 - enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss).
+- 🔥task_type: Defaults to "causal_lm". Options: "causal_lm", "seq_cls".
+- num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
+- problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Default is "single_label_classification".
+
 
 ## RLHF Parameters
 

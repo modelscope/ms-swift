@@ -1,4 +1,5 @@
 # 2 * 40GiB; 5s/it
+# eval_acc: 0.924
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -9,13 +10,13 @@ megatron sft \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear \
+    --target_modules all-linear all-router \
     --packing true \
     --expert_model_parallel_size 2 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-3 \
+    --moe_aux_loss_coeff 1e-6 \
     --sequence_parallel true \
     --micro_batch_size 1 \
     --global_batch_size 2 \
