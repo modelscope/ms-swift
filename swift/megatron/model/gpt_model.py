@@ -9,8 +9,10 @@ from megatron.core.config_logger import has_config_logger_enabled, log_config_to
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training import get_args
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
@@ -85,6 +87,20 @@ class GPTModel(McoreGPTModel):
         self.attention_scaling = 1.
         new_inv_freq, self.attention_scaling = get_rope_inv_freq()
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
+        args = get_args()
+        if args.task_type == 'seq_cls' and self.post_process:
+            self.output_layer = ColumnParallelLinear(
+                config.hidden_size,
+                args.num_labels,
+                config=config,
+                init_method=config.init_method,
+                bias=False,
+                skip_bias_add=False,
+                gather_output=True,
+                skip_weight_param_allocation=self.pre_process and self.share_embeddings_and_output_weights,
+                embedding_activation_buffer=self.embedding_activation_buffer,
+                grad_output_buffer=self.grad_output_buffer,
+            )
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
@@ -221,8 +237,8 @@ class GPTModel(McoreGPTModel):
                 'logits': logits,
             })
             log_config_to_disk(self.config, payload, prefix='input_and_logits')
-
-        if labels is None:
+        args = get_args()
+        if labels is None or args.task_type == 'seq_cls':
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
 

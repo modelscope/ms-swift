@@ -455,7 +455,7 @@ class Template(ProcessorMixin):
         encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
-            problem_type = self._get_problem_type(self.config, labels=labels)
+            problem_type = self.config.problem_type
             if problem_type == 'single_label_classification':
                 labels = int(labels)
             encoded['labels'] = labels
@@ -572,32 +572,9 @@ class Template(ProcessorMixin):
             }]
         }
 
-    @staticmethod
-    def _get_problem_type(config, labels=None, logits=None) -> str:
-        problem_type = config.problem_type
-        if problem_type is not None:
-            return problem_type
-        if labels is not None:
-            if isinstance(labels, (list, tuple)):
-                if labels and isinstance(labels[0], float):
-                    problem_type = 'regression'
-                else:
-                    problem_type = 'multi_label_classification'
-            else:
-                problem_type = 'single_label_classification'
-                assert config.num_labels >= labels + 1
-        if logits is not None:
-            if logits.shape[-1] == 1:
-                problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'  # compatible with older versions
-        assert problem_type is not None
-        config.problem_type = problem_type
-        return problem_type
-
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        problem_type = self._get_problem_type(self.config, logits=logits)
+        problem_type = self.config.problem_type
         if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -1581,7 +1558,7 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            problem_type = self._get_problem_type(self.config)
+            problem_type = self.config.problem_type
             if problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
             elif problem_type == 'multi_label_classification':
