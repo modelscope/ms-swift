@@ -231,6 +231,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
+    return_dummy_model = kwargs.get('return_dummy_model')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
     if max_model_len:
@@ -250,14 +251,8 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
-        with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
-            if model_info.task_type == 'seq_cls' and automodel_class is None:
-                try:
-                    model = AutoModelForSequenceClassification.from_pretrained(
-                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-                except ValueError:
-                    model = None
-            elif model_info.task_type == 'reranker' and automodel_class is None:
+        if model_info.task_type in {'seq_cls', 'reranker'} and automodel_class is None and not return_dummy_model:
+            with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
                         model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
@@ -270,10 +265,12 @@ def get_model_tokenizer_from_local(model_dir: str,
             'model_info': model_info,
             'model_meta': model_meta,
             'automodel_class': automodel_class,
-            'return_dummy_model': kwargs['return_dummy_model']
+            'return_dummy_model': return_dummy_model,
         }
         if model is None:
-            if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+            if return_dummy_model:
+                context = partial(patch_automodel, **context_kwargs)
+            elif model_info.task_type == 'seq_cls' and not model_meta.is_reward:
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
             elif model_info.task_type == 'seq_cls' and model_meta.is_reward and model_config.num_labels > 1:
                 logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '

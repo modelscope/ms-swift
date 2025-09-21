@@ -1,3 +1,3 @@
-from . import (baidu, bert, deepseek, dots, emu3, gemma, glm, idefics3, internlm, internvl, kwai, llama, llava, llm,
+from . import (baai, baidu, bert, deepseek, dots, gemma, glm, idefics3, internlm, internvl, kwai, llama, llava, llm,
                megrez, microsoft, midashenglm, minicpm, minimax, mistral, molmo, moonshot, mplug, openbuddy, pixtral,
                qwen, seed, stepfun, valley, yi)

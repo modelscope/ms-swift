@@ -46,7 +46,8 @@ class ModelArguments:
     new_special_tokens: List[str] = field(default_factory=list)
 
     num_labels: Optional[int] = None
-    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
+    problem_type: Literal['regression', 'single_label_classification',
+                          'multi_label_classification'] = 'single_label_classification'
     rope_scaling: Optional[str] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
