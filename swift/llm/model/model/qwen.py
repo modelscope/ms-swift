@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
@@ -700,6 +701,7 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
+    require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
