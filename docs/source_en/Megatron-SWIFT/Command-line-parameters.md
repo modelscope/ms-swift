@@ -28,7 +28,7 @@
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
-  - Note: The default is False in RLHF.
+  - Note: In RLHF the default is False. When task_type is not 'causal_lm', the default is False.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
   - Note: The recommended flash_attn version is 2.7.4.post1. In “ms-swift < 3.7” the default is set to "auto".
   - If 'flash_attention_3' is installed, FA3 will be used by default. For training scripts, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).

@@ -140,7 +140,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
-    calculate_per_token_loss: bool = True
+    calculate_per_token_loss: Optional[bool] = None
     use_flash_attn: bool = False
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
@@ -340,6 +340,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_pos_emb_head_dim = 64
         if self.task_type is None:
             self.task_type = 'causal_lm'
+        if self.calculate_per_token_loss is None:
+            self.calculate_per_token_loss = self.task_type == 'causal_lm'
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False

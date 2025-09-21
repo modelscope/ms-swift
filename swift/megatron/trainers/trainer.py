@@ -42,10 +42,11 @@ class MegatronTrainer(BaseMegatronTrainer):
         elif args.problem_type == 'multi_label_classification':
             loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
-        reporting_metric = {'loss': loss}
+        metric = {'loss': loss}
         if acc is not None:
-            reporting_metric['acc'] = acc
-        return loss, reporting_metric
+            metric['acc'] = acc
+        metric = self._all_reduce_metric(metric)
+        return loss, metric
 
     # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self,

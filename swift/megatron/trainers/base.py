@@ -298,6 +298,13 @@ class BaseMegatronTrainer(ABC):
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
 
+    def _all_reduce_metric(self, metric):
+        values = list(metric.values())
+        reporting_metric = values[0].new_tensor(values)
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         new_data_iterator = self._replace_data_iterator(data_iterator)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
