@@ -16,6 +16,7 @@ class LossScale:
     # If set to False, an additional 'loss_scale' key will be stored and the
     # corresponding loss function will be used.
     loss_scale_config = None  # path
+    is_binary = None
 
     def __init__(self):
         if self.loss_scale_config is not None:
@@ -75,7 +76,9 @@ class LossScale:
         return res_context_list, res_loss_scale
 
     @property
-    def is_binary(self):
+    def is_loss_scale_binary(self):
+        if self.is_binary:
+            return self.is_binary
         if self.loss_scale_map is None:
             return True
         return all(scale == 0.0 or scale == 1.0 for lst in self.loss_scale_map.values() for scale in lst)
