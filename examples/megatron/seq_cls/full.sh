@@ -33,5 +33,5 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 32 \
-    --num_labels 266 \
+    --num_labels 265 \
     --task_type seq_cls \

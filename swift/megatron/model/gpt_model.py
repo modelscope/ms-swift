@@ -1,15 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
 from contextlib import contextmanager
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import torch
 from megatron.core import InferenceParams
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
+from megatron.core.dist_checkpointing.mapping import ShardedStateDict
+from megatron.core.extensions.transformer_engine import TELinear
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel.layers import ColumnParallelLinear
+from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
@@ -18,6 +20,22 @@ from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
 logger = get_logger()
+
+
+class OutputLayerLinear(TELinear):
+
+    def sharded_state_dict(
+            self,
+            prefix: str = '',
+            sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+            metadata: Optional[dict] = None,
+    ) -> ShardedStateDict:
+        res = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+        for k, v in res.items():
+            if k.endswith('._extra_state'):
+                if v.data.numel() == 0:
+                    v.data = None
+        return res
 
 
 class GPTModel(McoreGPTModel):
@@ -89,17 +107,15 @@ class GPTModel(McoreGPTModel):
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
         args = get_args()
         if args.task_type == 'seq_cls' and self.post_process:
-            self.output_layer = ColumnParallelLinear(
+            self.output_layer = OutputLayerLinear(
                 config.hidden_size,
                 args.num_labels,
                 config=config,
                 init_method=config.init_method,
                 bias=False,
                 skip_bias_add=False,
-                gather_output=True,
-                skip_weight_param_allocation=self.pre_process and self.share_embeddings_and_output_weights,
-                embedding_activation_buffer=self.embedding_activation_buffer,
-                grad_output_buffer=self.grad_output_buffer,
+                parallel_mode=None,
+                skip_weight_param_allocation=False,
             )
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
@@ -226,8 +242,14 @@ class GPTModel(McoreGPTModel):
         output_weight = None
         if self.share_embeddings_and_output_weights:
             output_weight = self.shared_embedding_or_output_weight()
-        logits, _ = self.output_layer(hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-
+        args = get_args()
+        if args.task_type == 'causal_lm':
+            logits, _ = self.output_layer(
+                hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
+        else:
+            logits = self.output_layer(hidden_states)[0]
+            if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+                logits = gather_from_sequence_parallel_region(logits)
         if has_config_logger_enabled(self.config):
             payload = OrderedDict({
                 'input_ids': input_ids,
@@ -237,7 +259,6 @@ class GPTModel(McoreGPTModel):
                 'logits': logits,
             })
             log_config_to_disk(self.config, payload, prefix='input_and_logits')
-        args = get_args()
         if labels is None or args.task_type == 'seq_cls':
             # [s b h] => [b s h]
             return logits.transpose(0, 1).contiguous()
