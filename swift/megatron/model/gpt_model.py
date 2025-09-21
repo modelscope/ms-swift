@@ -33,7 +33,7 @@ class OutputLayerLinear(TELinear):
         res = super().sharded_state_dict(prefix, sharded_offsets, metadata)
         for k, v in res.items():
             if k.endswith('._extra_state'):
-                if v.data.numel() == 0:
+                if v.data is not None and v.data.numel() == 0:
                     v.data = None
         return res
 
