@@ -338,6 +338,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_head_dim = 128
         if self.qk_pos_emb_head_dim is None:
             self.qk_pos_emb_head_dim = 64
+        if self.task_type is None:
+            self.task_type = 'causal_lm'
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False

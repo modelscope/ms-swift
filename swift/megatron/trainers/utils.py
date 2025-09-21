@@ -32,9 +32,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
     data = next(data_iterator)
     is_finished = data.pop('is_finished', False)
-    data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-    if 'loss_scale' in data:
-        data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+    if args.task_type == 'causal_lm':
+        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+        if 'loss_scale' in data:
+            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         pass
