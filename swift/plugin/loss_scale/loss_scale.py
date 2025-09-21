@@ -77,7 +77,7 @@ class LossScale:
 
     @property
     def is_loss_scale_binary(self):
-        if self.is_binary:
+        if self.is_binary is not None:
             return self.is_binary
         if self.loss_scale_map is None:
             return True
