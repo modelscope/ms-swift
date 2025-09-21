@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import functools
 import math
+import os
 import time
 from contextlib import contextmanager
 from functools import partial
@@ -517,3 +518,19 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
+
+
+_EXPANDABLE_SEGMENTS_SET = 'expandable_segments' in os.environ.get('PYTORCH_CUDA_ALLOC_CONF', '')
+
+
+def set_expandable_segments(enable: bool) -> None:
+    """Enable or disable expandable segments for cuda.
+    Args:
+        enable (bool): Whether to enable expandable segments. Used to avoid OOM.
+    """
+    global _EXPANDABLE_SEGMENTS_SET
+    if not _EXPANDABLE_SEGMENTS_SET:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
+        _EXPANDABLE_SEGMENTS_SET = True
