@@ -402,6 +402,8 @@ class Template(ProcessorMixin):
             for negative in inputs.negative:
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
+                    if f'negative_{key}' not in _encoded:
+                        _encoded[f'negative_{key}'] = []
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
                 labels.append(0.0)
 
