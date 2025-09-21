@@ -267,6 +267,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
     extra_config = MegatronArguments.load_args_config(adapter_load or args.mcore_model)
     extra_config['adapter_load'] = adapter_load
+    if args.mcore_model is not None:
+        extra_config['mcore_model'] = args.mcore_model
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
