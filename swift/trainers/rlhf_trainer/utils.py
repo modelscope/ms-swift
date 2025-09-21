@@ -15,7 +15,7 @@ from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from transformers import Trainer
 
 from swift.utils import is_swanlab_available, is_wandb_available
@@ -447,7 +447,7 @@ def get_chord_sft_dataloader(trainer,
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:
-            dataloader_params['sampler'] = sampler_fn(trainer, dataset)
+            dataloader_params['sampler'] = sampler_fn(dataset)
         dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
         dataloader_params['prefetch_factor'] = trainer.args.dataloader_prefetch_factor
         if is_training:
@@ -474,7 +474,7 @@ def make_chord_sft_dataset(trainer, chord_sft_dataset):
             dataset=chord_sft_dataset,
             description='Training',
             batch_size=trainer.args.chord_sft_per_device_train_batch_size,
-            sampler_fn=Trainer._get_train_sampler,  # TODO
+            sampler_fn=RandomSampler,
             is_training=True,
         )
         return create_cyclic_iterator(chord_sft_dataloader)
