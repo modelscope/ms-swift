@@ -534,3 +534,4 @@ def set_expandable_segments(enable: bool) -> None:
     if torch.cuda.is_available():
         torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
         _EXPANDABLE_SEGMENTS_SET = True
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
