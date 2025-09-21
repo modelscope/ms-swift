@@ -503,7 +503,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         sft_inputs = to_device(trainer.template.data_collator(sft_inputs), trainer.accelerator.device)
 
         labels = sft_inputs.pop('labels')
-        loss_scale = inputs.pop('loss_scale', None)
+        loss_scale = sft_inputs.pop('loss_scale', None)
         outputs = trainer.model(**sft_inputs)
         chord_sft_loss = per_token_loss_func(outputs, labels)
 
@@ -512,7 +512,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
             phi = per_token_probs * (1 - per_token_probs)
             chord_sft_loss *= phi
 
-        if loss_scale:
+        if loss_scale is not None:
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
             chord_sft_loss *= loss_scale
 
