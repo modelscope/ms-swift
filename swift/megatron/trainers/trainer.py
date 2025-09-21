@@ -42,7 +42,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         elif args.problem_type == 'multi_label_classification':
             loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
-        metric = {'loss': loss}
+        metric = {'loss': loss.detach().clone()}
         if acc is not None:
             metric['acc'] = acc
         metric = self._all_reduce_metric(metric)
@@ -113,7 +113,7 @@ class MegatronTrainer(BaseMegatronTrainer):
                 fatal=False,
             )
         # Reduce loss for logging.
-        reporting_loss = loss.clone().detach()
+        reporting_loss = loss.detach().clone()
         lm_loss = loss[0]
         if not self.megatron_core_013:
             # fix megatron-lm bug
@@ -123,7 +123,7 @@ class MegatronTrainer(BaseMegatronTrainer):
             reporting_loss = (reporting_loss[0], reporting_loss[1])
         else:
             lm_loss = lm_loss.clone()
-        local_num_tokens = loss[1].clone().detach().to(torch.int)
+        local_num_tokens = loss[1].detach().clone().to(torch.int)
         return (
             lm_loss,
             local_num_tokens,

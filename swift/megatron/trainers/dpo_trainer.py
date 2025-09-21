@@ -131,7 +131,7 @@ class MegatronDPOTrainer(MegatronTrainer):
             loss = loss + args.rpo_alpha * nll_loss
         loss = loss.mean()
         metric = {
-            'loss': loss.clone().detach(),
+            'loss': loss.detach().clone(),
             'logps/chosen': logps[:num_samples].mean(),
             'logps/rejected': logps[num_samples:].mean(),
             'rewards/chosen': chosen_rewards.mean(),

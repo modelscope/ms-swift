@@ -5,6 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Dict
 
 import megatron.core
 import torch
@@ -298,7 +299,7 @@ class BaseMegatronTrainer(ABC):
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
 
-    def _all_reduce_metric(self, metric):
+    def _all_reduce_metric(self, metric: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         values = list(metric.values())
         reporting_metric = values[0].new_tensor(values)
         torch.distributed.all_reduce(
