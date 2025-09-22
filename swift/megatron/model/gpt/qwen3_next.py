@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Optional, Tuple, Union
 
 import torch
+from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
@@ -10,13 +11,12 @@ from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transfor
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
-from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
-from megatron.core.utils import deprecate_inference_params, is_fa_min_version, nvtx_range_pop, nvtx_range_push
+from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
 
 from swift.llm import ModelType
@@ -132,6 +132,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
+        from megatron.core.utils import nvtx_range_pop, nvtx_range_push
         # Check if we need to skip RoPE
         # no_rope is 0-indexed array and self.layer_number is 1-indexed
         no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
@@ -376,17 +377,20 @@ class Qwen3NextSelfAttention(SelfAttention):
 class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
+        assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
         args = get_args()
-        if args.sequence_parallel:
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
         seq_len = hidden_states.shape[0]
         packed_seq_params = kwargs.get('packed_seq_params')
         thd_format = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
-        if thd_format:
+        # Note: for packed inputs, we do not perform padding_free unpadding.
+        # Doing so would allow different sequences to see each other; for efficiency we keep this implementation.
+        if thd_format and not args.packing:
             new_hidden_states = hidden_states.new_zeros(
                 (packed_seq_params.num_samples, packed_seq_params.max_seqlen_q.item(), hidden_states.shape[-1]))
             attention_mask = hidden_states.new_zeros(
@@ -399,19 +403,22 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
             hidden_states = new_hidden_states
         else:
             hidden_states = hidden_states.transpose(0, 1)
-            attention_mask = kwargs['attention_mask'].sum(dim=(1, 3)) > 0
+            attention_mask = kwargs.get('attention_mask')
+            if attention_mask is not None:
+                attention_mask = attention_mask.sum(dim=(1, 3)) > 0
         res = super().forward(hidden_states=hidden_states, attention_mask=attention_mask)
-        if thd_format:
+        if thd_format and not args.packing:
             res = res[attention_mask][:, None]
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
             res = res.transpose(0, 1)
-        if args.sequence_parallel:
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             res = scatter_to_sequence_parallel_region(res)
         return res, None
 
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
+    from megatron.core.transformer.enums import LayerType
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
 
     if config.pipeline_model_parallel_layout is not None:
@@ -471,7 +478,8 @@ def convert_mcore2hf_qwen3_next(hf_model, mg_model):
     args = get_args()
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
+        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
+        lm_head_weight.data.copy_(mg_model.output_layer.weight)
     hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight - 1)
     for layer_idx in range(args.num_layers):
         layer_type = args.layer_types[layer_idx]

@@ -262,8 +262,23 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
     return find_layers(model, _cond, sub_module=sub_module)
 
 
+_DISABLE_USE_BARRIER = False
+
+
+@contextmanager
+def disable_safe_ddp_context_use_barrier():
+    global _DISABLE_USE_BARRIER
+    _DISABLE_USE_BARRIER = True
+    try:
+        yield
+    finally:
+        _DISABLE_USE_BARRIER = False
+
+
 @contextmanager
 def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = True):
+    if _DISABLE_USE_BARRIER:
+        use_barrier = False
     if use_barrier and dist.is_initialized():
         if is_dist():
             if not is_master():

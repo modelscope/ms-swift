@@ -24,8 +24,11 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
         if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3NextForCausalLM'}:
             res['use_shared_expert_gate'] = True
     if llm_architectures in {
-            'DeepseekForCausalLM', 'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM', 'Dots1ForCausalLM'
-    }:
+            'DeepseekForCausalLM',
+            'DeepseekV2ForCausalLM',
+            'DeepseekV3ForCausalLM',
+            'Dots1ForCausalLM',
+    } or architectures == 'KimiVLForConditionalGeneration':
         if llm_architectures != 'DeepseekForCausalLM':
             res['qk_layernorm'] = True
         res['moe_router_load_balancing_type'] = 'seq_aux_loss'
