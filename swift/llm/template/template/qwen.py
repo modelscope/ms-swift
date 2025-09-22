@@ -344,7 +344,7 @@ class Qwen2VLTemplate(Template):
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':
             from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
-        elif self.version == 'omni':
+        elif self.version == 'omni_v2_5':
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
         return self._patch_flash_attention_forward(modeling_module, text_position_ids)
 
@@ -438,7 +438,7 @@ register_template(
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
-    version = 'omni'
+    version = 'omni_v2_5'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
     def init_processor(self, processor) -> None:
@@ -487,12 +487,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
+        do_resize = True if self.version == 'omni_v3' else False
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
-            do_resize=False,
+            do_resize=do_resize,
             return_tensors='pt')
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
@@ -521,8 +522,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                                                                 _get_new_audio_tokens)
 
         for media_type in ['image', 'video']:
-            token = f'<|{media_type.upper()}|>'
-            token_id = self._tokenize(token)
+            if self.version == 'omni_v3':
+                token_id = [getattr(processor, f'{media_type}_token_id')]
+            else:
+                token = f'<|{media_type.upper()}|>'
+                token_id = self._tokenize(token)
             idx_list = findall(input_ids, token_id)
             if idx_list:
                 merge_size = processor.image_processor.merge_size
@@ -647,10 +651,21 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Q
 
 
 class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
-    pass
+    version = 'omni_v3'
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<|vision_start|><|image_pad|><|vision_end|>']
+        elif media_type == 'audio':
+            # TODO
+            pass
+        elif media_type == 'video':
+            # TODO
+            pass
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None))
 
 
 class Ovis1_6Template(Template):
