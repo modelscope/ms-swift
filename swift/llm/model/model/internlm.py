@@ -495,7 +495,7 @@ register_model(
         get_model_tokenizer_interns1,
         architectures=['InternS1ForConditionalGeneration'],
         model_arch=ModelArch.interns1,
-        requires=['transformers>=4.55.2'],
+        requires=['transformers>=4.55.2,<4.56'],
         tags=['vision', 'video'],
     ))
 
