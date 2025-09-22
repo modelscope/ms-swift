@@ -155,19 +155,43 @@ pre-commit install
 | multi-node            | DONE   |
 | multi-gpu             | DONE   |
 | moe                   | DONE   |
-| megatron              | ING    |
+| megatron              | DONE   |
+| liger                 | DONE   |
+| grpo                  | DONE   |
+| full                  | DONE   |
+| flash_attention_3     | DONE   |
+| embedding             | DONE   |
+| base_to_chat          | DONE   |
+| all_to_all            | DONE   |
+| agent                 | DONE   |
 
-2、推理
+`DONE`
 
-3、量化
+2、推理：infer
 
-4、部署
+`DONE`
 
-5、评测
+| submodule | status |
+| --------- | ------ |
+|           |        |
+
+3、导出/量化：export
+
+`DONE`
+
+4、部署：deploy
+
+`DONE`
+
+5、评测：eval
+
+`DONE`
+
+6、models
+
+
 
 四、产出：保存日志/权重/评测结果与复现实验命令。
-
-
 
 
 

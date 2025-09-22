@@ -7,6 +7,7 @@ swift deploy \
     --sglang_tp_size 2 \
     --served_model_name Qwen3-8B
 
+
 # After the server-side deployment above is successful, use the command below to perform a client call test.
 
 # curl http://localhost:8000/v1/chat/completions \

@@ -29,8 +29,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
     print(f'model: {model}')
 
     messages = [{
-        'role':
-        'user',
+        'role': 'user',
         'content': [
             # {
             #   'type': 'image',
