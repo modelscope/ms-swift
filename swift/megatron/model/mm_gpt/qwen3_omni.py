@@ -69,8 +69,9 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         'thinker': 'thinker',
     }
     _vision_tower = ['thinker.audio_tower', 'thinker.visual']
-    _aligner = ['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
-                'thinker.visual.merger_list']
+    _aligner = [
+        'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger', 'thinker.visual.merger_list'
+    ]
 
     def __init__(self, config):
         from transformers.models.qwen3_omni_moe import (Qwen3OmniMoeThinkerTextModel,
