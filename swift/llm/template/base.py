@@ -87,6 +87,7 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
+        from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
@@ -112,7 +113,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -405,6 +406,8 @@ class Template(ProcessorMixin):
             for negative in inputs.negative:
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
+                    if f'negative_{key}' not in _encoded:
+                        _encoded[f'negative_{key}'] = []
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
                 labels.append(0.0)
 
@@ -453,7 +456,7 @@ class Template(ProcessorMixin):
         encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
-            problem_type = self._get_problem_type(self.config, labels=labels)
+            problem_type = self.config.problem_type
             if problem_type == 'single_label_classification':
                 labels = int(labels)
             encoded['labels'] = labels
@@ -570,32 +573,9 @@ class Template(ProcessorMixin):
             }]
         }
 
-    @staticmethod
-    def _get_problem_type(config, labels=None, logits=None) -> str:
-        problem_type = config.problem_type
-        if problem_type is not None:
-            return problem_type
-        if labels is not None:
-            if isinstance(labels, (list, tuple)):
-                if labels and isinstance(labels[0], float):
-                    problem_type = 'regression'
-                else:
-                    problem_type = 'multi_label_classification'
-            else:
-                problem_type = 'single_label_classification'
-                assert config.num_labels >= labels + 1
-        if logits is not None:
-            if logits.shape[-1] == 1:
-                problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'  # compatible with older versions
-        assert problem_type is not None
-        config.problem_type = problem_type
-        return problem_type
-
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        problem_type = self._get_problem_type(self.config, logits=logits)
+        problem_type = self.config.problem_type
         if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -964,9 +944,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not self.loss_scale.is_binary:
+            if not self.loss_scale.is_loss_scale_binary:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if self.loss_scale.is_binary:
+        if self.loss_scale.is_loss_scale_binary:
             loss_scale = None
         return input_ids, labels, loss_scale
 
@@ -1579,7 +1559,7 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            problem_type = self._get_problem_type(self.config)
+            problem_type = self.config.problem_type
             if problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
             elif problem_type == 'multi_label_classification':
