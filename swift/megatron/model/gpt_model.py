@@ -233,6 +233,7 @@ class GPTModel(McoreGPTModel):
                 packed_seq_params=packed_seq_params,
                 sequence_len_offset=sequence_len_offset,
                 **(extra_block_kwargs or {}),
+                **kwargs,
             )
 
         if not self.post_process:

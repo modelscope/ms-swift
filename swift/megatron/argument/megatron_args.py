@@ -97,6 +97,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
+    # qwen3_vl, qwen3_omni
+    mrope_interleaved: Optional[bool] = None
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
@@ -357,6 +359,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_enable_expert_bias = False
         if self.moe_layer_freq is None:
             self.moe_layer_freq = '1'
+        if self.mrope_interleaved is None:
+            self.mrope_interleaved = False
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments

@@ -58,6 +58,68 @@ def test_qwen2_5_omni():
     assert response == response2
 
 
+def _run_qwen3_omni_hf(model, processor, messages):
+    from qwen_omni_utils import process_mm_info
+    text = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+    audios, images, videos = process_mm_info(messages, use_audio_in_video=False)
+    inputs = processor(text=text, audio=audios, images=images, videos=videos, return_tensors='pt', padding=True)
+    inputs = inputs.to(device=model.device, dtype=model.dtype)
+    text_ids = model.generate(**inputs, use_audio_in_video=False, do_sample=False, max_new_tokens=128)
+    text = processor.decode(
+        text_ids[0][len(inputs['input_ids'][0]):], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return text
+
+
+def test_qwen3_omni():
+    query = 'describe the image.'
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Thinking')
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image',
+                    'image': images[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response2 = _run_qwen3_omni_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
+def test_qwen3_omni_audio():
+    query = 'describe the audio.'
+    audios = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
+    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Instruct')
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=[], audios=audios)
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'audio',
+                    'audio': audios[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response2 = _run_qwen3_omni_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2[:len(response)]
+
+
 def test_qvq():
     pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
     response = _infer_model(pt_engine)
@@ -795,6 +857,8 @@ if __name__ == '__main__':
     # test_qwen2_vl()
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
+    # test_qwen3_omni()
+    test_qwen3_omni_audio()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -847,10 +911,10 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
-    test_interns1()
+    # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
     # test_keye_vl_1_5()
-    test_internvl3_hf()
-    test_internvl3_5_hf()
-    test_internvl_gpt_hf()
+    # test_internvl3_hf()
+    # test_internvl3_5_hf()
+    # test_internvl_gpt_hf()
