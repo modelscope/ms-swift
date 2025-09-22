@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
