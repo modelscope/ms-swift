@@ -537,7 +537,10 @@ register_model_arch(
         MLLMModelArch.qwen3_omni,
         language_model='thinker.model',
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
-        aligner=['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger'],
+        aligner=[
+            'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
+            'thinker.visual.merger_list'
+        ],
         generator=['talker', 'token2wav'],
     ))
 
