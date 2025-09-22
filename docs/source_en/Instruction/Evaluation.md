@@ -10,7 +10,7 @@ SWIFT's eval capability utilizes the EvalScope evaluation framework from the Mag
 
 Currently, we support the evaluation process of **standard evaluation datasets** as well as the evaluation process of **user-defined** evaluation datasets. The **standard evaluation datasets** are supported by three evaluation backends:
 
-Below are the names of the supported datasets. For detailed information on the datasets, please refer to [all supported datasets](https://evalscope.readthedocs.io/en/latest/get_started/supported_dataset.html).
+Below are the names of the supported datasets. For detailed information on the datasets, please refer to [all supported datasets](https://evalscope.readthedocs.io/en/latest/get_started/supported_dataset/index.html).
 
 1. Native (default):
 
