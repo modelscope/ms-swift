@@ -7,6 +7,7 @@ import torch.nn as nn
 from accelerate.utils import gather_object
 from peft import PeftModel
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, selective_log_softmax
@@ -70,6 +71,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         if 'bco_pair' in loss_types:
             self.running = RunningMoments(self.accelerator)
+        if self.args.ld_alpha is not None:
+            require_version('trl>=0.18', '`ld_alpha` requires that "trl>=0.18".')
         if self.template.packing:
             self.accelerator.gather_for_metrics = new_gather_function
 
