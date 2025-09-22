@@ -80,7 +80,7 @@ def test_kimi_vl():
 
 
 def test_qwen3_omni():
-    _test_model('Qwen/Qwen3-Omni')
+    _test_model('Qwen/Qwen3-Omni-30B-A3B-Instruct')
 
 
 if __name__ == '__main__':

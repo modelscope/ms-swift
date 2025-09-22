@@ -457,11 +457,17 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         from qwen_omni_utils import fetch_image, fetch_video
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
-            return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+            if self.version == 'omni_v2_5':
+                return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+            elif self.version == 'omni_v3':
+                return ['<|vision_start|><|image_pad|><|vision_end|>']
         elif media_type == 'audio':
             if self.mode != 'vllm':
                 inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
-            return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
+            if self.version == 'omni_v2_5':
+                return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
+            elif self.version == 'omni_v3':
+                return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
             inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
@@ -473,8 +479,22 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 video = librosa.load(video, sr=self.sampling_rate)[0]
                 inputs.audios.insert(inputs.audio_idx, (video, 'video'))
                 inputs.audio_idx += 1
-                return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
-            return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
+                if self.version == 'omni_v2_5':
+                    return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
+                elif self.version == 'omni_v3':
+                    return ['<|vision_start|><|audio_start|><|video_pad|><|audio_end|><|vision_end|>']
+            if self.version == 'omni_v2_5':
+                return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
+            elif self.version == 'omni_v3':
+                return ['<|vision_start|><|video_pad|><|vision_end|>']
+
+    def _get_feat_extract_output_lengths(self, input_lengths):
+        if self.version == 'omni_v2_5':
+            return (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
+        elif self.version == 'omni_v3':
+            input_lengths_leave = input_lengths % 100
+            feat_lengths = (input_lengths_leave - 1) // 2 + 1
+            return ((feat_lengths - 1) // 2 + 1 - 1) // 2 + 1 + (input_lengths // 100) * 13
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
@@ -501,13 +521,17 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
+        config = self.config.thinker_config
         # audio
-        audio_token_id = self._tokenize('<|AUDIO|>')
+        if self.version == 'omni_v3':
+            audio_token_id = [config.audio_token_id]
+        else:
+            audio_token_id = self._tokenize('<|AUDIO|>')
         idx_list = findall(input_ids, audio_token_id)
         feature_attention_mask = media_inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
-            audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
+            audio_lengths = self._get_feat_extract_output_lengths(audio_feature_lengths)
         else:
             audio_lengths = None
         audio_lengths_origin = audio_lengths
@@ -523,7 +547,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
         for media_type in ['image', 'video']:
             if self.version == 'omni_v3':
-                token_id = [getattr(processor, f'{media_type}_token_id')]
+                token_id = [getattr(config, f'{media_type}_token_id')]
             else:
                 token = f'<|{media_type.upper()}|>'
                 token_id = self._tokenize(token)
@@ -650,19 +674,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
-class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
+class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
     version = 'omni_v3'
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    inputs: StdTemplateInputs) -> List[Context]:
-        if media_type == 'image':
-            return ['<|vision_start|><|image_pad|><|vision_end|>']
-        elif media_type == 'audio':
-            # TODO
-            pass
-        elif media_type == 'video':
-            # TODO
-            pass
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs  # TODO
