@@ -35,35 +35,33 @@ if HAVE_TE:
 
 
 def convert_hf2mcore_qwen3_omni(hf_model, mg_model):
-    language_model = hf_model.model
-    if hasattr(language_model, 'language_model'):
-        language_model = language_model.language_model
-    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
+    language_model = hf_model.thinker.model
     mg_language_model = mg_model.language_model
     args = get_args()
     mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
     if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
+        mg_language_model.output_layer.weight.data.copy_(hf_model.thinker.lm_head.weight)
     mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.visual.load_state_dict(visual.state_dict())
+    mg_model.visual.thinker.visual.load_state_dict(hf_model.thinker.visual.state_dict())
+    mg_model.visual.thinker.audio_tower.load_state_dict(hf_model.thinker.audio_tower.state_dict())
 
 
 def convert_mcore2hf_qwen3_omni(hf_model, mg_model):
-    language_model = hf_model.model
-    if hasattr(language_model, 'language_model'):
-        language_model = language_model.language_model
-    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
+    language_model = hf_model.thinker.model
     mg_language_model = mg_model.language_model
     args = get_args()
     language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.lm_head.weight.data.copy_(mg_language_model.output_layer.weight)
+        lm_head_weight = (
+            hf_model.thinker.score.weight if args.task_type == 'seq_cls' else hf_model.thinker.lm_head.weight)
+        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
     language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    visual.load_state_dict(mg_model.visual.visual.state_dict())
+    hf_model.thinker.visual.load_state_dict(mg_model.visual.thinker.visual.state_dict())
+    hf_model.thinker.audio_tower.load_state_dict(mg_model.visual.thinker.audio_tower.state_dict())
 
 
 class Qwen3Omni_Vit(HuggingFaceModule):
@@ -74,8 +72,15 @@ class Qwen3Omni_Vit(HuggingFaceModule):
     _aligner = ['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger']
 
     def __init__(self, config):
-        from transformers.models.qwen3_omni_moe import Qwen3OmniMoeThinkerTextModel
-        super().__init__(config, [Qwen3OmniMoeThinkerTextModel])
+        from transformers.models.qwen3_omni_moe import (Qwen3OmniMoeThinkerTextModel,
+                                                        Qwen3OmniMoeTalkerForConditionalGeneration,
+                                                        Qwen3OmniMoeCode2Wav)
+        super().__init__(
+            config, [Qwen3OmniMoeThinkerTextModel, Qwen3OmniMoeTalkerForConditionalGeneration, Qwen3OmniMoeCode2Wav])
+
+    def prepare_model(self, hf_model):
+        del self.thinker.model
+        del self.thinker.lm_head
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         input_ids = kwargs['input_ids']
