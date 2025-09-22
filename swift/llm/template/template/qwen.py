@@ -86,6 +86,18 @@ class Qwen3RerankerTemplate(Template):
         inputs.messages = [{'role': 'user', 'content': user_message}]
         return inputs
 
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        if self.mode == 'vllm':
+            return {
+                'hf_overrides': {
+                    'architectures': ['Qwen3ForSequenceClassification'],
+                    'classifier_from_token': ['no', 'yes'],
+                    'is_original_qwen3_reranker': True,
+                }
+            }
+        else:
+            return super().prepare_engine_kwargs()
+
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '

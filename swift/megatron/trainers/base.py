@@ -5,6 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Dict
 
 import megatron.core
 import torch
@@ -26,6 +27,7 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from packaging import version
 
+from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -272,6 +274,7 @@ class BaseMegatronTrainer(ABC):
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
             if args.vit_gradient_checkpointing:
+                dynamic_gradient_checkpointing(module, False)
                 try:
                     module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
@@ -295,6 +298,13 @@ class BaseMegatronTrainer(ABC):
             logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
+
+    def _all_reduce_metric(self, metric: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        values = list(metric.values())
+        reporting_metric = values[0].new_tensor(values)
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         new_data_iterator = self._replace_data_iterator(data_iterator)

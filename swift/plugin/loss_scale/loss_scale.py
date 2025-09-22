@@ -15,8 +15,8 @@ class LossScale:
     # acceleration techniques such as liger_kernel.
     # If set to False, an additional 'loss_scale' key will be stored and the
     # corresponding loss function will be used.
-    is_binary = False
     loss_scale_config = None  # path
+    is_binary = None
 
     def __init__(self):
         if self.loss_scale_config is not None:
@@ -75,13 +75,20 @@ class LossScale:
             res_loss_scale += loss_scale
         return res_context_list, res_loss_scale
 
+    @property
+    def is_loss_scale_binary(self):
+        if self.is_binary is not None:
+            return self.is_binary
+        if self.loss_scale_map is None:
+            return True
+        return all(scale == 0.0 or scale == 1.0 for lst in self.loss_scale_map.values() for scale in lst)
+
 
 class DefaultLossScale(LossScale):
-    is_binary = True
+    pass
 
 
 class LastRoundLossScale(LossScale):
-    is_binary = True
 
     def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool, **kwargs):
         if context_type == ContextType.RESPONSE:
@@ -130,7 +137,6 @@ class AlphaUmiLossScale(REACTLossScale):
 
 
 class TrainAllLossScale(LossScale):
-    is_binary = True
 
     def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
         return [context], [1.]
@@ -138,12 +144,10 @@ class TrainAllLossScale(LossScale):
 
 class IgnoreEmptyThink(REACTLossScale):
     loss_scale_config = 'ignore_empty_think.json'
-    is_binary = True
 
 
 class LastRoundWithIgnoreEmptyThink(LossScale):
     loss_scale_config = 'ignore_empty_think.json'
-    is_binary = True
 
     def get_loss_scale(self,
                        context: str,

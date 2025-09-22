@@ -38,7 +38,7 @@ Hints:
 - new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
-- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
+- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is 'single_label_classification'.
 - rope_scaling: RoPE type, supports `linear`, `dynamic`, and `yarn`, or you can directly pass in a JSON string: `"{\"factor\":2.0,\"type\":\"yarn\"}"`. Please use in conjunction with `max_model_len`. Default is None.
 - max_model_len: If using `rope_scaling`, you can set `max_model_len`. This parameter can be used to calculate the RoPE `factor` multiplier. The final `max_position_embeddings` will be set to the original value multiplied by the `factor`. If `rope_scaling` is a JSON string, this value will not take effect.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
@@ -594,6 +594,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
 - metric: Evaluate the results of the inference, currently supporting 'acc' and 'rouge'. The default is None, meaning no evaluation is performed.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
+- reranker_use_activation: Use sigmoid after reranker score, default True.
 
 ### Deployment Arguments
 
@@ -666,6 +667,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.
 - mcore_model: Path to the mcore format model. Default is None.
+- mcore_adapters: List of paths to mcore format model adapters, default is empty list.
 - thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
 - 🔥test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).

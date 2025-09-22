@@ -41,6 +41,7 @@ class LLMTemplateType:
     ziya = 'ziya'
     atom = 'atom'
     mengzi = 'mengzi'
+    bge_reranker = 'bge_reranker'
 
     chatglm2 = 'chatglm2'
     glm4 = 'glm4'

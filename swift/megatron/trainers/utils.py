@@ -9,7 +9,6 @@ from megatron.training import get_args
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
-from swift.utils import get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -33,9 +32,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
     data = next(data_iterator)
     is_finished = data.pop('is_finished', False)
-    data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-    if 'loss_scale' in data:
-        data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+    if args.task_type == 'causal_lm':
+        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+        if 'loss_scale' in data:
+            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         pass
@@ -126,6 +126,8 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
             return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
             if key not in keys:
+                continue
+            if args.task_type == 'seq_cls' and key == 'labels':
                 continue
             if val is not None:
                 if key == 'decoder_input':

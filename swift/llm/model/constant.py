@@ -25,6 +25,8 @@ class LLMModelType:
 
     qwen2_gte = 'qwen2_gte'
 
+    bge_reranker = 'bge_reranker'
+
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
     marco_o1 = 'marco_o1'

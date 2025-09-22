@@ -120,7 +120,8 @@ def convert_mcore2hf(hf_model, mg_model):
     args = get_args()
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
+        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
+        lm_head_weight.data.copy_(mg_model.output_layer.weight)
     hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state(args, mg_model, hf_model.model, layer_idx)

@@ -721,6 +721,7 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
+    require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer

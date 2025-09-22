@@ -397,7 +397,7 @@ def _patch_peft_ModulesToSaveWrapper():
                 metadata: Optional[dict] = None,
         ) -> ShardedStateDict:
             sharded_state_dict = tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
-            if prefix == 'output_layer.':
+            if prefix in {'output_layer.', 'language_model.output_layer.'}:
                 for k in list(sharded_state_dict.keys()):
                     if '_extra_state' in k:
                         # Old GPT checkpoints only stored the output layer weight key. So we remove the

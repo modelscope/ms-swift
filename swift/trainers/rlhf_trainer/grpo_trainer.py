@@ -297,7 +297,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+            infer_template = copy(self.template)
+            infer_template.padding_free = False
+            self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')

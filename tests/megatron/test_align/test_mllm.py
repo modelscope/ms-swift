@@ -75,6 +75,10 @@ def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
 
+def test_kimi_vl():
+    _test_model('moonshotai/Kimi-VL-A3B-Thinking-2506')
+
+
 def test_qwen3_vl():
     _test_model('Qwen/Qwen3-VL')
 
@@ -95,5 +99,6 @@ if __name__ == '__main__':
     # test_internvl3_5_moe_hf()
     # test_glm4_5v()
     # test_ovis2_5()
+    # test_kimi_vl()
     test_qwen3_vl()
     # test_qwen3_vl_moe()
