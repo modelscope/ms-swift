@@ -400,15 +400,21 @@ class Template(ProcessorMixin):
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
-                _encoded[f'negative_{key}'] = []
             labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            for negative in inputs.negative:
+            _all_negative_keys = set()
+            for idx, negative in enumerate(inputs.negative):
+                _tmp_negative_keys = set()
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
-                    if f'negative_{key}' not in _encoded:
-                        _encoded[f'negative_{key}'] = []
-                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                    negative_key = f'negative_{key}'
+                    _all_negative_keys.add(negative_key)
+                    _tmp_negative_keys.add(negative_key)
+                    if negative_key not in _encoded:
+                        _encoded[negative_key] = [None] * idx
+                    _encoded[negative_key].append(negative_encoded[key])
+                for miss_key in (_all_negative_keys - _tmp_negative_keys):
+                    _encoded[miss_key].append(None)
                 labels.append(0.0)
 
             _encoded['labels'] = labels
