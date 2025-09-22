@@ -849,8 +849,8 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.12')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
-    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
-    return model, processor
+    kwargs['_check_qwen_vl_utils'] = False
+    return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
 
 
 register_model(
