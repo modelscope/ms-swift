@@ -63,8 +63,7 @@ def _run_qwen3_omni_hf(model, processor, messages):
     text = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
     audios, images, videos = process_mm_info(messages, use_audio_in_video=False)
     inputs = processor(text=text, audio=audios, images=images, videos=videos, return_tensors='pt', padding=True)
-    if 'input_features' in inputs:
-        inputs['input_features'] = inputs['input_features'].to(torch.bfloat16)
+    inputs = inputs.to(device=model.device, dtype=model.dtype)
     text_ids = model.generate(**inputs, use_audio_in_video=False, do_sample=False, max_new_tokens=128)
     text = processor.decode(
         text_ids[0][len(inputs['input_ids'][0]):], skip_special_tokens=True, clean_up_tokenization_spaces=False)
