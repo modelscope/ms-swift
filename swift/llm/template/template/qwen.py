@@ -490,7 +490,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
     def _get_feat_extract_output_lengths(self, input_lengths):
         if self.version == 'omni_v2_5':
-            return (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
+            return ((input_lengths - 1) // 2 + 1 - 2) // 2 + 1
         elif self.version == 'omni_v3':
             input_lengths_leave = input_lengths % 100
             feat_lengths = (input_lengths_leave - 1) // 2 + 1
@@ -507,7 +507,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
-        do_resize = True if self.version == 'omni_v3' else False
+        do_resize = self.version == 'omni_v3'
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
