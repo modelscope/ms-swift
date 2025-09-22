@@ -866,6 +866,35 @@ register_model(
     ))
 
 
+def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
+    from transformers import Qwen3OmniMoeForConditionalGeneration, Qwen3OmniMoeProcessor
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3OmniMoeForConditionalGeneration
+    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    if model:
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        base_model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_omni,
+        [],
+        TemplateType.qwen3_omni,
+        get_model_tokenizer_qwen3_omni,
+        model_arch=ModelArch.qwen3_omni,
+        architectures=['Qwen3OmniMoeForConditionalGeneration'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord'],
+        tags=['vision', 'video', 'audio'],
+    ))
+
+
 def get_model_tokenizer_midashenglm(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
     if model is not None:

@@ -646,6 +646,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
+class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
+    pass
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate))
+
+
 class Ovis1_6Template(Template):
     skip_prompt = False
     use_model = True
