@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
@@ -12,12 +13,12 @@ from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm import get_packed_seq_params, to_device, to_float_dtype
+from swift.llm import get_packed_seq_params, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
-from ..template_inputs import StdTemplateInputs, TemplateInputs
+from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
@@ -445,8 +446,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         if processor is None:
             return
         super().init_processor(processor)
-        from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
-        default = Qwen2_5OmniProcessorKwargs._defaults
+        if self.version == 'omni_v2_5':
+            from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+            default = Qwen2_5OmniProcessorKwargs._defaults
+        elif self.version == 'omni_v3':
+            from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
+            default = Qwen3OmniMoeProcessorKwargs._defaults
         self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
         self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
@@ -490,11 +495,53 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
     def _get_feat_extract_output_lengths(self, input_lengths):
         if self.version == 'omni_v2_5':
-            return (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
+            return ((input_lengths - 1) // 2 + 1 - 2) // 2 + 1
         elif self.version == 'omni_v3':
             input_lengths_leave = input_lengths % 100
             feat_lengths = (input_lengths_leave - 1) // 2 + 1
             return ((feat_lengths - 1) // 2 + 1 - 1) // 2 + 1 + (input_lengths // 100) * 13
+
+    def _get_new_tokens_use_audio_in_video(self, i, *, video_grid_thw, video_second_per_grid, audio_lengths,
+                                           video_token_id, audio_token_id):
+        merge_size = self.processor.image_processor.merge_size
+        grid_thw = video_grid_thw[i]
+        height = grid_thw[1] // merge_size
+        width = grid_thw[2] // merge_size
+        audio_token_indices = torch.arange(audio_lengths[i])
+        video_token_indices = torch.arange(grid_thw[0]).reshape(-1, 1, 1)
+
+        video_token_indices = torch.broadcast_to(video_token_indices,
+                                                 (video_token_indices.shape[0], height, width)).reshape(-1)
+        video_token_indices = (video_token_indices * video_second_per_grid[i] * self.position_id_per_seconds)
+        if self.version == 'omni_v2_5':
+            tokens_per_chunk = int(self.position_id_per_seconds * self.seconds_per_chunk)
+            video_chunk_indexes = self.processor.get_chunked_index(video_token_indices, tokens_per_chunk)
+            audio_chunk_indexes = self.processor.get_chunked_index(audio_token_indices, tokens_per_chunk)
+
+            res = []
+            for j in range(max(len(video_chunk_indexes), len(audio_chunk_indexes))):
+                if j < len(video_chunk_indexes):
+                    video_seq_length = video_chunk_indexes[j][1] - video_chunk_indexes[j][0]
+                    res += video_token_id * video_seq_length
+                if j < len(audio_chunk_indexes):
+                    audio_seq_length = audio_chunk_indexes[j][1] - audio_chunk_indexes[j][0]
+                    res += audio_token_id * audio_seq_length
+            return res
+        elif self.version == 'omni_v3':
+            res = []
+            video_data_index, audio_data_index = 0, 0
+            while video_data_index < len(video_token_indices) and audio_data_index < len(audio_token_indices):
+                if video_token_indices[video_data_index] <= audio_token_indices[audio_data_index]:
+                    res += video_token_id
+                    video_data_index += 1
+                else:
+                    res += audio_token_id
+                    audio_data_index += 1
+            if video_data_index < len(video_token_indices):
+                res += video_token_id * (len(video_token_indices) - video_data_index)
+            if audio_data_index < len(audio_token_indices):
+                res += audio_token_id * (len(audio_token_indices) - audio_data_index)
+            return res
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
@@ -507,7 +554,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
-        do_resize = True if self.version == 'omni_v3' else False
+        do_resize = self.version == 'omni_v3'
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
@@ -558,31 +605,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 if media_type == 'video' and self.use_audio_in_video:
                     audio_lengths = audio_lengths_origin[video_audios_mask]
                     video_second_per_grid = media_inputs['video_second_per_grid']
-
-                    def _get_new_tokens_use_audio_in_video(i):
-                        audio_token_indices = torch.arange(audio_lengths[i])
-                        grid_thw = media_grid_thw[i]
-                        height = grid_thw[1] // merge_size
-                        width = grid_thw[2] // merge_size
-                        video_token_indices = torch.arange(grid_thw[0]).reshape(-1, 1, 1)
-                        video_token_indices = torch.broadcast_to(
-                            video_token_indices, (video_token_indices.shape[0], height, width)).reshape(-1)
-                        video_token_indices = (
-                            video_token_indices * video_second_per_grid[i] * self.position_id_per_seconds)
-                        tokens_per_chunk = int(self.position_id_per_seconds * self.seconds_per_chunk)
-                        video_chunk_indexes = processor.get_chunked_index(video_token_indices, tokens_per_chunk)
-                        audio_chunk_indexes = processor.get_chunked_index(audio_token_indices, tokens_per_chunk)
-
-                        res = []
-                        for j in range(max(len(video_chunk_indexes), len(audio_chunk_indexes))):
-                            if j < len(video_chunk_indexes):
-                                video_seq_length = video_chunk_indexes[j][1] - video_chunk_indexes[j][0]
-                                res += token_id * video_seq_length
-                            if j < len(audio_chunk_indexes):
-                                audio_seq_length = audio_chunk_indexes[j][1] - audio_chunk_indexes[j][0]
-                                res += audio_token_id * audio_seq_length
-                        return res
-
+                    _get_new_tokens_use_audio_in_video = partial(
+                        self._get_new_tokens_use_audio_in_video,
+                        video_grid_thw=media_grid_thw,
+                        video_second_per_grid=video_second_per_grid,
+                        audio_lengths=audio_lengths,
+                        video_token_id=token_id,
+                        audio_token_id=audio_token_id)
                     input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                         _get_new_tokens_use_audio_in_video)
 
