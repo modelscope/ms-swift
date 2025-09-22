@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 from contextlib import contextmanager
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import torch
 from megatron.core import mpu
@@ -170,3 +170,26 @@ def profiling_context(trainer, name: str):
         wandb_writer.log(profiling_metrics)
 
     # TODO: add swanlab support
+
+
+def gather_tensor_dict(tensors: Dict[str, torch.Tensor], group):
+    if not isinstance(tensors, dict):
+        raise ValueError(f'Expected a dictionary, got {type(tensors)}')
+    size = torch.distributed.get_world_size(group=group)
+
+    output = {}
+    sorted_keys = sorted(tensors.keys())
+    for key in sorted_keys:
+        val = tensors[key]
+        output[key] = [torch.empty_like(val) for _ in range(size)]
+        torch.distributed.all_gather(val, val, group=group, async_op=False)
+        output[key] = torch.cat(output[key], dim=0)
+
+    return output
+
+
+def make_batch_generator(batch: List[Dict[str, Any]], batch_size: int):
+    assert batch_size > 0, 'batch_size must be positive'
+    assert len(batch) % batch_size == 0, 'batch length must be a multiple of batch_size'
+    for i in range(0, len(batch), batch_size):
+        yield batch[i:i + batch_size]

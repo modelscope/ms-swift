@@ -33,7 +33,7 @@ from swift.utils import get_current_device, get_logger, is_vllm_available, remov
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
 from .trainer import MegatronTrainer
-from .utils import get_batch, profiling_context
+from .utils import gather_tensor_dict, get_batch, make_batch_generator, profiling_context
 
 try:
     from mbridge import AutoBridge
@@ -49,22 +49,6 @@ except ImportError:
     has_nvidia_modelopt = False
 
 logger = get_logger()
-"""
-TODO:
-    1. compute rewards
-    2. compute advantages
-    3. compute ref/old logps
-    4. loss
-
-
-FUTURE TODO:
-    1. server mode
-    2. offload model/optimizer
-    3. DAPO (dynamic sampling)
-    4. entropy mask
-    5. reward model
-    6. multi turn
-"""
 
 
 class MegatronGRPOTrainer(MegatronRLHFTrainer):
@@ -125,20 +109,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, reporting_metric
 
-    def _replace_data_iterator(self, data_iterator):
-        # rollout the train_batch_size, split to mini-batches
-        batch = next(data_iterator)  # [global_batch_size, ]
-
-        batch = self._generate_and_score_completions(batch)
-
-        args: MegatronRLHFArguments = get_args()
-        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-        res = []
-        with torch.no_grad(), self.null_ref_context() as ref_model:
-            for i in range(num_iters_per_step):
-                res.append(self.ref_forward(ref_model, data_iterator))
-        return iter(res)
-
     def _init_grpo_params(self):
         args = self.args
         # distributed params
@@ -148,6 +118,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.device = get_current_device()
         # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
+        self.beta = args.beta
         self.temperature = args.temperature
         self.loss_type = args.loss_type
         self.max_completion_length = args.max_completion_length
@@ -157,10 +128,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.importance_sampling_level = args.importance_sampling_level
         self.enable_offload = False
         # batch size
+        self.generation_batch_size = args.generation_batch_size
+        self.steps_per_generation = args.steps_per_generation
         self.global_batch_size = args.global_batch_size
-        self.mini_batch_size = args.mini_batch_size
         self.micro_batch_size = args.micro_batch_size
-        self.per_device_rollout_batch_size = self.global_batch_size // self.world_size * self.num_generations
+        self.per_device_generation_batch_size = args.per_device_generation_batch_size
         # sampling params
         self.request_config = RequestConfig(
             n=1,
@@ -183,7 +155,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
-        self.enable_server_multi_turn = False
+        self.enable_server_multi_turn = False  # TODO
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
@@ -207,7 +179,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = self.per_device_rollout_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size * self.num_generations
 
         engine = GRPOVllmEngine(
             self.hf_model_dir,
@@ -230,6 +202,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         )
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
+        self._buffered_inputs = None
         return engine
 
     def _prepare_rewards(self):
@@ -294,6 +267,21 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         super()._patch_megatron()
         self._origin_train_step = self.train_step
 
+    def _replace_data_iterator(self, data_iterator):
+
+        args = get_args()
+        if args.iteration % self.steps_per_generation == 0:
+            # gradient_accumulation_steps
+            num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
+            # prepare generation batch data
+            rollout_batch = []
+            for _ in range(self.steps_per_generation):
+                for _ in range(num_iters_per_step):
+                    rollout_batch.extend(next(data_iterator))
+            self._buffered_inputs = self._generate_and_score_completions(rollout_batch)
+        inputs = self._buffered_inputs[args.iteration % self.steps_per_generation]
+        return make_batch_generator(inputs, batch_size=self.micro_batch_size)
+
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         # borrowed from Megatron-LM 0.13
         # get train_batch_size Rollout / ref/old logps / reward / advantage
@@ -302,8 +290,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         args: MegatronRLHFArguments = get_args()
         timers = get_timers()
-        batch = next(data_iterator)
-        batch = self._generate_and_score_completions(batch)
 
         # split to mini-batches
 
@@ -437,30 +423,100 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
 
     def _generate_and_score_completions(self, batch):
-
-        def get_local_rollout_data(batch):
+        # batch : same across DP groups
+        def get_local_rollout_batch(batch):
             # repeat num_generations times
-            global_rollout_data = [item for item in batch for _ in range(self.num_generations)]
+            global_rollout_batch = [item for item in batch for _ in range(self.num_generations)]
             # get local rollout data
-            data_slice = slice(self.process_index * self.per_device_rollout_batch_size,
-                               (self.process_index + 1) * self.per_device_rollout_batch_size)
-            rollout_data = global_rollout_data[data_slice]
-            return rollout_data
+            # TODO: check do we should set with_context_parallel? debug with CP > 1
+            data_parallel_size = mpu.get_data_parallel_world_size()
 
-        rollout_data = get_local_rollout_data(batch)
+            dp_local_rank = self.process_index % data_parallel_size
+            dp_group_size = self.world_size // data_parallel_size
+            assert dp_group_size * self.per_device_generation_batch_size * self.num_generations == len(
+                global_rollout_batch)
+            per_device_batch_size = self.per_device_generation_batch_size * self.num_generations
+            data_slice = slice(dp_local_rank * per_device_batch_size, (dp_local_rank + 1) * per_device_batch_size)
+            rollout_batch = global_rollout_batch[data_slice]
+            return rollout_batch
 
-        batch = self._generate_completions(rollout_data)
+        # Step1: get local rollout data in DP group
+        # rollout_batch : repeat num_generations times, get current process rollout data
 
-        rewards_per_func = self._score_completions(batch)
+        rollout_batch = get_local_rollout_batch(batch)
 
-        batch['advantages'] = self._compute_advantages(batch, rewards_per_func)
+        rollout_batch = self._generate_completions(rollout_batch)
 
-        batch = self._maybe_compute_logps(batch)
+        rewards_per_func = self._score_completions(rollout_batch)
 
-        return batch
+        advantages = self._compute_advantages(rollout_batch, rewards_per_func)
+
+        def _get_encoded_batch(rollout_batch):
+            template = self.template
+            encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
+            encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
+            labels = encoded_batch.pop('labels')
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            if self.template.padding_free:
+                position_ids = encoded_batch.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = encoded_batch.get('position_ids')
+                position_ids = position_ids.squeeze()
+                assert position_ids is not None
+
+                lengths = torch.diff(
+                    torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                               torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                nonlocal advantages
+                advantages = torch.repeat_interleave(advantages, lengths)
+
+            encoded_batch.update({
+                'completion_mask':
+                labels[:, -logits_to_keep:] != -100,
+                'truncated_mask':
+                torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool),
+                'advantages':
+                advantages,
+                'position_ids':
+                position_ids  # remove it: non-padding-free
+            })
+
+        # Step2: gather in DP group, model forward to get ref/old logps
+        # prepare model forward kwargs
+        encoded_batches = []  # [self.steps_per_generation, ]
+        for _ in range(self.steps_per_generation):
+            encoded_batch = _get_encoded_batch(rollout_batch)
+            encoded_batches.append(encoded_batch)
+
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        gathered_encoded_batches = []  # [self.steps_per_generation, ]
+        for encoded_batch in encoded_batches:
+            gathered_encoded_batch = gather_tensor_dict(encoded_batch, group=dp_group)
+            gathered_encoded_batch = self._maybe_compute_logps(gathered_encoded_batch)
+            gathered_encoded_batches.append(gathered_encoded_batch)
+
+        return gathered_encoded_batches
 
     def _generate_completions(self, batch):
+        """
+        Generate completions for a batch of rollout data using vLLM engine.
+
+        This method processes rollout data for the current process, generates completions
+        using the vLLM engine, and merges the results back into the original batch.
+
+        Args:
+            batch: Rollout data assigned to the current process. Expected size is
+                per_device_generation_batch_size.
+
+        Returns:
+            batch: The input batch with rollout completion results merged in.
+
+        Note:
+            Currently only supports colocate mode. Server mode support is planned
+            for future implementation.
+        """
         # TODO: server mode
+        # assert len(batch) == self.per_device_generation_batch_size
         assert self.vllm_mode == 'colocate'
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
         if self.engine.inner_model_executor.is_sleeping:
@@ -482,6 +538,19 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return batch
 
     def preprocess_rollout_data(self, batch):
+        """
+        Gather rollout trajectories across the vLLM tensor-parallel (TP) group.
+
+        This method collect the full batch on every rank, then flattens
+        the nested lists into a single list of samples.
+
+        Args:
+            batch (list): List of rollout samples local to this TP rank.
+
+        Returns:
+            list: Flattened list containing all rollout samples from every
+                rank in the TP group.
+        """
         if self.vllm_tensor_parallel_size == 1:
             return batch
 
@@ -497,6 +566,21 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return rollout_outputs
 
     def postprocess_rollout_data(self, batch, output):
+        """
+        Post-process the raw vLLM generation outputs and merge them back into the
+        original input batch.
+
+        Args:
+            batch (List[Dict[str, Any]]):
+                Original rollout samples.
+            output (List[RolloutOutput]):
+                outputs from vLLM from vLLM TP group
+
+        Returns:
+            List[Dict[str, Any]]:
+                Updated samples with rollout results merged in.
+        """
+
         if self.vllm_tensor_parallel_size > 1:
             local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
             orig_size = len(output) // self.vllm_tensor_parallel_size
@@ -522,9 +606,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 if output.response_loss_mask:
                     input_data['response_loss_mask'] = output.response_loss_mask
             else:
-                if not self.multi_turn_scheduler:
-                    # for single turn, skip tokenizer response
-                    input_data['response_token_ids'] = output.response.choices[0].token_ids
+                # for single turn, skip tokenizer response
+                input_data['response_token_ids'] = output.response.choices[0].token_ids
 
             # Step 3: Attach rollout extra info
             if output.rollout_infos:
@@ -547,7 +630,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             #   otherwise, the program may hang.
             # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
             #   otherwise, identical completions will be generated.
-            batch_size = self.per_device_rollout_batch_size
+            batch_size = self.per_device_generation_batch_size
             batch_size *= self.vllm_tensor_parallel_size
             # Since the TP (Tensor Parallelism) group gathers the inputs,
             # multiply the batch size by the TP parallel size.
@@ -582,7 +665,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with profiling_context(self, reward_func_name):
                 # reward model
-                reward_kwargs = {}  # TODO: step info
+                reward_kwargs = {}  # TODO: training step info
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=batch, **reward_kwargs)
                 # reward function
@@ -633,17 +716,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return advantages
 
     def _maybe_compute_logps(self, batch: DataType) -> DataType:
-        # encode first
-        template = self.template
-        # get model forward kwargs from batch
-        batch = self._maybe_replace_response_token(batch)
-        with self._disable_maxlength_template_context(template):
-            batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
-            batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.device)
-            labels = batch_encoded_inputs.pop('labels')
-            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-            batch_encoded_inputs['logits_to_keep'] = logits_to_keep
+        # TODO: entropy
+        if self.beta != 0.0:
+            with torch.no_grad(), self.null_ref_context() as ref_model:
+                batch['ref_per_token_logps'] = self.model_forward(
+                    ref_model, make_batch_generator(batch, self.micro_batch_size), no_grad=True)['logps']
 
+        if not self.on_policy:
+            batch['old_per_token_logps'] = self.model_forward(
+                self.unwrapped_model, make_batch_generator(batch, self.micro_batch_size), no_grad=True)['logps']
         return batch
 
     @contextmanager
@@ -667,3 +748,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'],
                                                                        loss_mask)
         return batch
+
+    @property
+    def on_policy(self):
+        return self.steps_per_generation == 1

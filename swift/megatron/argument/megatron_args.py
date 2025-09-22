@@ -30,8 +30,9 @@ class RLHFMegatronArgumentsMixin:
     loss_type: str = 'sigmoid'
 
     # ===========================  GRPO  ===========================
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
     num_generations: int = 8
-    mini_batch_size: int = 4
     max_completion_length: int = 512
 
     # ───────────────────────────  Sampling  ───────────────────────────
@@ -121,9 +122,6 @@ class RLHFMegatronArgumentsMixin:
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     wandb_log_unique_prompts: Optional[bool] = None
-    generation_batch_size: Optional[int] = None
-    steps_per_generation: Optional[int] = None
-
     num_iterations: int = 1
 
     # dataset
@@ -205,6 +203,24 @@ class RLHFMegatronArgumentsMixin:
                 if self.vllm_mode != 'colocate':
                     self.vllm_mode = 'colocate'
                     logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+
+        if self.generation_batch_size is None and self.steps_per_generation is None:
+            self.steps_per_generation = 1
+            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+        elif self.generation_batch_size is not None and self.steps_per_generation is None:
+            # Just ensure the value is divisible by the global batch size
+            if self.generation_batch_size % self.global_batch_size != 0:
+                raise ValueError(
+                    f'generation_batch_size ({self.generation_batch_size}) must be divisible by the global batch size '
+                    f'({self.global_batch_size}).')
+            self.steps_per_generation = self.generation_batch_size // self.global_batch_size
+        elif self.generation_batch_size is None and self.steps_per_generation is not None:
+            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+        else:
+            raise ValueError(
+                "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
+        world_size = torch.distributed.get_world_size()
+        self.per_device_generation_batch_size = self.generation_batch_size // world_size
 
 
 @dataclass

@@ -84,16 +84,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
         return output_tensor
 
-    def ref_forward(self, ref_model, data_iterator):
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        data.pop('loss_scale', None)
-        labels = data.get('labels')
-        with torch.no_grad():
-            output_tensor = self._forward_step_helper(ref_model, data)
-        data['logps'] = None if labels is None else self.get_logps(output_tensor, labels, data['packed_seq_params'])
-        return data
-
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params):
         args = get_args()
@@ -147,7 +137,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
-        return loss, reporting_metric
+        return loss, metric
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
@@ -155,7 +145,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         res = []
         with torch.no_grad(), self.null_ref_context() as ref_model:
             for i in range(num_iters_per_step):
-                res.append(self.ref_forward(ref_model, data_iterator))
+                res.append(self.model_forward(ref_model, data_iterator))
         return iter(res)
 
     def forward_step(self, data_iterator, model):
