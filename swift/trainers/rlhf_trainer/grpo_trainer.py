@@ -50,7 +50,8 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
                     make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
+                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids,
+                    set_expandable_segments)
 from .vllm_client import VLLMClient
 
 try:
@@ -533,6 +534,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         with Swift.grpo_context(model, self.template.processor):
+            set_expandable_segments(False)
             engine = GRPOVllmEngine(
                 model.model_dir,
                 model.model_info.torch_dtype,
@@ -552,6 +554,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
             )
+            set_expandable_segments(True)
         return engine
 
     @contextmanager
@@ -775,6 +778,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Step 3: Offload model/optimizer if enabled
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
+            set_expandable_segments(False)
             # Step 4: Wake up kv_cache after offloading (vLLM colocate only)
             if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
@@ -810,7 +814,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.engine.engine.reset_prefix_cache()
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 empty_cache()
-
+            set_expandable_segments(True)
         return outputs
 
     def _generate_completions(self, inputs: DataType) -> DataType:

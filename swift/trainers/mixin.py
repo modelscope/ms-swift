@@ -798,16 +798,17 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel  # registry here
+        from ..llm.eval.utils import EvalModel
         from evalscope import TaskConfig, run_task
 
         self.model.eval()
-
+        # prepare task config
         task_config_kwargs = dict(
-            model=f'model-step{self.state.global_step}',
-            model_args=dict(
+            model=EvalModel(
+                model_name=f'model-step{self.state.global_step}',
                 model=self.model,
                 template=self.template,
+                max_batch_size=self.args.per_device_eval_batch_size,
             ),
             eval_type='swift_custom',
             datasets=self.args.eval_dataset,
