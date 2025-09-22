@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import functools
 import math
+import os
 import time
 from contextlib import contextmanager
 from functools import partial
@@ -523,3 +524,42 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
+
+
+_EXPANDABLE_SEGMENTS_SET = 'expandable_segments' in os.environ.get('PYTORCH_CUDA_ALLOC_CONF', '')
+
+
+def set_expandable_segments(enable: bool) -> None:
+    """
+    Enable or disable expandable segments for CUDA memory allocation.
+
+    This function provides a safe way to configure CUDA expandable segments without
+    overriding user preferences. It only takes effect when the user has previously
+    set the PYTORCH_CUDA_ALLOC_CONF environment variable, ensuring that explicit
+    user configurations are respected.
+
+    Expandable segments allow PyTorch to grow memory pools dynamically, which can
+    help prevent out-of-memory (OOM) errors during long-running reinforcement
+    learning training sessions by reducing memory fragmentation.
+
+    Args:
+        enable (bool): Whether to enable expandable segments. When True, allows
+            CUDA memory pools to expand dynamically to reduce fragmentation and
+            mitigate OOM issues.
+
+    Note:
+        - Only takes effect if PYTORCH_CUDA_ALLOC_CONF was previously set by the user
+        - Requires CUDA to be available
+        - Changes apply to both the PyTorch allocator settings and environment variable
+
+    Example:
+        >>> # Only works if user has already set PYTORCH_CUDA_ALLOC_CONF
+        >>> set_expandable_segments(True)  # Enable to help with OOM issues
+        >>> set_expandable_segments(False) # Disable for more predictable memory usage
+    """
+    global _EXPANDABLE_SEGMENTS_SET
+    if not _EXPANDABLE_SEGMENTS_SET:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
