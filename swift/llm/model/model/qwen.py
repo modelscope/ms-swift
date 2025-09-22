@@ -721,7 +721,9 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    require_version('qwen_vl_utils<0.0.12')
+    check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
+    if check_qwen_vl_utils:
+        require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
@@ -821,6 +823,7 @@ def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.12')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
+    kwargs['_check_qwen_vl_utils'] = False
     return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
 
 
