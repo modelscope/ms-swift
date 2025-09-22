@@ -664,6 +664,9 @@ class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
             # TODO
             pass
 
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs  # TODO
+
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None))
 

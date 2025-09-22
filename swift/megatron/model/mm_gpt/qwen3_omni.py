@@ -88,10 +88,10 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         pixel_values_videos = kwargs.get('pixel_values_videos')
         image_grid_thw = kwargs.get('image_grid_thw')
         video_grid_thw = kwargs.get('video_grid_thw')
-        visual = self.visual
+        visual = self.thinker.visual
         processor = self.processor
         dtype = visual.dtype
-        config = self.model_config
+        config = self.model_config.thinker_config
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             images = [Image.new('RGB', (32, 32), (0, 0, 0))]
             media_inputs = processor.image_processor(images=images, return_tensors='pt')
