@@ -67,9 +67,11 @@ def convert_mcore2hf_qwen3_omni(hf_model, mg_model):
 
 
 class Qwen3Omni_Vit(HuggingFaceModule):
-    module_mapping = {'visual': 'visual'}
-    _vision_tower = ['visual']
-    _aligner = ['visual.merger', 'visual.deepstack_merger_list']
+    module_mapping = {
+        'thinker': 'thinker',
+    }
+    _vision_tower = ['thinker.audio_tower', 'thinker.visual']
+    _aligner = ['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger']
 
     def __init__(self, config):
         from transformers.models.qwen3_omni_moe import Qwen3OmniMoeThinkerTextModel
