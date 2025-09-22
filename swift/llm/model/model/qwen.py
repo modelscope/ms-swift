@@ -642,7 +642,10 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwen3_next,
-        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
+        ])],
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
@@ -652,7 +655,10 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwen3_next_thinking,
-        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
+        ])],
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],

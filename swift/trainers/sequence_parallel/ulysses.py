@@ -703,10 +703,9 @@ class SequenceParallel:
         2. split labels
         """
         position_ids = None
-        if self.padding_free:
-            position_ids = inputs.get('text_position_ids')
-            if position_ids is None:
-                position_ids = inputs.get('position_ids')
+        position_ids = inputs.get('text_position_ids')
+        if position_ids is None:
+            position_ids = inputs.get('position_ids')
         if position_ids is not None and position_ids.shape[0] == 1:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if 'labels' in inputs:
