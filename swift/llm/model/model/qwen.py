@@ -879,8 +879,8 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
     from qwen_omni_utils import vision_process
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3OmniMoeForConditionalGeneration
     processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
     global_vars = patch_qwen_vl_utils(vision_process)
     processor.global_vars = global_vars
     enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
