@@ -87,27 +87,40 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
 
 
 def get_examples(is_multimodal: bool) -> Dict[str, Any]:
+    mm_type = 'image'
     if is_multimodal:
-        data = {
-            'messages': [{
-                'role': 'user',
-                'content': '<image>describe the image.'
-            }, {
-                'role':
-                'assistant',
-                'content':
-                'The image depicts a close-up of a kitten with striking features. '
-                'The kitten has a white and gray coat with distinct black stripes, '
-                'particularly noticeable on its face and ears. Its eyes are large '
-                'and expressive, with a captivating blue hue that stands out against '
-                "the darker fur around them. The kitten's nose is small and pink, "
-                'and it has long, delicate whiskers extending from either side of its mouth. '
-                "The background is blurred, drawing attention to the kitten's face and "
-                'making it the focal point of the image. The overall impression is '
-                'one of cuteness and charm.'
-            }],
-            'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-        }
+        if mm_type == 'image':
+            data = {
+                'messages': [{
+                    'role': 'user',
+                    'content': '<image>describe the image.'
+                }, {
+                    'role':
+                    'assistant',
+                    'content':
+                    'The image depicts a close-up of a kitten with striking features. '
+                    'The kitten has a white and gray coat with distinct black stripes, '
+                    'particularly noticeable on its face and ears. Its eyes are large '
+                    'and expressive, with a captivating blue hue that stands out against '
+                    "the darker fur around them. The kitten's nose is small and pink, "
+                    'and it has long, delicate whiskers extending from either side of its mouth. '
+                    "The background is blurred, drawing attention to the kitten's face and "
+                    'making it the focal point of the image. The overall impression is '
+                    'one of cuteness and charm.'
+                }],
+                'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+            }
+        elif mm_type == 'audio':
+            data = {
+                'messages': [{
+                    'role': 'user',
+                    'content': '<audio>Caption the audio.'
+                }, {
+                    'role': 'assistant',
+                    'content': "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
+                }],
+                'audios': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
+            }
     else:
         data = {
             'messages': [

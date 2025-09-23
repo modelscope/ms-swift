@@ -689,6 +689,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
         ]
         if input_features:
+            if self.version == 'omni_v3':
+                max_length = max(input_feature.shape[-1] for input_feature in input_features)
+                for i, input_feature in enumerate(input_features):
+                    mask = feature_attention_mask[i]
+                    input_features[i] = F.pad(input_feature, (0, max_length - input_feature.shape[-1]))
+                    feature_attention_mask[i] = F.pad(mask, (0, max_length - mask.shape[-1]))
             res['input_features'] = torch.concat(input_features)
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res
@@ -704,6 +710,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Q
 
 class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
     version = 'omni_v3'
+    placeholder_tokens = ['<|image_pad|>', '<|audio_pad|>', '<|video_pad|>']
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
