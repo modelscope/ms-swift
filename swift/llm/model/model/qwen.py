@@ -828,7 +828,7 @@ register_model(
 
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
-    require_version('qwen_vl_utils>=0.0.12')
+    require_version('qwen_vl_utils>=0.0.14')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
@@ -836,19 +836,18 @@ def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_vl,
-        [],
+        MLLMModelType.qwen3_vl, [],
         TemplateType.qwen3_vl,
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
-        requires=[],  # TODO
+        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
 def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
-    require_version('qwen_vl_utils>=0.0.12')
+    require_version('qwen_vl_utils>=0.0.14')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
@@ -856,13 +855,17 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_moe_vl,
-        [],
+        MLLMModelType.qwen3_moe_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-235B-A22B-Instruct'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking', 'Qwen/Qwen3-VL-235B-A22B-Thinking'),
+            ]),
+        ],
         TemplateType.qwen3_vl,
         get_model_tokenizer_qwen3_moe_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLMoeForConditionalGeneration'],
-        requires=[],  # TODO
+        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
