@@ -104,12 +104,15 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
     _aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
 
     def __init__(self, config):
-        from transformers.models.qwen2_5_omni import Qwen2_5OmniThinkerTextModel
-        super().__init__(config, [Qwen2_5OmniThinkerTextModel])
+        from transformers.models.qwen2_5_omni import (Qwen2_5OmniThinkerTextModel,
+                                                      Qwen2_5OmniTalkerForConditionalGeneration,
+                                                      Qwen2_5OmniToken2WavModel)
+        super().__init__(
+            config, [Qwen2_5OmniThinkerTextModel, Qwen2_5OmniTalkerForConditionalGeneration, Qwen2_5OmniToken2WavModel])
 
     def prepare_model(self, hf_model):
-        self.thinker.model = None
-        self.thinker.lm_head = None
+        del self.thinker.model
+        del self.thinker.lm_head
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         thinker_config = self.model_config.thinker_config

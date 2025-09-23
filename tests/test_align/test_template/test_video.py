@@ -152,6 +152,53 @@ def test_qwen2_5_omni():
     assert response == response2 == ground_truth
 
 
+def _run_qwen3_omni_hf(model, processor, messages):
+    from qwen_omni_utils import process_mm_info
+    text = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+    audios, images, videos = process_mm_info(messages, use_audio_in_video=True)
+    inputs = processor(
+        text=text,
+        audio=audios,
+        images=images,
+        videos=videos,
+        return_tensors='pt',
+        padding=True,
+        use_audio_in_video=True)
+    inputs = inputs.to(device=model.device, dtype=model.dtype)
+    text_ids = model.generate(**inputs, use_audio_in_video=True, do_sample=False, max_new_tokens=128)
+    text = processor.decode(
+        text_ids[0][len(inputs['input_ids'][0]):], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return text
+
+
+def test_qwen3_omni():
+    USE_AUDIO_IN_VIDEO = True
+    os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
+    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Thinking')
+    query = 'describe the video.'
+    messages = [{'role': 'user', 'content': query}]
+    videos = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'video',
+                    'video': videos[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response2 = _run_qwen3_omni_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
 def test_glm4_1v():
     messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
@@ -299,6 +346,7 @@ if __name__ == '__main__':
     # test_valley()
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
+    test_qwen3_omni()
     # test_glm4_1v()  # bug now, wait model fix
     # test_keye_vl()
     # test_keye_vl_1_5()

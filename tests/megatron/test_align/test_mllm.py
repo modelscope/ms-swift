@@ -87,6 +87,10 @@ def test_qwen3_vl_moe():
     _test_model('Qwen/Qwen3-VL-Moe')
 
 
+def test_qwen3_omni():
+    _test_model('Qwen/Qwen3-Omni-30B-A3B-Instruct')
+
+
 if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()
@@ -102,3 +106,4 @@ if __name__ == '__main__':
     # test_kimi_vl()
     test_qwen3_vl()
     # test_qwen3_vl_moe()
+    # test_qwen3_omni()
