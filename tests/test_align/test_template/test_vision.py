@@ -849,6 +849,43 @@ def test_minicpmv4_5():
     assert response == response2
 
 
+def run_sailvl2_hf(model, processor, messages):
+    from PIL import Image
+    tokenizer = processor.tokenizer
+    text = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+    image = Image.open('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png')
+    inputs = processor(
+        images=image, text=text, return_tensors='pt', padding=True, truncation=True).to(model.device).to(torch.bfloat16)
+    inputs = inputs.to(device=model.device, dtype=model.dtype)
+    text_ids = model.generate(**inputs, max_new_tokens=128)
+    text = tokenizer.batch_decode(text_ids, skip_special_tokens=True)[0]
+    return text
+
+
+def test_sailvl2():
+    pt_engine = PtEngine('BytedanceDouyinContent/SAIL-VL2-2B')
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    print(response)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_sailvl2_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -858,7 +895,7 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
     # test_qwen3_omni()
-    test_qwen3_omni_audio()
+    # test_qwen3_omni_audio()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -918,3 +955,4 @@ if __name__ == '__main__':
     # test_internvl3_hf()
     # test_internvl3_5_hf()
     # test_internvl_gpt_hf()
+    test_sailvl2()

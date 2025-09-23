@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -242,19 +242,74 @@ register_model(
         requires=['transformers>=4.51.0'],
     ))
 
+
+def get_model_tokenizer_sail2_vl(model_dir, *args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+
+    def patch_model_generate(model):
+        # this model don't support inputs_embeds, patch it
+        origin_generate = model.generate
+        from functools import wraps
+        from transformers import GenerationConfig
+        from types import MethodType
+
+        @wraps(origin_generate)
+        def patched_generate(
+            self,
+            pixel_values: Optional[torch.FloatTensor] = None,
+            input_ids: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.LongTensor] = None,
+            visual_features: Optional[torch.FloatTensor] = None,
+            generation_config: Optional[GenerationConfig] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            **generate_kwargs,
+        ):
+            if inputs_embeds is None:
+                return origin_generate(
+                    self,
+                    pixel_values=pixel_values,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    visual_features=visual_features,
+                    generation_config=generation_config,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    **generate_kwargs,
+                )
+            else:
+                return model.language_model.generate(
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=attention_mask,
+                    generation_config=generation_config,
+                    output_hidden_states=output_hidden_states,
+                    use_cache=True,
+                    **generate_kwargs,
+                )
+
+        model.old_generate = model.generate
+        model.generate = MethodType(patched_generate, model)
+
+    if model is not None and not hasattr(model, 'old_generate'):
+        patch_model_generate(model)
+    return model, processor
+
+
 register_model(
     ModelMeta(
         MLLMModelType.sail_vl2,
-        [ModelGroup([
-            Model('BytedanceDouyinContent/SAIL-VL2-2B', 'BytedanceDouyinContent/SAIL-VL2-2B'),
-            Model('BytedanceDouyinContent/SAIL-VL2-2B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-2B-Thinking'),
-            Model('BytedanceDouyinContent/SAIL-VL2-8B', 'BytedanceDouyinContent/SAIL-VL2-8B'),
-            Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
-        ])],
+        [
+            ModelGroup([
+                Model('BytedanceDouyinContent/SAIL-VL2-2B', 'BytedanceDouyinContent/SAIL-VL2-2B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-2B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-2B-Thinking'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B', 'BytedanceDouyinContent/SAIL-VL2-8B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
+            ])
+        ],
         TemplateType.sail_vl2,
-        get_model_tokenizer_dots_ocr,
+        get_model_tokenizer_sail2_vl,
         model_arch=ModelArch.internvl,
         architectures=['SAILVLModel'],
         requires=['transformers<=4.51.3'],
     ))
-
