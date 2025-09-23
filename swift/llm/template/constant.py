@@ -41,6 +41,7 @@ class LLMTemplateType:
     ziya = 'ziya'
     atom = 'atom'
     mengzi = 'mengzi'
+    bge_reranker = 'bge_reranker'
 
     chatglm2 = 'chatglm2'
     glm4 = 'glm4'
@@ -118,6 +119,7 @@ class MLLMTemplateType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

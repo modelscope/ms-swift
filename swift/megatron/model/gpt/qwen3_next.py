@@ -11,13 +11,12 @@ from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transfor
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
-from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
-from megatron.core.utils import deprecate_inference_params, is_fa_min_version, nvtx_range_pop, nvtx_range_push
+from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
 
 from swift.llm import ModelType
@@ -133,6 +132,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
+        from megatron.core.utils import nvtx_range_pop, nvtx_range_push
         # Check if we need to skip RoPE
         # no_rope is 0-indexed array and self.layer_number is 1-indexed
         no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
@@ -418,6 +418,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
+    from megatron.core.transformer.enums import LayerType
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
 
     if config.pipeline_model_parallel_layout is not None:
@@ -477,7 +478,8 @@ def convert_mcore2hf_qwen3_next(hf_model, mg_model):
     args = get_args()
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
+        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
+        lm_head_weight.data.copy_(mg_model.output_layer.weight)
     hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight - 1)
     for layer_idx in range(args.num_layers):
         layer_type = args.layer_types[layer_idx]

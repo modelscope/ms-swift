@@ -87,6 +87,7 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
+        from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
@@ -112,7 +113,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -251,6 +252,9 @@ class Template(ProcessorMixin):
                 i = i_start + 1
             else:
                 i += 1
+
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        return {}
 
     def _preprocess_inputs(
         self,
@@ -396,13 +400,21 @@ class Template(ProcessorMixin):
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
-                _encoded[f'negative_{key}'] = []
             labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            for negative in inputs.negative:
+            _all_negative_keys = set()
+            for idx, negative in enumerate(inputs.negative):
+                _tmp_negative_keys = set()
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
-                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                    negative_key = f'negative_{key}'
+                    _all_negative_keys.add(negative_key)
+                    _tmp_negative_keys.add(negative_key)
+                    if negative_key not in _encoded:
+                        _encoded[negative_key] = [None] * idx
+                    _encoded[negative_key].append(negative_encoded[key])
+                for miss_key in (_all_negative_keys - _tmp_negative_keys):
+                    _encoded[miss_key].append(None)
                 labels.append(0.0)
 
             _encoded['labels'] = labels
@@ -413,31 +425,36 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        chosen = inputs.chosen
-        instruction = chosen.system
+        if self.is_training:
+            chosen = inputs.chosen
+            instruction = chosen.system
 
-        _encoded = defaultdict(list)
-        labels = []
+            _encoded = defaultdict(list)
+            labels = []
 
-        for positive in inputs.positive:
-            if instruction is not None and positive.system is None:
-                positive.system = instruction
-            positive.messages = chosen.messages + positive.messages
-            positive_encoded = self._encode_truncated(positive)
-            labels.append(1)
-            for key in positive_encoded:
-                _encoded[key].append(positive_encoded[key])
+            for positive in inputs.positive:
+                if instruction is not None and positive.system is None:
+                    positive.system = instruction
+                positive.messages = chosen.messages + positive.messages
+                positive_encoded = self._encode_truncated(positive)
+                labels.append(1)
+                for key in positive_encoded:
+                    _encoded[key].append(positive_encoded[key])
 
-        for negative in inputs.negative:
-            if instruction is not None and negative.system is None:
-                negative.system = instruction
-            negative.messages = chosen.messages + negative.messages
-            negative_encoded = self._encode_truncated(negative)
-            labels.append(0)
-            for key in negative_encoded:
-                _encoded[key].append(negative_encoded[key])
+            for negative in inputs.negative:
+                if instruction is not None and negative.system is None:
+                    negative.system = instruction
+                negative.messages = chosen.messages + negative.messages
+                negative_encoded = self._encode_truncated(negative)
+                labels.append(0)
+                for key in negative_encoded:
+                    _encoded[key].append(negative_encoded[key])
 
-        _encoded['labels'] = labels
+            _encoded['labels'] = labels
+        else:
+            anchor = inputs.chosen
+            _encoded = self._encode_truncated(anchor)
+            _encoded.pop('labels', None)
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -445,7 +462,7 @@ class Template(ProcessorMixin):
         encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
-            problem_type = self._get_problem_type(self.config, labels=labels)
+            problem_type = self.config.problem_type
             if problem_type == 'single_label_classification':
                 labels = int(labels)
             encoded['labels'] = labels
@@ -562,32 +579,9 @@ class Template(ProcessorMixin):
             }]
         }
 
-    @staticmethod
-    def _get_problem_type(config, labels=None, logits=None) -> str:
-        problem_type = config.problem_type
-        if problem_type is not None:
-            return problem_type
-        if labels is not None:
-            if isinstance(labels, (list, tuple)):
-                if labels and isinstance(labels[0], float):
-                    problem_type = 'regression'
-                else:
-                    problem_type = 'multi_label_classification'
-            else:
-                problem_type = 'single_label_classification'
-                assert config.num_labels >= labels + 1
-        if logits is not None:
-            if logits.shape[-1] == 1:
-                problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'  # compatible with older versions
-        assert problem_type is not None
-        config.problem_type = problem_type
-        return problem_type
-
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        problem_type = self._get_problem_type(self.config, logits=logits)
+        problem_type = self.config.problem_type
         if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -956,9 +950,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not self.loss_scale.is_binary:
+            if not self.loss_scale.is_loss_scale_binary:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if self.loss_scale.is_binary:
+        if self.loss_scale.is_loss_scale_binary:
             loss_scale = None
         return input_ids, labels, loss_scale
 
@@ -1190,6 +1184,8 @@ class Template(ProcessorMixin):
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+            # For multi-modal models, images do not need to be pre processed here
+            # vllm/lmdeploy/sglang will handle the logic
             encoded = Template._encode(self, inputs)
             keys = ['images', 'audios', 'videos']
             if self.mode == 'vllm':
@@ -1534,26 +1530,32 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
-        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels_list = []
-        new_batch = []
-        for b in batch:
-            labels = b.pop('labels')
-            positive_num = sum(labels)
-            negative_num = len(labels) - positive_num
-            max_positive = min(positive_num, max_positive_samples)
-            max_negative = min(negative_num, max_negative_samples)
-            for i in random.sample(range(positive_num), max_positive):
-                new_batch.append({'input_ids': b['input_ids'][i]})
-                labels_list.append(1)
-                for j in random.sample(range(negative_num), max_negative):
-                    new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
-                    labels_list.append(0)
+        if self.is_training:
+            max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
+            max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+            labels_list = []
+            new_batch = []
+            for b in batch:
+                labels = b.pop('labels', None)
+                positive_num = sum(labels)
+                negative_num = len(labels) - positive_num
+                max_positive = min(positive_num, max_positive_samples)
+                max_negative = min(negative_num, max_negative_samples)
+                for i in random.sample(range(positive_num), max_positive):
+                    new_batch.append({'input_ids': b['input_ids'][i]})
+                    labels_list.append(1)
+                    for j in random.sample(range(negative_num), max_negative):
+                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
+                        labels_list.append(0)
 
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels_list:
-            res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+            res = self._data_collator(new_batch, padding_to=padding_to)
+            if labels_list:
+                res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+        else:
+            new_batch = []
+            for b in batch:
+                new_batch.append({'input_ids': b['input_ids']})
+            res = self._data_collator(new_batch, padding_to=padding_to)
         return res
 
     def _seq_cls_data_collator(self,
@@ -1563,7 +1565,7 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            problem_type = self._get_problem_type(self.config)
+            problem_type = self.config.problem_type
             if problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
             elif problem_type == 'multi_label_classification':

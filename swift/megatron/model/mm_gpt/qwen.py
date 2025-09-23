@@ -3,7 +3,7 @@ import torch
 from megatron.training import get_args
 from PIL import Image
 
-from swift.llm import ModelType, Template, to_device
+from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import convert_hf2mcore
@@ -39,7 +39,8 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
     args = get_args()
     language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.lm_head.weight.data.copy_(mg_language_model.output_layer.weight)
+        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
+        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
     language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
@@ -103,12 +104,15 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
     _aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
 
     def __init__(self, config):
-        from transformers.models.qwen2_5_omni import Qwen2_5OmniThinkerTextModel
-        super().__init__(config, [Qwen2_5OmniThinkerTextModel])
+        from transformers.models.qwen2_5_omni import (Qwen2_5OmniThinkerTextModel,
+                                                      Qwen2_5OmniTalkerForConditionalGeneration,
+                                                      Qwen2_5OmniToken2WavModel)
+        super().__init__(
+            config, [Qwen2_5OmniThinkerTextModel, Qwen2_5OmniTalkerForConditionalGeneration, Qwen2_5OmniToken2WavModel])
 
     def prepare_model(self, hf_model):
-        self.thinker.model = None
-        self.thinker.lm_head = None
+        del self.thinker.model
+        del self.thinker.lm_head
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         thinker_config = self.model_config.thinker_config
@@ -152,7 +156,9 @@ def convert_mcore2hf_qwen2_5_omni(hf_model, mg_model):
     args = get_args()
     language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
-        hf_model.thinker.lm_head.weight.data.copy_(mg_language_model.output_layer.weight)
+        lm_head_weight = (
+            hf_model.thinker.score.weight if args.task_type == 'seq_cls' else hf_model.thinker.lm_head.weight)
+        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
     language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)

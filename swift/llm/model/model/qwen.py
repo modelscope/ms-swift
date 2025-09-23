@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
@@ -641,7 +642,10 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwen3_next,
-        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
+        ])],
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
@@ -651,7 +655,10 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwen3_next_thinking,
-        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
+        ])],
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
@@ -714,6 +721,7 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
+    require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
@@ -833,7 +841,9 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
     global_vars = patch_qwen_vl_utils(vision_process)
     processor.global_vars = global_vars
-    kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
+    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+    if enable_audio_output is not None:
+        kwargs['model_config'].enable_audio_output = enable_audio_output
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
@@ -861,6 +871,47 @@ register_model(
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
         ignore_patterns=[],
+    ))
+
+
+def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
+    from transformers import Qwen3OmniMoeForConditionalGeneration, Qwen3OmniMoeProcessor, Qwen3OmniMoeConfig
+    from qwen_omni_utils import vision_process
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3OmniMoeForConditionalGeneration
+    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
+    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+    if enable_audio_output is not None:
+        kwargs['model_config'].enable_audio_output = enable_audio_output
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    if model:
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        base_model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_omni,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Omni-30B-A3B-Instruct', 'Qwen/Qwen3-Omni-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Omni-30B-A3B-Thinking', 'Qwen/Qwen3-Omni-30B-A3B-Thinking'),
+                Model('Qwen/Qwen3-Omni-30B-A3B-Captioner', 'Qwen/Qwen3-Omni-30B-A3B-Captioner'),
+            ])
+        ],
+        TemplateType.qwen3_omni,
+        get_model_tokenizer_qwen3_omni,
+        model_arch=ModelArch.qwen3_omni,
+        architectures=['Qwen3OmniMoeForConditionalGeneration'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
+        tags=['vision', 'video', 'audio'],
     ))
 
 

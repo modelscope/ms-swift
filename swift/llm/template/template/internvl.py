@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from ast import Tuple
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
 import torch
 from torch import nn
@@ -192,6 +192,9 @@ register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_
 
 
 class InternvlhfTemplate(Internvl2Template):
+
+    def init_env_args(self):
+        Template.init_env_args(self)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
