@@ -515,7 +515,7 @@ class Qwen3VL_Vit(HuggingFaceModule):
         super().__init__(config, [Qwen3VLTextModel, Qwen3VLMoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.config)
+        return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
 register_megatron_model(

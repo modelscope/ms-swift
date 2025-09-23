@@ -488,7 +488,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        return inputs  # TODO: Waiting for transformers to support passing deepstack_visual_embeds.
+        return inputs
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None))
