@@ -710,6 +710,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Q
 
 class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
     version = 'omni_v3'
+    placeholder_tokens = ['<|image_pad|>', '<|audio_pad|>', '<|video_pad|>']
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
