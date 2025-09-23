@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
@@ -286,7 +287,7 @@ class Qwen2VLTemplate(Template):
             if self.version in {'v2_5', 'v3'}:
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 if self.version == 'v3':
-                    inputs.mm_processor_kwargs['add_timestamps'] = True
+                    inputs.mm_processor_kwargs['do_sample_frames'] = False
                     return ['<|video_pad|>']
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
@@ -444,6 +445,27 @@ register_template(
 class Qwen3VLTemplate(Qwen2VLTemplate):
     version = 'v3'
 
+    @contextmanager
+    def _patch_video_processor(self):
+        video_processor = self.processor.video_processor
+
+        __origin_call__ = video_processor.__class__.__call__
+
+        def __call__(self, *args, **kwargs):
+            fps = kwargs.get('fps')
+            res = __origin_call__(self, *args, **kwargs)
+            if fps is not None:
+                for i, metadata in enumerate(res['video_metadata']):
+                    if metadata.fps is None:
+                        metadata.fps = fps[i] if isinstance(fps, list) else fps
+            return res
+
+        video_processor.__class__.__call__ = __call__
+        try:
+            yield
+        finally:
+            video_processor.__class__.__call__ = __origin_call__
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         processor = self.processor
@@ -459,12 +481,13 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     split_token = self._tokenize('\n')[0]
-                    media_inputs = processor(
-                        text=['\n'.join(['<|vision_start|><|video_pad|><|vision_end|>'] * len(mm_data))],
-                        videos=mm_data,
-                        return_tensors='pt',
-                        do_resize=False,
-                        **inputs.mm_processor_kwargs)  # TODO: check
+                    with self._patch_video_processor():
+                        media_inputs = processor(
+                            text=['\n'.join(['<|vision_start|><|video_pad|><|vision_end|>'] * len(mm_data))],
+                            videos=mm_data,
+                            return_tensors='pt',
+                            do_resize=False,
+                            **inputs.mm_processor_kwargs)
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id

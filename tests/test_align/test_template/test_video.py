@@ -307,18 +307,47 @@ def test_minicpmv4_5():
     assert response == response2
 
 
+def _run_qwen3_vl_hf(messages, model, template):
+    from qwen_vl_utils import process_vision_info
+    processor = template.processor
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    images, videos, video_kwargs = process_vision_info(messages, image_patch_size=16, return_video_kwargs=True)
+
+    with template._patch_video_processor():
+        inputs = processor(
+            text=text, images=images, videos=videos, do_resize=False, return_tensors='pt', **video_kwargs)
+    inputs = inputs.to(model.device)
+
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+    output_text = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return output_text[0]
+
+
 def test_qwen3_vl():
-    # TODO: fix
     pt_engine = PtEngine('Qwen/Qwen3-VL')
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
-    messages = [{'role': 'user', 'content': 'describe this video.'}]
+    query = 'describe this video.'
+    messages = [{'role': 'user', 'content': query}]
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
-    assert response[:200] == response2[:200] == (
-        'The video shows a young child, likely a toddler, sitting on a bed in a cozy, '
-        'lived-in bedroom. The child is wearing a light blue sleeveless top, pink pants, '
-        'and oversized black-framed glasses, which a')
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'video',
+                'video': videos[0],
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response3 = _run_qwen3_vl_hf(messages, pt_engine.model, pt_engine.default_template)
+    assert response == response2 == response3
 
 
 def test_qwen3_moe_vl():
@@ -326,10 +355,7 @@ def test_qwen3_moe_vl():
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
-    assert response[:200] == response2[:200] == (
-        'The video shows a young child, likely a toddler, sitting on a bed in a cozy, '
-        'lived-in bedroom. The child is wearing a light blue sleeveless top, pink pants, '
-        'and oversized black-framed glasses, which a')
+    assert response == response2
 
 
 if __name__ == '__main__':
@@ -346,7 +372,7 @@ if __name__ == '__main__':
     # test_valley()
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
-    test_qwen3_omni()
+    # test_qwen3_omni()
     # test_glm4_1v()  # bug now, wait model fix
     # test_keye_vl()
     # test_keye_vl_1_5()

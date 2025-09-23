@@ -674,13 +674,14 @@ def patch_qwen_vl_utils(vision_process):
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
     res = {}
     for key in [
-            'image_factor',
-            'min_pixels',
+            'image_factor',  # image_patch_size * SPATIAL_MERGE_SIZE
+            'min_pixels',  # IMAGE_MIN_TOKEN_NUM * image_factor ** 2
             'max_pixels',
-            'max_ratio',
             'video_min_pixels',
             'video_max_pixels',
             'video_total_pixels',
+            #
+            'max_ratio',
             'frame_factor',
             'fps',
             'fps_min_frames',
