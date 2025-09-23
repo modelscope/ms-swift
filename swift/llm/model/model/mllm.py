@@ -241,3 +241,20 @@ register_model(
         architectures=['DotsOCRForCausalLM'],
         requires=['transformers>=4.51.0'],
     ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.sail_vl2,
+        [ModelGroup([
+            Model('BytedanceDouyinContent/SAIL-VL2-2B', 'BytedanceDouyinContent/SAIL-VL2-2B'),
+            Model('BytedanceDouyinContent/SAIL-VL2-2B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-2B-Thinking'),
+            Model('BytedanceDouyinContent/SAIL-VL2-8B', 'BytedanceDouyinContent/SAIL-VL2-8B'),
+            Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
+        ])],
+        TemplateType.sail_vl2,
+        get_model_tokenizer_dots_ocr,
+        model_arch=ModelArch.internvl,
+        architectures=['SAILVLModel'],
+        requires=['transformers<=4.51.3'],
+    ))
+
