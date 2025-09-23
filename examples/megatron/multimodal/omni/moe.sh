@@ -37,8 +37,8 @@ megatron sft \
     --min_lr 1e-5 \
     --max_epochs 1 \
     --save megatron_output/Qwen3-Omni-30B-A3B-Instruct \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 100 \
+    --save_interval 100 \
     --vit_gradient_checkpointing true \
     --max_length 4096 \
     --num_workers 8 \
