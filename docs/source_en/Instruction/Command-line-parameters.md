@@ -712,7 +712,7 @@ Specific model arguments can be set using `--model_kwargs` or environment variab
 The definitions of the parameters listed below can be found in each model’s official repository or in its inference code.
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
-The parameter meanings are the same as in the `qwen_vl_utils<0.0.13` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
+The parameter meanings are the same as in the `qwen_vl_utils<0.0.12` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28
 - MIN_PIXELS: Default is `4 * 28 * 28`
