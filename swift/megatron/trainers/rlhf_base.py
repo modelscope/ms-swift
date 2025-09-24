@@ -20,6 +20,39 @@ logger = get_logger()
 
 class MegatronRLHFTrainer(MegatronTrainer):
 
+    @contextmanager
+    def _get_iters(self, train_dataset, val_dataset):
+        origin_initialize_megatron = training.initialize_megatron
+
+        def initialize_megatron(*_args, **kwargs):
+            res = origin_initialize_megatron(*_args, **kwargs)
+            args = get_args()
+            data_parallel_size = mpu.get_data_parallel_world_size()
+            step_batch_size = args.micro_batch_size * data_parallel_size
+            if args.train_iters is None and args.max_epochs is not None:
+                if hasattr(train_dataset, '__len__'):
+                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * args.num_generations
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
+                else:
+                    raise ValueError(
+                        'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
+            if args.eval_iters < 0:
+                if val_dataset is None:
+                    args.eval_iters = 0
+                elif hasattr(val_dataset, '__len__'):
+                    dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                    args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
+                else:
+                    raise ValueError(
+                        'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
+            return res
+
+        training.initialize_megatron = initialize_megatron
+        try:
+            yield
+        finally:
+            training.initialize_megatron = origin_initialize_megatron
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
         if args.train_type == 'full':

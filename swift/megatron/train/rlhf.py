@@ -26,7 +26,8 @@ class MegatronRLHF(MegatronSft):
 
     def _prepare_template(self) -> None:
         super()._prepare_template()
-        self.template.set_mode('rlhf')
+        model_mapping = {'grpo': 'train'}
+        self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
 
     def _get_data_collator(self):
         if self.args.rlhf_type == 'grpo':

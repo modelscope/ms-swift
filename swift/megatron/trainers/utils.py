@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import torch
+from accelerate.utils import gather_object as hf_gather_object
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
@@ -172,7 +173,7 @@ def profiling_context(trainer, name: str):
     # TODO: add swanlab support
 
 
-def gather_tensor_dict(tensors: Dict[str, torch.Tensor], group):
+def gather_dict(tensors: Dict[str, torch.Tensor], group: torch.distributed.ProcessGroup):
     if not isinstance(tensors, dict):
         raise ValueError(f'Expected a dictionary, got {type(tensors)}')
     size = torch.distributed.get_world_size(group=group)
@@ -181,11 +182,30 @@ def gather_tensor_dict(tensors: Dict[str, torch.Tensor], group):
     sorted_keys = sorted(tensors.keys())
     for key in sorted_keys:
         val = tensors[key]
-        output[key] = [torch.empty_like(val) for _ in range(size)]
-        torch.distributed.all_gather(val, val, group=group, async_op=False)
-        output[key] = torch.cat(output[key], dim=0)
+        if isinstance(val, int):
+            # num_samples
+            output[key] = val
+            continue
+        elif isinstance(val, torch.Tensor):
+            output[key] = [torch.empty_like(val) for _ in range(size)]
+            torch.distributed.all_gather(output[key], val, group=group, async_op=False)
+            output[key] = torch.cat(output[key], dim=0)
+        else:
+            output[key] = [None for _ in range(size)]
+            torch.distributed.all_gather_object(output[key], val, group=group, async_op=False)
+            output[key] = [item for sublist in output[key] for item in sublist]
 
     return output
+
+
+def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] = None):
+    if group is None:
+        return hf_gather_object(object)
+    size = torch.distributed.get_world_size(group=group)
+    output_objects = [None for _ in range(size)]
+    torch.distributed.all_gather_object(output_objects, object)
+    # all_gather_object returns a list of lists, so we need to flatten it
+    return [x for y in output_objects for x in y]
 
 
 def make_batch_generator(batch: List[Dict[str, Any]], batch_size: int):
