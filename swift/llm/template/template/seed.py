@@ -191,7 +191,7 @@ class SailVLTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image', 'This model only supports image input'
         if self.mode == 'vllm':
-            assert NotImplementedError('vLLM not support this model now')
+            raise NotImplementedError('vLLM not support this model now')
         else:
             image_context = ['<img>', [-100], '</img>\n']
         return image_context
