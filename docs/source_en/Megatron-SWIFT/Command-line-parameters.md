@@ -183,7 +183,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
 - moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
-- 🔥expert_tensor_parallel_size: Degree of expert tensor parallelism. Defaults to None, which inherits the value of `--tensor_model_parallel_size`.
+- 🔥 expert_tensor_parallel_size: expert tensor-parallel size. Default is 1.
+  - In "ms-swift<3.9", its default is `None`, which means it equals the value of `--tensor_model_parallel_size`. This default will be changed in "ms-swift>=3.9".
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.

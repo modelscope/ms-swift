@@ -674,17 +674,24 @@ def patch_qwen_vl_utils(vision_process):
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
     res = {}
     for key in [
-            'image_factor',
-            'min_pixels',
+            'image_factor',  # image_patch_size * SPATIAL_MERGE_SIZE
+            'min_pixels',  # IMAGE_MIN_TOKEN_NUM * image_factor ** 2
             'max_pixels',
-            'max_ratio',
             'video_min_pixels',
             'video_max_pixels',
             'video_total_pixels',
+            #
+            'max_ratio',
             'frame_factor',
             'fps',
             'fps_min_frames',
             'fps_max_frames',
+            # qwen3_vl
+            'image_max_token_num',
+            'image_min_token_num',
+            'spatial_merge_size',
+            'video_max_token_num',
+            'video_min_token_num',
     ]:
         type_func = float if key == 'fps' else int
         default_value = getattr(vision_process, key.upper(), None)
@@ -721,7 +728,9 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    require_version('qwen_vl_utils<0.0.12')
+    check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
+    if check_qwen_vl_utils:
+        require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
@@ -816,6 +825,49 @@ register_model(
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
+
+def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.14')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
+    kwargs['_check_qwen_vl_utils'] = False
+    return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl, [],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLMoeForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.14')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
+    kwargs['_check_qwen_vl_utils'] = False
+    return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_moe_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-235B-A22B-Instruct'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking', 'Qwen/Qwen3-VL-235B-A22B-Thinking'),
+            ]),
+        ],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_moe_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLMoeForConditionalGeneration'],
+        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
 register_model(
     ModelMeta(
         MLLMModelType.mimo_vl, [
@@ -881,6 +933,7 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
     processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['model_config'].thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
     global_vars = patch_qwen_vl_utils(vision_process)
     processor.global_vars = global_vars
     enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)

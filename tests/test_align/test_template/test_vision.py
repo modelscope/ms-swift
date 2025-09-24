@@ -849,6 +849,47 @@ def test_minicpmv4_5():
     assert response == response2
 
 
+def _run_qwen3_vl_hf(messages, model, processor):
+    from qwen_vl_utils import process_vision_info
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    images, videos = process_vision_info(messages, image_patch_size=16)
+
+    inputs = processor(text=text, images=images, videos=videos, do_resize=False, return_tensors='pt')
+    inputs = inputs.to(model.device)
+
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+    output_text = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return output_text[0]
+
+
+def test_qwen3_vl():
+    pt_engine = PtEngine('Qwen/Qwen3-VL')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    query = 'describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'image': images[0],
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    pt_engine.model.generation_config.repetition_penalty = 1
+    response3 = _run_qwen3_vl_hf(messages, pt_engine.model, pt_engine.processor)
+    assert response == response2 == response3
+
+
 def test_sailvl2():
     pt_engine = PtEngine('BytedanceDouyinContent/SAIL-VL2-2B')
     query = 'describe the image'
@@ -929,6 +970,7 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
+    # test_qwen3_vl()
     # test_keye_vl_1_5()
     # test_internvl3_hf()
     # test_internvl3_5_hf()
