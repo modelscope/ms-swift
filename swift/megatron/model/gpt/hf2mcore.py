@@ -3,6 +3,7 @@ from typing import Optional
 
 import torch
 from megatron.training import get_args
+from torch import nn
 
 
 def set_mla_attn_state(args, mg_attn, hf_attn):
@@ -48,17 +49,22 @@ def set_attn_state(args, mg_attn, hf_attn):
 
 
 def _set_mlp_state(mg_mlp, hf_mlp, group_idx: Optional[int] = None):
+    hf_grouped = not isinstance(hf_mlp.down_proj, nn.Module)
     if group_idx is None:
         linear_fc1_weight = mg_mlp.linear_fc1.weight
         linear_fc2_weight = mg_mlp.linear_fc2.weight
     else:
         linear_fc1_weight = getattr(mg_mlp.linear_fc1, f'weight{group_idx}')
         linear_fc2_weight = getattr(mg_mlp.linear_fc2, f'weight{group_idx}')
-    if hasattr(hf_mlp, 'gate_up_proj'):
-        linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj.weight)
+    if hf_grouped:
+        linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj[group_idx].t())
+        linear_fc2_weight.data.copy_(hf_mlp.down_proj[group_idx].t())
     else:
-        linear_fc1_weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
-    linear_fc2_weight.data.copy_(hf_mlp.down_proj.weight)
+        if hasattr(hf_mlp, 'gate_up_proj'):
+            linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj.weight)
+        else:
+            linear_fc1_weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
+        linear_fc2_weight.data.copy_(hf_mlp.down_proj.weight)
 
 
 def _set_moe_state(args, mg_mlp, hf_mlp):
@@ -79,7 +85,10 @@ def _set_moe_state(args, mg_mlp, hf_mlp):
         if mg_mlp.shared_experts.gate_weight is not None:
             mg_mlp.shared_experts.gate_weight.data.copy_(hf_mlp.shared_expert_gate.weight)
     for expert_idx in range(args.num_experts):
-        _set_mlp_state(mg_mlp.experts, hf_mlp.experts[expert_idx], group_idx=expert_idx)
+        hf_expert = hf_mlp.experts
+        if hasattr(hf_expert, '__len__'):
+            hf_expert = hf_expert[expert_idx]
+        _set_mlp_state(mg_mlp.experts, hf_expert, group_idx=expert_idx)
 
 
 def set_mlp_state(args, mg_mlp, hf_mlp):

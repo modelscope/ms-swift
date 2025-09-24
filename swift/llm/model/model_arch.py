@@ -31,6 +31,7 @@ class MLLMModelArch:
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_vl = 'qwen3_vl'
     qwen3_omni = 'qwen3_omni'
 
     cogvlm = 'cogvlm'
@@ -522,6 +523,14 @@ else:
             aligner='visual.merger',
             vision_tower='visual',
         ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_vl,
+        language_model='model.language_model',
+        aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
+        vision_tower='model.visual',
+    ))
 
 register_model_arch(
     MultiModelKeys(

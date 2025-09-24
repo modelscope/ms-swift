@@ -244,7 +244,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
-    expert_tensor_parallel_size: Optional[int] = None
+    expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
