@@ -138,7 +138,7 @@ class RLHFArgumentsMixin:
     # gkd
     sft_alpha: float = 0
     # chord
-    chord_sft_dataset: Optional[str] = None
+    chord_sft_dataset: List[str] = field(default_factory=list)
     chord_sft_per_device_train_batch_size: Optional[int] = None
 
     chord_enable_phi_function: bool = False
