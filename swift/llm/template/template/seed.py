@@ -183,6 +183,7 @@ class SailVLTemplate(Template):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.skip_prompt = False
         self.num_image_token = self.processor.num_image_token
         self.img_context_token_id = self.tokenizer.convert_tokens_to_ids('<IMG_CONTEXT>')
 
@@ -238,6 +239,7 @@ class SailVLTemplate(Template):
             input_ids = input_ids.reshape(B * N)
             selected = (input_ids == self.img_context_token_id)
             assert selected.sum() != 0
+            inputs_embeds = inputs_embeds.clone()
             inputs_embeds[selected] = vit_embeds.reshape(-1, C).to(inputs_embeds.device)
 
             inputs_embeds = inputs_embeds.reshape(B, N, C)
@@ -245,10 +247,17 @@ class SailVLTemplate(Template):
             inputs_embeds = embedding(input_ids).to(device=device)
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
-            inputs_embeds += vit_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + vit_embeds.mean() * 0.
 
-        return {'inputs_embeds': inputs_embeds}
+        return {'inputs_embeds': inputs_embeds.to(input_ids.device)}
+
+
+@dataclass
+class SailVLTemplateMeta(ChatmlTemplateMeta):
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    prompt: Prompt = field(default_factory=lambda: ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'])
 
 
 register_template(
-    ChatmlTemplateMeta(MLLMTemplateType.sail_vl2, default_system=SAIL_VL_DEFAULT_SYSTEM, template_cls=SailVLTemplate))
+    SailVLTemplateMeta(MLLMTemplateType.sail_vl2, default_system=SAIL_VL_DEFAULT_SYSTEM, template_cls=SailVLTemplate))
