@@ -119,15 +119,8 @@ def _run_qwen2_5_vl_hf(messages, model, template):
     from qwen_vl_utils import process_vision_info
     processor = template.processor
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    images, videos, video_kwargs = process_vision_info(
-        messages, return_video_kwargs=True)
-    inputs = processor(
-        text=text,
-        images=images,
-        videos=videos,
-        do_resize=False,
-        return_tensors='pt',
-        **video_kwargs)
+    images, videos, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
+    inputs = processor(text=text, images=images, videos=videos, do_resize=False, return_tensors='pt', **video_kwargs)
     inputs = inputs.to(model.device)
 
     generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
