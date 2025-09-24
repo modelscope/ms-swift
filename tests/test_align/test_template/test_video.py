@@ -311,14 +311,21 @@ def _run_qwen3_vl_hf(messages, model, template):
     from qwen_vl_utils import process_vision_info
     processor = template.processor
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    images, videos, video_kwargs = process_vision_info(messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True)
+    images, videos, video_kwargs = process_vision_info(
+        messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True)
     if videos is not None:
         videos, video_metadatas = zip(*videos)
         videos, video_metadatas = list(videos), list(video_metadatas)
     else:
         video_metadatas = None
     inputs = processor(
-        text=text, images=images, videos=videos, video_metadata=video_metadatas, do_resize=False, return_tensors='pt', **video_kwargs)
+        text=text,
+        images=images,
+        videos=videos,
+        video_metadata=video_metadatas,
+        do_resize=False,
+        return_tensors='pt',
+        **video_kwargs)
     inputs = inputs.to(model.device)
 
     generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)

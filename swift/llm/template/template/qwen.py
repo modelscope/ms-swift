@@ -285,13 +285,13 @@ class Qwen2VLTemplate(Template):
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
             if self.version == 'v2_5':
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
-                tokens =  ['<|vision_start|><|video_pad|><|vision_end|>']
+                tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
             elif self.version == 'v3':
                 if video is not None:
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
-                tokens =  ['<|video_pad|>']
+                tokens = ['<|video_pad|>']
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
