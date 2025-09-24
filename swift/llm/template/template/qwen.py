@@ -277,19 +277,25 @@ class Qwen2VLTemplate(Template):
             else:
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
+            if self.version == 'v3':
+                kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
             if os.path.isdir(video):
                 video = [os.path.join(video, fname) for fname in os.listdir(video)]
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
+            if self.version == 'v2_5':
+                inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
+                tokens =  ['<|vision_start|><|video_pad|><|vision_end|>']
+            elif self.version == 'v3':
+                if video is not None:
+                    video, video_metadata = video
+                    inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
+                inputs.mm_processor_kwargs['do_sample_frames'] = False
+                tokens =  ['<|video_pad|>']
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
-            if self.version in {'v2_5', 'v3'}:
-                inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
-                if self.version == 'v3':
-                    inputs.mm_processor_kwargs['do_sample_frames'] = False
-                    return ['<|video_pad|>']
-            return ['<|vision_start|><|video_pad|><|vision_end|>']
+            return tokens
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
         return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
@@ -445,27 +451,6 @@ register_template(
 class Qwen3VLTemplate(Qwen2VLTemplate):
     version = 'v3'
 
-    @contextmanager
-    def _patch_video_processor(self):
-        video_processor = self.processor.video_processor
-
-        __origin_call__ = video_processor.__class__.__call__
-
-        def __call__(self, *args, **kwargs):
-            fps = kwargs.get('fps')
-            res = __origin_call__(self, *args, **kwargs)
-            if fps is not None:
-                for i, metadata in enumerate(res['video_metadata']):
-                    if metadata.fps is None:
-                        metadata.fps = fps[i] if isinstance(fps, list) else fps
-            return res
-
-        video_processor.__class__.__call__ = __call__
-        try:
-            yield
-        finally:
-            video_processor.__class__.__call__ = __origin_call__
-
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         processor = self.processor
@@ -481,13 +466,12 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     split_token = self._tokenize('\n')[0]
-                    with self._patch_video_processor():
-                        media_inputs = processor(
-                            text=['\n'.join(['<|vision_start|><|video_pad|><|vision_end|>'] * len(mm_data))],
-                            videos=mm_data,
-                            return_tensors='pt',
-                            do_resize=False,
-                            **inputs.mm_processor_kwargs)
+                    media_inputs = processor(
+                        text=['\n'.join(['<|vision_start|><|video_pad|><|vision_end|>'] * len(mm_data))],
+                        videos=mm_data,
+                        return_tensors='pt',
+                        do_resize=False,
+                        **inputs.mm_processor_kwargs)
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
