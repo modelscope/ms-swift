@@ -115,21 +115,55 @@ def test_valley():
     _infer_model(pt_engine)
 
 
+def _run_qwen2_5_vl_hf(messages, model, template):
+    from qwen_vl_utils import process_vision_info
+    processor = template.processor
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    images, videos, video_kwargs = process_vision_info(
+        messages, return_video_kwargs=True)
+    inputs = processor(
+        text=text,
+        images=images,
+        videos=videos,
+        do_resize=False,
+        return_tensors='pt',
+        **video_kwargs)
+    inputs = inputs.to(model.device)
+
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+    output_text = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return output_text[0]
+
+
 def test_qwen2_5_vl():
     os.environ['FPS'] = '1'
     os.environ['VIDEO_MAX_PIXELS'] = str(360 * 420)
     pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
-    messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
+    query = 'What happened in the video?'
+    messages = [{'role': 'user', 'content': query}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
-    assert response == response2 == (
-        'In the video, a young child is sitting on a bed and appears to be reading or flipping '
-        'through a book. The child is wearing sunglasses and seems focused on the book. '
-        'The setting looks like a cozy bedroom with various items such as clothes and '
-        "possibly toys around. The child's actions suggest they might be exploring or "
-        'learning about the book.')
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'video',
+                    'video': videos[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response3 = _run_qwen2_5_vl_hf(messages, pt_engine.model, pt_engine.default_template)
+    assert response == response2 == response3
 
 
 def test_qwen2_5_omni():
@@ -311,14 +345,21 @@ def _run_qwen3_vl_hf(messages, model, template):
     from qwen_vl_utils import process_vision_info
     processor = template.processor
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    images, videos, video_kwargs = process_vision_info(messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True)
+    images, videos, video_kwargs = process_vision_info(
+        messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True)
     if videos is not None:
         videos, video_metadatas = zip(*videos)
         videos, video_metadatas = list(videos), list(video_metadatas)
     else:
         video_metadatas = None
     inputs = processor(
-        text=text, images=images, videos=videos, video_metadata=video_metadatas, do_resize=False, return_tensors='pt', **video_kwargs)
+        text=text,
+        images=images,
+        videos=videos,
+        video_metadata=video_metadatas,
+        do_resize=False,
+        return_tensors='pt',
+        **video_kwargs)
     inputs = inputs.to(model.device)
 
     generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
