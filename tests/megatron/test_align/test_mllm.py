@@ -79,6 +79,14 @@ def test_kimi_vl():
     _test_model('moonshotai/Kimi-VL-A3B-Thinking-2506')
 
 
+def test_qwen3_vl():
+    _test_model('Qwen/Qwen3-VL')
+
+
+def test_qwen3_vl_moe():
+    _test_model('Qwen/Qwen3-VL-Moe')
+
+
 def test_qwen3_omni():
     _test_model('Qwen/Qwen3-Omni-30B-A3B-Instruct')
 
@@ -96,4 +104,6 @@ if __name__ == '__main__':
     # test_glm4_5v()
     # test_ovis2_5()
     # test_kimi_vl()
-    test_qwen3_omni()
+    test_qwen3_vl()
+    # test_qwen3_vl_moe()
+    # test_qwen3_omni()

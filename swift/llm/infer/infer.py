@@ -55,9 +55,10 @@ class SwiftInfer(SwiftPipeline):
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
             'template': template,
-            'reranker_use_activation': args.reranker_use_activation,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        if infer_backend in {'pt', 'vllm'}:
+            kwargs['reranker_use_activation'] = args.reranker_use_activation
         if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine

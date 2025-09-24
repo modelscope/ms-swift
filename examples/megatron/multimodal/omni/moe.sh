@@ -9,6 +9,7 @@ megatron sft \
     --load Qwen3-Omni-30B-A3B-Instruct-mcore \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+              'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -36,8 +37,8 @@ megatron sft \
     --min_lr 1e-5 \
     --max_epochs 1 \
     --save megatron_output/Qwen3-Omni-30B-A3B-Instruct \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 100 \
+    --save_interval 100 \
     --vit_gradient_checkpointing true \
     --max_length 4096 \
     --num_workers 8 \
