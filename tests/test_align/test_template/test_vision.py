@@ -890,6 +890,21 @@ def test_qwen3_vl():
     assert response == response2 == response3
 
 
+def test_sailvl2():
+    pt_engine = PtEngine('BytedanceDouyinContent/SAIL-VL2-2B')
+    query = 'describe the image'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    ans = ("The image showcases a stunning close-up of a kitten's face, "
+           'capturing its delicate features in exquisite detail. '
+           "The kitten's fur is a beautiful blend of white and gray, "
+           'with distinctive black stripes adorning its head and face. '
+           'Its large, expressive eyes are a captivating blue-green color, framed by a soft white muzzle. '
+           "The kitten's pink nose and delicate whiskers add to its charming appearance.")
+    assert ans in response
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -955,8 +970,9 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    test_qwen3_vl()
+    # test_qwen3_vl()
     # test_keye_vl_1_5()
     # test_internvl3_hf()
     # test_internvl3_5_hf()
     # test_internvl_gpt_hf()
+    test_sailvl2()

@@ -206,6 +206,7 @@ class MLLMTemplateType:
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
+    sail_vl2 = 'sail_vl2'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
