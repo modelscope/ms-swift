@@ -9,7 +9,7 @@ from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
 
 from swift.llm import HfConfigFactory, get_llm_model
-from ...utils import get_device, get_dist_setting
+from swift.utils import get_cu_seqlens_from_position_ids, get_device, get_dist_setting
 from .utils import GatherLoss
 
 
@@ -252,7 +252,7 @@ class SequenceParallel:
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
                         position_ids = kwargs['position_ids']
-                        cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
                         position_ids = self._split_packed(position_ids, cu_seqlens)
                         mask = position_ids != -1
@@ -430,7 +430,7 @@ class SequenceParallel:
             return tensor
 
         if position_ids is not None and self.rp_world_size > 1:
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             all_tensors = []
             for i in range(len(cu_seqlens) - 1):
                 if dim == 1:
@@ -468,7 +468,7 @@ class SequenceParallel:
             gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
             torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
 
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             all_tensor_length = []
             for i in range(len(cu_seqlens) - 1):
                 length = cu_seqlens[i + 1] - cu_seqlens[i]
@@ -501,17 +501,6 @@ class SequenceParallel:
             gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
 
-    @staticmethod
-    def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
-        position_ids = position_ids[0]
-        seq_start_indices = torch.where(position_ids == 0)[0]
-        seq_end_indices = torch.cat(
-            [seq_start_indices[1:],
-             torch.tensor([len(position_ids)], device=position_ids.device)])
-        seq_lengths = seq_end_indices - seq_start_indices
-        cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=position_ids.device), seq_lengths]), dim=0)
-        return cu_seqlens
-
     def _split_packed(self, value, cu_seqlens, dim=1):
         """Split and re-group in zigzag"""
         local_values = []
@@ -538,7 +527,7 @@ class SequenceParallel:
         if self.rp_world_size > 1:
             input_dim = input.dim()
             assert input_dim >= 2
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             assert torch.all(cu_seqlens % (2 * self.rp_world_size) == 0)
             value_chunks = self._split_packed(input, cu_seqlens, dim=dim)
             local_value = value_chunks.chunk(self.sp_world_size, dim=dim)[self.sp_rank].contiguous()

@@ -364,6 +364,15 @@ def gc_collect() -> None:
     empty_cache()
 
 
+def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
+    position_ids = position_ids[0]
+    seq_start_indices = torch.where(position_ids == 0)[0]
+    seq_end_indices = torch.cat([seq_start_indices[1:], torch.tensor([len(position_ids)], device=position_ids.device)])
+    seq_lengths = seq_end_indices - seq_start_indices
+    cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=position_ids.device), seq_lengths]), dim=0)
+    return cu_seqlens
+
+
 class Serializer:
 
     @staticmethod
