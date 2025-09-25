@@ -113,6 +113,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
@@ -150,6 +151,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \

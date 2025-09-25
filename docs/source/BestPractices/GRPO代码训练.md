@@ -63,6 +63,7 @@ swift rlhf \
     --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
@@ -112,6 +113,7 @@ swift rlhf \
     --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \

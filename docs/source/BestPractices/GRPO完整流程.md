@@ -134,6 +134,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'zouxuhong/Countdown-Tasks-3to4#50000' \
+    --load_from_cache_file true \
     --max_length 2048 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
