@@ -1459,11 +1459,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
             if self.template.padding_free:
+                position_ids = inputs.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = inputs.get('position_ids')
+                position_ids = position_ids.squeeze()
+                logits_to_keep = inputs['logits_to_keep']
                 lengths = torch.diff(
                     torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
                                torch.tensor([len(position_ids)]).to(position_ids.device)]))
                 truncated_mask = torch.repeat_interleave(truncated_mask, lengths)[-logits_to_keep:].unsqueeze(0)
-                assert truncated_mask.shape == completion_mask
+                assert truncated_mask.shape == completion_mask.shape
             else:
                 truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
