@@ -18,7 +18,8 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
+from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context, \
+    get_cu_seqlens_from_position_ids
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .utils import HfConfigFactory
 
@@ -86,15 +87,20 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
     assert found, 'Cannot find the proper lm_head name'
 
     def _output_embedding_hook(module, args, kwargs, output):
-        attention_mask = kwargs['attention_mask']
         hidden_states = output.logits
-        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-        if left_padding:
-            embeddings = hidden_states[:, -1]
+        if 'attention_mask' in kwargs:
+            attention_mask = kwargs['attention_mask']
+            left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+            if left_padding:
+                embeddings = hidden_states[:, -1]
+            else:
+                sequence_lengths = attention_mask.sum(dim=1) - 1
+                batch_size = hidden_states.shape[0]
+                embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
         else:
-            sequence_lengths = attention_mask.sum(dim=1) - 1
-            batch_size = hidden_states.shape[0]
-            embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
+            cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
+            embeddings = hidden_states[cu_seqlens]
+
         embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
 
         return {
