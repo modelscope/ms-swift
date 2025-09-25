@@ -7,6 +7,7 @@ megatron rlhf \
     --rlhf_type dpo \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
+    --load_from_cache_file true \
     --train_type full \
     --tensor_model_parallel_size 4 \
     --sequence_parallel true \

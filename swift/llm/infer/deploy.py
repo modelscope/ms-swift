@@ -116,7 +116,7 @@ class SwiftDeploy(SwiftInfer):
                                                                              (tuple, list)):
                 continue
             for j, content in enumerate(response.choices[i].message.content):
-                if content['type'] == 'image':
+                if isinstance(content, dict) and content['type'] == 'image':
                     b64_image = MultiModalRequestMixin.to_base64(content['image'])
                     response.choices[i].message.content[j]['image'] = f'data:image/jpg;base64,{b64_image}'
 

@@ -6,6 +6,7 @@ megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --train_type lora \
     --dataset AI-ModelScope/function-calling-chatml#10000 \
+    --load_from_cache_file true \
     --loss_scale hermes \
     --agent_template hermes \
     --lora_rank 8 \

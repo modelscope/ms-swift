@@ -21,7 +21,7 @@ class MegatronSft(SwiftSft):
     args: args_class
 
     def prepare_trainer(self):
-        return MegatronTrainer(self.args)
+        return MegatronTrainer(self.args, self.template)
 
     def __init__(self, args: Optional[Union[List[str], MegatronTrainArguments]] = None) -> None:
         self.train_msg = {}

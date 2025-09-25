@@ -8,7 +8,7 @@ from PIL import Image
 
 from swift.utils import get_device
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
@@ -193,3 +193,12 @@ register_template(
         suffix=[['eos_token_id']],
         default_system=DEFAULT_SYSTEM,
         template_cls=Emu3ChatTemplate))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.bge_reranker,
+        prefix=['<s> '],
+        chat_sep=[],
+        prompt=['{{QUERY}}</s></s> '],
+        suffix=['</s>'],
+    ))

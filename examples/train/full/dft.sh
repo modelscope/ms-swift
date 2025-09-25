@@ -6,6 +6,7 @@ swift sft \
     --model Qwen/Qwen2.5-Math-1.5B \
     --train_type full \
     --dataset AI-MO/NuminaMath-CoT#100000 \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --enable_dft_loss true \
     --num_train_epochs 1 \

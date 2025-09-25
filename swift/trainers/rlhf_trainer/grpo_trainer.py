@@ -50,7 +50,8 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
                     make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
+                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids,
+                    set_expandable_segments)
 from .vllm_client import VLLMClient
 
 try:
@@ -193,7 +194,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
         self.chord_sft_iterator = None
-        if chord_sft_dataset is not None:
+        if chord_sft_dataset:
             self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
@@ -297,7 +298,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+            infer_template = copy(self.template)
+            infer_template.padding_free = False
+            self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -531,6 +534,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         with Swift.grpo_context(model, self.template.processor):
+            set_expandable_segments(False)
             engine = GRPOVllmEngine(
                 model.model_dir,
                 model.model_info.torch_dtype,
@@ -550,6 +554,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
             )
+            set_expandable_segments(True)
         return engine
 
     @contextmanager
@@ -773,6 +778,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Step 3: Offload model/optimizer if enabled
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
+            set_expandable_segments(False)
             # Step 4: Wake up kv_cache after offloading (vLLM colocate only)
             if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
@@ -808,7 +814,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.engine.engine.reset_prefix_cache()
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 empty_cache()
-
+            set_expandable_segments(True)
         return outputs
 
     def _generate_completions(self, inputs: DataType) -> DataType:
@@ -997,7 +1003,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             rewards_std = group_rewards.std(-1).mean().item()
-            is_std_zero = torch.isclose(rewards.std(dim=0), torch.zeros_like(rewards.std(dim=0)))
+            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
 
             self._metrics[mode]['reward'].append(rewards_mean)
             self._metrics[mode]['reward_std'].append(rewards_std)
@@ -1613,12 +1619,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
             if start_idx < batch_size:
-                # Create chunk inputs
-                for key, value in inputs.items():
-                    if isinstance(value, torch.Tensor):
-                        chunk_inputs[key] = value[start_idx:end_idx]
-                    else:
-                        chunk_inputs[key] = value
+                chunk_inputs = self.get_chunked_inputs(inputs, start_idx, end_idx)
 
             # Compute loss and metrics for this chunk (without updating global metrics)
             chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_inputs)
@@ -1862,26 +1863,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             ``False``.
         """
 
-        def get_chunked_inputs(inputs, start_idx, end_idx):
-            chunk_inputs = {}
-            if not self.is_multimodal:
-                # for LLM, slice the inputs
-                for key, val in inputs.items():
-                    if isinstance(val, torch.Tensor):
-                        chunk_inputs[key] = val[start_idx:end_idx]
-                    else:
-                        chunk_inputs[key] = val
-            else:
-                # for MLLM, re-encode to get mm-related inputs
-                origin_data = inputs['_origin_data'][start_idx:end_idx]
-                template = self.template
-                with self._template_context(template):
-                    chunk_inputs = [template.encode(data) for data in origin_data]
-                    chunk_inputs = to_device(template.data_collator(chunk_inputs), self.model.device)
-                    chunk_inputs['logits_to_keep'] = inputs['logits_to_keep']
-                    chunk_inputs.pop('labels', None)
-            return chunk_inputs
-
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
@@ -1901,7 +1882,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
             if start_idx < end_idx:
-                chunk_inputs = get_chunked_inputs(inputs, start_idx, end_idx)
+                chunk_inputs = self.get_chunked_inputs(inputs, start_idx, end_idx)
 
             chunk_logps, chunk_entropies = self._get_per_token_logps_and_entropies_single(
                 model, chunk_inputs, compute_entropy)
@@ -2594,6 +2575,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
 
+            # Step 5: override multi-modal data from rollout_infos
+            if output.rollout_infos:
+                multi_modal_keys = ['images', 'videos', 'audios']
+                for key in multi_modal_keys:
+                    if key in output.rollout_infos:
+                        input_data[key] = output.rollout_infos[key]
+                        logger.info_once(f'Overriding multi-modal data from rollout_infos for key: {key}')
+
             return input_data
 
         if not self.dynamic_num_samples:
@@ -2892,3 +2881,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, rid in enumerate(request_ids):
             seen[rid] = i
         return torch.tensor(list(seen.values()), dtype=torch.long, device=self.accelerator.device)
+
+    def get_chunked_inputs(self, inputs, start_idx, end_idx):
+        chunk_inputs = {}
+        # for LLM, slice the inputs
+        for key, val in inputs.items():
+            if isinstance(val, torch.Tensor):
+                chunk_inputs[key] = val[start_idx:end_idx]
+            else:
+                chunk_inputs[key] = val
+        if self.is_multimodal:
+            # for MLLM, re-encode to get mm-related inputs
+            origin_data = inputs['_origin_data'][start_idx:end_idx]
+            template = self.template
+            with self._template_context(template):
+                encoded_data = [template.encode(data) for data in origin_data]
+                chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
+                chunk_inputs.pop('labels', None)
+        return chunk_inputs

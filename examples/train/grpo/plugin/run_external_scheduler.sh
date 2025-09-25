@@ -48,6 +48,7 @@ swift rlhf \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
     --dataset 'AI-MO/NuminaMath-TIR#1000' \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

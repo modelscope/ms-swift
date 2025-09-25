@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import inspect
+import os
 import pickle
 import time
 from copy import deepcopy
@@ -11,6 +12,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
@@ -60,12 +62,13 @@ class PtEngine(InferEngine):
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
             **kwargs):
+        download_model = kwargs.pop('download_model', True)
         self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,
             model_type=model_type,
-            download_model=True,
+            download_model=download_model,
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
@@ -75,6 +78,7 @@ class PtEngine(InferEngine):
             task_type=task_type,
             model_kwargs=model_kwargs,
             **kwargs)
+        self.reranker_use_activation = kwargs.pop('reranker_use_activation', True)
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
             adapters = [adapters]
@@ -86,7 +90,7 @@ class PtEngine(InferEngine):
     def _post_init(self, template=None):
         super()._post_init(template)
         self.engine = self.model  # dummy
-        self.generation_config = self.model.generation_config
+        self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
         self._task_pool = {}
         self._task_thread = None
@@ -326,6 +330,9 @@ class PtEngine(InferEngine):
         elif 'last_hidden_state' in output:
             # embeddings
             logits = output['last_hidden_state']
+        else:
+            raise NotImplementedError('Only support `logits` or `hidden_state` in output.')
+
         if template.task_type == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
         elif template.task_type == 'prm':
@@ -333,6 +340,27 @@ class PtEngine(InferEngine):
             logprobs = [None] * len(preds)
         elif template.task_type == 'embedding':
             preds = logits
+            logprobs = [None] * len(preds)
+        elif template.task_type in ('reranker', 'generative_reranker'):
+            if template.task_type == 'generative_reranker':
+                # Qwen3-reranker like
+                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+                token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
+                token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
+                batch_scores = logits[:, -1, :]
+                true_vector = batch_scores[:, token_true_id]
+                false_vector = batch_scores[:, token_false_id]
+                batch_scores = torch.stack([false_vector, true_vector], dim=1)
+                batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
+                preds = batch_scores[:, 1].exp()
+            else:
+                preds = logits
+                if self.reranker_use_activation:
+                    preds = F.sigmoid(preds)
+            preds = preds.tolist()
+            if not isinstance(preds[0], list):
+                preds = [preds]
             logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported task_type: {template.task_type}')
@@ -520,8 +548,9 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm', 'embedding'
-                                                                           } else self._infer_full
+                infer_func = self._infer_forward if template.task_type in {
+                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
+                } else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []

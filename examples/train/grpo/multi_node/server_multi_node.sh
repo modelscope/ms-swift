@@ -38,6 +38,7 @@ swift rlhf \
     --vllm_server_host <node1_ip> <node2_ip> \
     --vllm_server_port <node1_port> <node2_port> \
     --dataset AI-MO/NuminaMath-TIR#1000 \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 1 \
@@ -67,6 +68,7 @@ swift rlhf \
     --vllm_server_host <node1_ip> <node2_ip> \
     --vllm_server_port <node1_port> <node2_port> \
     --dataset AI-MO/NuminaMath-TIR#1000 \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 1 \

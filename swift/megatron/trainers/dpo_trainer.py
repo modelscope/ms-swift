@@ -35,8 +35,8 @@ class DummyDPOTrainer(DPOTrainer):
 
 class MegatronDPOTrainer(MegatronTrainer):
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, args, template):
+        super().__init__(args, template)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
@@ -57,6 +57,7 @@ class MegatronDPOTrainer(MegatronTrainer):
     def _forward_step_helper(model, inputs):
         args = get_args()
         if mpu.is_pipeline_first_stage():
+            assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
             micro_batch_size = 1  # use qkv_format 'thd'
             seq_length = inputs['input_ids'].shape[1]
             if args.sequence_parallel:
@@ -131,7 +132,7 @@ class MegatronDPOTrainer(MegatronTrainer):
             loss = loss + args.rpo_alpha * nll_loss
         loss = loss.mean()
         metric = {
-            'loss': loss.clone().detach(),
+            'loss': loss.detach().clone(),
             'logps/chosen': logps[:num_samples].mean(),
             'logps/rejected': logps[num_samples:].mean(),
             'rewards/chosen': chosen_rewards.mean(),
@@ -141,14 +142,11 @@ class MegatronDPOTrainer(MegatronTrainer):
         }
         if args.rpo_alpha:
             metric['nll_loss'] = nll_loss.detach()
-        reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+        metric = self._all_reduce_metric(metric)
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
-        return loss, reporting_metric
+        return loss, metric
 
     @contextmanager
     def null_ref_context(self):

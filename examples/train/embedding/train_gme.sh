@@ -8,6 +8,7 @@ swift sft \
     --model iic/gme-Qwen2-VL-2B-Instruct \
     --train_type lora \
     --dataset 'swift/TextCaps:emb' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

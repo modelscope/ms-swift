@@ -14,7 +14,7 @@ from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
 if TYPE_CHECKING:
     from .gpt_model import GPTModel
-    from .mm_gpt import MultimodalGPTModel
+    from .mm_gpt_model import MultimodalGPTModel
 
 
 # Code borrowed from NVIDIA/Megatron-LM
@@ -71,6 +71,8 @@ def model_provider(pre_process=True,
     else:  # using core models
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
+        elif args.megatron_model_meta.get_transformer_layer_spec is not None:
+            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config)
         else:
             if args.num_experts:
                 # Define the decoder block spec

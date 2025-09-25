@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 import torch
 import torch.nn as nn
+from megatron.training import get_args
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
@@ -86,27 +87,40 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
 
 
 def get_examples(is_multimodal: bool) -> Dict[str, Any]:
+    mm_type = 'image'
     if is_multimodal:
-        data = {
-            'messages': [{
-                'role': 'user',
-                'content': '<image>describe the image.'
-            }, {
-                'role':
-                'assistant',
-                'content':
-                'The image depicts a close-up of a kitten with striking features. '
-                'The kitten has a white and gray coat with distinct black stripes, '
-                'particularly noticeable on its face and ears. Its eyes are large '
-                'and expressive, with a captivating blue hue that stands out against '
-                "the darker fur around them. The kitten's nose is small and pink, "
-                'and it has long, delicate whiskers extending from either side of its mouth. '
-                "The background is blurred, drawing attention to the kitten's face and "
-                'making it the focal point of the image. The overall impression is '
-                'one of cuteness and charm.'
-            }],
-            'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-        }
+        if mm_type == 'image':
+            data = {
+                'messages': [{
+                    'role': 'user',
+                    'content': '<image>describe the image.'
+                }, {
+                    'role':
+                    'assistant',
+                    'content':
+                    'The image depicts a close-up of a kitten with striking features. '
+                    'The kitten has a white and gray coat with distinct black stripes, '
+                    'particularly noticeable on its face and ears. Its eyes are large '
+                    'and expressive, with a captivating blue hue that stands out against '
+                    "the darker fur around them. The kitten's nose is small and pink, "
+                    'and it has long, delicate whiskers extending from either side of its mouth. '
+                    "The background is blurred, drawing attention to the kitten's face and "
+                    'making it the focal point of the image. The overall impression is '
+                    'one of cuteness and charm.'
+                }],
+                'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+            }
+        elif mm_type == 'audio':
+            data = {
+                'messages': [{
+                    'role': 'user',
+                    'content': '<audio>Caption the audio.'
+                }, {
+                    'role': 'assistant',
+                    'content': "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
+                }],
+                'audios': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
+            }
     else:
         data = {
             'messages': [
@@ -169,18 +183,28 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
         mg_logits = mg_model(
             input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
-
-    token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
-    mean_diff = token_mean_diff.mean().item()
-    max_diff = (mg_logits - hf_logits).abs().max().item()
-    print(f'token_mean_diff: {token_mean_diff}')
-    print(f'mean_diff: {mean_diff}, max_diff: {max_diff} (Please check that mean_diff is less than 0.1).')
-    hf_tokens = hf_logits.argmax(-1)
-    mg_tokens = mg_logits.argmax(-1)
-    print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
-    print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
-    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
-    print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
+    args = get_args()
+    if args.task_type == 'seq_cls':
+        mg_logits = mg_logits[:, -1]
+        mean_diff = (mg_logits - hf_logits).abs().mean().item()
+        max_diff = (mg_logits - hf_logits).abs().max().item()
+        print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+    else:
+        token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
+        mean_diff = token_mean_diff.mean().item()
+        max_diff = (mg_logits - hf_logits).abs().max().item()
+        loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+        mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
+        max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
+        print(f'token_mean_diff: {token_mean_diff}')
+        print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+        print(f'mean_diff (with loss): {mean_diff_with_loss}, max_diff (with loss): {max_diff_with_loss} '
+              '(Please check that mean_diff is less than 0.1).')
+        hf_tokens = hf_logits.argmax(-1)
+        mg_tokens = mg_logits.argmax(-1)
+        print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
+        print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
+        print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
 convert_kwargs = {
@@ -235,14 +259,14 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
+    logger.info('Saving the model...')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     from swift.megatron import prepare_mcore_model, adapter_state_dict_context
-    hf_model, template = prepare_model_template(
-        args, load_model=args.to_hf, patch_offload=not args.test_convert_precision)
+    _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
@@ -254,14 +278,14 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
-    adapter_config = MegatronArguments.load_tuner_config(adapter_load)
-    adapter_config['adapter_load'] = adapter_load
-    if args.mcore_model:
-        adapter_config['load'] = args.mcore_model
+    extra_config = MegatronArguments.load_args_config(adapter_load or args.mcore_model)
+    extra_config['adapter_load'] = adapter_load
+    if args.mcore_model is not None:
+        extra_config['load'] = args.mcore_model
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
-        **adapter_config,
+        **extra_config,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
@@ -284,12 +308,14 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
+        hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model
         logger.info('Successfully transferred MG model weights to HF model.')
         ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
+        logger.info('Saving the model...')
         save_checkpoint(
             hf_model,
             processor,
@@ -306,5 +332,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         patch_torch_dist_shard(args.thread_count)
 
         args.save_args()
+        logger.info('Saving the model...')
         mg_save_checkpoint(1, [mg_model], None, None, 0)
         logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')

@@ -5,6 +5,7 @@ swift sft \
     --model ZhipuAI/GLM-4-9B-0414 \
     --train_type full \
     --dataset AI-ModelScope/function-calling-chatml \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --agent_template hermes \
     --torch_dtype bfloat16 \

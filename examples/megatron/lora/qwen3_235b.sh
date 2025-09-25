@@ -6,6 +6,7 @@ megatron sft \
     --load Qwen3-235B-A22B-Instruct-2507-mcore \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

@@ -15,6 +15,7 @@ class LLMModelType:
     qwen3 = 'qwen3'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
+    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_next = 'qwen3_next'
@@ -23,6 +24,8 @@ class LLMModelType:
     qwen3_reranker = 'qwen3_reranker'
 
     qwen2_gte = 'qwen2_gte'
+
+    bge_reranker = 'bge_reranker'
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
@@ -113,6 +116,8 @@ class LLMModelType:
     skywork_o1 = 'skywork_o1'
 
     ling = 'ling'
+    ling2 = 'ling2'
+    ring2 = 'ring2'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -132,6 +137,8 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    gemma_emb = 'gemma_emb'
+    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
 
@@ -157,7 +164,10 @@ class MLLMModelType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
+    qwen3_vl = 'qwen3_vl'
+    qwen3_moe_vl = 'qwen3_moe_vl'
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -183,8 +193,10 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    internvl_hf = 'internvl_hf'
     internvl3_5 = 'internvl3_5'
     internvl3_5_gpt = 'internvl3_5_gpt'
+    internvl_gpt_hf = 'internvl_gpt_hf'
     interns1 = 'interns1'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -242,7 +254,9 @@ class MLLMModelType:
     step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
+    sail_vl2 = 'sail_vl2'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'

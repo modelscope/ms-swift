@@ -9,7 +9,6 @@ from megatron.training import get_args
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
-from swift.utils import get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -33,9 +32,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
     data = next(data_iterator)
     is_finished = data.pop('is_finished', False)
-    data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-    if 'loss_scale' in data:
-        data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+    if args.task_type == 'causal_lm':
+        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+        if 'loss_scale' in data:
+            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         pass
@@ -64,42 +64,24 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         qkv_format='thd')
 
 
-def _split_tokens(tokens, cu_seqlens):
-    assert tokens.shape[-2] == 1, f'tokens.shape: {tokens.shape}'  # [..., 1, L]
-    new_tokens = []
+def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
+    if dim < 0:
+        dim = (dim + inputs.ndim) % inputs.ndim
+    new_inputs = []
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
     for i in range(cu_seqlens.shape[0] - 1):
-        val = tokens[..., cu_seqlens[i]:cu_seqlens[i + 1]]
-        val = val.view(
-            *tokens.shape[:-1],
-            2 * cp_size,
-            val.shape[-1] // (2 * cp_size),
-        )
+        slices = [slice(None)] * inputs.ndim
+        slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
+        val = inputs[slices]
+        view_shape = (*inputs.shape[:dim], 2 * cp_size, val.shape[dim] // (2 * cp_size), *inputs.shape[dim + 1:])
+        val = val.view(view_shape)
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
                              pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(-2, index)
-        new_tokens.append(val.view(*tokens.shape[:-1], -1))
-    return torch.cat(new_tokens, dim=-1)
-
-
-def _split_tokens_decoder_input(tokens, cu_seqlens):
-    assert tokens.shape[1] == 1, f'tokens.shape: {tokens.shape}'  # [L, 1, E]
-    new_tokens = []
-    cp_size = mpu.get_context_parallel_world_size()
-    cp_rank = mpu.get_context_parallel_rank()
-    for i in range(cu_seqlens.shape[0] - 1):
-        val = tokens[cu_seqlens[i]:cu_seqlens[i + 1], ...]
-        val = val.view(
-            2 * cp_size,
-            val.shape[0] // (2 * cp_size),
-            *tokens.shape[1:],
-        )
-        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
-                             pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(0, index)
-        new_tokens.append(val.view(-1, *tokens.shape[1:]))
-    return torch.cat(new_tokens, dim=0)
+        val = val.index_select(dim, index)
+        view_shape = (*inputs.shape[:dim], -1, *inputs.shape[dim + 1:])
+        new_inputs.append(val.view(view_shape))
+    return torch.cat(new_inputs, dim=dim)
 
 
 def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
@@ -127,11 +109,10 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
         for key, val in batch.items():
             if key not in keys:
                 continue
+            if args.task_type == 'seq_cls' and key == 'labels':
+                continue
             if val is not None:
-                if key == 'decoder_input':
-                    batch[key] = _split_tokens_decoder_input(val, packed_seq_params.cu_seqlens_q)
-                else:
-                    batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
+                batch[key] = split_cp_inputs(val, packed_seq_params.cu_seqlens_q, -1)
 
     return batch
 

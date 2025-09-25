@@ -11,6 +11,7 @@ from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
+from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
@@ -313,6 +314,7 @@ class RowPreprocessor:
             dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
+        cache_file_name = None
         if isinstance(dataset, HfDataset):
             if not load_from_cache_file and is_dist() and not is_master():
                 load_from_cache_file = True
@@ -324,7 +326,11 @@ class RowPreprocessor:
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
-                dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
+                if not dataset.cache_files:
+                    cache_file_name = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                                                   f'{dataset._fingerprint}.arrow')
+                dataset = dataset.map(
+                    lambda x: {'__#solution': x['solution']}, **map_kwargs, cache_file_name=cache_file_name)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
@@ -332,6 +338,9 @@ class RowPreprocessor:
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
+                if not dataset.cache_files:
+                    cache_file_name = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                                                   f'{dataset._fingerprint}.arrow')
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
                     fn_kwargs={
@@ -339,6 +348,7 @@ class RowPreprocessor:
                         'ignore_max_length_error': ignore_max_length_error
                     },
                     remove_columns=list(dataset.features.keys()),
+                    cache_file_name=cache_file_name,
                     **map_kwargs)
             except NotImplementedError:
                 pass

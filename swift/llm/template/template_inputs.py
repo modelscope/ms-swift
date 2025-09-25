@@ -269,13 +269,7 @@ class TemplateInputs:
             if not isinstance(value_dict, dict):
                 continue
             if key in {'chosen', 'rejected'}:
-                kwargs = {}
-                for k in all_keys:
-                    val = value_dict.get(k)
-                    if val is None:
-                        continue
-                    kwargs[k] = val
-                setattr(self, key, StdTemplateInputs.from_dict(kwargs))
+                setattr(self, key, StdTemplateInputs.from_dict(value_dict))
             else:
                 res = []
                 for i in range(len(value_dict['messages'])):
