@@ -280,8 +280,6 @@ class Qwen2VLTemplate(Template):
             if self.version == 'v3':
                 kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
-            if os.path.isdir(video):
-                video = [os.path.join(video, fname) for fname in os.listdir(video)]
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
             if self.version == 'v2_5':
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)

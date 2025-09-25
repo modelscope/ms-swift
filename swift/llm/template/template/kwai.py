@@ -39,8 +39,6 @@ class KeyeVLTemplate(Template):
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             video = inputs.videos[index]
-            if os.path.isdir(video):
-                video = [os.path.join(video, fname) for fname in os.listdir(video)]
             video, video_kwargs = fetch_video({'video': video})
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
