@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from typing import List, Optional, Union
 
 import torch
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import mpu, parallel_state, tensor_parallel
 from megatron.core.enums import Fp8Recipe
 from megatron.core.fp8_utils import get_fp8_context
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -86,7 +86,9 @@ class Qwen3Omni_Vit(HuggingFaceModule):
 
     @staticmethod
     def _get_inputs_embeds(inputs_embeds, inputs, visual, processor, config):
+        from ...trainers.utils import split_cp_inputs
         input_ids = inputs['input_ids']
+        packed_seq_params = inputs.get('packed_seq_params')
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
@@ -139,8 +141,13 @@ class Qwen3Omni_Vit(HuggingFaceModule):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
             visual_pos_masks = image_mask[..., 0] | video_mask[..., 0]
             visual_pos_masks = visual_pos_masks.transpose(0, 1)
-            # compat sp
+            # compat cp
             args = get_args()
+            if args.context_parallel_size > 1:
+                assert packed_seq_params is not None
+                deepstack_visual_embeds = split_cp_inputs(deepstack_visual_embeds, packed_seq_params.cu_seqlens_q, 1)
+                visual_pos_masks = split_cp_inputs(visual_pos_masks, packed_seq_params.cu_seqlens_q, 0)
+            # compat sp
             tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
             tp_rank = parallel_state.get_tensor_model_parallel_rank()
             if args.sequence_parallel and tp_world_size > 1:

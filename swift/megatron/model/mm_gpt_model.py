@@ -80,14 +80,11 @@ class MultimodalGPTModel(MegatronModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            from ..trainers.utils import get_batch_on_this_cp_rank
-            kwargs.update({'input_ids': input_ids})
+            from ..trainers.utils import split_cp_inputs
+            kwargs.update({'input_ids': input_ids, 'packed_seq_params': packed_seq_params})
             with self._patch_word_embeddings(kwargs):
                 decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
-                decoder_input = get_batch_on_this_cp_rank({
-                    'decoder_input': decoder_input,
-                    'packed_seq_params': packed_seq_params
-                })['decoder_input']
+                decoder_input = split_cp_inputs(decoder_input, packed_seq_params.cu_seqlens_q, 0)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
