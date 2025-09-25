@@ -256,8 +256,6 @@ class Qwen2VLTemplate(Template):
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             video = inputs.videos[index]
-            if os.path.isdir(video):
-                video = [os.path.join(video, fname) for fname in os.listdir(video)]
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
