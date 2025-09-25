@@ -55,8 +55,8 @@ Hints:
   - Note: For "ms-swift<3.6", the default value of this parameter is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
-- 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
-  - Note: It is recommended to set this parameter to False during the debug phase.
+- 🔥load_from_cache_file: Whether to load the dataset from cache. Default is False. Recommended to set to True during actual runs and False during debugging.
+  - Note: This parameter defaults to True in "ms-swift<3.9".
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
