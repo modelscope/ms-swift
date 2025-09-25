@@ -145,8 +145,12 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             args = get_args()
             if args.context_parallel_size > 1:
                 assert packed_seq_params is not None
-                deepstack_visual_embeds = split_cp_inputs(deepstack_visual_embeds, packed_seq_params.cu_seqlens_q, 1)
+                device = visual_pos_masks.device
+                cp_mask = torch.full(visual_pos_masks.shape[:1], -1, dtype=torch.long, device=device)
+                cp_mask[visual_pos_masks[:, 0]] = torch.arange(visual_pos_masks.sum(), device=device)
+                cp_mask = split_cp_inputs(cp_mask, packed_seq_params.cu_seqlens_q, 0)
                 visual_pos_masks = split_cp_inputs(visual_pos_masks, packed_seq_params.cu_seqlens_q, 0)
+                deepstack_visual_embeds = deepstack_visual_embeds[:, cp_mask[(cp_mask != -1)]]
             # compat sp
             tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
             tp_rank = parallel_state.get_tensor_model_parallel_rank()
@@ -452,7 +456,6 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
 
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
-        # TODO: compat CP
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
