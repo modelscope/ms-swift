@@ -41,11 +41,14 @@ class MultimodalGPTModel(MegatronModule):
         origin_forward = VocabParallelEmbedding.forward
 
         def forward(_self, input_):
+            from ..trainers.utils import split_cp_inputs
+            args = get_args()
             reduce_scatter_embeddings = _self.reduce_scatter_embeddings
             _self.reduce_scatter_embeddings = False
             input_ = torch.masked_fill(input_, input_ < 0, 0)
             res = origin_forward(_self, input_)
             _self.reduce_scatter_embeddings = reduce_scatter_embeddings
+            packed_seq_params = kwargs.get('packed_seq_params')
             if self.visual is not None:
                 res = self.visual.get_inputs_embeds(res, **kwargs)
                 kwargs.clear()
@@ -54,6 +57,8 @@ class MultimodalGPTModel(MegatronModule):
                     inputs_embeds = res.pop('inputs_embeds')
                     kwargs.update(res)
                     res = inputs_embeds
+            if args.context_parallel_size > 1:
+                res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
@@ -80,11 +85,9 @@ class MultimodalGPTModel(MegatronModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            from ..trainers.utils import split_cp_inputs
             kwargs.update({'input_ids': input_ids, 'packed_seq_params': packed_seq_params})
             with self._patch_word_embeddings(kwargs):
                 decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
-                decoder_input = split_cp_inputs(decoder_input, packed_seq_params.cu_seqlens_q, 0)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
