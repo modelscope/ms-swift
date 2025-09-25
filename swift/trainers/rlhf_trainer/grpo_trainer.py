@@ -194,7 +194,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
         self.chord_sft_iterator = None
-        if chord_sft_dataset is not None:
+        if chord_sft_dataset:
             self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
