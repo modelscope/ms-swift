@@ -11,6 +11,7 @@ swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
     --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \

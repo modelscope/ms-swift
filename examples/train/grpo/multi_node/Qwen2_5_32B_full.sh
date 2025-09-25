@@ -26,6 +26,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
+    --load_from_cache_file true \
     --max_completion_length 2048 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
