@@ -3,6 +3,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model OpenBMB/MiniCPM-V-4 \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \

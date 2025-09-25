@@ -3,6 +3,7 @@ swift sft \
     --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B \
     --train_type full \
     --dataset AI-ModelScope/function-calling-chatml \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --agent_template react_en \
     --loss_scale react \

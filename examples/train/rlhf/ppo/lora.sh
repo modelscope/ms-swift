@@ -14,6 +14,7 @@ swift rlhf \
     --reward_model 'AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2' \
     --train_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' 'AI-ModelScope/alpaca-gpt4-data-en#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

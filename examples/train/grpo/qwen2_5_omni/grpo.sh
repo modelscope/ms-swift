@@ -16,6 +16,7 @@ swift rlhf \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
     --dataset lmms-lab/multimodal-open-r1-8k-verified#1000 \
+    --load_from_cache_file true \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --max_completion_length 2048 \
     --num_train_epochs 1 \

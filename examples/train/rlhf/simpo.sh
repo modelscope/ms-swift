@@ -8,6 +8,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-3B-Instruct \
     --train_type full \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

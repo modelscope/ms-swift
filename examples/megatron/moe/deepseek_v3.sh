@@ -7,6 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --load Moonlight-16B-A3B-Instruct-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --decoder_last_pipeline_num_layers 13 \

@@ -11,6 +11,7 @@ swift sft \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
+    --load_from_cache_file true \
     --attn_impl flash_attention_3 \
     --num_train_epochs 3 \
     --split_dataset_ratio 0.01 \

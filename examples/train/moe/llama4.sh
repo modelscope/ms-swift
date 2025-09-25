@@ -6,6 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model meta-llama/Llama-4-Scout-17B-16E-Instruct \
     --dataset 'linxy/LaTeX_OCR:full#5000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \

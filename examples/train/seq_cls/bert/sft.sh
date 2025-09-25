@@ -6,6 +6,7 @@ swift sft \
     --model AI-ModelScope/bert-base-chinese \
     --train_type lora \
     --dataset 'DAMO_NLP/jd:cls#2000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

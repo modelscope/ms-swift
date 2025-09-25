@@ -29,6 +29,7 @@ swift rlhf \
     --dataset "path/to/data_0.1.2_visual_toolbox_v2.parquet"\
     "path/to/data_v0.8_visual_toolbox_v2.parquet"\
     "path/to/data_thinklite_reasoning_acc.parquet" \
+    --load_from_cache_file true \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
