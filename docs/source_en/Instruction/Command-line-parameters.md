@@ -38,7 +38,7 @@ Hints:
 - new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
-- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
+- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is 'single_label_classification'.
 - rope_scaling: RoPE type, supports `linear`, `dynamic`, and `yarn`, or you can directly pass in a JSON string: `"{\"factor\":2.0,\"type\":\"yarn\"}"`. Please use in conjunction with `max_model_len`. Default is None.
 - max_model_len: If using `rope_scaling`, you can set `max_model_len`. This parameter can be used to calculate the RoPE `factor` multiplier. The final `max_position_embeddings` will be set to the original value multiplied by the `factor`. If `rope_scaling` is a JSON string, this value will not take effect.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
@@ -594,6 +594,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
 - metric: Evaluate the results of the inference, currently supporting 'acc' and 'rouge'. The default is None, meaning no evaluation is performed.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
+- reranker_use_activation: Use sigmoid after reranker score, default True.
 
 ### Deployment Arguments
 
@@ -711,7 +712,7 @@ Specific model arguments can be set using `--model_kwargs` or environment variab
 The definitions of the parameters listed below can be found in each model’s official repository or in its inference code.
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
-The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
+The parameter meanings are the same as in the `qwen_vl_utils<0.0.12` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28
 - MIN_PIXELS: Default is `4 * 28 * 28`
@@ -728,10 +729,25 @@ The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_util
 ### qwen2_audio
 - SAMPLING_RATE: Default is 16000
 
-### qwen2_5_omni
+### qwen2_5_omni, qwen3_omni
 qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
 - USE_AUDIO_IN_VIDEO: Default is False.
-- 🔥ENABLE_AUDIO_OUTPUT: Default is True. If training with zero3, set it to False.
+- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
+
+### qwen3_vl
+The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values:
+
+- SPATIAL_MERGE_SIZE: default 2.
+- IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
+- 🔥 IMAGE_MAX_TOKEN_NUM: default `16384`, denotes the maximum number of image tokens per image. (used to avoid OOM)
+- VIDEO_MIN_TOKEN_NUM: default `128`, denotes the minimum number of video tokens per frame.
+- 🔥 VIDEO_MAX_TOKEN_NUM: default `768`, denotes the maximum number of video tokens per frame. (used to avoid OOM)
+- MAX_RATIO: default 200.
+- FRAME_FACTOR: default 2.
+- FPS: default 2.0.
+- FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
+- 🔥 FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+
 
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)

@@ -54,23 +54,6 @@ class MegatronTunerMixin:
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
     use_rslora: bool = False
 
-    @staticmethod
-    def load_tuner_config(adapter_load: Optional[str]) -> Dict[str, Any]:
-        res = {}
-        if adapter_load is None:
-            return res
-        args_path = os.path.join(adapter_load, 'args.json')
-        if os.path.exists(args_path):
-            with open(args_path, 'r', encoding='utf-8') as f:
-                old_args = json.load(f)
-            tuner_keys = list(f.name for f in fields(MegatronTunerMixin)) + ['load']
-            for key in tuner_keys:
-                old_value = old_args.get(key)
-                if old_value is not None:
-                    res[key] = old_value
-            res.pop('adapter_load', None)
-        return res
-
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
@@ -95,6 +78,10 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
+    task_type: Literal['causal_lm', 'seq_cls'] = None
+    num_labels: Optional[int] = None
+    problem_type: Literal['regression', 'single_label_classification',
+                          'multi_label_classification'] = 'single_label_classification'
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
@@ -110,6 +97,28 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
+    # qwen3_vl, qwen3_omni
+    mrope_interleaved: Optional[bool] = None
+
+    @staticmethod
+    def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
+        res = {}
+        if ckpt_dir is None:
+            return res
+        args_path = os.path.join(ckpt_dir, 'args.json')
+        if os.path.exists(args_path):
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            keys = list(f.name for f in fields(MegatronTunerMixin))
+            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']
+            for key in keys:
+                old_value = old_args.get(key)
+                if old_value is not None:
+                    res[key] = old_value
+            res.pop('adapter_load', None)
+            if res['train_type'] != 'lora':
+                res.pop('load')
+        return res
 
 
 @dataclass
@@ -133,7 +142,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
-    calculate_per_token_loss: bool = True
+    calculate_per_token_loss: Optional[bool] = None
     use_flash_attn: bool = False
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
@@ -235,7 +244,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
-    expert_tensor_parallel_size: Optional[int] = None
+    expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
@@ -331,6 +340,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_head_dim = 128
         if self.qk_pos_emb_head_dim is None:
             self.qk_pos_emb_head_dim = 64
+        if self.task_type is None:
+            self.task_type = 'causal_lm'
+        if self.calculate_per_token_loss is None:
+            self.calculate_per_token_loss = self.task_type == 'causal_lm'
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
@@ -346,6 +359,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_enable_expert_bias = False
         if self.moe_layer_freq is None:
             self.moe_layer_freq = '1'
+        if self.mrope_interleaved is None:
+            self.mrope_interleaved = False
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments

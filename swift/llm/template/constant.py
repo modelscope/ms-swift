@@ -41,6 +41,7 @@ class LLMTemplateType:
     ziya = 'ziya'
     atom = 'atom'
     mengzi = 'mengzi'
+    bge_reranker = 'bge_reranker'
 
     chatglm2 = 'chatglm2'
     glm4 = 'glm4'
@@ -118,7 +119,9 @@ class MLLMTemplateType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
+    qwen3_vl = 'qwen3_vl'
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
@@ -203,6 +206,7 @@ class MLLMTemplateType:
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
+    sail_vl2 = 'sail_vl2'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'

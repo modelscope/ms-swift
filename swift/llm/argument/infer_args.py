@@ -95,6 +95,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         result_path (Optional[str]): Directory to store inference results. Default is None.
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
+        reranker_use_activation (bool): reranker use activation after calculating. Default is True.
     """
     infer_backend: Literal['vllm', 'pt', 'sglang', 'lmdeploy'] = 'pt'
 
@@ -106,6 +107,9 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
 
     # only for inference
     val_dataset_sample: Optional[int] = None
+
+    # for reranker
+    reranker_use_activation: bool = True
 
     def _get_result_path(self, folder_name: str) -> str:
         result_dir = self.ckpt_dir or f'result/{self.model_suffix}'
