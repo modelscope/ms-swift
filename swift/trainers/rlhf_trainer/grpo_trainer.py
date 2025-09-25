@@ -1317,7 +1317,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion_mask':
                 labels[:, -logits_to_keep:] != -100,
                 'truncated_mask':
-                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
+                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool, device=self.accelerator.device),
                 'logits_to_keep':
                 logits_to_keep,
                 'advantages':
@@ -1458,7 +1458,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if all(truncated_mask):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
-            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
+            if self.template.padding_free:
+                lengths = torch.diff(
+                    torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                               torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                truncated_mask = torch.repeat_interleave(truncated_mask, lengths)[-logits_to_keep:].unsqueeze(0)
+                assert truncated_mask.shape == completion_mask
+            else:
+                truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
 
         # Compute the KL divergence between the model and the reference model
