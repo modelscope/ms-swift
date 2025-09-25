@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from typing import List, Optional, Union
 
 import torch
-from megatron.core import mpu, parallel_state, tensor_parallel
+from megatron.core import parallel_state, tensor_parallel
 from megatron.core.enums import Fp8Recipe
 from megatron.core.fp8_utils import get_fp8_context
 from megatron.core.inference.contexts import BaseInferenceContext
