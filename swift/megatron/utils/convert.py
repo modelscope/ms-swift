@@ -259,6 +259,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
+    logger.info('Saving the model...')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
@@ -314,6 +315,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         del mg_model
         logger.info('Successfully transferred MG model weights to HF model.')
         ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
+        logger.info('Saving the model...')
         save_checkpoint(
             hf_model,
             processor,
@@ -330,5 +332,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         patch_torch_dist_shard(args.thread_count)
 
         args.save_args()
+        logger.info('Saving the model...')
         mg_save_checkpoint(1, [mg_model], None, None, 0)
         logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
