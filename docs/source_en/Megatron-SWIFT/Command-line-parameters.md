@@ -248,7 +248,7 @@ LoRA Training:
 - beta: Coefficient for the KL regularization term. Default is `0.1`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
-- calculate_kl: Whether to calculate KL divergence. Default is `True`.
+- calculate_KL: Whether to calculate KL divergence. Default is `True`.
 
 ## Training Parameters
 

@@ -179,7 +179,7 @@ class MegatronKTOTrainer(MegatronTrainer):
             beta=self.beta,
             desirable_weight=self.desirable_weight,
             undesirable_weight=self.undesirable_weight,
-            calculate_kl=self.calculate_kl,
+            calculate_KL=self.calculate_KL,
             device=policy_logps.device,
         )
 
