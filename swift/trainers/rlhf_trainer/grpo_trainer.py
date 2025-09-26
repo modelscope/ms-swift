@@ -1346,7 +1346,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # --- log completion lengths ---
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
-        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
+        if self.template.padding_free:
+            local_lengths = [inp['seq_lengths'].tolist() for inp in ga_batch_encoded_inputs]
+        else:
+            local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
         total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
