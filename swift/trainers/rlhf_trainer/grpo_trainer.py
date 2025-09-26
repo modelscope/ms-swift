@@ -1298,7 +1298,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-
+            extra_kwargs = {
+                'completion_mask':
+                labels[:, -logits_to_keep:] != -100,
+                'truncated_mask':
+                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool, device=self.accelerator.device),
+                'logits_to_keep':
+                logits_to_keep,
+            }
             if self.template.padding_free:
                 position_ids = batch_encoded_inputs.get('text_position_ids')
                 if position_ids is None:
@@ -1308,21 +1315,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 lengths = torch.diff(
                     torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
                                torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                total_lengths = lengths.sum()
+                # The first sentence has its prompt portion removed due to logits_to_keep
+                lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
+                extra_kwargs.update({'seq_lengths': lengths})
                 advantages_stacked = torch.stack([data['advantages'] for data in batch])
                 all_advandages = torch.repeat_interleave(advantages_stacked, lengths)
             else:
                 all_advandages = torch.stack([data['advantages'] for data in batch])
-
-            batch_encoded_inputs.update({
-                'completion_mask':
-                labels[:, -logits_to_keep:] != -100,
-                'truncated_mask':
-                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool, device=self.accelerator.device),
-                'logits_to_keep':
-                logits_to_keep,
-                'advantages':
-                all_advandages
-            })
+            extra_kwargs.update({'advantages': all_advandages})
+            batch_encoded_inputs.update(extra_kwargs)
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
@@ -1427,7 +1429,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
-
+        if self.template.padding_free:
+            lengths = inputs['seq_lengths']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
 
@@ -1459,15 +1462,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
             if self.template.padding_free:
-                position_ids = inputs.get('text_position_ids')
-                if position_ids is None:
-                    position_ids = inputs.get('position_ids')
-                position_ids = position_ids.squeeze()
-                logits_to_keep = inputs['logits_to_keep']
-                lengths = torch.diff(
-                    torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
-                               torch.tensor([len(position_ids)]).to(position_ids.device)]))
-                truncated_mask = torch.repeat_interleave(truncated_mask, lengths)[-logits_to_keep:].unsqueeze(0)
+                truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
                 assert truncated_mask.shape == completion_mask.shape
             else:
                 truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
@@ -1489,14 +1484,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         log_ratio = per_token_logps - old_per_token_logps
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
-        elif self.importance_sampling_level == 'sequence':
-            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            log_importance_weights = log_importance_weights.unsqueeze(-1)
-        elif self.importance_sampling_level == 'sequence_token':
-            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
-            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+        elif self.importance_sampling_level in ['sequence', 'sequence_token']:
+            # split to batch, compute seq-level normalization
+            log_ratio_list = torch.split(log_ratio.squeeze(0), lengths.tolist())
+            mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
+            seq_weights = []
+            for lr, m in zip(log_ratio_list, mask_list):
+                sw = (lr * m).sum() / m.sum().clamp(min=1.0)
+                seq_weights.append(sw)
+            log_importance_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
+            if self.importance_sampling_level == 'sequence_token':
+                # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+                seq_level_log_weight = log_importance_weights.detach()
+                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
+                log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
@@ -1532,6 +1533,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_token_count = completion_mask.sum().clamp(min=1.0)
 
         def masked_batch_mean(x):
+            # compute for token-level average
             if x.shape[1] == 1:  # when importance_sampling_level == "sequence"
                 return x.mean()
             else:
@@ -1543,7 +1545,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'entropy': entropy_metrics,
             'completion_mask': completion_mask,
             'completion_token_count': completion_token_count,
-            'masked_batch_mean_fn': masked_batch_mean
         }
 
         if self.beta != 0.0:
@@ -1828,7 +1829,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask'
+                    'truncated_mask', 'seq_lengths'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
