@@ -1485,18 +1485,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
-            # split to batch, compute seq-level normalization
-            log_ratio_list = torch.split(log_ratio.squeeze(0), lengths.tolist())
-            mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
-            seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
-            seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
-            if self.importance_sampling_level == 'sequence':
-                log_importance_weights = seq_level_log_weights
+            if self.template.padding_free:
+                # split to batch, compute seq-level normalization
+                log_ratio_list = torch.split(log_ratio.squeeze(0), lengths.tolist())
+                mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
+                seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
+                seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
+                if self.importance_sampling_level == 'sequence':
+                    log_importance_weights = seq_level_log_weights
+                else:
+                    seq_level_log_weight = seq_level_log_weights.detach()
+                    seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
+                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
             else:
-                # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-                seq_level_log_weight = seq_level_log_weights.detach()
-                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
-                log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+                seq_level_log_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(
+                    min=1.0).unsqueeze(-1)
+                if self.importance_sampling_level == 'sequence':
+                    log_importance_weights = seq_level_log_weights
+                else:
+                    # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+                    seq_level_log_weight = seq_level_log_weights.detach()
+                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
