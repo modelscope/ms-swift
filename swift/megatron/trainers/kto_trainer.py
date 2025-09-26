@@ -130,16 +130,15 @@ class MegatronKTOTrainer(MegatronTrainer):
 
     @staticmethod
     def kto_loss(policy_chosen_logps, policy_rejected_logps, policy_KL_logps, reference_chosen_logps,
-                 reference_rejected_logps, reference_KL_logps, beta, desirable_weight, undesirable_weight,
-                 calculate_KL):
+                 reference_rejected_logps, reference_KL_logps, beta, desirable_weight, undesirable_weight, calculate_KL,
+                 device):
         if calculate_KL and policy_KL_logps is not None and reference_KL_logps is not None:
             kl = (policy_KL_logps - reference_KL_logps).mean().detach()
             dist.all_reduce(kl, group=mpu.get_data_parallel_group())
             kl = kl / mpu.get_data_parallel_world_size()
             kl = kl.clamp(min=0)
         else:
-            kl_device = policy_chosen_logps.device if policy_chosen_logps.numel() > 0 else policy_rejected_logps.device
-            kl = torch.tensor(0.0, device=kl_device)
+            kl = torch.tensor(0.0, device=device)
 
         chosen_rewards = torch.tensor([], device=kl.device)
         if policy_chosen_logps.shape[0] > 0:
@@ -180,7 +179,8 @@ class MegatronKTOTrainer(MegatronTrainer):
             beta=self.beta,
             desirable_weight=self.desirable_weight,
             undesirable_weight=self.undesirable_weight,
-            calculate_KL=self.calculate_KL,
+            calculate_kl=self.calculate_kl,
+            device=policy_logps.device,
         )
 
         loss = loss.mean() if loss.numel() > 0 else torch.tensor(0.0, device=policy_logps.device)
