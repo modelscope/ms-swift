@@ -1410,7 +1410,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
 
         # Check batch size and decide processing strategy
-        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
         should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
@@ -1444,7 +1444,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
-                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                if self.template.padding_free:
+                    entropy_list = torch.split(entropies, lengths.tolist())
+                    per_completion_entropies_mean = torch.stack([torch.nanmean(e) for e in entropy_list])
+                else:
+                    per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
                 entropy_metrics = {
                     'entropy_logs': global_per_completion_entropies_mean.tolist(),
@@ -1545,7 +1549,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
-            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+            batch_size = lengths.shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
+            loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1633,7 +1638,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
 
         # Decide how many chunks every rank must run
         batch_sizes = gather_object([batch_size])
@@ -1809,7 +1814,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         When rollout count is larger than expected, we process in smaller batches
         to control memory usage.
         """
-        batch_size = inputs['input_ids'].shape[0]
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size  # noqa
         should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
@@ -1894,8 +1899,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             Concatenated per-token entropies, or ``None`` if ``compute_entropy`` is
             ``False``.
         """
-
-        batch_size = inputs['input_ids'].shape[0]
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
@@ -1958,6 +1962,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def compute_liger_loss(self, unwrapped_model, inputs):
         # Compute the per-token log probabilities for the model
+        assert not self.template.padding_free
         input_ids = inputs['input_ids']
         logits_to_keep = inputs['logits_to_keep']
         completion_ids = input_ids[:, -logits_to_keep:]
@@ -2391,6 +2396,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                    'With --dynamic_sample enabled, only the last valid sample of each '
                                    f'{self.args.generation_batch_size}-sized batch will be kept; '
                                    'some requests may therefore be dropped.')
+                if self.template.padding_free:
+                    raise NotImplementedError('Padding free mode is not supported for dynamic sample')
             # Initialize empty outputs for non-main processes
             if not self.accelerator.is_main_process:
                 all_outputs = [None] * outputs_count
