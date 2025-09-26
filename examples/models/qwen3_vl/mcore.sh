@@ -1,6 +1,7 @@
 # 8 * 80GiB; 45min
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
+IMAGE_MAX_TOKEN_NUM=1024 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --load Qwen3-VL-235B-A22B-Instruct-mcore \

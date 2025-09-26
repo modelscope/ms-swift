@@ -1,5 +1,6 @@
 # use device_map
 # 8 * 70GiB
+IMAGE_MAX_TOKEN_NUM=1024 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model Qwen/Qwen3-VL-235B-A22B-Instruct \
