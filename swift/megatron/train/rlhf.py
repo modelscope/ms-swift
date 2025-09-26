@@ -22,7 +22,7 @@ class MegatronRLHF(MegatronSft):
             trainer_cls = MegatronKTOTrainer
         else:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
-        return trainer_cls(args)
+        return trainer_cls(args, self.template)
 
     def _prepare_template(self) -> None:
         super()._prepare_template()

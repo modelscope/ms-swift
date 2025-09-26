@@ -20,8 +20,8 @@ logger = get_logger()
 
 class MegatronKTOTrainer(MegatronTrainer):
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, args, template):
+        super().__init__(args, template)
         self.beta = args.beta
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
