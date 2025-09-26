@@ -167,14 +167,12 @@ def get_kto_batch(data_iterator):
     num_samples = batch.get('num_samples')
     if args.padding_free:
         if 'completion_position_ids' in batch and batch['completion_position_ids'] is not None:
-            batch['completion_packed_seq_params'] = get_packed_seq_params(
-                batch['completion_position_ids'])
+            batch['completion_packed_seq_params'] = get_packed_seq_params(batch['completion_position_ids'])
             if num_samples is not None:
                 batch['completion_packed_seq_params'].num_samples = num_samples
 
         if 'KL_completion_position_ids' in batch and batch['KL_completion_position_ids'] is not None:
-            batch['KL_completion_packed_seq_params'] = get_packed_seq_params(
-                batch['KL_completion_position_ids'])
+            batch['KL_completion_packed_seq_params'] = get_packed_seq_params(batch['KL_completion_position_ids'])
             if num_samples is not None:
                 batch['KL_completion_packed_seq_params'].num_samples = num_samples
 
@@ -192,8 +190,7 @@ def get_kto_batch(data_iterator):
                     if key.startswith('KL_completion_') and kl_psp is not None:
                         batch[key] = split_cp_inputs(val, kl_psp.cu_seqlens_q, -1)
                     elif key.startswith('completion_') and completion_psp is not None:
-                        batch[key] = split_cp_inputs(
-                            val, completion_psp.cu_seqlens_q, -1)
+                        batch[key] = split_cp_inputs(val, completion_psp.cu_seqlens_q, -1)
 
     if is_finished:
         args.train_iters = args.curr_iteration + 1

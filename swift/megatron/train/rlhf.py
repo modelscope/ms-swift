@@ -2,10 +2,10 @@
 from typing import List, Optional, Union
 
 from swift.utils import get_logger
+from ...llm.train.kto import prepare_kto_dataset
 from ..argument import MegatronRLHFArguments
 from ..trainers import MegatronDPOTrainer, MegatronKTOTrainer
 from .sft import MegatronSft
-from ...llm.train.kto import prepare_kto_dataset
 
 logger = get_logger()
 
@@ -35,8 +35,7 @@ class MegatronRLHF(MegatronSft):
         args = self.args
         train_dataset, val_dataset = super()._get_dataset()
         if args.rlhf_type == 'kto':
-            train_dataset, val_dataset = prepare_kto_dataset(
-                args, train_dataset, val_dataset)
+            train_dataset, val_dataset = prepare_kto_dataset(args, train_dataset, val_dataset)
         return train_dataset, val_dataset
 
 
