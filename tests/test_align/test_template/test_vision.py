@@ -101,7 +101,7 @@ def test_qwen2_5_vl_batch_infer():
     inputs = inputs.to('cuda')
 
     # Batch Inference
-    generated_ids = model.generate(**inputs, max_new_tokens=128)
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
     generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
     output_texts = processor.batch_decode(
         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
