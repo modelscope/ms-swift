@@ -84,22 +84,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
         return output_tensor
 
-    @staticmethod
-    def get_logps(output_tensor, labels, packed_seq_params):
-        args = get_args()
-        per_token_logps = -output_tensor
-        loss_mask = labels != -100
-        per_token_logps = per_token_logps * loss_mask
-        num_samples = packed_seq_params.num_samples
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples * 2 + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((num_samples * 2, ))
-        for i in range(num_samples * 2):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            all_logps[i] = per_token_logps[:, start:end].sum()
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-        return all_logps
-
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
         args = get_args()

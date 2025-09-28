@@ -195,6 +195,11 @@ class RLHFMegatronArgumentsMixin:
         _init_external_vllm()
         _check_not_supported()
         _check_batch_params()
+        # default loss_type if no loss_type is provided
+        if self.loss_type == 'sigmoid':
+            self.loss_type = 'grpo'
+        assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
+            f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
         if self.async_generate or not self.use_vllm:
             self.sleep_level = 0
         self.remove_unused_columns = False

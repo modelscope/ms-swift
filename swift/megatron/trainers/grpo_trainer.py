@@ -3,7 +3,7 @@ import gc
 import inspect
 from collections import namedtuple
 from contextlib import contextmanager, nullcontext
-from copy import copy
+from copy import copy, deepcopy
 from functools import partial
 from typing import Any, Dict, List, Union
 
@@ -21,7 +21,7 @@ from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_id
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
-from .utils import gather, gather_dict, gather_object, profiling_context
+from .utils import gather, gather_dict, gather_object, process_packed_seq_params, profiling_context
 
 try:
     from mbridge import AutoBridge
@@ -217,7 +217,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         data = next(data_iterator)
         inputs = {
             k: v
-            for k, v in inputs.items() if k not in
+            for k, v in data.items() if k not in
             ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
         }
 
@@ -231,7 +231,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         completion_mask = data['completion_mask']
         packed_seq_params = data['packed_seq_params']
 
-        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params)
+        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, per_token=True)
         if self.beta != 0.0:
             ref_per_token_logps = data.get('ref_per_token_logps')
             per_token_kl = (
@@ -321,7 +321,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # batch : same across DP groups
         def get_local_rollout_batch(batch):
             # repeat num_generations times
-            global_rollout_batch = [item for item in batch for _ in range(self.num_generations)]
+            global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
             # get local rollout data
             rollout_rank = torch.distributed.get_rank(group=self.rollout_group)
             rollout_group_size = torch.distributed.get_world_size(group=self.rollout_group)
@@ -331,8 +331,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             rollout_batch = global_rollout_batch[data_slice]
             return rollout_batch
 
-        # Step1: get local rollout data in DP group
-        # rollout_batch : repeat num_generations times, get current process rollout data
+        # Step1: Rollout / Reward / Advantage
 
         rollout_batch = get_local_rollout_batch(batch)
 
@@ -347,7 +346,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
             encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
             labels = encoded_batch['labels']
-            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            # TODO: logits_to_keep
+            # logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
             if self.template.padding_free:
                 position_ids = encoded_batch.get('text_position_ids')
                 if position_ids is None:
@@ -362,7 +362,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
             encoded_batch.update({
                 'completion_mask':
-                labels[:, -logits_to_keep:] != -100,
+                labels != -100,
                 'truncated_mask':
                 torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool, device=self.device),
                 'advantages':
@@ -373,8 +373,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
             return encoded_batch
 
-        # Step2: gather in DP group, model forward to get ref/old logps
-        # prepare model forward kwargs
+        # Step2: ref/old logps
         total_batch = gather_object(rollout_batch, group=self.rollout_group)
         total_advantages = gather(advantages, group=self.rollout_group)
         mini_batch_data = []
@@ -419,8 +418,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self.engine.engine.wake_up(tags=['kv_cache'])
 
         batch = self.preprocess_rollout_data(batch)
-        output: List[RolloutOutput] = self._rollout(batch)
-        batch = self.postprocess_rollout_data(batch, output)
+        outputs: List[RolloutOutput] = self._rollout(batch)
+        batch = self.postprocess_rollout_data(batch, outputs)
         return batch
 
     def preprocess_rollout_data(self, batch):
@@ -451,7 +450,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         rollout_outputs = self._colocate_rollout(batch, request_config)
         return rollout_outputs
 
-    def postprocess_rollout_data(self, batch, output):
+    def postprocess_rollout_data(self, batch, outputs):
         """
         Post-process the raw vLLM generation outputs and merge them back into the
         original input batch.
@@ -459,7 +458,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Args:
             batch (List[Dict[str, Any]]):
                 Original rollout samples.
-            output (List[RolloutOutput]):
+            outputs (List[RolloutOutput]):
                 outputs from vLLM from vLLM TP group
 
         Returns:
@@ -469,9 +468,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if self.vllm_tensor_parallel_size > 1:
             local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
-            orig_size = len(output) // self.vllm_tensor_parallel_size
+            orig_size = len(outputs) // self.vllm_tensor_parallel_size
             tp_slice = slice(local_rank_in_group * orig_size, (local_rank_in_group + 1) * orig_size)
-            output = output[tp_slice]
+            outputs = outputs[tp_slice]
 
         def merge_output_input_data(input_data: Dict[str, Union[torch.Tensor, Any]], output: RolloutOutput):
             response = output.response
@@ -485,7 +484,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 messages = input_data['messages']
                 remove_response(messages)
                 messages.append({'role': 'assistant', 'content': choice.message.content})
-
             # Step 2: Add token IDs and loss mask
             if output.response_token_ids:
                 input_data['response_token_ids'] = output.response_token_ids
@@ -505,8 +503,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
             return input_data
 
-        assert len(batch) == len(output)
-        return [merge_output_input_data(input_data, output) for input_data, output in zip(batch, output)]
+        assert len(batch) == len(outputs)
+        return [merge_output_input_data(input_data, output) for input_data, output in zip(batch, outputs)]
 
     def _get_request_config(self) -> RequestConfig:
         request_config = copy(self.request_config)
@@ -526,6 +524,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _colocate_rollout(self, batch, request_config: RequestConfig):
         outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
+        completions = [output.response.choices[0].message.content for output in outputs]
+        if self.process_index == 0:
+            for completion in completions:
+                print(completion)
         return outputs
 
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
@@ -605,11 +607,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: entropy
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_model:
-                batch['ref_per_token_logps'] = self.model_forward(ref_model, iter([batch]), no_grad=True)['logps']
+                batch['ref_per_token_logps'] = self.model_forward(
+                    ref_model, iter([batch]), no_grad=True, per_token=True)['logps']
 
         if not self.on_policy:
             batch['old_per_token_logps'] = self.model_forward(
-                self.unwrapped_model, iter([batch]), no_grad=True)['logps']
+                self.unwrapped_model, iter([batch]), no_grad=True, per_token=True)['logps']
+
+        # get packed_seq_params, from get_batch func
+        batch = process_packed_seq_params(batch)
+
         return batch
 
     @contextmanager

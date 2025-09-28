@@ -68,6 +68,18 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         qkv_format='thd')
 
 
+def process_packed_seq_params(batch: Dict[str, Any]) -> int:
+    args = get_args()
+    num_samples = batch.pop('num_samples')
+    text_position_ids = batch.pop('text_position_ids', None)
+    if text_position_ids is None:
+        text_position_ids = batch.get('position_ids')
+    if args.padding_free and text_position_ids is not None:
+        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        batch['packed_seq_params'].num_samples = num_samples
+    return batch
+
+
 def _split_tokens(tokens, cu_seqlens):
     assert tokens.shape[-2] == 1, f'tokens.shape: {tokens.shape}'  # [..., 1, L]
     new_tokens = []
@@ -146,14 +158,8 @@ def get_batch(data_iterator):
     """Generate a batch."""
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
-    args = get_args()
-    num_samples = batch.pop('num_samples')
-    text_position_ids = batch.pop('text_position_ids', None)
-    if text_position_ids is None:
-        text_position_ids = batch.get('position_ids')
-    if args.padding_free and text_position_ids is not None:
-        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
-        batch['packed_seq_params'].num_samples = num_samples
+    # process batch for packed sequence support
+    batch = process_packed_seq_params(batch)
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch
