@@ -27,7 +27,7 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(data_iterator):
+def get_batch_on_this_tp_rank(data_iterator, vp_stage=None):
     args = get_args()
 
     data = next(data_iterator)
@@ -39,10 +39,10 @@ def get_batch_on_this_tp_rank(data_iterator):
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         pass
-    elif mpu.is_pipeline_first_stage():
+    elif mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
         batch['labels'] = None
         batch['loss_scale'] = None
-    elif mpu.is_pipeline_last_stage():
+    elif mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
         batch['input_ids'] = None
     else:
         for key in ('input_ids', 'labels', 'loss_scale'):
@@ -117,10 +117,10 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     return batch
 
 
-def get_batch(data_iterator):
+def get_batch(data_iterator, vp_stage=None):
     """Generate a batch."""
     # get batches based on the TP rank you are on
-    batch = get_batch_on_this_tp_rank(data_iterator)
+    batch = get_batch_on_this_tp_rank(data_iterator, vp_stage=vp_stage)
     args = get_args()
     num_samples = batch.pop('num_samples')
     text_position_ids = batch.pop('text_position_ids', None)

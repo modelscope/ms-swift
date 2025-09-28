@@ -194,15 +194,17 @@ class MegatronArguments(ExtraMegatronArguments):
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
-    num_virtual_stages_per_pipeline_rank: Optional[int] = None
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
-    overlap_grad_reduce: bool = False
-    overlap_param_gather: bool = False
+    overlap_grad_reduce: bool = True
+    overlap_param_gather: bool = True
     distributed_timeout_minutes: int = 300000
+    num_layers_per_virtual_pipeline_stage: Optional[int] = None
+    num_virtual_stages_per_pipeline_rank: Optional[int] = None
+    microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
 
     # model
     num_layers: Optional[int] = None
@@ -252,9 +254,10 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_permute_fusion: bool = False
     moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
-    moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
     moe_layer_recompute: bool = False
+    moe_expert_capacity_factor: Optional[float] = None
+    moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
     # mla

@@ -136,9 +136,10 @@ class MegatronTrainer(BaseMegatronTrainer):
         timers = get_timers()
 
         # Get the batch.
+        vp_stage = model.module.module.vp_stage
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
+            data = get_batch(data_iterator, vp_stage)
         timers('batch-generator').stop()
         loss_scale = data.pop('loss_scale', None)
         channels = data.pop('channel', None)
