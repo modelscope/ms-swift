@@ -98,8 +98,11 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
                 batch_size = hidden_states.shape[0]
                 embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
         else:
-            cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
-            embeddings = hidden_states[cu_seqlens]
+            if 'cu_seq_lens_q' in kwargs:
+                cu_seqlens = kwargs['cu_seq_lens_q']
+            else:
+                cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
+            embeddings = hidden_states[:, cu_seqlens[1:]-1].squeeze(0)
 
         embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
 
@@ -207,20 +210,28 @@ def _patch_sequence_classification(model, model_meta):
         else:
             batch_size = inputs_embeds.shape[0]
 
-        if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
+        if 'cu_seq_lens_q' in kwargs:
+            cu_seqlens = kwargs['cu_seq_lens_q']
+            pooled_logits = logits[:, cu_seqlens[1:]-1].squeeze(0)
+        elif 'position_ids' in kwargs and kwargs['position_ids'].shape[0] == 1:
+            cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
+            pooled_logits = logits[:, cu_seqlens[1:]-1].squeeze(0)
         else:
-            if input_ids is not None:
-                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                sequence_lengths = sequence_lengths.to(logits.device)
-            else:
+            if self.config.pad_token_id is None and batch_size != 1:
+                raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
+            if self.config.pad_token_id is None:
                 sequence_lengths = -1
-
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+            else:
+                if input_ids is not None:
+                    # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
+                    sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
+                    sequence_lengths = sequence_lengths % input_ids.shape[-1]
+                    sequence_lengths = sequence_lengths.to(logits.device)
+                elif 'attention_mask' in kwargs:
+                    sequence_lengths = kwargs['attention_mask'].sum(dim=1)-1
+                else:
+                    sequence_lengths = -1
+                pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
 
         loss = None
         if labels is not None:
