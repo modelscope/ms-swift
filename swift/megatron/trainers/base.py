@@ -150,24 +150,27 @@ class BaseMegatronTrainer(ABC):
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict_model = {}
+        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         mapping = {}
-        for k, v in sharded_state_dict['model'].items():
-            if adapter_name not in k:
-                continue
-            # lora
-            origin_k = k
-            k = k.replace(f'.{adapter_name}.', '.default.')
-            mapping[k] = origin_k
-            v.key = v.key.replace(f'.{adapter_name}.', '.default.')
-            state_dict_model[k] = v
-        sharded_state_dict['model'] = state_dict_model
-        self._patch_merge_fn(state_dict_model)
+        for model_k in model_keys:
+            state_dict_model = {}
+            for k, v in sharded_state_dict[model_k].items():
+                if adapter_name not in k:
+                    continue
+                # lora
+                origin_k = k
+                k = k.replace(f'.{adapter_name}.', '.default.')
+                mapping[model_k][k] = origin_k
+                v.key = v.key.replace(f'.{adapter_name}.', '.default.')
+                state_dict_model[k] = v
+            sharded_state_dict[model_k] = state_dict_model
+            self._patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict = res[0]['model']
-        for k, origin_k in mapping.items():
-            v = state_dict.pop(k)
-            state_dict[origin_k] = v
+        for model_k in model_keys:
+            state_dict = res[0][model_k]
+            for k, origin_k in mapping[model_k].items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
         return res
 
     def _load_base_checkpoint(self, *_args, **kwargs):
@@ -175,37 +178,42 @@ class BaseMegatronTrainer(ABC):
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         if self.args.train_type == 'full':
-            self._patch_merge_fn(sharded_state_dict['model'])
+            for k in model_keys:
+                self._patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict_model = {}
         mapping = {}
-        for k, v in sharded_state_dict['model'].items():
-            if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
-                continue
-            # lora
-            if '.base_layer' in k:
-                origin_k = k
-                k = k.replace('.base_layer', '')
-                mapping[k] = origin_k
-                v.key = v.key.replace('.base_layer', '')
-            elif '.modules_to_save' in k:
-                if '.modules_to_save.default' not in k:
-                    # e.g. ref_adapter
+        for model_k in model_keys:
+            mapping[model_k] = {}
+            state_dict_model = {}
+            for k, v in sharded_state_dict[model_k].items():
+                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
                     continue
-                # modules to save
-                origin_k = k
-                k = k.replace('.modules_to_save.default', '')
-                mapping[k] = origin_k
-                v.key = v.key.replace('.modules_to_save.default', '')
-            state_dict_model[k] = v
-        sharded_state_dict['model'] = state_dict_model
-        self._patch_merge_fn(state_dict_model)
+                # lora
+                if '.base_layer' in k:
+                    origin_k = k
+                    k = k.replace('.base_layer', '')
+                    mapping[model_k][k] = origin_k
+                    v.key = v.key.replace('.base_layer', '')
+                elif '.modules_to_save' in k:
+                    if '.modules_to_save.default' not in k:
+                        # e.g. ref_adapter
+                        continue
+                    # modules to save
+                    origin_k = k
+                    k = k.replace('.modules_to_save.default', '')
+                    mapping[model_k][k] = origin_k
+                    v.key = v.key.replace('.modules_to_save.default', '')
+                state_dict_model[k] = v
+            sharded_state_dict[model_k] = state_dict_model
+            self._patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict = res[0]['model']
-        for k, origin_k in mapping.items():
-            v = state_dict.pop(k)
-            state_dict[origin_k] = v
+        for model_k in model_keys:
+            state_dict = res[0][model_k]
+            for k, origin_k in mapping[model_k].items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
         return res
 
     @contextmanager
