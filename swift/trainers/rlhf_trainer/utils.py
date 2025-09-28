@@ -39,6 +39,15 @@ if is_vllm_available():
     class TensorLoRARequest(LoRARequest):
         peft_config: dict = field(default=None)
         lora_tensors: dict = field(default=None)
+        lora_embeddings: Optional[Dict[str, torch.Tensor]] = None
+
+        @property
+        def config(self):
+            return self.peft_config
+        
+        @property
+        def embeddings(self):
+            return self.lora_embeddings
 
 
 def round_robin(num_reqs, num_workers):
