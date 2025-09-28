@@ -38,13 +38,14 @@ from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDUL
 from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from ..llm.model.patcher import revert_padding_free, get_lm_head_model
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -120,6 +121,7 @@ class SwiftMixin:
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
+        self._patch_tasks()
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):
             self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
@@ -583,6 +585,55 @@ class SwiftMixin:
             yield
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+
+    def _patch_tasks(self):
+
+        if 'SentenceTransformer' in self.model.__class__.__name__:
+            def forward(sentence_transformer, input: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
+                for idx, (module_name, module) in enumerate(sentence_transformer.named_children()):
+                    from sentence_transformers.models import Router
+                    if isinstance(module, Router):
+                        module_kwargs = kwargs
+                    else:
+                        module_kwarg_keys = []
+                        if sentence_transformer.module_kwargs is not None:
+                            module_kwarg_keys = sentence_transformer.module_kwargs.get(module_name, [])
+                        module_kwargs = {
+                            key: value
+                            for key, value in kwargs.items()
+                            if
+                            key in module_kwarg_keys or (hasattr(module, "forward_kwargs") and key in module.forward_kwargs)
+                        }
+                    output = module(input, **module_kwargs)
+                    if idx == 0 and self.args.padding_free:
+                        output = revert_padding_free(output, input, self.args.padding_side)
+                    input = output
+                return {'last_hidden_state': input['sentence_embedding']}
+
+            self.model.forward = MethodType(forward, self.model)
+        elif self.args.padding_free:
+            if self.args.task_type == 'embedding':
+                llm_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+                def revert_padding_free_hook(module, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+            elif self.args.task_type == 'seq_cls':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                def revert_padding_free_hook(module, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+            elif self.args.task_type == 'reranker':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                def revert_padding_free_hook(module, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+            elif self.args.task_type == 'generative_reranker':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                def revert_padding_free_hook(module, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+
+
 
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant

@@ -4,7 +4,7 @@ import os
 from contextlib import contextmanager
 from functools import wraps
 from types import MethodType
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 import accelerate
 import torch
@@ -18,9 +18,9 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context, \
-    get_cu_seqlens_from_position_ids
-from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
+from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
+from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count, \
+    get_cu_seqlens_from_position_ids, get_position_ids_from_cu_seqlens
 from .utils import HfConfigFactory
 
 logger = get_logger()
@@ -87,23 +87,15 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
     assert found, 'Cannot find the proper lm_head name'
 
     def _output_embedding_hook(module, args, kwargs, output):
+        attention_mask = kwargs['attention_mask']
         hidden_states = output.logits
-        if 'attention_mask' in kwargs:
-            attention_mask = kwargs['attention_mask']
-            left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-            if left_padding:
-                embeddings = hidden_states[:, -1]
-            else:
-                sequence_lengths = attention_mask.sum(dim=1) - 1
-                batch_size = hidden_states.shape[0]
-                embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
+        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+        if left_padding:
+            embeddings = hidden_states[:, -1]
         else:
-            if 'cu_seq_lens_q' in kwargs:
-                cu_seqlens = kwargs['cu_seq_lens_q']
-            else:
-                cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
-            embeddings = hidden_states[:, cu_seqlens[1:]-1].squeeze(0)
-
+            sequence_lengths = attention_mask.sum(dim=1) - 1
+            batch_size = hidden_states.shape[0]
+            embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
         embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
 
         return {
@@ -210,28 +202,20 @@ def _patch_sequence_classification(model, model_meta):
         else:
             batch_size = inputs_embeds.shape[0]
 
-        if 'cu_seq_lens_q' in kwargs:
-            cu_seqlens = kwargs['cu_seq_lens_q']
-            pooled_logits = logits[:, cu_seqlens[1:]-1].squeeze(0)
-        elif 'position_ids' in kwargs and kwargs['position_ids'].shape[0] == 1:
-            cu_seqlens = get_cu_seqlens_from_position_ids(kwargs['position_ids'])
-            pooled_logits = logits[:, cu_seqlens[1:]-1].squeeze(0)
+        if self.config.pad_token_id is None and batch_size != 1:
+            raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
+        if self.config.pad_token_id is None:
+            sequence_lengths = -1
         else:
-            if self.config.pad_token_id is None and batch_size != 1:
-                raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
-            if self.config.pad_token_id is None:
-                sequence_lengths = -1
+            if input_ids is not None:
+                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
+                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
+                sequence_lengths = sequence_lengths % input_ids.shape[-1]
+                sequence_lengths = sequence_lengths.to(logits.device)
             else:
-                if input_ids is not None:
-                    # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-                    sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-                    sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                    sequence_lengths = sequence_lengths.to(logits.device)
-                elif 'attention_mask' in kwargs:
-                    sequence_lengths = kwargs['attention_mask'].sum(dim=1)-1
-                else:
-                    sequence_lengths = -1
-                pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+                sequence_lengths = -1
+
+        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
 
         loss = None
         if labels is not None:
@@ -469,6 +453,58 @@ def patch_tp_plan(load_model: bool):
     os.environ.pop('WORLD_SIZE')
     yield
     os.environ['WORLD_SIZE'] = WORLD_SIZE
+
+
+def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding_side='left'):
+    last_hidden_state = outputs['last_hidden_state']
+    if 'cu_seq_lens_q' in inputs:
+        position_ids = get_position_ids_from_cu_seqlens(inputs['cu_seq_lens_q'])
+    elif 'position_ids' in inputs and inputs['position_ids'].shape[0] == 1:
+        position_ids = inputs['position_ids']
+
+    seq_lengths = []
+    pos = position_ids[0]
+    resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+
+    if len(resets) == 0:
+        # Only one sequence in this batch item
+        seq_lengths = [pos.max().item() + 1]
+    else:
+        # Multiple sequences
+        start = 0
+        for end in resets:
+            seq_lengths.append(end - start)
+            start = end
+        seq_lengths.append(pos.shape[0] - start)
+
+    max_length = max(seq_lengths)
+    unpacked_logits = []
+    attention_mask = []
+
+    start = 0
+    for length in seq_lengths:
+        seq_state = last_hidden_state[start:start + length]
+        mask = torch.ones(
+            (seq_state.shape[0])).to(last_hidden_state.device)
+        padding = torch.zeros(
+            (max_length - length,
+             last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+        attention_padding = torch.zeros(
+            (max_length - length)).to(last_hidden_state.device)
+        # re-padding
+        if padding_side == 'left':
+            seq_state = torch.cat((padding, seq_state), dim=0)
+            mask = torch.cat((attention_padding, mask), dim=0)
+        else:
+            seq_state = torch.cat((seq_state, padding), dim=0)
+            mask = torch.cat((mask, attention_padding), dim=0)
+        unpacked_logits.append(seq_state)
+        attention_mask.append(mask)
+        start += length
+    outputs['last_hidden_state'] = torch.stack(unpacked_logits, dim=0)
+    inputs['attention_mask'] = torch.stack(attention_mask, dim=0)
+    outputs['attention_mask'] = torch.stack(attention_mask, dim=0)
+    return outputs
 
 
 @contextmanager
