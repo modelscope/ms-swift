@@ -10,6 +10,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \

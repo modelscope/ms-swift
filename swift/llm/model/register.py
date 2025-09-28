@@ -723,11 +723,12 @@ def get_model_tokenizer(
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
-    problem_type = kwargs.get('problem_type')
-    if problem_type is None and model_info.num_labels == 1:
-        problem_type = 'regression'
-    if problem_type is not None:
-        model_info.config.problem_type = problem_type
+    if task_type == 'seq_cls':
+        problem_type = kwargs.get('problem_type')
+        if problem_type is None and model_info.num_labels == 1:
+            problem_type = 'regression'
+        if problem_type is not None:
+            model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 

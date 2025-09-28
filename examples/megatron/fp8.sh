@@ -8,6 +8,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-7B-mcore \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
     --micro_batch_size 1 \

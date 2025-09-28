@@ -6,6 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
     --dataset 'DAMO_NLP/jd:cls' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --lora_rank 8 \

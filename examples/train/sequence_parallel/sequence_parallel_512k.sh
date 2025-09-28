@@ -7,6 +7,7 @@ swift sft \
     --model Qwen/QwQ-32B \
     --train_type lora \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \

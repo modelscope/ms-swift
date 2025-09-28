@@ -10,6 +10,7 @@ swift sft \
     --train_type lora \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

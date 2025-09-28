@@ -31,6 +31,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
     --packing true \
@@ -85,6 +86,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -171,6 +173,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load InternVL3_5-30B-A3B-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

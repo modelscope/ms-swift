@@ -27,7 +27,7 @@ Hints:
 
 ### Model Arguments
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md). Default is None.
-- model_type: Model type. The same model architecture, template, and model loading process are defined as a model_type. The default is None, and it will be automatically selected based on the suffix of `--model` and the architectures attribute in config.json.
+- model_type: Model type. The same model architecture, template, and model loading process are defined as a model_type. The default is None, and it will be automatically selected based on the suffix of `--model` and the architectures attribute in config.json. The model_type for each model can be found in the [Supported models list](./Supported-models-and-datasets.md).
   - Note: The concept of `model_type` in ms-swift differs from the `model_type` in `config.json`.
 - model_revision: Model revision, default is None.
 - task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
@@ -55,8 +55,8 @@ Hints:
   - Note: For "ms-swift<3.6", the default value of this parameter is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
-- 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
-  - Note: It is recommended to set this parameter to False during the debug phase.
+- 🔥load_from_cache_file: Whether to load the dataset from cache. Default is False. Recommended to set to True during actual runs and False during debugging.
+  - Note: This parameter defaults to True in "ms-swift<3.9".
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.

@@ -12,6 +12,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-MO/NuminaMath-TIR#10000 \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --beta 0.0 \
     --epsilon 3e-4 \

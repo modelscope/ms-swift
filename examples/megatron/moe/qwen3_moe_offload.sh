@@ -6,6 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 4 \
     --moe_permute_fusion true \
