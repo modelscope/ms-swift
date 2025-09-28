@@ -36,8 +36,8 @@ class MegatronSft(SwiftSft):
             self.model, self.processor = args.get_model_processor(**kwargs)
         self._prepare_template()
         patch_megatron_tokenizer(self.processor)
-        args.save_args(args.save)
         args.init_model_args(self.processor, self.processor.model_info.config)
+        args.save_args(args.save)
         self.template.use_megatron = True
         self.trainer = self.prepare_trainer()
 
