@@ -10,6 +10,7 @@ swift sft \
     --dataset MTEB/scidocs-reranking \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \
+    --padding_side left \
     --eval_strategy steps \
     --output_dir output \
     --eval_steps 100 \

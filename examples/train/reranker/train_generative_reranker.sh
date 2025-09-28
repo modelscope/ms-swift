@@ -11,6 +11,7 @@ swift sft \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \
+    --padding_side left \
     --output_dir output \
     --eval_steps 100 \
     --num_train_epochs 1 \
