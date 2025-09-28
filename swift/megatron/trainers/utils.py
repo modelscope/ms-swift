@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 import torch
+from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -196,6 +197,16 @@ def gather_dict(tensors: Dict[str, torch.Tensor], group: torch.distributed.Proce
             output[key] = [item for sublist in output[key] for item in sublist]
 
     return output
+
+
+def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
+    if group is None:
+        return hf_gather(tensor)
+    size = torch.distributed.get_world_size(group=group)
+    output = [torch.empty_like(tensor) for _ in range(size)]
+    torch.distributed.all_gather(output, tensor, group=group, async_op=False)
+
+    return torch.cat(output, dim=0)
 
 
 def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] = None):

@@ -168,8 +168,33 @@ class RLHFMegatronArgumentsMixin:
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron-GRPO yet, please set it to 1.')
 
+        def _check_batch_params():
+            assert self.micro_batch_size % self.num_generations == 0, \
+                f'micro_batch_size ({self.micro_batch_size}) must be divisible' \
+                f' by the number of generations ({self.num_generations})'
+            if self.generation_batch_size is None and self.steps_per_generation is None:
+                self.steps_per_generation = 1
+                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+            elif self.generation_batch_size is not None and self.steps_per_generation is None:
+                # Just ensure the value is divisible by the global batch size
+                if self.generation_batch_size % self.global_batch_size != 0:
+                    raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
+                                     f'must be divisible by the global batch size ({self.global_batch_size}).')
+                self.steps_per_generation = self.generation_batch_size // self.global_batch_size
+            elif self.generation_batch_size is None and self.steps_per_generation is not None:
+                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+            else:
+                raise ValueError(
+                    "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
+            world_size = torch.distributed.get_world_size()
+            assert self.generation_batch_size % world_size == 0, \
+                f'generation_batch_size ({self.generation_batch_size}) ' \
+                f'must be divisible by the world size ({world_size})'
+            self.per_device_generation_batch_size = self.generation_batch_size // world_size
+
         _init_external_vllm()
         _check_not_supported()
+        _check_batch_params()
         if self.async_generate or not self.use_vllm:
             self.sleep_level = 0
         self.remove_unused_columns = False
@@ -203,24 +228,6 @@ class RLHFMegatronArgumentsMixin:
                 if self.vllm_mode != 'colocate':
                     self.vllm_mode = 'colocate'
                     logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
-
-        if self.generation_batch_size is None and self.steps_per_generation is None:
-            self.steps_per_generation = 1
-            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-        elif self.generation_batch_size is not None and self.steps_per_generation is None:
-            # Just ensure the value is divisible by the global batch size
-            if self.generation_batch_size % self.global_batch_size != 0:
-                raise ValueError(
-                    f'generation_batch_size ({self.generation_batch_size}) must be divisible by the global batch size '
-                    f'({self.global_batch_size}).')
-            self.steps_per_generation = self.generation_batch_size // self.global_batch_size
-        elif self.generation_batch_size is None and self.steps_per_generation is not None:
-            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-        else:
-            raise ValueError(
-                "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
-        world_size = torch.distributed.get_world_size()
-        self.per_device_generation_batch_size = self.generation_batch_size // world_size
 
 
 @dataclass

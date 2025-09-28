@@ -105,24 +105,36 @@ class MegatronRLHFTrainer(MegatronTrainer):
         context = torch.no_grad() if no_grad else nullcontext()
         with context:
             output_tensor = self._forward_step_helper(model, data)
-        data['logps'] = None if labels is None else self.get_logps(output_tensor, labels, data['packed_seq_params'])
+        data['logps'] = None if labels is None else self.get_logps(
+            output_tensor, labels, data['packed_seq_params'], per_token=True)
         return data
 
     @staticmethod
-    def get_logps(output_tensor, labels, packed_seq_params):
+    def get_logps(output_tensor, labels, packed_seq_params, per_token: bool = False):
         args = get_args()
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
         num_samples = packed_seq_params.num_samples
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples * 2 + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((num_samples * 2, ))
-        for i in range(num_samples * 2):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            all_logps[i] = per_token_logps[:, start:end].sum()
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-        return all_logps
+        if args.rlhf_type == 'dpo':
+            total_samples = num_samples * 2
+        elif args.rlhf_type in 'grpo':
+            total_samples = num_samples
+
+        cu_seqlens = packed_seq_params.cu_seqlens_q[:total_samples + 1] // args.context_parallel_size
+
+        if per_token:
+            if args.context_parallel_size > 1:
+                per_token_logps = all_reduce(per_token_logps, group=mpu.get_context_parallel_group())
+            return per_token_logps
+        else:
+            all_logps = per_token_logps.new_zeros((total_samples, ))
+            for i in range(total_samples):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                all_logps[i] = per_token_logps[:, start:end].sum()
+            if args.context_parallel_size > 1:
+                all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
+            return all_logps
 
     @contextmanager
     def null_ref_context(self):

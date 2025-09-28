@@ -9,44 +9,24 @@ from typing import Any, Dict, List, Union
 
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, is_peft_model, set_seed
 from megatron.core import mpu
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
-from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.core.pipeline_parallel import get_forward_backward_func
-from megatron.core.rerun_state_machine import get_rerun_state_machine
-from megatron.training import get_args, get_model, get_timers, training
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.training import cuda_graph_capture, cuda_graph_set_manual_hooks
-from megatron.training.utils import (logical_and_across_model_parallel_group,
-                                     reduce_max_stat_across_model_parallel_group, unwrap_model)
-from torch.distributed.nn import all_reduce
+from megatron.training import get_args, training
 from vllm.distributed import parallel_state as vllm_ps
 
 from swift.llm import RequestConfig, RowPreprocessor, Template, to_device
 from swift.llm.infer.protocol import RolloutOutput
 from swift.plugin import orms
-from swift.trainers.rlhf_trainer import GRPOTrainer, VLLMClient
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
-from .trainer import MegatronTrainer
-from .utils import gather_dict, gather_object, get_batch, make_batch_generator, profiling_context
+from .utils import gather, gather_dict, gather_object, profiling_context
 
 try:
     from mbridge import AutoBridge
 except ImportError:
     pass
-
-try:
-    from megatron.post_training.algos.distillation import (
-        get_tensor_shapes_adjust_fn_for_distillation, )
-
-    has_nvidia_modelopt = True
-except ImportError:
-    has_nvidia_modelopt = False
 
 logger = get_logger()
 
@@ -64,49 +44,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_rollout_engine()
         # debug: use mbridge to convert mcore to hf
         self.bridge = None
-
-    def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
-                  packed_seq_params):
-        # TODO：GRPO policy loss
-        args: MegatronRLHFArguments = get_args()
-        num_samples = packed_seq_params.num_samples
-
-        logps = self.get_logps(output_tensor, labels, packed_seq_params)
-        loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
-            logps[:num_samples],
-            logps[num_samples:],
-            ref_logps[:num_samples],
-            ref_logps[num_samples:],
-        )
-        if args.rpo_alpha:
-            loss_mask = labels != -100
-            num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
-            loss_mask[:, num_tokens:] = 0
-            nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
-            if args.context_parallel_size > 1:
-                nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
-            nll_loss = nll_loss[0] / nll_loss[1]
-            loss = loss + args.rpo_alpha * nll_loss
-        loss = loss.mean()
-        metric = {
-            'loss': loss.clone().detach(),
-            'logps/chosen': logps[:num_samples].mean(),
-            'logps/rejected': logps[num_samples:].mean(),
-            'rewards/chosen': chosen_rewards.mean(),
-            'rewards/rejected': rejected_rewards.mean(),
-            'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),
-            'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
-        }
-        if args.rpo_alpha:
-            metric['nll_loss'] = nll_loss.detach()
-        reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-        # fix megatron-lm bug
-        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-        loss = loss / mpu.get_context_parallel_world_size()
-        return loss, reporting_metric
 
     def _init_grpo_params(self):
         args = self.args
@@ -192,7 +129,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size * self.num_generations
+        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         engine = GRPOVllmEngine(
@@ -218,6 +155,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         self._buffered_inputs = None
         return engine
+
+    def _move_model_to_vllm(self):
+        # TODO: LoRA, server
+        if self.bridge is None:
+            self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
+        per_tensor_params = self.bridge.export_weights([self.unwrapped_model])
+        self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
 
     def _prepare_rewards(self):
         # TODO: reward model
@@ -266,185 +210,112 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         assert self.reward_funcs, 'reward_funcs is not set'
 
-    def _move_model_to_vllm(self):
-        # TODO: LoRA, server
-        if self.bridge is None:
-            self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
-        per_tensor_params = self.bridge.export_weights([self.unwrapped_model])
-        self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
-
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
 
         data = next(data_iterator)
-        ref_logps = data.pop('logps')
-        with self.stimer:
-            output_tensor = model(**data)
-        return output_tensor, partial(
-            self.loss_func,
-            ref_logps=ref_logps,
-            labels=data.get('labels'),
-            packed_seq_params=data.get('packed_seq_params'))
+        inputs = {
+            k: v
+            for k, v in inputs.items() if k not in
+            ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
+        }
 
-    def _patch_megatron(self):
-        super()._patch_megatron()
-        self._origin_train_step = self.train_step
+        with self.stimer:
+            output_tensor = model(**inputs)
+        return output_tensor, partial(self.loss_func, data=data)
+
+    def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
+        advantages = data['advantages']
+        labels = data['labels']
+        completion_mask = data['completion_mask']
+        packed_seq_params = data['packed_seq_params']
+
+        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params)
+        if self.beta != 0.0:
+            ref_per_token_logps = data.get('ref_per_token_logps')
+            per_token_kl = (
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+
+        old_per_token_logps = (
+            per_token_logps.detach() if data.get('old_per_token_logps') is None else data['old_per_token_logps'])
+        log_ratio = per_token_logps - old_per_token_logps
+
+        if self.importance_sampling_level == 'token':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'sequence':
+            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            log_importance_weights = log_importance_weights.unsqueeze(-1)
+        elif self.importance_sampling_level == 'sequence_token':
+            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
+            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+        else:
+            raise ValueError(
+                f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
+                "and 'sequence'.")
+
+        coef_1 = torch.exp(log_importance_weights)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        if self.args.delta is not None:
+            coef_1 = torch.clamp(coef_1, max=self.args.delta)
+
+        if self.template.padding_free:
+            advantages = advantages[-coef_1.shape[1]:]
+            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+        else:
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.beta != 0.0:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
+
+        if self.loss_type == 'grpo':
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+        elif self.loss_type == 'bnpo':
+            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+        elif self.loss_type == 'dr_grpo':
+            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+        else:
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
+
+        loss = loss.mean()
+        metric = {
+            'loss': loss.clone().detach(),
+        }
+        reporting_metric = loss.new_tensor(list(metric.values()))
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+        # fix megatron-lm bug
+        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+        loss = loss / mpu.get_context_parallel_world_size()
+        return loss, reporting_metric
 
     def _replace_data_iterator(self, data_iterator):
 
         args = get_args()
         if args.iteration % self.steps_per_generation == 0:
-            # gradient_accumulation_steps
-            num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-            # prepare generation batch data
+            # each rollout DP group will generate generation_batch_size / world_size completions
+            num_iters_per_step = self.generation_batch_size // mpu.get_data_parallel_world_size()
+            # completions will be repeated num_generations times after
+            num_iters_per_step = num_iters_per_step // self.num_generations
             rollout_batch = []
             for _ in range(self.steps_per_generation):
                 for _ in range(num_iters_per_step):
                     rollout_batch.extend(next(data_iterator))
-            self._buffered_inputs = self._generate_and_score_completions(rollout_batch)
+            micro_batch_data = self._generate_and_score_completions(rollout_batch)
+            num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
+            mini_batch_data = [
+                micro_batch_data[i:i + num_mini_batch] for i in range(0, len(micro_batch_data), num_mini_batch)
+            ]
+            assert len(mini_batch_data) == self.steps_per_generation
+            self._buffered_inputs = mini_batch_data
+
         inputs = self._buffered_inputs[args.iteration % self.steps_per_generation]
-        return make_batch_generator(inputs, batch_size=self.micro_batch_size)
-
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        # borrowed from Megatron-LM 0.13
-        # get train_batch_size Rollout / ref/old logps / reward / advantage
-        # split to mini_batches (iter mini_batch)
-        data_iterator = self._replace_data_iterator(data_iterator)
-
-        args: MegatronRLHFArguments = get_args()
-        timers = get_timers()
-
-        # split to mini-batches
-
-        # CUDA Graph capturing only executes once, when it's the first training iteration.
-        if args.curr_iteration == args.iteration and args.external_cuda_graph:
-            cuda_graph_capture(model, config, args)
-
-            # Set grad to zero.
-            for model_chunk in model:
-                model_chunk.zero_grad_buffer()
-            optimizer.zero_grad()
-
-            # Collect garbage and empty unused memory.
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        rerun_state_machine = get_rerun_state_machine()
-        while rerun_state_machine.should_run_forward_backward(data_iterator):
-            # Set grad to zero.
-            for model_chunk in model:
-                model_chunk.zero_grad_buffer()
-            optimizer.zero_grad()
-
-            if has_nvidia_modelopt:
-                # [ModelOpt]: Pipeline-parallel Distillation stacks student and teacher tensors
-                adjust_tensor_shapes_fn = get_tensor_shapes_adjust_fn_for_distillation(
-                    model, args.seq_length, args.micro_batch_size, args.decoder_seq_length)
-            else:
-                adjust_tensor_shapes_fn = None
-
-            # Forward pass.
-            forward_backward_func = get_forward_backward_func()
-            losses_reduced = forward_backward_func(
-                forward_step_func=forward_step_func,
-                data_iterator=data_iterator,
-                model=model,
-                num_microbatches=get_num_microbatches(),
-                seq_length=args.seq_length,
-                micro_batch_size=args.micro_batch_size,
-                decoder_seq_length=args.decoder_seq_length,
-                forward_only=False,
-                adjust_tensor_shapes_fn=adjust_tensor_shapes_fn,
-            )
-        should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
-        if should_exit:
-            return {}, True, should_checkpoint, should_exit, exit_code, None, None
-
-        # Empty unused memory.
-        if args.empty_unused_memory_level >= 1:
-            torch.cuda.empty_cache()
-
-        # Vision gradients.
-        if args.vision_pretraining and args.vision_pretraining_type == 'dino':
-            unwrapped_model = unwrap_model(model[0])
-            unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
-
-        # Update parameters.
-
-        timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
-        update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
-        timers('optimizer').stop()
-
-        # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
-        # so we must gather across mp ranks
-        update_successful = logical_and_across_model_parallel_group(update_successful)
-        # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
-        # so we must gather across mp ranks
-        grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-        if args.log_num_zeros_in_grad:
-            num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
-
-        # Vision momentum.
-        if args.vision_pretraining and args.vision_pretraining_type == 'dino':
-            unwrapped_model = unwrap_model(model[0])
-            unwrapped_model.update_momentum(args.curr_iteration)
-
-        # Update learning rate.
-        if update_successful:
-            increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
-            opt_param_scheduler.step(increment=increment)
-            skipped_iter = 0
-        else:
-            skipped_iter = 1
-
-        # Empty unused memory.
-        if args.empty_unused_memory_level >= 2:
-            torch.cuda.empty_cache()
-
-        # Set the manual hooks when CUDA Graphs are enabled.
-        if args.curr_iteration == args.iteration and args.external_cuda_graph:
-            if args.use_distributed_optimizer and args.overlap_param_gather:
-                cuda_graph_set_manual_hooks(model)
-
-        if mpu.is_pipeline_last_stage(ignore_virtual=True):
-            # Average loss across microbatches.
-            loss_reduced = {}
-
-            for key in losses_reduced[0].keys():
-                val = [x[key].view(-1) for x in losses_reduced]
-                if val[0].numel() == 2:
-                    if args.sft:
-                        # in mcore the normalization happens on micro batch instead of global
-                        val = torch.vstack(val)
-                        val = val[:, 0] / val[:, 1]
-                        val = val.mean()
-                        torch.distributed.all_reduce(val, group=mpu.get_data_parallel_group(with_context_parallel=True))
-                        val /= torch.distributed.get_world_size(
-                            group=mpu.get_data_parallel_group(with_context_parallel=True))
-                        loss_reduced[key] = val
-                    else:
-                        # there is one dict per microbatch. in new reporting, we average
-                        # over the total number of tokens across the global batch.
-                        val = torch.vstack(val).sum(dim=0)
-                        torch.distributed.all_reduce(val, group=mpu.get_data_parallel_group(with_context_parallel=True))
-                        loss_reduced[key] = val[0] / val[1]
-                elif val[0].numel() == 1:
-                    # legacy behavior, we average over the number of microbatches
-                    val = torch.cat(val).mean()
-                    loss_reduced[key] = val
-                else:
-                    raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
-            return (
-                loss_reduced,
-                skipped_iter,
-                should_checkpoint,
-                should_exit,
-                exit_code,
-                grad_norm,
-                num_zeros_in_grad,
-            )
-        return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+        return iter(inputs)
 
     def _generate_and_score_completions(self, batch):
         # batch : same across DP groups
@@ -454,9 +325,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # get local rollout data
             rollout_rank = torch.distributed.get_rank(group=self.rollout_group)
             rollout_group_size = torch.distributed.get_world_size(group=self.rollout_group)
-            assert rollout_group_size * self.per_device_generation_batch_size * self.num_generations == len(
-                global_rollout_batch)
-            per_device_batch_size = self.per_device_generation_batch_size * self.num_generations
+            per_device_batch_size = self.per_device_generation_batch_size
+            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
             data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
             rollout_batch = global_rollout_batch[data_slice]
             return rollout_batch
@@ -506,11 +376,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Step2: gather in DP group, model forward to get ref/old logps
         # prepare model forward kwargs
         total_batch = gather_object(rollout_batch, group=self.rollout_group)
-        # len(g_batch) = dp_world_size * self.per_device_generation_batch_size * self.num_generations
+        total_advantages = gather(advantages, group=self.rollout_group)
         mini_batch_data = []
         for idx in range(0, len(total_batch), self.micro_batch_size):
-            micro_batch_data = _get_encoded_batch(rollout_batch[idx:idx + self.micro_batch_size],
-                                                  advantages[idx:idx + self.micro_batch_size])
+            micro_batch_data = _get_encoded_batch(total_batch[idx:idx + self.micro_batch_size],
+                                                  total_advantages[idx:idx + self.micro_batch_size])
             micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
 
@@ -524,18 +394,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         using the vLLM engine, and merges the results back into the original batch.
 
         Args:
-            batch: Rollout data assigned to the current process. Expected size is
-                per_device_generation_batch_size.
+            batch: Rollout data assigned to the current process.
 
         Returns:
             batch: The input batch with rollout completion results merged in.
 
         Note:
-            Currently only supports colocate mode. Server mode support is planned
-            for future implementation.
+            Currently only supports colocate mode. Server mode support is planned for future implementation.
         """
         # TODO: server mode
-        # assert len(batch) == self.per_device_generation_batch_size
         assert self.vllm_mode == 'colocate'
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
         if self.engine.inner_model_executor.is_sleeping:
@@ -770,3 +637,28 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     @property
     def on_policy(self):
         return self.steps_per_generation == 1
+
+    @contextmanager
+    def patch_megatron_data_collator(self, data_collator):
+        """
+        Context manager that temporarily patches Megatron's data-loader factory so each
+        prompt-level micro-batch size equals (original micro-batch size // num_generations),
+        required by GRPO.  Restores the original size and loader on exit.
+        """
+        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
+
+        def build_pretraining_data_loader(*_args, **kwargs):
+            args = get_args()
+            org_micro_batch_size = args.micro_batch_size
+            args.micro_batch_size = org_micro_batch_size // self.num_generations
+            res = origin_build_pretraining_data_loader(*_args, **kwargs)
+            args.micro_batch_size = org_micro_batch_size
+            if res is not None and args.dataloader_type != 'external':
+                res.collate_fn = data_collator
+            return res
+
+        training.build_pretraining_data_loader = build_pretraining_data_loader
+        try:
+            yield
+        finally:
+            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
