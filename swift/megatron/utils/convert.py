@@ -282,10 +282,10 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     extra_config['adapter_load'] = adapter_load
     if args.mcore_model is not None:
         extra_config['load'] = args.mcore_model
+    kwargs.update(extra_config)
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
-        **extra_config,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
