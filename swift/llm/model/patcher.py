@@ -4,7 +4,7 @@ import os
 from contextlib import contextmanager
 from functools import wraps
 from types import MethodType
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import accelerate
 import torch
@@ -12,6 +12,7 @@ import torch.nn as nn
 import transformers
 from accelerate.utils import find_device
 from packaging import version
+from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
@@ -19,8 +20,8 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
-from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count, \
-    get_cu_seqlens_from_position_ids, get_position_ids_from_cu_seqlens
+from swift.utils.torch_utils import (_get_max_memory, _sync_max_memory, get_cu_seqlens_from_position_ids,
+                                     get_device_count, get_position_ids_from_cu_seqlens)
 from .utils import HfConfigFactory
 
 logger = get_logger()
@@ -152,6 +153,8 @@ def patch_ignore_check_imports():
 
 
 def get_lm_head_model(model, model_meta=None, lm_heads=None):
+    if isinstance(model, PeftModel):
+        model = model.model
     model_meta = model_meta or model.model_meta
     lm_heads = lm_heads or ['lm_head']
     llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
@@ -166,6 +169,80 @@ def get_lm_head_model(model, model_meta=None, lm_heads=None):
             if hasattr(current_model, lm_head):
                 return current_model
     return model
+
+
+def transformers_seq_cls_forward(self, *args, origin_forward, **kwargs):
+    labels = kwargs.pop('labels', None)
+    return_dict = kwargs.pop('return_dict', None)
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    input_ids = kwargs.get('input_ids')
+    inputs_embeds = kwargs.get('inputs_embeds')
+
+    output = origin_forward(*args, **kwargs)
+    if hasattr(output, 'logits'):
+        output.logits = output.logits.to(self.score.weight.dtype)
+    elif 'last_hidden_state' in output:
+        output.logits = output['last_hidden_state'].to(self.score.weight.dtype)
+    logits = self.score(output.logits)
+    if input_ids is not None:
+        batch_size = input_ids.shape[0]
+    else:
+        batch_size = inputs_embeds.shape[0]
+
+    if self.config.pad_token_id is None and batch_size != 1:
+        raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
+    if self.config.pad_token_id is None:
+        sequence_lengths = -1
+    else:
+        if output.get('attention_mask') is not None:
+            batch_size = output.get('attention_mask').shape[0]
+            sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
+        elif input_ids is not None:
+            # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
+            sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
+            sequence_lengths = sequence_lengths % input_ids.shape[-1]
+            sequence_lengths = sequence_lengths.to(logits.device)
+        elif kwargs.get('attention_mask') is not None:
+            sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
+        else:
+            sequence_lengths = -1
+
+    pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
+    loss = None
+    if labels is not None:
+        labels = labels.to(logits.device)
+        if self.config.problem_type is None:
+            if self.num_labels == 1:
+                self.config.problem_type = 'regression'
+            elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                self.config.problem_type = 'single_label_classification'
+            else:
+                self.config.problem_type = 'multi_label_classification'
+
+        if self.config.problem_type == 'regression':
+            loss_fct = MSELoss()
+            if self.num_labels == 1:
+                loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
+            else:
+                loss = loss_fct(pooled_logits, labels)
+        elif self.config.problem_type == 'single_label_classification':
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+        elif self.config.problem_type == 'multi_label_classification':
+            loss_fct = BCEWithLogitsLoss()
+            loss = loss_fct(pooled_logits, labels)
+    if not return_dict:
+        output = (pooled_logits, ) + output[1:]
+        return ((loss, ) + output) if loss is not None else output
+
+    return SequenceClassifierOutputWithPast(
+        loss=loss,
+        logits=pooled_logits,
+        past_key_values=output.past_key_values,
+        hidden_states=output.hidden_states,
+        attentions=output.attentions,
+    )
 
 
 def _patch_sequence_classification(model, model_meta):
@@ -184,73 +261,11 @@ def _patch_sequence_classification(model, model_meta):
             setattr(llm_model, lm_head, nn.Identity())
             break
 
-    origin_forward = llm_model.forward.__func__
+    origin_forward = llm_model.forward
 
-    @wraps(origin_forward)
+    @wraps(origin_forward.__func__)
     def new_forward(self, *args, **kwargs):
-        labels = kwargs.pop('labels', None)
-        return_dict = kwargs.pop('return_dict', None)
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        input_ids = kwargs.get('input_ids')
-        inputs_embeds = kwargs.get('inputs_embeds')
-
-        output = origin_forward(self, *args, **kwargs)
-        output.logits = output.logits.to(self.score.weight.dtype)
-        logits = self.score(output.logits)
-        if input_ids is not None:
-            batch_size = input_ids.shape[0]
-        else:
-            batch_size = inputs_embeds.shape[0]
-
-        if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
-        else:
-            if input_ids is not None:
-                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                sequence_lengths = sequence_lengths.to(logits.device)
-            else:
-                sequence_lengths = -1
-
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
-
-        loss = None
-        if labels is not None:
-            labels = labels.to(logits.device)
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = 'regression'
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = 'single_label_classification'
-                else:
-                    self.config.problem_type = 'multi_label_classification'
-
-            if self.config.problem_type == 'regression':
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(pooled_logits, labels)
-            elif self.config.problem_type == 'single_label_classification':
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == 'multi_label_classification':
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(pooled_logits, labels)
-        if not return_dict:
-            output = (pooled_logits, ) + output[1:]
-            return ((loss, ) + output) if loss is not None else output
-
-        return SequenceClassifierOutputWithPast(
-            loss=loss,
-            logits=pooled_logits,
-            past_key_values=output.past_key_values,
-            hidden_states=output.hidden_states,
-            attentions=output.attentions,
-        )
+        return transformers_seq_cls_forward(self, *args, origin_forward=origin_forward, **kwargs)
 
     llm_model.forward = MethodType(new_forward, llm_model)
 
@@ -456,7 +471,15 @@ def patch_tp_plan(load_model: bool):
 
 
 def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding_side='left'):
-    last_hidden_state = outputs['last_hidden_state']
+    if 'last_hidden_state' in outputs:
+        last_hidden_state = outputs.get('last_hidden_state')
+    elif 'logits' in outputs:
+        last_hidden_state = outputs.logits
+    elif 'token_embeddings' in outputs:
+        last_hidden_state = outputs.get('token_embeddings')
+    else:
+        raise NotImplementedError()
+    last_hidden_state = last_hidden_state.squeeze(dim=0)
     if 'cu_seq_lens_q' in inputs:
         position_ids = get_position_ids_from_cu_seqlens(inputs['cu_seq_lens_q'])
     elif 'position_ids' in inputs and inputs['position_ids'].shape[0] == 1:
@@ -484,13 +507,10 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     start = 0
     for length in seq_lengths:
         seq_state = last_hidden_state[start:start + length]
-        mask = torch.ones(
-            (seq_state.shape[0])).to(last_hidden_state.device)
+        mask = torch.ones((seq_state.shape[0])).to(last_hidden_state.device)
         padding = torch.zeros(
-            (max_length - length,
-             last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
-        attention_padding = torch.zeros(
-            (max_length - length)).to(last_hidden_state.device)
+            (max_length - length, last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+        attention_padding = torch.zeros((max_length - length)).to(last_hidden_state.device)
         # re-padding
         if padding_side == 'left':
             seq_state = torch.cat((padding, seq_state), dim=0)
@@ -501,9 +521,16 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
         unpacked_logits.append(seq_state)
         attention_mask.append(mask)
         start += length
-    outputs['last_hidden_state'] = torch.stack(unpacked_logits, dim=0)
-    inputs['attention_mask'] = torch.stack(attention_mask, dim=0)
-    outputs['attention_mask'] = torch.stack(attention_mask, dim=0)
+    if 'last_hidden_state' in outputs:
+        outputs['last_hidden_state'] = torch.stack(unpacked_logits, dim=0)
+    elif 'logits' in outputs:
+        outputs['logits'] = torch.stack(unpacked_logits, dim=0)
+    elif 'token_embeddings' in outputs:
+        outputs['token_embeddings'] = torch.stack(unpacked_logits, dim=0)
+    else:
+        raise NotImplementedError()
+    inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
+    outputs['attention_mask'] = inputs['attention_mask']
     return outputs
 
 

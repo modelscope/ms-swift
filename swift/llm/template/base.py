@@ -1548,7 +1548,10 @@ class Template(ProcessorMixin):
                     new_batch.append({'input_ids': b['input_ids'][i], 'length': b['length'][i]})
                     labels_list.append(1)
                     for j in random.sample(range(negative_num), max_negative):
-                        new_batch.append({'input_ids': b['input_ids'][j + positive_num], 'length': b['length'][j + positive_num]})
+                        new_batch.append({
+                            'input_ids': b['input_ids'][j + positive_num],
+                            'length': b['length'][j + positive_num]
+                        })
                         labels_list.append(0)
 
             res = self._data_collator(new_batch, padding_to=padding_to)

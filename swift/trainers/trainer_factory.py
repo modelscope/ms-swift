@@ -67,4 +67,8 @@ class TrainerFactory:
                 args_dict.pop(k)
 
         args._prepare_training_args(args_dict)
-        return training_args_cls(**args_dict)
+        training_args = training_args_cls(**args_dict)
+        training_args.padding_side = args.padding_side
+        training_args.padding_free = args.padding_free
+        training_args.task_type = args.task_type
+        return training_args
