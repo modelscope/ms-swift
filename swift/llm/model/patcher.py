@@ -160,9 +160,7 @@ def patch_ignore_check_imports():
 
 
 def get_lm_head_model(model, model_meta=None, lm_heads=None):
-    model_meta = model_meta or getattr(model, 'model_meta', None)
-    if model_meta is None:
-        return model
+    model_meta = model_meta or model.model_meta
     lm_heads = lm_heads or ['lm_head']
     llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
     prefix_list = []

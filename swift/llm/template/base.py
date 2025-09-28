@@ -455,8 +455,6 @@ class Template(ProcessorMixin):
             anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
-        if _encoded['length'][0] == 0:
-            print()
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
