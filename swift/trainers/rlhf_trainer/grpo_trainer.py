@@ -611,7 +611,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
-                self.model.unmerge_adapter()
+                with patch_lora_unmerge(self.model):
+                    self.model.unmerge_adapter()
                 del cur_lora_params
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
