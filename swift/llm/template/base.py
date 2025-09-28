@@ -455,6 +455,8 @@ class Template(ProcessorMixin):
             anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
+        if _encoded['length'][0] == 0:
+            print()
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -521,7 +523,7 @@ class Template(ProcessorMixin):
         if chosen.channel is not None:
             encoded['channel'] = chosen.channel
 
-        lengths = [0]
+        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -532,7 +534,10 @@ class Template(ProcessorMixin):
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
-            encoded['length'] = sum(lengths)
+            if self.task_type in {'reranker', 'generative_reranker'}:
+                encoded['length'] = lengths
+            else:
+                encoded['length'] = sum(lengths)
         else:
             encoded.pop('length', None)
         if return_template_inputs:
@@ -1542,7 +1547,7 @@ class Template(ProcessorMixin):
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
                 for i in random.sample(range(positive_num), max_positive):
-                    new_batch.append({'input_ids': b['input_ids'][i], 'length': b['length']})
+                    new_batch.append({'input_ids': b['input_ids'][i], 'length': b['length'][i]})
                     labels_list.append(1)
                     for j in random.sample(range(negative_num), max_negative):
                         new_batch.append({'input_ids': b['input_ids'][j + positive_num], 'length': b['length'][j + positive_num]})
