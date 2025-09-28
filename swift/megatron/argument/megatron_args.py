@@ -194,6 +194,7 @@ class MegatronArguments(ExtraMegatronArguments):
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
+    num_virtual_stages_per_pipeline_rank: Optional[int] = None
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
     sequence_parallel: bool = False

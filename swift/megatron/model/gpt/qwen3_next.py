@@ -432,7 +432,7 @@ def get_local_layer_specs(config, layer_specs, vp_stage=None):
     return local_layer_specs
 
 
-def get_qwen3_next_transformer_layer_spec(config):
+def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.hetereogenous_dist_checkpoint = True
     # compat Qwen3NextGatedDeltaNet
     args = get_args()
@@ -465,7 +465,7 @@ def get_qwen3_next_transformer_layer_spec(config):
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
         layer_specs.append(layer_spec)
 
-    local_layer_specs = get_local_layer_specs(config, layer_specs)
+    local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
 
     # Block spec.
     block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
