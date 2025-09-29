@@ -29,7 +29,7 @@ class MultimodalGPTModel(MegatronModule):
         self.post_process = post_process
         self.language_model = GPTModel(config, transformer_layer_spec, vocab_size, max_sequence_length, pre_process,
                                        post_process, *args, **kwargs)
-
+        self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
         self.visual = None
