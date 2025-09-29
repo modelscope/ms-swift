@@ -357,14 +357,6 @@ def get_model_tokenizer_sentence_transformers(model_dir: str,
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
         tokenizer = model.tokenizer
-
-        def forward(self, **kwargs):
-            output = self._forward_origin(input=kwargs)
-            return {'last_hidden_state': output['sentence_embedding']}
-
-        if not hasattr(model, '_forward_origin'):
-            model._forward_origin = model.forward
-            model.forward = MethodType(forward, model)
     else:
         model = None
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
