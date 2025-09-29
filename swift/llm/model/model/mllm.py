@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -241,3 +241,28 @@ register_model(
         architectures=['DotsOCRForCausalLM'],
         requires=['transformers>=4.51.0'],
     ))
+
+
+def get_model_tokenizer_sail2_vl(model_dir, *args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    if model is not None:
+        use_submodel_func(model, 'language_model')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.sail_vl2, [
+            ModelGroup([
+                Model('BytedanceDouyinContent/SAIL-VL2-2B', 'BytedanceDouyinContent/SAIL-VL2-2B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-2B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-2B-Thinking'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B', 'BytedanceDouyinContent/SAIL-VL2-8B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
+            ])
+        ],
+        TemplateType.sail_vl2,
+        get_model_tokenizer_sail2_vl,
+        model_arch=ModelArch.internvl,
+        architectures=['SAILVLModel'],
+        requires=['transformers<=4.51.3'],
+        tags=['vision']))

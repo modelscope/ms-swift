@@ -38,11 +38,12 @@ from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDUL
 from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
+from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -120,6 +121,7 @@ class SwiftMixin:
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
+        self._patch_tasks()
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):
             self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
@@ -584,6 +586,92 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    def _patch_tasks(self):
+        if isinstance(self.model, PeftModel):
+            model = self.model.model
+        else:
+            model = self.model
+        if 'SentenceTransformer' in model.__class__.__name__:
+
+            def forward_transformer(transformer, features: dict[str, torch.Tensor],
+                                    **kwargs) -> dict[str, torch.Tensor]:
+                trans_features = {
+                    key: value
+                    for key, value in features.items()
+                    if key in ['input_ids', 'attention_mask', 'token_type_ids', 'inputs_embeds', 'position_ids']
+                }
+
+                outputs = transformer.auto_model(**trans_features, **kwargs, return_dict=True)
+                token_embeddings = outputs[0]
+                features['token_embeddings'] = token_embeddings
+
+                if transformer.auto_model.config.output_hidden_states and 'hidden_states' in outputs:
+                    features['all_layer_embeddings'] = outputs['hidden_states']
+
+                return features
+
+            from sentence_transformers.models import Transformer
+            if isinstance(model[0], Transformer):
+                model[0].forward = MethodType(forward_transformer, model[0])
+
+            def forward_sentence_transformer(sentence_transformer, **kwargs) -> dict[str, torch.Tensor]:
+                input = kwargs
+                kwargs = {}
+                for idx, (module_name, module) in enumerate(sentence_transformer.named_children()):
+                    from sentence_transformers.models import Router
+                    if isinstance(module, Router):
+                        module_kwargs = kwargs
+                    else:
+                        module_kwarg_keys = []
+                        if sentence_transformer.module_kwargs is not None:
+                            module_kwarg_keys = sentence_transformer.module_kwargs.get(module_name, [])
+                        module_kwargs = {
+                            key: value
+                            for key, value in kwargs.items() if key in module_kwarg_keys or (
+                                hasattr(module, 'forward_kwargs') and key in module.forward_kwargs)
+                        }
+                    output = module(input, **module_kwargs)
+                    if idx == 0 and self.args.padding_free:
+                        output = revert_padding_free(output, input, self.args.padding_side)
+                    input = output
+                return {'last_hidden_state': input['sentence_embedding']}
+
+            model.forward = MethodType(forward_sentence_transformer, model)
+        elif self.args.padding_free:
+            if self.args.task_type == 'embedding':
+                llm_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+
+                def revert_padding_free_hook(module, args, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+            elif self.args.task_type == 'seq_cls':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+
+                def seq_cls_forward(model, **kwargs):
+
+                    def inner_forward(**kwargs):
+                        output = llm_model.forward(**kwargs)
+                        return revert_padding_free(output, kwargs, self.args.padding_side)
+
+                    return transformers_seq_cls_forward(model, origin_forward=inner_forward, **kwargs)
+
+                model.forward = MethodType(seq_cls_forward, model)
+            elif self.args.task_type == 'reranker':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+
+                def revert_padding_free_hook(module, args, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+            elif self.args.task_type == 'generative_reranker':
+                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+
+                def revert_padding_free_hook(module, args, input, output):
+                    return revert_padding_free(output, input, self.args.padding_side)
+
+                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -798,16 +886,17 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel  # registry here
+        from ..llm.eval.utils import EvalModel
         from evalscope import TaskConfig, run_task
 
         self.model.eval()
-
+        # prepare task config
         task_config_kwargs = dict(
-            model=f'model-step{self.state.global_step}',
-            model_args=dict(
+            model=EvalModel(
+                model_name=f'model-step{self.state.global_step}',
                 model=self.model,
                 template=self.template,
+                max_batch_size=self.args.per_device_eval_batch_size,
             ),
             eval_type='swift_custom',
             datasets=self.args.eval_dataset,

@@ -400,15 +400,21 @@ class Template(ProcessorMixin):
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
-                _encoded[f'negative_{key}'] = []
             labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            for negative in inputs.negative:
+            _all_negative_keys = set()
+            for idx, negative in enumerate(inputs.negative):
+                _tmp_negative_keys = set()
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
-                    if f'negative_{key}' not in _encoded:
-                        _encoded[f'negative_{key}'] = []
-                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                    negative_key = f'negative_{key}'
+                    _all_negative_keys.add(negative_key)
+                    _tmp_negative_keys.add(negative_key)
+                    if negative_key not in _encoded:
+                        _encoded[negative_key] = [None] * idx
+                    _encoded[negative_key].append(negative_encoded[key])
+                for miss_key in (_all_negative_keys - _tmp_negative_keys):
+                    _encoded[miss_key].append(None)
                 labels.append(0.0)
 
             _encoded['labels'] = labels
@@ -515,7 +521,7 @@ class Template(ProcessorMixin):
         if chosen.channel is not None:
             encoded['channel'] = chosen.channel
 
-        lengths = [0]
+        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -526,7 +532,10 @@ class Template(ProcessorMixin):
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
-            encoded['length'] = sum(lengths)
+            if self.task_type in {'reranker', 'generative_reranker'}:
+                encoded['length'] = lengths
+            else:
+                encoded['length'] = sum(lengths)
         else:
             encoded.pop('length', None)
         if return_template_inputs:
@@ -1536,10 +1545,13 @@ class Template(ProcessorMixin):
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
                 for i in random.sample(range(positive_num), max_positive):
-                    new_batch.append({'input_ids': b['input_ids'][i]})
+                    new_batch.append({'input_ids': b['input_ids'][i], 'length': b['length'][i]})
                     labels_list.append(1)
                     for j in random.sample(range(negative_num), max_negative):
-                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
+                        new_batch.append({
+                            'input_ids': b['input_ids'][j + positive_num],
+                            'length': b['length'][j + positive_num]
+                        })
                         labels_list.append(0)
 
             res = self._data_collator(new_batch, padding_to=padding_to)

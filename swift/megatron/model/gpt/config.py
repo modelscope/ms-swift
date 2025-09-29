@@ -17,9 +17,14 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
-    if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'}:
+    if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
+            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
+            'Qwen3VLMoeForConditionalGeneration'
+    }:
         res['qk_layernorm'] = True
-    if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'}:
+    if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
+            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLMoeForConditionalGeneration'
+    }:
         res.pop('ffn_hidden_size', None)
         if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3NextForCausalLM'}:
             res['use_shared_expert_gate'] = True
@@ -58,6 +63,9 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
+        mrope_interleaved = res['rope_scaling'].get('mrope_interleaved', False) or res['rope_scaling'].get(
+            'interleaved', False)
+        res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'

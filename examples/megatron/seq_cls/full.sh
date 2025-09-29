@@ -5,6 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'tany0699/garbage265#20000' \
+    --load_from_cache_file true \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
     --packing true \

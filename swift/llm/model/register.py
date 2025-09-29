@@ -92,7 +92,7 @@ class ModelMeta:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
 
-                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
                         return model_group
 
     def check_requires(self, model_info=None):
@@ -357,14 +357,6 @@ def get_model_tokenizer_sentence_transformers(model_dir: str,
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
         tokenizer = model.tokenizer
-
-        def forward(self, **kwargs):
-            output = self._forward_origin(input=kwargs)
-            return {'last_hidden_state': output['sentence_embedding']}
-
-        if not hasattr(model, '_forward_origin'):
-            model._forward_origin = model.forward
-            model.forward = MethodType(forward, model)
     else:
         model = None
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
@@ -480,7 +472,7 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    model_name = get_model_name(model_id_or_path)
+    model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
@@ -723,11 +715,12 @@ def get_model_tokenizer(
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
-    problem_type = kwargs.get('problem_type')
-    if problem_type is None and model_info.num_labels == 1:
-        problem_type = 'regression'
-    if problem_type is not None:
-        model_info.config.problem_type = problem_type
+    if task_type == 'seq_cls':
+        problem_type = kwargs.get('problem_type')
+        if problem_type is None and model_info.num_labels == 1:
+            problem_type = 'regression'
+        if problem_type is not None:
+            model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 

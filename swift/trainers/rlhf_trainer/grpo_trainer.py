@@ -194,7 +194,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
         self.chord_sft_iterator = None
-        if chord_sft_dataset is not None:
+        if chord_sft_dataset:
             self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
@@ -1298,7 +1298,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-
+            extra_kwargs = {
+                'completion_mask':
+                labels[:, -logits_to_keep:] != -100,
+                'truncated_mask':
+                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool, device=self.accelerator.device),
+                'logits_to_keep':
+                logits_to_keep,
+            }
             if self.template.padding_free:
                 position_ids = batch_encoded_inputs.get('text_position_ids')
                 if position_ids is None:
@@ -1308,21 +1315,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 lengths = torch.diff(
                     torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
                                torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                total_lengths = lengths.sum()
+                # The first sentence has its prompt portion removed due to logits_to_keep
+                lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
+                extra_kwargs.update({'seq_lengths': lengths})
                 advantages_stacked = torch.stack([data['advantages'] for data in batch])
-                all_advandages = torch.repeat_interleave(advantages_stacked, lengths)
+                all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
             else:
-                all_advandages = torch.stack([data['advantages'] for data in batch])
-
-            batch_encoded_inputs.update({
-                'completion_mask':
-                labels[:, -logits_to_keep:] != -100,
-                'truncated_mask':
-                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
-                'logits_to_keep':
-                logits_to_keep,
-                'advantages':
-                all_advandages
-            })
+                all_advantages = torch.stack([data['advantages'] for data in batch])
+            extra_kwargs.update({'advantages': all_advantages})
+            batch_encoded_inputs.update(extra_kwargs)
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
@@ -1344,7 +1346,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # --- log completion lengths ---
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
-        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
+        if self.template.padding_free:
+            local_lengths = [inp['seq_lengths'].tolist() for inp in ga_batch_encoded_inputs]
+        else:
+            local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
         total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
@@ -1405,7 +1410,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
 
         # Check batch size and decide processing strategy
-        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
         should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
@@ -1427,7 +1432,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
-
+        if self.template.padding_free:
+            lengths = inputs['seq_lengths']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
 
@@ -1438,7 +1444,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
-                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                if self.template.padding_free:
+                    entropy_list = torch.split(entropies, lengths.tolist())
+                    per_completion_entropies_mean = torch.stack([torch.nanmean(e) for e in entropy_list])
+                else:
+                    per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
                 entropy_metrics = {
                     'entropy_logs': global_per_completion_entropies_mean.tolist(),
@@ -1458,7 +1468,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if all(truncated_mask):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
-            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
+            if self.template.padding_free:
+                truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
+                assert truncated_mask.shape == completion_mask.shape
+            else:
+                truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
 
         # Compute the KL divergence between the model and the reference model
@@ -1477,14 +1491,29 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         log_ratio = per_token_logps - old_per_token_logps
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
-        elif self.importance_sampling_level == 'sequence':
-            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            log_importance_weights = log_importance_weights.unsqueeze(-1)
-        elif self.importance_sampling_level == 'sequence_token':
-            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
-            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+        elif self.importance_sampling_level in ['sequence', 'sequence_token']:
+            if self.template.padding_free:
+                # split to batch, compute seq-level normalization
+                log_ratio_list = torch.split(log_ratio.squeeze(0), lengths.tolist())
+                mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
+                seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
+                seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
+                if self.importance_sampling_level == 'sequence':
+                    log_importance_weights = seq_level_log_weights
+                else:
+                    seq_level_log_weight = seq_level_log_weights.detach()
+                    seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
+                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+            else:
+                seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
+                                         / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
+                if self.importance_sampling_level == 'sequence':
+                    log_importance_weights = seq_level_log_weights
+                else:
+                    # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+                    seq_level_log_weight = seq_level_log_weights.detach()
+                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
@@ -1509,17 +1538,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         if self.loss_type == 'grpo':
-            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+            if self.template.padding_free:
+                loss_list = torch.split(per_token_loss.squeeze(0), lengths.tolist())
+                mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
+                sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0)
+                               for loss, mask in zip(loss_list, mask_list)]
+                loss = torch.stack(sample_loss).mean()
+            else:
+                loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
-            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+            batch_size = lengths.shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
+            loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
         completion_token_count = completion_mask.sum().clamp(min=1.0)
 
         def masked_batch_mean(x):
+            # compute for token-level average
             if x.shape[1] == 1:  # when importance_sampling_level == "sequence"
                 return x.mean()
             else:
@@ -1531,7 +1569,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'entropy': entropy_metrics,
             'completion_mask': completion_mask,
             'completion_token_count': completion_token_count,
-            'masked_batch_mean_fn': masked_batch_mean
         }
 
         if self.beta != 0.0:
@@ -1601,7 +1638,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
 
         # Decide how many chunks every rank must run
         batch_sizes = gather_object([batch_size])
@@ -1777,7 +1814,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         When rollout count is larger than expected, we process in smaller batches
         to control memory usage.
         """
-        batch_size = inputs['input_ids'].shape[0]
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size  # noqa
         should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
@@ -1816,7 +1853,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask'
+                    'truncated_mask', 'seq_lengths'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
@@ -1862,8 +1899,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             Concatenated per-token entropies, or ``None`` if ``compute_entropy`` is
             ``False``.
         """
-
-        batch_size = inputs['input_ids'].shape[0]
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
@@ -1926,6 +1962,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def compute_liger_loss(self, unwrapped_model, inputs):
         # Compute the per-token log probabilities for the model
+        assert not self.template.padding_free
         input_ids = inputs['input_ids']
         logits_to_keep = inputs['logits_to_keep']
         completion_ids = input_ids[:, -logits_to_keep:]
@@ -2359,6 +2396,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                    'With --dynamic_sample enabled, only the last valid sample of each '
                                    f'{self.args.generation_batch_size}-sized batch will be kept; '
                                    'some requests may therefore be dropped.')
+                if self.template.padding_free:
+                    raise NotImplementedError('Padding free mode is not supported for dynamic sample')
             # Initialize empty outputs for non-main processes
             if not self.accelerator.is_main_process:
                 all_outputs = [None] * outputs_count

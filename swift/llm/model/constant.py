@@ -164,7 +164,10 @@ class MLLMModelType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
+    qwen3_vl = 'qwen3_vl'
+    qwen3_moe_vl = 'qwen3_moe_vl'
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -253,6 +256,7 @@ class MLLMModelType:
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
+    sail_vl2 = 'sail_vl2'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'

@@ -9,6 +9,7 @@ swift rlhf \
     --train_type full \
     --reward_funcs accuracy \
     --dataset AI-MO/NuminaMath-TIR#10000 \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --use_vllm true \
     --vllm_mode colocate \

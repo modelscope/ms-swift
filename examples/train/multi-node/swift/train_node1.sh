@@ -12,6 +12,7 @@ swift sft \
     --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
               'AI-ModelScope/alpaca-gpt4-data-en#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

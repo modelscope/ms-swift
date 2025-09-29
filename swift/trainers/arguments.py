@@ -138,7 +138,7 @@ class RLHFArgumentsMixin:
     # gkd
     sft_alpha: float = 0
     # chord
-    chord_sft_dataset: Optional[str] = None
+    chord_sft_dataset: List[str] = field(default_factory=list)
     chord_sft_per_device_train_batch_size: Optional[int] = None
 
     chord_enable_phi_function: bool = False
@@ -154,6 +154,9 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
+    padding_side: Optional[str] = None
+    padding_free: Optional[bool] = None
+    task_type: Optional[str] = None
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):

@@ -27,7 +27,7 @@ Hints:
 
 ### Model Arguments
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md). Default is None.
-- model_type: Model type. The same model architecture, template, and model loading process are defined as a model_type. The default is None, and it will be automatically selected based on the suffix of `--model` and the architectures attribute in config.json.
+- model_type: Model type. The same model architecture, template, and model loading process are defined as a model_type. The default is None, and it will be automatically selected based on the suffix of `--model` and the architectures attribute in config.json. The model_type for each model can be found in the [Supported models list](./Supported-models-and-datasets.md).
   - Note: The concept of `model_type` in ms-swift differs from the `model_type` in `config.json`.
 - model_revision: Model revision, default is None.
 - task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
@@ -55,8 +55,8 @@ Hints:
   - Note: For "ms-swift<3.6", the default value of this parameter is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
-- 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
-  - Note: It is recommended to set this parameter to False during the debug phase.
+- 🔥load_from_cache_file: Whether to load the dataset from cache. Default is False. Recommended to set to True during actual runs and False during debugging.
+  - Note: This parameter defaults to True in "ms-swift<3.9".
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
@@ -712,7 +712,7 @@ Specific model arguments can be set using `--model_kwargs` or environment variab
 The definitions of the parameters listed below can be found in each model’s official repository or in its inference code.
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
-The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
+The parameter meanings are the same as in the `qwen_vl_utils<0.0.12` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28
 - MIN_PIXELS: Default is `4 * 28 * 28`
@@ -729,10 +729,25 @@ The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_util
 ### qwen2_audio
 - SAMPLING_RATE: Default is 16000
 
-### qwen2_5_omni
+### qwen2_5_omni, qwen3_omni
 qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
 - USE_AUDIO_IN_VIDEO: Default is False.
-- 🔥ENABLE_AUDIO_OUTPUT: Default is True. If training with zero3, set it to False.
+- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
+
+### qwen3_vl
+The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values:
+
+- SPATIAL_MERGE_SIZE: default 2.
+- IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
+- 🔥 IMAGE_MAX_TOKEN_NUM: default `16384`, denotes the maximum number of image tokens per image. (used to avoid OOM)
+- VIDEO_MIN_TOKEN_NUM: default `128`, denotes the minimum number of video tokens per frame.
+- 🔥 VIDEO_MAX_TOKEN_NUM: default `768`, denotes the maximum number of video tokens per frame. (used to avoid OOM)
+- MAX_RATIO: default 200.
+- FRAME_FACTOR: default 2.
+- FPS: default 2.0.
+- FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
+- 🔥 FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+
 
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)

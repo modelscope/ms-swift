@@ -526,6 +526,25 @@ def _patch_mrope():
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
 
+    # Code borrowed from huggingface/transformers
+    def apply_interleaved_mrope(freqs, mrope_section):
+        """Apply interleaved MRoPE to 3D rotary embeddings.
+        Reorganizes frequency layout from chunked [TTT...HHH...WWW] to
+        interleaved [THTHWHTHW...TT], preserving frequency continuity.
+        args:
+            x: (3, bs, seq_len, head_dim // 2)
+            mrope_section: (3,)
+        returns:
+            x_t: (bs, seq_len, head_dim // 2)
+        """
+        freqs_t = freqs[0]  # just overwrite the first dimension T
+        for dim, offset in enumerate((1, 2), start=1):  # H, W
+            length = mrope_section[dim] * 3
+            idx = slice(offset, length, 3)
+            freqs_t[..., idx] = freqs[dim, ..., idx]
+        return freqs_t
+
+    # Code borrowed from NVIDIA/Megatron-LM
     def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
         seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
@@ -538,19 +557,24 @@ def _patch_mrope():
         seq_expanded = seq[:, :, None, :].float()
         # shape (3, bs, seq_length, dim)
         freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
-        # first part even vector components, second part odd vector components,
-        #  2 * dim in dimension size
-        if not self.rotary_interleaved:
-            emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+        args = get_args()
+        if args.mrope_interleaved:
+            freqs = apply_interleaved_mrope(freqs, mrope_section)
+            emb = torch.cat((freqs, freqs), dim=-1)
         else:
-            bs = freqs.shape[1]
-            emb = torch.stack((freqs.view(3, bs, -1, 1), freqs.view(3, bs, -1, 1)),
-                              dim=-1).view(3, bs, freqs.shape[0], -1)
+            # first part even vector components, second part odd vector components,
+            #  2 * dim in dimension size
+            if not self.rotary_interleaved:
+                emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+            else:
+                bs = freqs.shape[1]
+                emb = torch.stack((freqs.reshape(3, bs, -1, 1), freqs.reshape(3, bs, -1, 1)),
+                                  dim=-1).view(3, bs, freqs.shape[2], -1)
 
-        # generate freqs with mrope_section
-        # shape (bs, seq_length, 2 * dim)
-        mrope_section = mrope_section * 2
-        emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
+            # generate freqs with mrope_section
+            # shape (bs, seq_length, 2 * dim)
+            mrope_section = mrope_section * 2
+            emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
 
         # shape (seq_length, bs, 1, 2 * dim)
         emb = emb[..., None, :].transpose(0, 1).contiguous()

@@ -1,6 +1,7 @@
 nproc_per_node=4
 # 4*47G
 # losses: plugin/loss.py
+# only support --padding_side left
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
@@ -8,8 +9,10 @@ swift sft \
     --loss_type generative_reranker \
     --train_type full \
     --dataset MTEB/scidocs-reranking \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \
+    --padding_side left \
     --output_dir output \
     --eval_steps 100 \
     --num_train_epochs 1 \
