@@ -154,6 +154,9 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
+    padding_side: Optional[str] = None
+    padding_free: Optional[bool] = None
+    task_type: Optional[str] = None
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):

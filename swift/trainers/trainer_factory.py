@@ -67,4 +67,5 @@ class TrainerFactory:
                 args_dict.pop(k)
 
         args._prepare_training_args(args_dict)
-        return training_args_cls(**args_dict)
+        training_args = training_args_cls(**args_dict)
+        return training_args

@@ -373,6 +373,12 @@ def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
     return cu_seqlens
 
 
+def get_position_ids_from_cu_seqlens(cu_seqlens: torch.LongTensor):
+    seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+    position_ids = torch.cat([torch.arange(seq_len, device=cu_seqlens.device) for seq_len in seq_lengths], dim=0)
+    return position_ids.unsqueeze(0)
+
+
 class Serializer:
 
     @staticmethod
