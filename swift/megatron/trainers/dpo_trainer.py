@@ -184,7 +184,8 @@ class MegatronDPOTrainer(MegatronTrainer):
                 data['logps'] = None if labels is None else self.get_logps(output_tensor, labels,
                                                                            data['packed_seq_params'])
                 res[model_i].append(data)
-        return iter(res) if vpp_world_size == 1 else [iter(r) for r in res]
+        iterator = [iter(r) for r in res]
+        return iterator[0] if vpp_world_size == 1 else iterator
 
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
