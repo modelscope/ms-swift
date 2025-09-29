@@ -72,16 +72,12 @@ class MegatronDPOTrainer(MegatronTrainer):
         else:
             recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
             recv_from_prev_pipeline_rank_(recv_shape_buffer)
-        if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
-            send_to_next_pipeline_rank(recv_shape_buffer)
-        shape = recv_shape_buffer.tolist()
-
-        if not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
-            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
+            recv_buffer = torch.empty(recv_shape_buffer.tolist(), device=torch.cuda.current_device(), dtype=args.params_dtype)
             recv_from_prev_pipeline_rank_(recv_buffer)
             model.set_input_tensor(recv_buffer)
         output_tensor = model(**inputs)
         if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
+            send_to_next_pipeline_rank(recv_shape_buffer)
             send_to_next_pipeline_rank(output_tensor)
             output_tensor = None
 
