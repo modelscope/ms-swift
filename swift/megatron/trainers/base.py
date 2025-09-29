@@ -155,6 +155,7 @@ class BaseMegatronTrainer(ABC):
         model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         mapping = {}
         for model_k in model_keys:
+            mapping[model_k] = {}
             state_dict_model = {}
             for k, v in sharded_state_dict[model_k].items():
                 if adapter_name not in k:
