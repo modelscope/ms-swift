@@ -649,7 +649,24 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         labels = data['labels']
         completion_mask = data['completion_mask']
         packed_seq_params = data['packed_seq_params']
+        truncated_mask = data['truncated_mask']
+        micro_batch_size = self.micro_batch_size
+        lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
+                                                 + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
+        lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
         per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, per_token=True)
+
+        if self.args.overlong_filter and any(truncated_mask):
+            # TODO: non-padding-free
+            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
+            padding_length = completion_mask.shape[1] - truncated_mask.shape[1]
+            if padding_length > 0:
+                padding = torch.zeros(padding_length, device=truncated_mask.device, dtype=truncated_mask.dtype)
+                truncated_mask = torch.cat([truncated_mask, padding])
+            completion_mask = completion_mask & (~truncated_mask)
+        else:
+            raise NotImplementedError  # TODO
+
         if self.beta != 0.0:
             ref_per_token_logps = data.get('ref_per_token_logps')
             per_token_kl = (
@@ -662,13 +679,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level == 'sequence':
-            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            log_importance_weights = log_importance_weights.unsqueeze(-1)
-        elif self.importance_sampling_level == 'sequence_token':
-            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
-            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+            log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
+            mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
+            seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
+            seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
+            if self.importance_sampling_level == 'sequence':
+                log_importance_weights = seq_level_log_weights
+            else:
+                seq_level_log_weight = seq_level_log_weights.detach()
+                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
+                log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
@@ -691,6 +711,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         if self.loss_type == 'grpo':
+            loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
+            mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
+            sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0) for loss, mask in zip(loss_list, mask_list)]
+            loss = torch.stack(sample_loss[:micro_batch_size]).mean()
+
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
