@@ -1505,8 +1505,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
                     log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
             else:
-                seq_level_log_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(
-                    min=1.0).unsqueeze(-1)
+                seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
+                                         / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
                 if self.importance_sampling_level == 'sequence':
                     log_importance_weights = seq_level_log_weights
                 else:
