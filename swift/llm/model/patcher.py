@@ -471,19 +471,25 @@ def patch_tp_plan(load_model: bool):
 
 
 def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding_side='left'):
+    hidden_state_key = None
     if 'last_hidden_state' in outputs:
-        last_hidden_state = outputs.get('last_hidden_state')
+        hidden_state_key = 'last_hidden_state'
     elif 'logits' in outputs:
-        last_hidden_state = outputs.logits
+        hidden_state_key = 'logits'
     elif 'token_embeddings' in outputs:
-        last_hidden_state = outputs.get('token_embeddings')
-    else:
+        hidden_state_key = 'token_embeddings'
+
+    if hidden_state_key is None:
         raise NotImplementedError()
+    last_hidden_state = outputs[hidden_state_key]
     last_hidden_state = last_hidden_state.squeeze(dim=0)
     if 'cu_seq_lens_q' in inputs:
         position_ids = get_position_ids_from_cu_seqlens(inputs['cu_seq_lens_q'])
     elif 'position_ids' in inputs and inputs['position_ids'].shape[0] == 1:
         position_ids = inputs['position_ids']
+    else:
+        raise ValueError(
+            "revert_padding_free requires 'cu_seq_lens_q' or 'position_ids' in inputs, but neither was found.")
 
     seq_lengths = []
     pos = position_ids[0]
@@ -521,14 +527,7 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
         unpacked_logits.append(seq_state)
         attention_mask.append(mask)
         start += length
-    if 'last_hidden_state' in outputs:
-        outputs['last_hidden_state'] = torch.stack(unpacked_logits, dim=0)
-    elif 'logits' in outputs:
-        outputs['logits'] = torch.stack(unpacked_logits, dim=0)
-    elif 'token_embeddings' in outputs:
-        outputs['token_embeddings'] = torch.stack(unpacked_logits, dim=0)
-    else:
-        raise NotImplementedError()
+    outputs[hidden_state_key] = torch.stack(unpacked_logits, dim=0)
     inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
     outputs['attention_mask'] = inputs['attention_mask']
     return outputs

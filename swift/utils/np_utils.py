@@ -28,7 +28,7 @@ def get_seed(random_state: Optional[np.random.RandomState] = None) -> int:
 
 def stat_array(array: Union[np.ndarray, List[int], 'torch.Tensor']) -> Tuple[Dict[str, float], str]:
     if isinstance(array, list):
-        if isinstance(array[0], list):
+        if array and isinstance(array[0], list):
             array = np.array([sum(sublist) for sublist in array])
         array = np.array(array)
     mean = array.mean().item()

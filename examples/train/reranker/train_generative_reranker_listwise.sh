@@ -1,6 +1,7 @@
 nproc_per_node=4
 # 4*47G
 # losses: plugin/loss.py
+# only support --padding_side left
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
