@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import copy
 from collections import namedtuple
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from functools import partial
+from transformers.utils import ContextManagers
 
 import torch
 from megatron.core import mpu
@@ -144,7 +145,6 @@ class MegatronDPOTrainer(MegatronTrainer):
     @contextmanager
     def null_ref_context(self):
         args = get_args()
-        from transformers.utils import ContextManagers
         contexts = []
         if args.train_type == 'full':
             ref_models = [unwrap_model(m) for m in self.ref_models]
