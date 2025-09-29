@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import gc
 import inspect
-from collections import namedtuple
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
@@ -21,7 +20,7 @@ from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_id
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
-from .utils import gather, gather_dict, gather_object, process_packed_seq_params, profiling_context
+from .utils import gather, gather_object, process_packed_seq_params, profiling_context
 
 try:
     from mbridge import AutoBridge
@@ -39,11 +38,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
         # TODO: multi turn scheduler(colocate multi turn)
+        self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
         self._prepare_rollout_engine()
         # debug: use mbridge to convert mcore to hf
         self.bridge = None
+
+    def _prepare_template_data_collator(self):
+        template = self.template
+        args = self.args
+        data_collator = template.data_collator
+        padding_to = None
+        if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
+            padding_to = args.tensor_model_parallel_size
+        if args.context_parallel_size > 1:
+            padding_to = (padding_to or 1) * args.context_parallel_size
+        if args.fp8_format:
+            padding_to = max((padding_to or 1) * 8, 16)
+        logger.info(f'padding_to: {padding_to}')
+        data_collator = partial(data_collator, padding_to=padding_to)
+        template.data_collator = data_collator
 
     def _init_grpo_params(self):
         args = self.args
@@ -210,98 +225,26 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         assert self.reward_funcs, 'reward_funcs is not set'
 
-    def forward_step(self, data_iterator, model):
-        # train_batch_size
-        # return: output_tensor, loss_func
-
-        data = next(data_iterator)
-        inputs = {
-            k: v
-            for k, v in data.items() if k not in
-            ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
-        }
-
-        with self.stimer:
-            output_tensor = model(**inputs)
-        return output_tensor, partial(self.loss_func, data=data)
-
-    def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        advantages = data['advantages']
-        labels = data['labels']
-        completion_mask = data['completion_mask']
-        packed_seq_params = data['packed_seq_params']
-
-        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, per_token=True)
-        if self.beta != 0.0:
-            ref_per_token_logps = data.get('ref_per_token_logps')
-            per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
-
-        old_per_token_logps = (
-            per_token_logps.detach() if data.get('old_per_token_logps') is None else data['old_per_token_logps'])
-        log_ratio = per_token_logps - old_per_token_logps
-
-        if self.importance_sampling_level == 'token':
-            log_importance_weights = log_ratio
-        elif self.importance_sampling_level == 'sequence':
-            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            log_importance_weights = log_importance_weights.unsqueeze(-1)
-        elif self.importance_sampling_level == 'sequence_token':
-            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
-            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
-        else:
-            raise ValueError(
-                f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
-                "and 'sequence'.")
-
-        coef_1 = torch.exp(log_importance_weights)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-        if self.args.delta is not None:
-            coef_1 = torch.clamp(coef_1, max=self.args.delta)
-
-        if self.template.padding_free:
-            advantages = advantages[-coef_1.shape[1]:]
-            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
-        else:
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-        if self.beta != 0.0:
-            per_token_loss = per_token_loss + self.beta * per_token_kl
-
-        if self.loss_type == 'grpo':
-            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
-        elif self.loss_type == 'bnpo':
-            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
-        elif self.loss_type == 'dr_grpo':
-            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
-        else:
-            raise ValueError(f'Unknown loss type: {self.loss_type}')
-
-        loss = loss.mean()
-        metric = {
-            'loss': loss.clone().detach(),
-        }
-        reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-        # fix megatron-lm bug
-        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-        loss = loss / mpu.get_context_parallel_world_size()
-        return loss, reporting_metric
-
     def _replace_data_iterator(self, data_iterator):
 
         args = get_args()
         if args.iteration % self.steps_per_generation == 0:
             # each rollout DP group will generate generation_batch_size / world_size completions
-            num_iters_per_step = self.generation_batch_size // mpu.get_data_parallel_world_size()
+            completions_to_rollout = self.generation_batch_size // mpu.get_data_parallel_world_size()
             # completions will be repeated num_generations times after
-            num_iters_per_step = num_iters_per_step // self.num_generations
+            # so we need to divide num_iters_per_step by num_generations to get prompt batch size
+            prompts_to_rollout = completions_to_rollout // self.num_generations
+            # every iter will generate micro_batch_size prompts
+            num_iters_per_step = prompts_to_rollout // self.micro_batch_size
+            assert num_iters_per_step > 0, (
+                f'num_iters_per_step={num_iters_per_step} <= 0. '
+                f'This means no prompts will be generated'
+                f'generation_batch_size={self.generation_batch_size}, '
+                f'data_parallel_world_size={mpu.get_data_parallel_world_size()}, '
+                f'num_generations={self.num_generations}, '
+                f'micro_batch_size={self.micro_batch_size}. '
+                'Please adjust these parameters so that '
+                'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
             rollout_batch = []
             for _ in range(self.steps_per_generation):
                 for _ in range(num_iters_per_step):
@@ -354,11 +297,25 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     position_ids = encoded_batch.get('position_ids')
                 squeezed_position_ids = position_ids.squeeze()
                 assert squeezed_position_ids is not None
+                # Remove trailing padding zeros from position_ids to avoid interference
+                # Find the last non-zero position
+                last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
+                if len(last_nonzero_idx) > 0:
+                    # Keep only up to the last non-zero position + 1 to include the last valid position
+                    squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
 
+                # Calculate lengths based on sequence boundaries (position_ids == 0)
                 lengths = torch.diff(
                     torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
                                torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
                 advantages = torch.repeat_interleave(advantages, lengths)
+
+                # Pad advantages to match the original position_ids length
+                original_length = position_ids.shape[1]
+                if advantages.shape[0] < original_length:
+                    padding_length = original_length - advantages.shape[0]
+                    padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
+                    advantages = torch.cat([advantages, padding])
 
             encoded_batch.update({
                 'completion_mask':
@@ -603,16 +560,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return advantages
 
-    def _maybe_compute_logps(self, batch: DataType) -> DataType:
+    def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
+        inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
+
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_model:
                 batch['ref_per_token_logps'] = self.model_forward(
-                    ref_model, iter([batch]), no_grad=True, per_token=True)['logps']
+                    ref_model, iter([inputs]), no_grad=True, per_token=True)['logps']
 
         if not self.on_policy:
             batch['old_per_token_logps'] = self.model_forward(
-                self.unwrapped_model, iter([batch]), no_grad=True, per_token=True)['logps']
+                self.unwrapped_model, iter([inputs]), no_grad=True, per_token=True)['logps']
 
         # get packed_seq_params, from get_batch func
         batch = process_packed_seq_params(batch)
@@ -657,7 +616,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         def build_pretraining_data_loader(*_args, **kwargs):
             args = get_args()
             org_micro_batch_size = args.micro_batch_size
-            args.micro_batch_size = org_micro_batch_size // self.num_generations
+            # args.micro_batch_size = org_micro_batch_size // self.num_generations
             res = origin_build_pretraining_data_loader(*_args, **kwargs)
             args.micro_batch_size = org_micro_batch_size
             if res is not None and args.dataloader_type != 'external':
@@ -669,3 +628,86 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             yield
         finally:
             training.build_pretraining_data_loader = origin_build_pretraining_data_loader
+
+    def forward_step(self, data_iterator, model):
+        # train_batch_size
+        # return: output_tensor, loss_func
+
+        data = next(data_iterator)
+        inputs = {
+            k: v
+            for k, v in data.items() if k not in
+            ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
+        }
+
+        with self.stimer:
+            output_tensor = model(**inputs)
+        return output_tensor, partial(self.loss_func, data=data)
+
+    def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
+        advantages = data['advantages']
+        labels = data['labels']
+        completion_mask = data['completion_mask']
+        packed_seq_params = data['packed_seq_params']
+        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, per_token=True)
+        if self.beta != 0.0:
+            ref_per_token_logps = data.get('ref_per_token_logps')
+            per_token_kl = (
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+
+        old_per_token_logps = (
+            per_token_logps.detach() if data.get('old_per_token_logps') is None else data['old_per_token_logps'])
+        log_ratio = per_token_logps - old_per_token_logps
+
+        if self.importance_sampling_level == 'token':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'sequence':
+            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            log_importance_weights = log_importance_weights.unsqueeze(-1)
+        elif self.importance_sampling_level == 'sequence_token':
+            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
+            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+        else:
+            raise ValueError(
+                f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
+                "and 'sequence'.")
+
+        coef_1 = torch.exp(log_importance_weights)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        if self.args.delta is not None:
+            coef_1 = torch.clamp(coef_1, max=self.args.delta)
+
+        if self.template.padding_free:
+            advantages = advantages[-coef_1.shape[1]:]
+            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+        else:
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.beta != 0.0:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
+
+        if self.loss_type == 'grpo':
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+        elif self.loss_type == 'bnpo':
+            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+        elif self.loss_type == 'dr_grpo':
+            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+        else:
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
+
+        loss = loss.mean()
+        metric = {
+            'loss': loss.clone().detach(),
+        }
+        reporting_metric = loss.new_tensor(list(metric.values()))
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+        # fix megatron-lm bug
+        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+        loss = loss / mpu.get_context_parallel_world_size()
+        return loss, reporting_metric

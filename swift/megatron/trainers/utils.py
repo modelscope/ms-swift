@@ -159,31 +159,6 @@ def profiling_context(trainer, name: str):
     # TODO: add swanlab support
 
 
-def gather_dict(tensors: Dict[str, torch.Tensor], group: torch.distributed.ProcessGroup):
-    if not isinstance(tensors, dict):
-        raise ValueError(f'Expected a dictionary, got {type(tensors)}')
-    size = torch.distributed.get_world_size(group=group)
-
-    output = {}
-    sorted_keys = sorted(tensors.keys())
-    for key in sorted_keys:
-        val = tensors[key]
-        if isinstance(val, int):
-            # num_samples
-            output[key] = val
-            continue
-        elif isinstance(val, torch.Tensor):
-            output[key] = [torch.empty_like(val) for _ in range(size)]
-            torch.distributed.all_gather(output[key], val, group=group, async_op=False)
-            output[key] = torch.cat(output[key], dim=0)
-        else:
-            output[key] = [None for _ in range(size)]
-            torch.distributed.all_gather_object(output[key], val, group=group, async_op=False)
-            output[key] = [item for sublist in output[key] for item in sublist]
-
-    return output
-
-
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
     if group is None:
         return hf_gather(tensor)
@@ -200,12 +175,5 @@ def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] =
     size = torch.distributed.get_world_size(group=group)
     output_objects = [None for _ in range(size)]
     torch.distributed.all_gather_object(output_objects, object)
-    # all_gather_object returns a list of lists, so we need to flatten it
+    # flatten
     return [x for y in output_objects for x in y]
-
-
-def make_batch_generator(batch: List[Dict[str, Any]], batch_size: int):
-    assert batch_size > 0, 'batch_size must be positive'
-    assert len(batch) % batch_size == 0, 'batch length must be a multiple of batch_size'
-    for i in range(0, len(batch), batch_size):
-        yield batch[i:i + batch_size]

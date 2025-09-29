@@ -169,9 +169,9 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('num_iterations > 1 is not supported for Megatron-GRPO yet, please set it to 1.')
 
         def _check_batch_params():
-            assert self.micro_batch_size % self.num_generations == 0, \
-                f'micro_batch_size ({self.micro_batch_size}) must be divisible' \
-                f' by the number of generations ({self.num_generations})'
+            # assert self.micro_batch_size % self.num_generations == 0, \
+            #     f'micro_batch_size ({self.micro_batch_size}) must be divisible' \
+            #     f' by the number of generations ({self.num_generations})'
             if self.generation_batch_size is None and self.steps_per_generation is None:
                 self.steps_per_generation = 1
                 self.generation_batch_size = self.global_batch_size * self.steps_per_generation
