@@ -195,6 +195,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, **kwargs):
         sequence_lengths = -1
     else:
         if output.get('attention_mask') is not None:
+            # When use padding_free in seq_cls tasks, `revert_padding_free` will add a attention_mask in the output
             batch_size = output.get('attention_mask').shape[0]
             sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
         elif input_ids is not None:
