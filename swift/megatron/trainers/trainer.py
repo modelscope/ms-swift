@@ -66,7 +66,7 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:
             assert losses.shape[0] == 1, 'only support padding_free'
-            mode = 'train' if self.unwrapped_model.training else 'eval'
+            mode = 'train' if self.unwrapped_models[0].training else 'eval'
             metrics = self.custom_metrics[mode]
             num_samples = packed_seq_params.num_samples
             cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size

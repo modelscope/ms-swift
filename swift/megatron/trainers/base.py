@@ -43,6 +43,8 @@ class BaseMegatronTrainer(ABC):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()
+        self.unwrapped_models = []
+        self.peft_models = []
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -95,7 +97,7 @@ class BaseMegatronTrainer(ABC):
         i = 0
         n_batch = 0
         while True:
-            training = self.unwrapped_model.training
+            training = self.unwrapped_models[0].training
             if training:
                 logger.info(f'The training of Epoch {i} starts...')
             if training and args.max_epochs and i >= args.max_epochs - 1:
@@ -249,9 +251,10 @@ class BaseMegatronTrainer(ABC):
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         def new_model_provider_func(*args, **kwargs):
-            self.unwrapped_model = model_provider_func(*args, **kwargs)
-            self.peft_model = prepare_mcore_model(self.unwrapped_model)
-            return self.unwrapped_model
+            model = model_provider_func(*args, **kwargs)
+            self.unwrapped_models.append(model)
+            self.peft_models.append(prepare_mcore_model(model))
+            return model
 
         args = get_args()
         self._init_multimodal_full(args)
@@ -259,9 +262,11 @@ class BaseMegatronTrainer(ABC):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         if args.initialize_embedding:
-            self._initialize_embedding(self.unwrapped_model)
+            for m in self.unwrapped_models:
+                self._initialize_embedding(m)
         if args.train_type != 'full' and args.modules_to_save:
-            copy_original_module_weight(self.unwrapped_model)
+            for m in self.unwrapped_models:
+                copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
@@ -271,11 +276,12 @@ class BaseMegatronTrainer(ABC):
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.model_meta.is_multimodal:
-            self._prepare_vit_gradient_checkpointing()
+            for m in self.unwrapped_models:
+                self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
 
-    def _prepare_vit_gradient_checkpointing(self):
-        visual = self.unwrapped_model.visual
+    def _prepare_vit_gradient_checkpointing(self, model):
+        visual = model.visual
         if visual is None:
             return
         args = get_args()

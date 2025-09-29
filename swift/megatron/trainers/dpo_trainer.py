@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import copy
 from collections import namedtuple
 from contextlib import contextmanager, nullcontext
 from functools import partial
@@ -6,6 +7,7 @@ from functools import partial
 import torch
 from megatron.core import mpu
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
+from megatron.core.pipeline_parallel.schedules import get_schedule_table
 from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
@@ -38,25 +40,26 @@ class MegatronDPOTrainer(MegatronTrainer):
     def __init__(self, args, template):
         super().__init__(args, template)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
+        self.ref_models = []
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
         if args.train_type == 'full':
-            ref_model = get_model(model_provider_func, model_type)
+            ref_models = get_model(model_provider_func, model_type)
             if args.ref_load is None:
                 args.ref_load = args.load
             args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_model, None, None, load_arg='ref_load')
-            self.ref_model = ref_model[0]
-            self.ref_model.eval()
-        else:
-            self.ref_model = None
+                ref_models, None, None, load_arg='ref_load')
+            self.ref_models = ref_models
+            for m in self.ref_models:
+                m.eval()
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
     def _forward_step_helper(model, inputs):
+        vp_stage = model.vp_stage
         args = get_args()
-        if mpu.is_pipeline_first_stage():
+        if mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
             assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
             micro_batch_size = 1  # use qkv_format 'thd'
             seq_length = inputs['input_ids'].shape[1]
@@ -68,30 +71,20 @@ class MegatronDPOTrainer(MegatronTrainer):
         else:
             recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
             recv_from_prev_pipeline_rank_(recv_shape_buffer)
-        if not mpu.is_pipeline_last_stage():
+        if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
             send_to_next_pipeline_rank(recv_shape_buffer)
         shape = recv_shape_buffer.tolist()
 
-        if not mpu.is_pipeline_first_stage():
+        if not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
             recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
             recv_from_prev_pipeline_rank_(recv_buffer)
             model.set_input_tensor(recv_buffer)
         output_tensor = model(**inputs)
-        if not mpu.is_pipeline_last_stage():
+        if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
             send_to_next_pipeline_rank(output_tensor)
             output_tensor = None
 
         return output_tensor
-
-    def ref_forward(self, ref_model, data_iterator):
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        data.pop('loss_scale', None)
-        labels = data.get('labels')
-        with torch.no_grad():
-            output_tensor = self._forward_step_helper(ref_model, data)
-        data['logps'] = None if labels is None else self.get_logps(output_tensor, labels, data['packed_seq_params'])
-        return data
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params):
@@ -151,30 +144,44 @@ class MegatronDPOTrainer(MegatronTrainer):
     @contextmanager
     def null_ref_context(self):
         args = get_args()
+        from transformers.utils import ContextManagers
+        contexts = []
         if args.train_type == 'full':
-            context = nullcontext()
-            ref_model = unwrap_model(self.ref_model)
+            ref_models = [unwrap_model(m) for m in self.ref_models]
         else:
             if args.ref_adapter_load is None:
-                context = self.peft_model.disable_adapter()
-            else:
-                context = nullcontext()
-            ref_model = self.unwrapped_model
-        with context:
+                for m in self.peft_models:
+                    contexts.append(m.disable_adapter())
+            ref_models = self.unwrapped_models
+        with ContextManagers(contexts):
             if args.ref_adapter_load:
-                self.peft_model.set_adapter('ref_adapter')
-            yield ref_model
+                for m in self.peft_models:
+                    m.set_adapter('ref_adapter')
+            yield ref_models
             if args.ref_adapter_load:
-                self.peft_model.set_adapter('default')
+                for m in self.peft_models:
+                    m.set_adapter('default')
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
         res = []
-        with torch.no_grad(), self.null_ref_context() as ref_model:
-            for i in range(num_iters_per_step):
-                res.append(self.ref_forward(ref_model, data_iterator))
-        return iter(res)
+        with torch.no_grad(), self.null_ref_context() as ref_models:
+            config = ref_models[0].config
+            schedule_table = get_schedule_table(num_iters_per_step, len(ref_models),
+                                                config.microbatch_group_size_per_vp_stage)
+            for _, model_i in schedule_table:
+                m = ref_models[model_i]
+                with self.stimer(bdata=True):
+                    data = get_batch(data_iterator[model_i], vp_stage=m.vp_stage)
+                data.pop('loss_scale', None)
+                labels = data.get('labels')
+                with torch.no_grad():
+                    output_tensor = self._forward_step_helper(m, data)
+                data['logps'] = None if labels is None else self.get_logps(output_tensor, labels,
+                                                                           data['packed_seq_params'])
+                res.append(data)
+        return [iter(res) if i == 0 else copy.deepcopy(res) for i in range(len(ref_models))]
 
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
