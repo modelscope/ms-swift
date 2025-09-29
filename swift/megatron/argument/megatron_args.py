@@ -199,12 +199,13 @@ class MegatronArguments(ExtraMegatronArguments):
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
-    overlap_grad_reduce: bool = True
-    overlap_param_gather: bool = True
+    overlap_grad_reduce: bool = False
+    overlap_param_gather: bool = False
     distributed_timeout_minutes: int = 300000
     num_layers_per_virtual_pipeline_stage: Optional[int] = None
     num_virtual_stages_per_pipeline_rank: Optional[int] = None
     microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
+    pipeline_model_parallel_layout: Optional[str] = None
 
     # model
     num_layers: Optional[int] = None
