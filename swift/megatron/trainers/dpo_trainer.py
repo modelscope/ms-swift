@@ -181,7 +181,7 @@ class MegatronDPOTrainer(MegatronTrainer):
                 data['logps'] = None if labels is None else self.get_logps(output_tensor, labels,
                                                                            data['packed_seq_params'])
                 res.append(data)
-        return [iter(res) if i == 0 else copy.deepcopy(res) for i in range(len(ref_models))]
+        return [iter(res) if i == 0 else iter(copy.deepcopy(res)) for i in range(len(ref_models))]
 
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
