@@ -3,7 +3,6 @@ import copy
 from collections import namedtuple
 from contextlib import contextmanager
 from functools import partial
-from transformers.utils import ContextManagers
 
 import torch
 from megatron.core import mpu
@@ -13,6 +12,7 @@ from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
+from transformers.utils import ContextManagers
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
@@ -163,12 +163,15 @@ class MegatronDPOTrainer(MegatronTrainer):
                     m.set_adapter('default')
 
     def _replace_data_iterator(self, data_iterator):
+        if not isinstance(data_iterator, (list, tuple)):
+            data_iterator = [data_iterator]
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-        res = []
+        vpp_world_size = len(self.unwrapped_models)
+        res = [[] for _ in range(vpp_world_size)]
         with torch.no_grad(), self.null_ref_context() as ref_models:
             config = ref_models[0].config
-            schedule_table = get_schedule_table(num_iters_per_step, len(ref_models),
+            schedule_table = get_schedule_table(num_iters_per_step, vpp_world_size,
                                                 config.microbatch_group_size_per_vp_stage)
             for _, model_i in schedule_table:
                 m = ref_models[model_i]
@@ -180,8 +183,8 @@ class MegatronDPOTrainer(MegatronTrainer):
                     output_tensor = self._forward_step_helper(m, data)
                 data['logps'] = None if labels is None else self.get_logps(output_tensor, labels,
                                                                            data['packed_seq_params'])
-                res.append(data)
-        return [iter(res) if i == 0 else iter(copy.deepcopy(res)) for i in range(len(ref_models))]
+                res[model_i].append(data)
+        return iter(res) if vpp_world_size == 1 else [iter(r) for r in res]
 
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
