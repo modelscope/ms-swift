@@ -43,6 +43,10 @@ export MODELSCOPE_CACHE='/xxx/shared'
 # The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
 git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
+
+# flash_attn
+# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.7.4.post1
+# Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
 ```
 
 Alternatively, you can also use the image:
