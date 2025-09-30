@@ -13,6 +13,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
+from .rlhf_base import MegatronRLHFTrainer
 from .trainer import MegatronTrainer
 from .utils import get_batch
 
@@ -33,7 +34,7 @@ class DummyDPOTrainer(DPOTrainer):
         self.beta = args.beta
 
 
-class MegatronDPOTrainer(MegatronTrainer):
+class MegatronDPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
@@ -83,32 +84,6 @@ class MegatronDPOTrainer(MegatronTrainer):
 
         return output_tensor
 
-    def ref_forward(self, ref_model, data_iterator):
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        data.pop('loss_scale', None)
-        labels = data.get('labels')
-        with torch.no_grad():
-            output_tensor = self._forward_step_helper(ref_model, data)
-        data['logps'] = None if labels is None else self.get_logps(output_tensor, labels, data['packed_seq_params'])
-        return data
-
-    @staticmethod
-    def get_logps(output_tensor, labels, packed_seq_params):
-        args = get_args()
-        per_token_logps = -output_tensor
-        loss_mask = labels != -100
-        per_token_logps = per_token_logps * loss_mask
-        num_samples = packed_seq_params.num_samples
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples * 2 + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((num_samples * 2, ))
-        for i in range(num_samples * 2):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            all_logps[i] = per_token_logps[:, start:end].sum()
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-        return all_logps
-
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
         args = get_args()
@@ -148,32 +123,13 @@ class MegatronDPOTrainer(MegatronTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, metric
 
-    @contextmanager
-    def null_ref_context(self):
-        args = get_args()
-        if args.train_type == 'full':
-            context = nullcontext()
-            ref_model = unwrap_model(self.ref_model)
-        else:
-            if args.ref_adapter_load is None:
-                context = self.peft_model.disable_adapter()
-            else:
-                context = nullcontext()
-            ref_model = self.unwrapped_model
-        with context:
-            if args.ref_adapter_load:
-                self.peft_model.set_adapter('ref_adapter')
-            yield ref_model
-            if args.ref_adapter_load:
-                self.peft_model.set_adapter('default')
-
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
         res = []
         with torch.no_grad(), self.null_ref_context() as ref_model:
             for i in range(num_iters_per_step):
-                res.append(self.ref_forward(ref_model, data_iterator))
+                res.append(self.model_forward(ref_model, data_iterator))
         return iter(res)
 
     def forward_step(self, data_iterator, model):

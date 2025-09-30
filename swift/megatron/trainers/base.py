@@ -27,7 +27,7 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from packaging import version
 
-from swift.llm import dynamic_gradient_checkpointing
+from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -39,7 +39,7 @@ logger = get_logger()
 
 class BaseMegatronTrainer(ABC):
 
-    def __init__(self, args, template):
+    def __init__(self, args, template: Template):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()

@@ -1,11 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict
+import time
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional
 
 import torch
+from accelerate.utils import gather as hf_gather
+from accelerate.utils import gather_object as hf_gather_object
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
-from megatron.training import get_args
+from megatron.training import get_args, get_wandb_writer
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
@@ -62,6 +66,18 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
+
+
+def process_packed_seq_params(batch: Dict[str, Any]) -> int:
+    args = get_args()
+    num_samples = batch.pop('num_samples')
+    text_position_ids = batch.pop('text_position_ids', None)
+    if text_position_ids is None:
+        text_position_ids = batch.get('position_ids')
+    if args.padding_free and text_position_ids is not None:
+        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        batch['packed_seq_params'].num_samples = num_samples
+    return batch
 
 
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
@@ -121,14 +137,43 @@ def get_batch(data_iterator):
     """Generate a batch."""
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
-    args = get_args()
-    num_samples = batch.pop('num_samples')
-    text_position_ids = batch.pop('text_position_ids', None)
-    if text_position_ids is None:
-        text_position_ids = batch.get('position_ids')
-    if args.padding_free and text_position_ids is not None:
-        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
-        batch['packed_seq_params'].num_samples = num_samples
+    # process batch for packed sequence support
+    batch = process_packed_seq_params(batch)
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch
+
+
+@contextmanager
+def profiling_context(trainer, name: str):
+    start_time = time.perf_counter()
+    yield
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+
+    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
+    wandb_writer = get_wandb_writer()
+    if wandb_writer and trainer.is_main_process:
+        wandb_writer.log(profiling_metrics)
+
+    # TODO: add swanlab support
+
+
+def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
+    if group is None:
+        return hf_gather(tensor)
+    size = torch.distributed.get_world_size(group=group)
+    output = [torch.empty_like(tensor) for _ in range(size)]
+    torch.distributed.all_gather(output, tensor, group=group, async_op=False)
+
+    return torch.cat(output, dim=0)
+
+
+def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] = None):
+    if group is None:
+        return hf_gather_object(object)
+    size = torch.distributed.get_world_size(group=group)
+    output_objects = [None for _ in range(size)]
+    torch.distributed.all_gather_object(output_objects, object)
+    # flatten
+    return [x for y in output_objects for x in y]
