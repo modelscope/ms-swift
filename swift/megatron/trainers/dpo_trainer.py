@@ -1,14 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import copy
 from collections import namedtuple
 from contextlib import contextmanager
 from functools import partial
 
 import torch
 from megatron.core import mpu
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
-from megatron.core.pipeline_parallel.schedules import get_schedule_table
-from megatron.training import get_args, get_model, training
+from megatron.training import get_args, get_model, get_timers, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
@@ -45,6 +42,7 @@ class MegatronDPOTrainer(MegatronTrainer):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
+        assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         if args.train_type == 'full':
             ref_models = get_model(model_provider_func, model_type)
             if args.ref_load is None:
@@ -55,33 +53,6 @@ class MegatronDPOTrainer(MegatronTrainer):
             for m in self.ref_models:
                 m.eval()
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
-
-    @staticmethod
-    def _forward_step_helper(model, inputs):
-        vp_stage = model.vp_stage
-        args = get_args()
-        if mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
-            assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
-            micro_batch_size = 1  # use qkv_format 'thd'
-            seq_length = inputs['input_ids'].shape[1]
-            if args.sequence_parallel:
-                seq_length //= mpu.get_tensor_model_parallel_world_size()
-            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
-                                             device=torch.cuda.current_device(),
-                                             dtype=torch.int64)
-        else:
-            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
-            recv_from_prev_pipeline_rank_(recv_shape_buffer)
-            recv_buffer = torch.empty(recv_shape_buffer.tolist(), device=torch.cuda.current_device(), dtype=args.params_dtype)
-            recv_from_prev_pipeline_rank_(recv_buffer)
-            model.set_input_tensor(recv_buffer)
-        output_tensor = model(**inputs)
-        if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
-            send_to_next_pipeline_rank(recv_shape_buffer)
-            send_to_next_pipeline_rank(output_tensor)
-            output_tensor = None
-
-        return output_tensor
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params):
@@ -99,12 +70,15 @@ class MegatronDPOTrainer(MegatronTrainer):
             all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
         return all_logps
 
-    def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
-                  packed_seq_params):
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
+        batch_size = output_tensor.shape[1]
+        ref_output_tensor, output_tensor = output_tensor[:, :batch_size // 2].detach(), output_tensor[:,
+                                                                                                      batch_size // 2:]
         args = get_args()
         num_samples = packed_seq_params.num_samples
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
+        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:num_samples],
             logps[num_samples:],
@@ -158,38 +132,26 @@ class MegatronDPOTrainer(MegatronTrainer):
                 for m in self.peft_models:
                     m.set_adapter('default')
 
-    def _replace_data_iterator(self, data_iterator):
-        if not isinstance(data_iterator, (list, tuple)):
-            data_iterator = [data_iterator]
-        args = get_args()
-        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-        vpp_world_size = len(self.unwrapped_models)
-        res = [[] for _ in range(vpp_world_size)]
-        with torch.no_grad(), self.null_ref_context() as ref_models:
-            config = ref_models[0].config
-            schedule_table = get_schedule_table(num_iters_per_step, vpp_world_size,
-                                                config.microbatch_group_size_per_vp_stage)
-            for _, model_i in schedule_table:
-                m = ref_models[model_i]
-                with self.stimer(bdata=True):
-                    data = get_batch(data_iterator[model_i], vp_stage=m.vp_stage)
-                data.pop('loss_scale', None)
-                labels = data.get('labels')
-                with torch.no_grad():
-                    output_tensor = self._forward_step_helper(m, data)
-                data['logps'] = None if labels is None else self.get_logps(output_tensor, labels,
-                                                                           data['packed_seq_params'])
-                res[model_i].append(data)
-        iterator = [iter(r) for r in res]
-        return iterator[0] if vpp_world_size == 1 else iterator
-
     def forward_step(self, data_iterator, model):
-        data = next(data_iterator)
-        ref_logps = data.pop('logps')
+        timers = get_timers()
+        # Get the batch.
+        unwrapped_model = model.module.module
+        input_tensor = unwrapped_model.get_input_tensor()
+        if input_tensor is not None:
+            unwrapped_model.set_input_tensor(input_tensor[:, input_tensor.shape[1] // 2:])
+        vp_stage = unwrapped_model.vp_stage
+        with torch.no_grad(), self.null_ref_context() as ref_models:
+            ref_model = ref_models[vp_stage]
+            if input_tensor is not None:
+                ref_model.set_input_tensor(input_tensor[:, :input_tensor.shape[1] // 2].detach())
+            timers('batch-generator', log_level=2).start()
+            with self.stimer(bdata=True):
+                data = get_batch(data_iterator, vp_stage)
+            timers('batch-generator').stop()
+            data.pop('loss_scale', None)
+            ref_output_tensor = model(**data)
+
         with self.stimer:
             output_tensor = model(**data)
-        return output_tensor, partial(
-            self.loss_func,
-            ref_logps=ref_logps,
-            labels=data.get('labels'),
-            packed_seq_params=data.get('packed_seq_params'))
+        return torch.concat([ref_output_tensor, output_tensor], dim=1), partial(
+            self.loss_func, labels=data.get('labels'), packed_seq_params=data.get('packed_seq_params'))

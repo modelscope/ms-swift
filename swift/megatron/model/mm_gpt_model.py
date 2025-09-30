@@ -107,5 +107,8 @@ class MultimodalGPTModel(MegatronModule):
     def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
         return self.language_model.set_input_tensor(input_tensor)
 
+    def get_input_tensor(self):
+        return self.language_model.get_input_tensor()
+
     def shared_embedding_or_output_weight(self) -> torch.Tensor:
         return self.language_model.shared_embedding_or_output_weight()

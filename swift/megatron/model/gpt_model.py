@@ -269,3 +269,6 @@ class GPTModel(McoreGPTModel):
         loss = self.compute_language_model_loss(labels, logits)
 
         return loss
+
+    def get_input_tensor(self):
+        return self.decoder.input_tensor
