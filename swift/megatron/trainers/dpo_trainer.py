@@ -44,14 +44,15 @@ class MegatronDPOTrainer(MegatronTrainer):
         args = get_args()
         assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         if args.train_type == 'full':
-            ref_models = get_model(model_provider_func, model_type)
+            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
+            for m in ref_models:
+                m = unwrap_model(m)
+                m.requires_grad_(False).eval()
             if args.ref_load is None:
                 args.ref_load = args.load
             args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                 ref_models, None, None, load_arg='ref_load')
             self.ref_models = ref_models
-            for m in self.ref_models:
-                m.eval()
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
@@ -116,7 +117,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         args = get_args()
         contexts = []
         if args.train_type == 'full':
-            ref_models = [unwrap_model(m) for m in self.ref_models]
+            ref_models = self.ref_models
         else:
             if args.ref_adapter_load is None:
                 for m in self.peft_models:
