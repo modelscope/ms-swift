@@ -245,6 +245,11 @@ LoRA Training:
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
 - loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
 
+**KTO Parameters**:
+- beta: Coefficient for the KL regularization term. Default is `0.1`.
+- desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
+- undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
+- calculate_KL: Whether to calculate KL divergence. Default is `True`.
 
 ## Training Parameters
 
@@ -278,6 +283,6 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- rlhf_type: Default is 'dpo'. Currently, only 'dpo' is available.
+- rlhf_type: Default is 'dpo'. Currently, 'dpo', 'kto' is available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
