@@ -798,3 +798,39 @@ class BaseMegatronTrainer(ABC):
     @abstractmethod
     def forward_step(self, data_iterator, model):
         pass
+
+
+class MegatronRLHFTrainer(BaseMegatronTrainer):
+
+    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+        if args.train_type == 'full':
+            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
+            for m in ref_models:
+                m = unwrap_model(m)
+                m.requires_grad_(False).eval()
+            if args.ref_load is None:
+                args.ref_load = args.load
+            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                ref_models, None, None, load_arg='ref_load')
+            self.ref_models = ref_models
+        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+
+    @contextmanager
+    def null_ref_context(self):
+        args = get_args()
+        contexts = []
+        if args.train_type == 'full':
+            ref_models = self.ref_models
+        else:
+            if args.ref_adapter_load is None:
+                for m in self.peft_models:
+                    contexts.append(m.disable_adapter())
+            ref_models = self.unwrapped_models
+        with ContextManagers(contexts):
+            if args.ref_adapter_load:
+                for m in self.peft_models:
+                    m.set_adapter('ref_adapter')
+            yield ref_models
+            if args.ref_adapter_load:
+                for m in self.peft_models:
+                    m.set_adapter('default')

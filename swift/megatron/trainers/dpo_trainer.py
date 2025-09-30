@@ -13,7 +13,7 @@ from transformers.utils import ContextManagers
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from .trainer import MegatronTrainer
+from .base import MegatronRLHFTrainer
 from .utils import get_batch
 
 logger = get_logger()
@@ -33,27 +33,13 @@ class DummyDPOTrainer(DPOTrainer):
         self.beta = args.beta
 
 
-class MegatronDPOTrainer(MegatronTrainer):
+class MegatronDPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
+        assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
         self.ref_models = []
-
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-        args = get_args()
-        assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
-        if args.train_type == 'full':
-            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
-            for m in ref_models:
-                m = unwrap_model(m)
-                m.requires_grad_(False).eval()
-            if args.ref_load is None:
-                args.ref_load = args.load
-            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_models, None, None, load_arg='ref_load')
-            self.ref_models = ref_models
-        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params):
@@ -111,26 +97,6 @@ class MegatronDPOTrainer(MegatronTrainer):
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, metric
-
-    @contextmanager
-    def null_ref_context(self):
-        args = get_args()
-        contexts = []
-        if args.train_type == 'full':
-            ref_models = self.ref_models
-        else:
-            if args.ref_adapter_load is None:
-                for m in self.peft_models:
-                    contexts.append(m.disable_adapter())
-            ref_models = self.unwrapped_models
-        with ContextManagers(contexts):
-            if args.ref_adapter_load:
-                for m in self.peft_models:
-                    m.set_adapter('ref_adapter')
-            yield ref_models
-            if args.ref_adapter_load:
-                for m in self.peft_models:
-                    m.set_adapter('default')
 
     def forward_step(self, data_iterator, model):
         timers = get_timers()

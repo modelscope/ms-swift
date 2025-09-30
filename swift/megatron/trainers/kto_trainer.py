@@ -14,13 +14,13 @@ from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 
 from swift.utils import get_current_device, get_logger
-from .trainer import MegatronTrainer
+from .base import MegatronRLHFTrainer
 from .utils import get_kto_batch
 
 logger = get_logger()
 
 
-class MegatronKTOTrainer(MegatronTrainer):
+class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
@@ -28,20 +28,6 @@ class MegatronKTOTrainer(MegatronTrainer):
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.calculate_KL = args.calculate_KL
-
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-        args = get_args()
-        if args.train_type == 'full':
-            ref_model = get_model(model_provider_func, model_type)
-            if args.ref_load is None:
-                args.ref_load = args.load
-            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_model, None, None, load_arg='ref_load')
-            self.ref_model = ref_model[0]
-            self.ref_model.eval()
-        else:
-            self.ref_model = None
-        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
     def _forward_step_helper(model, inputs):
@@ -71,25 +57,6 @@ class MegatronKTOTrainer(MegatronTrainer):
             output_tensor = None
 
         return output_tensor
-
-    @contextmanager
-    def null_ref_context(self):
-        args = get_args()
-        if args.train_type == 'full':
-            context = nullcontext()
-            ref_model = unwrap_model(self.ref_model)
-        else:
-            if args.ref_adapter_load is None:
-                context = self.peft_model.disable_adapter()
-            else:
-                context = nullcontext()
-            ref_model = self.unwrapped_model
-        with context:
-            if args.ref_adapter_load:
-                self.peft_model.set_adapter('ref_adapter')
-            yield ref_model
-            if args.ref_adapter_load:
-                self.peft_model.set_adapter('default')
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params=None):
