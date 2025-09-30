@@ -141,7 +141,7 @@ class MegatronDPOTrainer(MegatronTrainer):
             unwrapped_model.set_input_tensor(input_tensor[:, input_tensor.shape[1] // 2:])
         vp_stage = unwrapped_model.vp_stage
         with torch.no_grad(), self.null_ref_context() as ref_models:
-            ref_model = ref_models[vp_stage]
+            ref_model = ref_models[vp_stage or 0]
             if input_tensor is not None:
                 ref_model.set_input_tensor(input_tensor[:, :input_tensor.shape[1] // 2].detach())
             timers('batch-generator', log_level=2).start()

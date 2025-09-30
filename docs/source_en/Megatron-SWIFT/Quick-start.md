@@ -157,6 +157,15 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - Megatron-SWIFT uses the same dataset and template processing modules as ms-swift, thus supporting techniques such as packing, loss scale, and agent training. For custom dataset formats, please refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md).
 - **More Examples**: Including packing, multi-node training, 32K context length, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron).
 
+Training tips:
+- Ways to increase training throughput: use packing, increase DP (data parallelism), reduce recomputation, and increase computation-communication overlap.
+- Parallelism choices:
+  - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.
+  - DP is the fastest but consumes the most memory; use other parallel techniques to reduce memory usage.
+  - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for跨-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
+  - MoE parallel folding: separate MoE parallel groups from Dense groups. Attention uses tp-cp-dp-pp groups, while MoE uses etp-ep-dp-pp groups.
+- Choosing parallelism for weight conversion: Megatron-SWIFT uses the torch_dist storage format on the MCore side; you can adjust parallelism at training time and do not need to specify it during weight conversion.
+
 
 ## Benchmark
 The training speed comparison for full-parameter dense models with 8K context length, using `megatron sft` and `swift sft`, under a single-node, eight-GPU A800 environment is as follows:
