@@ -1,15 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from contextlib import contextmanager, nullcontext
 from functools import partial
 
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from megatron.core import mpu
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
-from megatron.training import get_args, get_model
-from megatron.training.checkpointing import load_checkpoint
+from megatron.training import get_args
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 
@@ -28,35 +25,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.calculate_KL = args.calculate_KL
-
-    @staticmethod
-    def _forward_step_helper(model, inputs):
-        args = get_args()
-        if mpu.is_pipeline_first_stage():
-            micro_batch_size = 1  # use qkv_format 'thd'
-            seq_length = inputs['input_ids'].shape[1]
-            if args.sequence_parallel:
-                seq_length //= mpu.get_tensor_model_parallel_world_size()
-            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
-                                             device=torch.cuda.current_device(),
-                                             dtype=torch.int64)
-        else:
-            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
-            recv_from_prev_pipeline_rank_(recv_shape_buffer)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(recv_shape_buffer)
-        shape = recv_shape_buffer.tolist()
-
-        if not mpu.is_pipeline_first_stage():
-            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
-            recv_from_prev_pipeline_rank_(recv_buffer)
-            model.set_input_tensor(recv_buffer)
-        output_tensor = model(**inputs)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(output_tensor)
-            output_tensor = None
-
-        return output_tensor
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params=None):
@@ -153,14 +121,15 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss.mean() if loss.numel() > 0 else torch.tensor(0.0, device=policy_logps.device)
 
         with torch.no_grad():
-            chosen_rewards_mean = chosen_rewards.mean() if chosen_rewards.numel() > 0 else torch.tensor(0.0).to(
-                loss.device)
-            rejected_rewards_mean = rejected_rewards.mean() if rejected_rewards.numel() > 0 else torch.tensor(0.0).to(
-                loss.device)
+            chosen_rewards_mean = chosen_rewards.mean() if chosen_rewards.numel() > 0 else torch.tensor(
+                0.0, device=loss.device)
+            rejected_rewards_mean = rejected_rewards.mean() if rejected_rewards.numel() > 0 else torch.tensor(
+                0.0, device=loss.device)
             policy_chosen_logps_mean = policy_chosen_logps.mean() if policy_chosen_logps.numel() > 0 else torch.tensor(
-                0.0).to(loss.device)
+                0.0, device=loss.device)
             policy_rejected_logps_mean = policy_rejected_logps.mean(
-            ) if policy_rejected_logps.numel() > 0 else torch.tensor(0.0).to(loss.device)
+            ) if policy_rejected_logps.numel() > 0 else torch.tensor(
+                0.0, device=loss.device)
 
         metric = {
             'loss': loss.clone().detach(),
@@ -169,7 +138,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             'rewards/chosen': chosen_rewards_mean,
             'rewards/rejected': rejected_rewards_mean,
             'rewards/margins': chosen_rewards_mean - rejected_rewards_mean,
-            'kl': kl.detach() if kl is not None else torch.tensor(0.0).to(loss.device),
+            'kl': kl.detach() if kl is not None else torch.tensor(0.0, device=loss.device),
         }
 
         reporting_metric = loss.new_tensor(list(metric.values()))

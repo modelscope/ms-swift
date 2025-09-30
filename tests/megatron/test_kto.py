@@ -2,6 +2,7 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
+
 def test_kto():
     from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
     megatron_rlhf_main(
@@ -30,6 +31,7 @@ def test_kto():
             cross_entropy_loss_fusion=True,
             sequence_parallel=True,
         ))
+
 
 if __name__ == '__main__':
     test_kto()

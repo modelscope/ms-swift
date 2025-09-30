@@ -1,15 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
-from contextlib import contextmanager
 from functools import partial
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_model, get_timers, training
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.utils import unwrap_model
+from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
-from transformers.utils import ContextManagers
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger

@@ -13,19 +13,22 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.enums import ModelType
+from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_tensorboard_writer, get_timers, get_wandb_writer,
-                               is_last_rank, one_logger_utils, pretrain, print_rank_0, print_rank_last, training)
+from megatron.training import (ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+                               get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
+                               print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
-from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
+from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from transformers.utils import ContextManagers
 
 from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
@@ -803,6 +806,7 @@ class BaseMegatronTrainer(ABC):
 class MegatronRLHFTrainer(BaseMegatronTrainer):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+        args = get_args()
         if args.train_type == 'full':
             ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
             for m in ref_models:
@@ -834,3 +838,32 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             if args.ref_adapter_load:
                 for m in self.peft_models:
                     m.set_adapter('default')
+
+    @staticmethod
+    def _forward_step_helper(model, inputs):
+        args = get_args()
+        if mpu.is_pipeline_first_stage():
+            micro_batch_size = 1  # use qkv_format 'thd'
+            seq_length = inputs['input_ids'].shape[1]
+            if args.sequence_parallel:
+                seq_length //= mpu.get_tensor_model_parallel_world_size()
+            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
+                                             device=torch.cuda.current_device(),
+                                             dtype=torch.int64)
+        else:
+            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
+            recv_from_prev_pipeline_rank_(recv_shape_buffer)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(recv_shape_buffer)
+        shape = recv_shape_buffer.tolist()
+
+        if not mpu.is_pipeline_first_stage():
+            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
+            recv_from_prev_pipeline_rank_(recv_buffer)
+            model.set_input_tensor(recv_buffer)
+        output_tensor = model(**inputs)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(output_tensor)
+            output_tensor = None
+
+        return output_tensor
