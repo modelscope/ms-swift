@@ -71,9 +71,8 @@ class MegatronDPOTrainer(MegatronTrainer):
         return all_logps
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
-        batch_size = output_tensor.shape[1]
-        ref_output_tensor, output_tensor = output_tensor[:, :batch_size // 2].detach(), output_tensor[:,
-                                                                                                      batch_size // 2:]
+        ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
+        output_tensor = output_tensor[output_tensor.shape[0] // 2:]
         args = get_args()
         num_samples = packed_seq_params.num_samples
 
@@ -138,20 +137,20 @@ class MegatronDPOTrainer(MegatronTrainer):
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         if input_tensor is not None:
-            unwrapped_model.set_input_tensor(input_tensor[:, input_tensor.shape[1] // 2:])
+            unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
         vp_stage = unwrapped_model.vp_stage
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if input_tensor is not None:
-                ref_model.set_input_tensor(input_tensor[:, :input_tensor.shape[1] // 2].detach())
+                ref_model.set_input_tensor(input_tensor[:input_tensor.shape[0] // 2].detach())
             timers('batch-generator', log_level=2).start()
             with self.stimer(bdata=True):
                 data = get_batch(data_iterator, vp_stage)
             timers('batch-generator').stop()
             data.pop('loss_scale', None)
-            ref_output_tensor = model(**data)
+            ref_output_tensor = ref_model(**data)
 
         with self.stimer:
             output_tensor = model(**data)
-        return torch.concat([ref_output_tensor, output_tensor], dim=1), partial(
+        return torch.concat([ref_output_tensor, output_tensor], dim=0), partial(
             self.loss_func, labels=data.get('labels'), packed_seq_params=data.get('packed_seq_params'))
