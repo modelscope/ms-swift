@@ -163,7 +163,7 @@ Training tips:
 - Parallelism choices:
   - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.
   - DP is the fastest but consumes the most memory; use other parallel techniques to reduce memory usage.
-  - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for跨-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
+  - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for cross-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
   - MoE parallel folding: separate MoE parallel groups from Dense groups. Attention uses tp-cp-dp-pp groups, while MoE uses etp-ep-dp-pp groups.
 - Choosing parallelism for weight conversion: Megatron-SWIFT uses the torch_dist storage format on the MCore side; you can adjust parallelism at training time and do not need to specify it during weight conversion.
 
