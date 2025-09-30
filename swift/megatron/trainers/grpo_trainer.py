@@ -20,7 +20,7 @@ from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_id
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
-from .utils import gather, gather_object, process_packed_seq_params, profiling_context
+from .utils import gather, gather_object, get_batch, process_packed_seq_params, profiling_context
 
 try:
     from mbridge import AutoBridge
@@ -574,7 +574,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.unwrapped_model, iter([inputs]), no_grad=True, per_token=True)['logps']
 
         # get packed_seq_params, from get_batch func
-        batch = process_packed_seq_params(batch)
+        # batch = process_packed_seq_params(batch)
 
         return batch
 
@@ -632,8 +632,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
-
-        data = next(data_iterator)
+        data = get_batch(data_iterator)
+        data.pop('loss_scale', None)
         inputs = {
             k: v
             for k, v in data.items() if k not in
@@ -664,8 +664,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 padding = torch.zeros(padding_length, device=truncated_mask.device, dtype=truncated_mask.dtype)
                 truncated_mask = torch.cat([truncated_mask, padding])
             completion_mask = completion_mask & (~truncated_mask)
-        else:
-            raise NotImplementedError  # TODO
 
         if self.beta != 0.0:
             ref_per_token_logps = data.get('ref_per_token_logps')
