@@ -158,8 +158,9 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         policy_model = unwrap_model(model)[0]
 
         for _ in range(num_iters_per_step):
-            with torch.no_grad(), self.null_ref_context() as ref_model:
-                data = self.ref_forward(ref_model, data_iterator)
+            with torch.no_grad(), self.null_ref_context() as ref_models:
+                assert len(ref_models) == 1, 'KTO currently does not support VPP.'
+                data = self.ref_forward(ref_models[0], data_iterator)
 
             if self.calculate_KL:
                 with torch.no_grad():
