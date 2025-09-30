@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import megatron.legacy
 import torch
@@ -18,8 +18,10 @@ if TYPE_CHECKING:
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def model_provider(pre_process=True,
-                   post_process=True) -> Union['GPTModel', 'MultimodalGPTModel', megatron.legacy.model.GPTModel]:
+def model_provider(
+        pre_process=True,
+        post_process=True,
+        vp_stage: Optional[int] = None) -> Union['GPTModel', 'MultimodalGPTModel', megatron.legacy.model.GPTModel]:
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
@@ -72,12 +74,16 @@ def model_provider(pre_process=True,
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
         elif args.megatron_model_meta.get_transformer_layer_spec is not None:
-            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config)
+            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config, use_transformer_engine=use_te, normalization=args.normalization)
+                    config,
+                    use_transformer_engine=use_te,
+                    normalization=args.normalization,
+                    qk_l2_norm=args.qk_l2_norm,
+                    vp_stage=vp_stage)
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
             else:
@@ -96,7 +102,8 @@ def model_provider(pre_process=True,
                         normalization=args.normalization)
         mtp_block_spec = None
         if args.mtp_num_layers is not None:
-            mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
+            mtp_block_spec = get_gpt_mtp_block_spec(
+                config, transformer_layer_spec, use_transformer_engine=use_te, vp_stage=vp_stage)
 
         if args.use_shared_expert_gate and args.num_experts and args.moe_shared_expert_intermediate_size:
             # qwen2_moe
@@ -120,6 +127,7 @@ def model_provider(pre_process=True,
             rope_scaling_factor=args.rope_scaling_factor,
             seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
+            vp_stage=vp_stage,
         )
 
     return model

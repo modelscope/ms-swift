@@ -13,19 +13,22 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.enums import ModelType
+from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_tensorboard_writer, get_timers, get_wandb_writer,
-                               is_last_rank, one_logger_utils, pretrain, print_rank_0, print_rank_last, training)
+from megatron.training import (ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+                               get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
+                               print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
-from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
+from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from transformers.utils import ContextManagers
 
 from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
@@ -43,6 +46,8 @@ class BaseMegatronTrainer(ABC):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()
+        self.unwrapped_models = []
+        self.peft_models = []
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -95,7 +100,7 @@ class BaseMegatronTrainer(ABC):
         i = 0
         n_batch = 0
         while True:
-            training = self.unwrapped_model.training
+            training = self.unwrapped_models[0].training
             if training:
                 logger.info(f'The training of Epoch {i} starts...')
             if training and args.max_epochs and i >= args.max_epochs - 1:
@@ -150,24 +155,28 @@ class BaseMegatronTrainer(ABC):
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict_model = {}
+        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         mapping = {}
-        for k, v in sharded_state_dict['model'].items():
-            if adapter_name not in k:
-                continue
-            # lora
-            origin_k = k
-            k = k.replace(f'.{adapter_name}.', '.default.')
-            mapping[k] = origin_k
-            v.key = v.key.replace(f'.{adapter_name}.', '.default.')
-            state_dict_model[k] = v
-        sharded_state_dict['model'] = state_dict_model
-        self._patch_merge_fn(state_dict_model)
+        for model_k in model_keys:
+            mapping[model_k] = {}
+            state_dict_model = {}
+            for k, v in sharded_state_dict[model_k].items():
+                if adapter_name not in k:
+                    continue
+                # lora
+                origin_k = k
+                k = k.replace(f'.{adapter_name}.', '.default.')
+                mapping[model_k][k] = origin_k
+                v.key = v.key.replace(f'.{adapter_name}.', '.default.')
+                state_dict_model[k] = v
+            sharded_state_dict[model_k] = state_dict_model
+            self._patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict = res[0]['model']
-        for k, origin_k in mapping.items():
-            v = state_dict.pop(k)
-            state_dict[origin_k] = v
+        for model_k in model_keys:
+            state_dict = res[0][model_k]
+            for k, origin_k in mapping[model_k].items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
         return res
 
     def _load_base_checkpoint(self, *_args, **kwargs):
@@ -175,37 +184,42 @@ class BaseMegatronTrainer(ABC):
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         if self.args.train_type == 'full':
-            self._patch_merge_fn(sharded_state_dict['model'])
+            for k in model_keys:
+                self._patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict_model = {}
         mapping = {}
-        for k, v in sharded_state_dict['model'].items():
-            if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
-                continue
-            # lora
-            if '.base_layer' in k:
-                origin_k = k
-                k = k.replace('.base_layer', '')
-                mapping[k] = origin_k
-                v.key = v.key.replace('.base_layer', '')
-            elif '.modules_to_save' in k:
-                if '.modules_to_save.default' not in k:
-                    # e.g. ref_adapter
+        for model_k in model_keys:
+            mapping[model_k] = {}
+            state_dict_model = {}
+            for k, v in sharded_state_dict[model_k].items():
+                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
                     continue
-                # modules to save
-                origin_k = k
-                k = k.replace('.modules_to_save.default', '')
-                mapping[k] = origin_k
-                v.key = v.key.replace('.modules_to_save.default', '')
-            state_dict_model[k] = v
-        sharded_state_dict['model'] = state_dict_model
-        self._patch_merge_fn(state_dict_model)
+                # lora
+                if '.base_layer' in k:
+                    origin_k = k
+                    k = k.replace('.base_layer', '')
+                    mapping[model_k][k] = origin_k
+                    v.key = v.key.replace('.base_layer', '')
+                elif '.modules_to_save' in k:
+                    if '.modules_to_save.default' not in k:
+                        # e.g. ref_adapter
+                        continue
+                    # modules to save
+                    origin_k = k
+                    k = k.replace('.modules_to_save.default', '')
+                    mapping[model_k][k] = origin_k
+                    v.key = v.key.replace('.modules_to_save.default', '')
+                state_dict_model[k] = v
+            sharded_state_dict[model_k] = state_dict_model
+            self._patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        state_dict = res[0]['model']
-        for k, origin_k in mapping.items():
-            v = state_dict.pop(k)
-            state_dict[origin_k] = v
+        for model_k in model_keys:
+            state_dict = res[0][model_k]
+            for k, origin_k in mapping[model_k].items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
         return res
 
     @contextmanager
@@ -241,9 +255,10 @@ class BaseMegatronTrainer(ABC):
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         def new_model_provider_func(*args, **kwargs):
-            self.unwrapped_model = model_provider_func(*args, **kwargs)
-            self.peft_model = prepare_mcore_model(self.unwrapped_model)
-            return self.unwrapped_model
+            model = model_provider_func(*args, **kwargs)
+            self.unwrapped_models.append(model)
+            self.peft_models.append(prepare_mcore_model(model))
+            return model
 
         args = get_args()
         self._init_multimodal_full(args)
@@ -251,9 +266,11 @@ class BaseMegatronTrainer(ABC):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         if args.initialize_embedding:
-            self._initialize_embedding(self.unwrapped_model)
+            for m in self.unwrapped_models:
+                self._initialize_embedding(m)
         if args.train_type != 'full' and args.modules_to_save:
-            copy_original_module_weight(self.unwrapped_model)
+            for m in self.unwrapped_models:
+                copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
@@ -263,11 +280,12 @@ class BaseMegatronTrainer(ABC):
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.model_meta.is_multimodal:
-            self._prepare_vit_gradient_checkpointing()
+            for m in self.unwrapped_models:
+                self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
 
-    def _prepare_vit_gradient_checkpointing(self):
-        visual = self.unwrapped_model.visual
+    def _prepare_vit_gradient_checkpointing(self, model):
+        visual = model.visual
         if visual is None:
             return
         args = get_args()
@@ -783,3 +801,69 @@ class BaseMegatronTrainer(ABC):
     @abstractmethod
     def forward_step(self, data_iterator, model):
         pass
+
+
+class MegatronRLHFTrainer(BaseMegatronTrainer):
+
+    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+        args = get_args()
+        if args.train_type == 'full':
+            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
+            for m in ref_models:
+                m = unwrap_model(m)
+                m.requires_grad_(False).eval()
+            if args.ref_load is None:
+                args.ref_load = args.load
+            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                ref_models, None, None, load_arg='ref_load')
+            self.ref_models = ref_models
+        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+
+    @contextmanager
+    def null_ref_context(self):
+        args = get_args()
+        contexts = []
+        if args.train_type == 'full':
+            ref_models = self.ref_models
+        else:
+            if args.ref_adapter_load is None:
+                for m in self.peft_models:
+                    contexts.append(m.disable_adapter())
+            ref_models = self.unwrapped_models
+        with ContextManagers(contexts):
+            if args.ref_adapter_load:
+                for m in self.peft_models:
+                    m.set_adapter('ref_adapter')
+            yield ref_models
+            if args.ref_adapter_load:
+                for m in self.peft_models:
+                    m.set_adapter('default')
+
+    @staticmethod
+    def _forward_step_helper(model, inputs):
+        args = get_args()
+        if mpu.is_pipeline_first_stage():
+            micro_batch_size = 1  # use qkv_format 'thd'
+            seq_length = inputs['input_ids'].shape[1]
+            if args.sequence_parallel:
+                seq_length //= mpu.get_tensor_model_parallel_world_size()
+            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
+                                             device=torch.cuda.current_device(),
+                                             dtype=torch.int64)
+        else:
+            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
+            recv_from_prev_pipeline_rank_(recv_shape_buffer)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(recv_shape_buffer)
+        shape = recv_shape_buffer.tolist()
+
+        if not mpu.is_pipeline_first_stage():
+            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
+            recv_from_prev_pipeline_rank_(recv_buffer)
+            model.set_input_tensor(recv_buffer)
+        output_tensor = model(**inputs)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(output_tensor)
+            output_tensor = None
+
+        return output_tensor

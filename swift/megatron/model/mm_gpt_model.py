@@ -29,7 +29,7 @@ class MultimodalGPTModel(MegatronModule):
         self.post_process = post_process
         self.language_model = GPTModel(config, transformer_layer_spec, vocab_size, max_sequence_length, pre_process,
                                        post_process, *args, **kwargs)
-
+        self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
         self.visual = None
@@ -106,6 +106,9 @@ class MultimodalGPTModel(MegatronModule):
 
     def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
         return self.language_model.set_input_tensor(input_tensor)
+
+    def get_input_tensor(self):
+        return self.language_model.get_input_tensor()
 
     def shared_embedding_or_output_weight(self) -> torch.Tensor:
         return self.language_model.shared_embedding_or_output_weight()

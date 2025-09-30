@@ -60,6 +60,7 @@ class GPTModel(McoreGPTModel):
         scatter_embedding_sequence_parallel: bool = True,
         seq_len_interpolation_factor: Optional[float] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
+        vp_stage: Optional[int] = None,
     ):
         if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
@@ -86,6 +87,7 @@ class GPTModel(McoreGPTModel):
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
+            vp_stage=vp_stage,
         )
         if config.multi_latent_attention:
             self.rotary_pos_emb = RotaryEmbedding(
@@ -267,3 +269,6 @@ class GPTModel(McoreGPTModel):
         loss = self.compute_language_model_loss(labels, logits)
 
         return loss
+
+    def get_input_tensor(self):
+        return self.decoder.input_tensor
