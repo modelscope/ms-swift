@@ -42,13 +42,13 @@ class MegatronDPOTrainer(MegatronTrainer):
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
         if args.train_type == 'full':
-            ref_model = get_model(model_provider_func, model_type)
+            ref_model = get_model(model_provider_func, model_type, wrap_with_ddp=False)
             if args.ref_load is None:
                 args.ref_load = args.load
             args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                 ref_model, None, None, load_arg='ref_load')
-            self.ref_model = ref_model[0]
-            self.ref_model.eval()
+            self.ref_model = unwrap_model(ref_model[0])
+            self.ref_model.requires_grad_(False).eval()
         else:
             self.ref_model = None
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
@@ -153,7 +153,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         args = get_args()
         if args.train_type == 'full':
             context = nullcontext()
-            ref_model = unwrap_model(self.ref_model)
+            ref_model = self.ref_model
         else:
             if args.ref_adapter_load is None:
                 context = self.peft_model.disable_adapter()
