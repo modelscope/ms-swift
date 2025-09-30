@@ -1,15 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import gc
 import inspect
+from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
+from types import MethodType
 from typing import Any, Dict, List, Union
 
 import torch
 import torch.nn as nn
 from megatron.core import mpu
 from megatron.training import get_args, training
+from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
 from swift.llm import RequestConfig, RowPreprocessor, Template, to_device
@@ -18,7 +21,7 @@ from swift.plugin import orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
-from ..argument import MegatronRLHFArguments
+from ..argument import MegatronArguments, MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
 from .utils import gather, gather_object, get_batch, process_packed_seq_params, profiling_context
 
@@ -44,6 +47,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_rollout_engine()
         # debug: use mbridge to convert mcore to hf
         self.bridge = None
+        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
     def _prepare_template_data_collator(self):
         template = self.template
@@ -61,7 +65,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         template.data_collator = data_collator
 
     def _init_grpo_params(self):
-        args = self.args
+        args: MegatronArguments = self.args
         # distributed params
         self.world_size = torch.distributed.get_world_size()
         self.process_index = torch.distributed.get_rank()
@@ -139,6 +143,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         for group_ranks in rollout_groups:
             if self.process_index in group_ranks:
                 self.rollout_group = torch.distributed.new_group(ranks=group_ranks)
+                print(f'rank {self.process_index} join rollout group with ranks: {group_ranks}')
                 break
 
     def prepare_vllm(self):
@@ -175,6 +180,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: LoRA, server
         if self.bridge is None:
             self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
+            self._patch_mbridge(self.bridge)
         per_tensor_params = self.bridge.export_weights([self.unwrapped_model])
         self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
 
@@ -225,6 +231,19 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         assert self.reward_funcs, 'reward_funcs is not set'
 
+    def _patch_mbridge(self, bridge):
+        original_method = bridge._weight_to_hf_format
+
+        def _weight_to_hf_format_patched(mcore_weights_name, mcore_weights):
+            # skip ViT weights
+            if 'visual' in mcore_weights_name:
+                if 'visual.visual' in mcore_weights_name:
+                    mcore_weights_name = mcore_weights_name.replace('visual.visual', 'visual')
+                return [mcore_weights_name], [mcore_weights]
+            return original_method(mcore_weights_name, mcore_weights)
+
+        bridge._weight_to_hf_format = _weight_to_hf_format_patched
+
     def _replace_data_iterator(self, data_iterator):
 
         args = get_args()
@@ -246,9 +265,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'Please adjust these parameters so that '
                 'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
             rollout_batch = []
-            for _ in range(self.steps_per_generation):
-                for _ in range(num_iters_per_step):
-                    rollout_batch.extend(next(data_iterator))
+            for _ in range(num_iters_per_step):
+                rollout_batch.extend(next(data_iterator))
             micro_batch_data = self._generate_and_score_completions(rollout_batch)
             num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
             mini_batch_data = [
@@ -324,8 +342,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool, device=self.device),
                 'advantages':
                 advantages,
-                'position_ids':
-                position_ids  # remove it: non-padding-free
             })
 
             return encoded_batch
@@ -481,10 +497,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _colocate_rollout(self, batch, request_config: RequestConfig):
         outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
-        completions = [output.response.choices[0].message.content for output in outputs]
-        if self.process_index == 0:
-            for completion in completions:
-                print(completion)
         return outputs
 
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
@@ -553,6 +565,28 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Compute advantages relative to group mean
         advantages = rewards - group_rewards_mean
         advantages = maybe_normalize_advantages(advantages, group_rewards_std)
+
+        def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
+            """Log reward statistics for monitoring. Only log once per unique request_id."""
+            # rewards: [prompt_batch_size, self.num_generations]
+            # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
+            mode = 'train' if self.unwrapped_model.training else 'eval'
+            group_rewards = rewards.view(-1, self.num_generations)
+            rewards_mean = group_rewards.mean(-1).mean().item()
+            rewards_std = group_rewards.std(-1).mean().item()
+            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+
+            self._metrics[mode]['reward'].append(rewards_mean)
+            self._metrics[mode]['reward_std'].append(rewards_std)
+            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
+
+            # Log per-reward-function statistics using deduplicated rewards_per_func
+            for i, name in enumerate(self.reward_func_names):
+                col = rewards_per_func_for_metrics[:, i]
+                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
+                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
+
+        log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=rewards_per_func)
 
         slice_start = self.process_index * len(batch)
         slice_end = slice_start + len(batch)
@@ -723,13 +757,37 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
         loss = loss.mean()
-        metric = {
+        avg_metric = {
             'loss': loss.clone().detach(),
+            'completions/mean_length': lengths.float().mean(),
         }
-        reporting_metric = loss.new_tensor(list(metric.values()))
+        max_metric = {
+            'completions/max_length': lengths.float().max(),
+        }
+        min_metric = {
+            'completions/min_length': lengths.float().min(),
+        }
+        if self.beta != 0.0:
+            avg_metric['kl'] = per_token_kl.mean().item()
+        avg_reporting_metric = loss.new_tensor(list(avg_metric.values()))
+        max_reporting_metric = loss.new_tensor(list(max_metric.values()))
+        min_reporting_metric = loss.new_tensor(list(min_metric.values()))
         torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+            avg_reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+
+        torch.distributed.all_reduce(
+            max_reporting_metric, torch.distributed.ReduceOp.MAX, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(
+            min_reporting_metric, torch.distributed.ReduceOp.MIN, group=mpu.get_data_parallel_group())
+        avg_reporting_metric = {k: avg_reporting_metric[i] for i, k in enumerate(avg_metric.keys())}
+        max_reporting_metric = {k: max_reporting_metric[i] for i, k in enumerate(max_metric.keys())}
+        min_reporting_metric = {k: min_reporting_metric[i] for i, k in enumerate(min_metric.keys())}
+        addition_metrics = {
+            key: torch.tensor(sum(val) / len(val), device=loss.device)
+            for key, val in self._metrics['train'].items()
+        }
+
+        reporting_metric = {**avg_reporting_metric, **max_reporting_metric, **min_reporting_metric, **addition_metrics}
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()

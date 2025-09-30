@@ -13,7 +13,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.utils import get_current_device, get_logger
 from .trainer import MegatronTrainer
-from .utils import get_batch
+from .utils import get_batch, load_megatron_model_to_gpu, offload_megatron_model_to_cpu
 
 logger = get_logger()
 
@@ -156,6 +156,6 @@ class MegatronRLHFTrainer(MegatronTrainer):
                 self.peft_model.set_adapter('default')
 
     @contextmanager
-    def offload_context(self):
+    def offload_context(self, model):
         # TODO: offload
         yield

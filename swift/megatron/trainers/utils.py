@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import gc
 import time
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
@@ -7,12 +8,14 @@ import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from megatron.core import mpu
+from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args, get_wandb_writer
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
+from swift.utils.torch_utils import empty_cache, get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -173,7 +176,90 @@ def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] =
     if group is None:
         return hf_gather_object(object)
     size = torch.distributed.get_world_size(group=group)
+    rank = torch.distributed.get_rank(group=group)
     output_objects = [None for _ in range(size)]
-    torch.distributed.all_gather_object(output_objects, object)
-    # flatten
-    return [x for y in output_objects for x in y]
+
+    try:
+        # 添加调试信息
+        from swift.utils import get_logger
+        logger = get_logger()
+        logger.info(f'Rank {rank}/{size} in group starting all_gather_object with {len(object)} objects')
+
+        torch.distributed.all_gather_object(output_objects, object, group=group)
+
+        logger.info(f'Rank {rank}/{size} in group completed all_gather_object successfully')
+        # flatten
+        return [x for y in output_objects for x in y]
+    except Exception as e:
+        from swift.utils import get_logger
+        logger = get_logger()
+        logger.error(f'Rank {rank}/{size} in group failed at all_gather_object: {e}')
+        logger.error(f"Object size: {len(object) if hasattr(object, '__len__') else 'unknown'}")
+        if torch.cuda.is_available():
+            logger.error(f'GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
+                         f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
+        raise
+
+
+# code borrowed from VeRL
+@torch.no_grad()
+def load_megatron_model_to_gpu(models, load_grad=True):
+    for model_chunk in models:
+        if isinstance(model_chunk, DDP):
+            model_chunk_all_buffers = [model_chunk.buffers, model_chunk.expert_parallel_buffers]
+            for buffers in model_chunk_all_buffers:
+                for buffer in buffers:
+                    # sometimes, we don't want to load grad for pure inference
+                    if load_grad:
+                        buffer.grad_data.storage().resize_(buffer.grad_data_size)
+                        buffer.grad_data.zero_()
+
+                    if buffer.param_data.storage().size() == 0:
+                        buffer.param_data.storage().resize_(buffer.param_data_size)
+                        # copy data from cpu to cuda
+                        buffer.param_data.copy_(buffer.param_data.cpu_data, non_blocking=True)
+        else:
+            # we need this for ref module
+            device_id = get_current_device()
+            for _, param in model_chunk.named_parameters():
+                param.data = param.data.to(device_id, non_blocking=True)
+                if param.grad is not None:
+                    param.grad = param.grad.to(device_id, non_blocking=True)
+    gc.collect()
+    empty_cache()
+
+
+@torch.no_grad()
+def offload_megatron_model_to_cpu(models):
+    """
+    In megatron, the model and optimizer storage are:
+    - bf16 parameter data chunked in model parallel group
+    - fp32 grad chunked in model parallel group
+    - fp32 main_parameter chunked in model and dp group
+    - fp32 optimizer state chunked in model and dp group
+    """
+    for model_chunk in models:
+        if isinstance(model_chunk, DDP):
+            model_chunk_all_buffers = [model_chunk.buffers, model_chunk.expert_parallel_buffers]
+            for buffers in model_chunk_all_buffers:
+                for buffer in buffers:
+                    # offload parameters
+                    if buffer.param_data.storage().size() > 0:
+                        buffer.param_data.cpu_data = buffer.param_data.data.cpu().pin_memory()
+                        buffer.param_data_size = buffer.param_data.storage().size()
+                        buffer.param_data.storage().resize_(0)
+
+                    assert buffer.param_data_size == buffer.param_data.cpu_data.storage().size()
+
+                    if buffer.grad_data.storage().size() > 0:
+                        # if the grad_data size is already zero, we assume that it is already offloaded
+                        buffer.grad_data_size = buffer.grad_data.storage().size()
+                        buffer.grad_data.storage().resize_(0)
+        else:
+            # we need this for ref module
+            for _, param in model_chunk.named_parameters():
+                param.data = param.data.to('cpu', non_blocking=True)
+                if param.grad is not None:
+                    param.grad = param.grad.to('cpu', non_blocking=True)
+    gc.collect()
+    empty_cache()
