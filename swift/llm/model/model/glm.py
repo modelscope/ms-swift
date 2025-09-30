@@ -432,6 +432,9 @@ register_model(
                 Model('ZhipuAI/GLM-4.5', 'zai-org/GLM-4.5'),
                 Model('ZhipuAI/GLM-4.5-FP8', 'zai-org/GLM-4.5-FP8'),
             ]),
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.6', 'zai-org/GLM-4.6'),
+            ])
         ],
         TemplateType.glm4_5,
         get_model_tokenizer_with_flash_attn,
