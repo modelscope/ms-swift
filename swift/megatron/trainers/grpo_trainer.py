@@ -100,6 +100,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             stop=args.stop_words,
             return_details=True)
 
+        self._step = 0
+
     def _prepare_rollout_engine(self):
         args = self.args
         self.vllm_mode = args.vllm_mode
@@ -131,20 +133,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.engine = self.prepare_vllm()
                 if self.args.sleep_level > 0:
                     self.engine.engine.sleep(self.args.sleep_level)
-
-        self._init_rollout_group()
-
-    def _init_rollout_group(self):
-        args = self.args
-        model_size = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
-        # each model share the rollout group (gather)
-        rollout_groups = [list(range(i, i + model_size)) for i in range(0, self.world_size, model_size)]
-
-        for group_ranks in rollout_groups:
-            if self.process_index in group_ranks:
-                self.rollout_group = torch.distributed.new_group(ranks=group_ranks)
-                print(f'rank {self.process_index} join rollout group with ranks: {group_ranks}')
-                break
 
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
@@ -247,7 +235,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _replace_data_iterator(self, data_iterator):
 
         args = get_args()
-        if args.iteration % self.steps_per_generation == 0:
+        if args._step % self.steps_per_generation == 0:
             # each rollout DP group will generate generation_batch_size / world_size completions
             completions_to_rollout = self.generation_batch_size // mpu.get_data_parallel_world_size()
             # completions will be repeated num_generations times after
@@ -274,18 +262,20 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             ]
             assert len(mini_batch_data) == self.steps_per_generation
             self._buffered_inputs = mini_batch_data
-
-        inputs = self._buffered_inputs[args.iteration % self.steps_per_generation]
+        self._step += 1
+        inputs = self._buffered_inputs[self._step % self.steps_per_generation]
         return iter(inputs)
 
     def _generate_and_score_completions(self, batch):
+        rollout_group = mpu.get_model_parallel_group()
+
         # batch : same across DP groups
         def get_local_rollout_batch(batch):
             # repeat num_generations times
             global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
             # get local rollout data
-            rollout_rank = torch.distributed.get_rank(group=self.rollout_group)
-            rollout_group_size = torch.distributed.get_world_size(group=self.rollout_group)
+            rollout_rank = torch.distributed.get_rank(group=rollout_group)
+            rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
             per_device_batch_size = self.per_device_generation_batch_size
             assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
             data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
@@ -347,8 +337,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             return encoded_batch
 
         # Step2: ref/old logps
-        total_batch = gather_object(rollout_batch, group=self.rollout_group)
-        total_advantages = gather(advantages, group=self.rollout_group)
+        rollout_group
+        total_batch = gather_object(rollout_batch, group=rollout_group)
+        total_advantages = gather(advantages, group=rollout_group)
         mini_batch_data = []
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = _get_encoded_batch(total_batch[idx:idx + self.micro_batch_size],
