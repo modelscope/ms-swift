@@ -55,7 +55,7 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         outputs = model(**model_kwargs)
         completion_logits = outputs.logits
 
-        completion_logps = self.get_batch_logps(completion_logits, labels)
+        completion_logps, completion_logits = self.get_batch_logps(model_kwargs, completion_logits, labels)
 
         if completion_logps.shape[0] != len(batch['label']):
             raise ValueError('There is a mismatch between the number of examples in this batch and the number of '
@@ -67,8 +67,8 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         chosen_logps = completion_logps[chosen_idx, ...]
         rejected_logps = completion_logps[rejected_idx, ...]
 
-        chosen_logits = completion_logits[chosen_idx, ...]
-        rejected_logits = completion_logits[rejected_idx, ...]
+        chosen_logits = completion_logits[chosen_idx]
+        rejected_logits = completion_logits[rejected_idx]
 
         if self.aux_loss_enabled:
             return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, KL_logps, outputs.aux_loss)
@@ -87,9 +87,13 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
 
     def get_batch_logps(
         self,
+        inputs,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
     ) -> torch.FloatTensor:
+        text_position_ids = inputs.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = inputs.get('position_ids')
         if logits.shape[1] != labels.shape[1]:
             # for llava, the model returns logits for the entire sequence, including the image tokens
             # (placed before the text tokens)
@@ -98,13 +102,20 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         if not self.is_encoder_decoder and self.template.sequence_parallel_size == 1:
             # Shift so that tokens < n predict n
             labels = torch.roll(labels, shifts=-1, dims=1)
-        per_token_logps, _, loss_mask = self.get_per_token_logps(
-            logits, labels, label_pad_token_id=self.label_pad_token_id)
+        per_token_logps, sum_logits, loss_mask = self.get_per_token_logps(
+            logits, labels, label_pad_token_id=self.label_pad_token_id, reduction='sum')
         if self.template.padding_free:
-            pass
+            cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
+            all_logps = per_token_logps.new_zeros(cu_seqlens.shape[0] - 1)
+            all_logits = per_token_logps.new_zeros(cu_seqlens.shape[0] - 1)
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                all_logps[i] = per_token_logps[:, start:end].sum()
+                all_logits[i] = sum_logits[:, start:end].sum()
         else:
             all_logps = per_token_logps.sum(-1)
-        return all_logps
+            all_logits = sum_logits.sum(-1)
+        return all_logps, all_logits
 
     # Code borrowed from huggingface/trl (compat trl<0.17)
     def _compute_kl_logps(self, model, batch):
@@ -114,5 +125,5 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             KL_model_kwargs, labels = self._get_model_kwargs(batch, 'KL_completion_')
             with torch.no_grad():
                 KL_logits = model(**KL_model_kwargs).logits
-            KL_logps = self.get_batch_logps(KL_logits, labels)
+            KL_logps, _ = self.get_batch_logps(KL_model_kwargs, KL_logits, labels)
         return KL_logps
