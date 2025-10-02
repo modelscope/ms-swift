@@ -96,7 +96,7 @@ swift eval \
     --infer_backend pt \
     --eval_limit 10 \
     --eval_dataset gsm8k \
-    --dataset_args '{"gsm8k": {"few_shot_num": 0, "filters": {"remove_until": "</think>"}}}' \
+    --eval_dataset_args '{"gsm8k": {"few_shot_num": 0, "filters": {"remove_until": "</think>"}}}' \
     --eval_generation_config '{"max_tokens": 512, "temperature": 0}' \
     --extra_eval_args '{"ignore_errors": true, "debug": true}'
 ```
@@ -191,12 +191,12 @@ swift eval \
     --eval_backend Native \
     --infer_backend pt \
     --eval_dataset general_mcq \
-    --dataset_args '{"general_mcq": {"local_path": "/path/to/mcq", "subset_list": ["example"]}}'
+    --eval_dataset_args '{"general_mcq": {"local_path": "/path/to/mcq", "subset_list": ["example"]}}'
 ```
 
 Where:
 - `eval_dataset` should be set to `general_mcq`
-- `dataset_args` should be set with:
+- `eval_dataset_args` should be set with:
     - `local_path` as the path to the custom dataset folder
     - `subset_list` as the name of the evaluation dataset, taken from the `*_dev.csv` mentioned above
 
@@ -241,12 +241,12 @@ swift eval \
     --eval_backend Native \
     --infer_backend pt \
     --eval_dataset general_qa \
-    --dataset_args '{"general_qa": {"local_path": "/path/to/qa", "subset_list": ["example"]}}'
+    --eval_dataset_args '{"general_qa": {"local_path": "/path/to/qa", "subset_list": ["example"]}}'
 ```
 
 Where:
 - `eval_dataset` should be set to `general_qa`
-- `dataset_args` is a JSON string that needs to be set with:
+- `eval_dataset_args` is a JSON string that needs to be set with:
     - `local_path` as the path to the custom dataset folder
     - `subset_list` as the name of the evaluation dataset, taken from the `*.jsonl` mentioned above
 
