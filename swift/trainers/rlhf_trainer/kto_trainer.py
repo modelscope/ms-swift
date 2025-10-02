@@ -77,6 +77,9 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
 
     def _get_model_kwargs(self, inputs, prefix: str):
         model_kwargs = {k[len(prefix):]: v for k, v in inputs.items() if k.startswith(prefix)}
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        if use_logits_to_keep:
+            self.prepare_logits_to_keep(model_kwargs)
         labels = model_kwargs['labels']
         if not self.is_encoder_decoder:
             model_kwargs.pop('labels')
