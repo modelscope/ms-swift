@@ -3,7 +3,6 @@ import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from accelerate.utils import gather_object
 from peft import PeftModel
@@ -11,7 +10,7 @@ from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
-from trl.trainer.utils import RunningMoments, selective_log_softmax
+from trl.trainer.utils import RunningMoments
 
 from swift.llm import to_device
 from swift.utils import get_logger
@@ -176,49 +175,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
-
-    def get_per_token_logps(
-        self,
-        logits: torch.FloatTensor,
-        labels: torch.LongTensor,
-        label_pad_token_id=-100,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if logits.shape[:-1] != labels.shape:
-            raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
-                             'and labels must have the same shape {labels.shape}')
-        loss_mask = labels != label_pad_token_id
-        labels = labels.clone()
-        labels[~loss_mask] = 0
-        if self.template.sequence_parallel_size == 1:
-            # https://github.com/huggingface/trl/pull/2799
-            # Reduce peak vram consumption with efficient selective log_softmax
-            per_token_logps = selective_log_softmax(logits, labels)
-            per_token_logps[~loss_mask] = 0
-            return per_token_logps, logits.mean(-1), loss_mask
-        else:
-            labels = labels.to(logits.device)
-            loss_mask = loss_mask.to(logits.device)
-            mean_logits = logits.mean(-1)
-            per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-            from swift.trainers.sequence_parallel.utils import GatherLoss
-            from swift.trainers.sequence_parallel import sequence_parallel
-            position_ids = sequence_parallel.real_position_ids
-            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
-            total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)
-            if position_ids is not None and position_ids.min() == -1:
-                _pos_mask = position_ids >= 0
-                total_per_token_logps = total_per_token_logps[_pos_mask].contiguous()
-                total_mean_logits = total_mean_logits[_pos_mask].contiguous()
-                total_loss_mask = total_loss_mask[_pos_mask].contiguous()
-
-            total_loss_mask = total_loss_mask.bool()
-            total_per_token_logps = total_per_token_logps * (total_loss_mask)
-
-            if total_per_token_logps.dim() == 1:
-                total_per_token_logps = total_per_token_logps.unsqueeze(0)
-                total_mean_logits = total_mean_logits.unsqueeze(0)
-                total_loss_mask = total_loss_mask.unsqueeze(0)
-            return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
