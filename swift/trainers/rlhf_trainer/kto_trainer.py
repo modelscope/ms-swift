@@ -55,13 +55,7 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         outputs = model(**model_kwargs)
         completion_logits = outputs.logits
 
-        completion_logps = self.get_batch_logps(
-            completion_logits,
-            labels,
-            average_log_prob=False,
-            is_encoder_decoder=self.is_encoder_decoder,
-            label_pad_token_id=self.label_pad_token_id,
-        )
+        completion_logps = self.get_batch_logps(completion_logits, labels)
 
         if completion_logps.shape[0] != len(batch['label']):
             raise ValueError('There is a mismatch between the number of examples in this batch and the number of '
@@ -88,6 +82,27 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             model_kwargs.pop('labels')
         return model_kwargs, labels
 
+    def get_batch_logps(
+        self,
+        logits: torch.FloatTensor,
+        labels: torch.LongTensor,
+    ) -> torch.FloatTensor:
+        if logits.shape[1] != labels.shape[1]:
+            # for llava, the model returns logits for the entire sequence, including the image tokens
+            # (placed before the text tokens)
+            logits = logits[:, -labels.shape[1]:]
+
+        if not self.is_encoder_decoder and self.template.sequence_parallel_size == 1:
+            # Shift so that tokens < n predict n
+            labels = torch.roll(labels, shifts=-1, dims=1)
+        per_token_logps, _, loss_mask = self.get_per_token_logps(
+            logits, labels, label_pad_token_id=self.label_pad_token_id)
+        if self.template.padding_free:
+            pass
+        else:
+            all_logps = per_token_logps.sum(-1)
+        return all_logps
+
     # Code borrowed from huggingface/trl (compat trl<0.17)
     def _compute_kl_logps(self, model, batch):
         """Compute KL log probabilities for a given batch."""
@@ -96,11 +111,5 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             KL_model_kwargs, labels = self._get_model_kwargs(batch, 'KL_completion_')
             with torch.no_grad():
                 KL_logits = model(**KL_model_kwargs).logits
-            KL_logps = self.get_batch_logps(
-                KL_logits,
-                labels,
-                average_log_prob=False,
-                is_encoder_decoder=self.is_encoder_decoder,
-                label_pad_token_id=self.label_pad_token_id,
-            )
+            KL_logps = self.get_batch_logps(KL_logits, labels)
         return KL_logps
