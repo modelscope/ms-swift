@@ -3,7 +3,7 @@ import inspect
 import random
 from collections import defaultdict
 from contextlib import nullcontext
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -129,7 +129,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
     # Code borrowed from huggingface/trl
     def training_step(self,
                       model: nn.Module,
-                      inputs: dict[str, Union[torch.Tensor, Any]],
+                      inputs: Dict[str, Union[torch.Tensor, Any]],
                       num_items_in_batch: Optional[int] = None) -> torch.Tensor:
         """
         Perform a training step for the Generalized Knowledge Distillation (GKD) model.

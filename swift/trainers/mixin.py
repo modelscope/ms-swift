@@ -593,8 +593,8 @@ class SwiftMixin:
             model = self.model
         if 'SentenceTransformer' in model.__class__.__name__:
 
-            def forward_transformer(transformer, features: dict[str, torch.Tensor],
-                                    **kwargs) -> dict[str, torch.Tensor]:
+            def forward_transformer(transformer, features: Dict[str, torch.Tensor],
+                                    **kwargs) -> Dict[str, torch.Tensor]:
                 trans_features = {
                     key: value
                     for key, value in features.items()
@@ -614,7 +614,7 @@ class SwiftMixin:
             if isinstance(model[0], Transformer):
                 model[0].forward = MethodType(forward_transformer, model[0])
 
-            def forward_sentence_transformer(sentence_transformer, **kwargs) -> dict[str, torch.Tensor]:
+            def forward_sentence_transformer(sentence_transformer, **kwargs) -> Dict[str, torch.Tensor]:
                 input = kwargs
                 kwargs = {}
                 for idx, (module_name, module) in enumerate(sentence_transformer.named_children()):
@@ -798,7 +798,7 @@ class SwiftMixin:
                 logs.pop(k)
         return logs
 
-    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
+    def log(self, logs: Dict[str, float], *args, **kwargs) -> None:
         mode = 'train' if self.model.training else 'eval'
         metrics = self.custom_metrics[mode]
         prefix = 'eval_' if mode == 'eval' else ''
