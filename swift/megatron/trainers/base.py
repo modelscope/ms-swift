@@ -20,7 +20,7 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
                                get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
@@ -35,7 +35,8 @@ from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
-from .utils import get_swift_datasets_provider
+from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
+                    get_swift_datasets_provider)
 
 logger = get_logger()
 
@@ -151,7 +152,6 @@ class BaseMegatronTrainer(ABC):
 
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -180,7 +180,6 @@ class BaseMegatronTrainer(ABC):
         return res
 
     def _load_base_checkpoint(self, *_args, **kwargs):
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -224,7 +223,6 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_load_state_dict(self, load_base_checkpoint):
-        from megatron.training import checkpointing
         checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
         checkpointing._load_base_checkpoint = load_base_checkpoint
 

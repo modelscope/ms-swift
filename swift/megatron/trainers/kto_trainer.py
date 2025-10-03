@@ -10,9 +10,10 @@ from megatron.training import get_args
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 
+from swift.llm import to_device
 from swift.utils import get_current_device, get_logger
 from .base import MegatronRLHFTrainer
-from .utils import get_kto_batch
+from .utils import get_packed_seq_params, mcore_get_batch_on_this_cp_rank, split_cp_inputs
 
 logger = get_logger()
 
@@ -150,7 +151,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, reporting_metric
 
-    def _replace_data_iterator_with_model(self, data_iterator, model):
+    def _replace_data_iterator(self, data_iterator, model):
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
 
@@ -209,11 +210,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             data['reference_KL_logps'] = None
         return data
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator_with_model(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
-
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
 
@@ -240,19 +236,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             all_labels=all_labels,
             packed_seq_params=completion_packed_seq_params)
 
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
-        self._replace_data_iterator = partial(self._replace_data_iterator_with_model, model=model)
-        return super().evaluate(forward_step_func, data_iterator, model, process_non_loss_data_func, config, verbose,
-                                non_loss_data_func)
-
-    def get_batch(data_iterator):
+    def get_batch(self, data_iterator, vp_stage=None):
         """Generate a kto batch."""
         args = get_args()
 
