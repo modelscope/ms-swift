@@ -123,7 +123,7 @@ class BaseMegatronTrainer(ABC):
                     yield x
             i += 1
 
-    def _replace_data_iterator(self, data_iterator):
+    def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
 
     @staticmethod
@@ -325,7 +325,7 @@ class BaseMegatronTrainer(ABC):
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator(data_iterator)
+        new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                        config)
 
@@ -374,7 +374,7 @@ class BaseMegatronTrainer(ABC):
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
-                new_data_iterator = self._replace_data_iterator(data_iterator)
+                new_data_iterator = self._replace_data_iterator(data_iterator, model)
                 loss_dicts = forward_backward_func(
                     forward_step_func=forward_step_func,
                     data_iterator=new_data_iterator,
@@ -867,3 +867,19 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             output_tensor = None
 
         return output_tensor
+
+    def get_batch(self, data_iterator, vp_stage=None):
+        """Generate a batch."""
+        # get batches based on the TP rank you are on
+        batch = get_batch_on_this_tp_rank(data_iterator, vp_stage=vp_stage)
+        args = get_args()
+        num_samples = batch.pop('num_samples')
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
+        if args.padding_free and text_position_ids is not None:
+            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+            batch['packed_seq_params'].num_samples = num_samples
+        # slice batch along sequence dimension for context parallelism
+        batch = get_batch_on_this_cp_rank(batch)
+        return batch

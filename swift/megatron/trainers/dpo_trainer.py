@@ -108,7 +108,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
                 ref_model.set_input_tensor(input_tensor[:input_tensor.shape[0] // 2].detach())
             timers('batch-generator', log_level=2).start()
             with self.stimer(bdata=True):
-                data = get_batch(data_iterator, vp_stage)
+                data = self.get_batch(data_iterator, vp_stage)
             timers('batch-generator').stop()
             data.pop('loss_scale', None)
             ref_output_tensor = ref_model(**data)

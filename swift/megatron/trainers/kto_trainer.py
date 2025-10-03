@@ -182,7 +182,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def ref_forward(self, ref_model, data_iterator):
         with self.stimer(bdata=True):
-            data = get_kto_batch(data_iterator)
+            data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
 
         ref_inputs = {
@@ -251,3 +251,66 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         self._replace_data_iterator = partial(self._replace_data_iterator_with_model, model=model)
         return super().evaluate(forward_step_func, data_iterator, model, process_non_loss_data_func, config, verbose,
                                 non_loss_data_func)
+
+    def get_batch(data_iterator):
+        """Generate a kto batch."""
+        args = get_args()
+
+        data = next(data_iterator)
+        is_finished = data.pop('is_finished', False)
+
+        batch = to_device(data, 'cuda', non_blocking=True)
+
+        kto_tensor_keys = [
+            'completion_input_ids', 'completion_labels', 'completion_attention_mask', 'completion_position_ids',
+            'KL_completion_input_ids', 'KL_completion_labels', 'KL_completion_attention_mask',
+            'KL_completion_position_ids'
+        ]
+
+        # pp
+        if args.pipeline_model_parallel_size == 1:
+            pass
+        elif mpu.is_pipeline_first_stage():
+            for key in kto_tensor_keys:
+                if 'labels' in key:
+                    batch[key] = None
+        elif mpu.is_pipeline_last_stage():
+            for key in kto_tensor_keys:
+                if 'input_ids' in key:
+                    batch[key] = None
+        else:
+            for key in kto_tensor_keys:
+                batch[key] = None
+
+        # Padding-Free
+        num_samples = batch.get('num_samples')
+        if args.padding_free:
+            if 'completion_position_ids' in batch and batch['completion_position_ids'] is not None:
+                batch['completion_packed_seq_params'] = get_packed_seq_params(batch['completion_position_ids'])
+                if num_samples is not None:
+                    batch['completion_packed_seq_params'].num_samples = num_samples
+
+            if 'KL_completion_position_ids' in batch and batch['KL_completion_position_ids'] is not None:
+                batch['KL_completion_packed_seq_params'] = get_packed_seq_params(batch['KL_completion_position_ids'])
+                if num_samples is not None:
+                    batch['KL_completion_packed_seq_params'].num_samples = num_samples
+
+        # cp
+        cp_size = mpu.get_context_parallel_world_size()
+        if cp_size > 1:
+            completion_psp = batch.get('completion_packed_seq_params')
+            kl_psp = batch.get('KL_completion_packed_seq_params')
+
+            if completion_psp is None and kl_psp is None:
+                batch = mcore_get_batch_on_this_cp_rank(batch)
+            else:
+                for key, val in batch.items():
+                    if key in kto_tensor_keys and val is not None:
+                        if key.startswith('KL_completion_') and kl_psp is not None:
+                            batch[key] = split_cp_inputs(val, kl_psp.cu_seqlens_q, -1)
+                        elif key.startswith('completion_') and completion_psp is not None:
+                            batch[key] = split_cp_inputs(val, completion_psp.cu_seqlens_q, -1)
+
+        if is_finished:
+            args.train_iters = args.curr_iteration + 1
+        return batch
