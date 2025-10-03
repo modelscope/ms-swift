@@ -23,8 +23,8 @@ swift sft \
     --freeze_aligner true \
     --gradient_accumulation_steps 1 \
     --gradient_checkpointing true \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
