@@ -133,6 +133,7 @@ class RLHFTrainerMixin:
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         label_pad_token_id=-100,
+        reduction='mean',
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
@@ -140,16 +141,23 @@ class RLHFTrainerMixin:
         loss_mask = labels != label_pad_token_id
         labels = labels.clone()
         labels[~loss_mask] = 0
+        if reduction == 'mean':
+            reduce_logits = logits.mean(-1)
+        elif reduction == 'sum':
+            reduce_logits = logits.sum(-1)
+        else:
+            raise ValueError(f'Invalid reduction: {reduction}')
         if self.template.sequence_parallel_size == 1:
             # https://github.com/huggingface/trl/pull/2799
             # Reduce peak vram consumption with efficient selective log_softmax
             per_token_logps = selective_log_softmax(logits, labels)
             per_token_logps[~loss_mask] = 0
-            return per_token_logps, logits.mean(-1), loss_mask
+            reduce_logits[~loss_mask] = 0
+            return per_token_logps, reduce_logits, loss_mask
         else:
             labels = labels.to(logits.device)
             loss_mask = loss_mask.to(logits.device)
-            mean_logits = logits.mean(-1)
+            mean_logits = reduce_logits
             per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
             from swift.trainers.sequence_parallel.utils import GatherLoss
             from swift.trainers.sequence_parallel import sequence_parallel
