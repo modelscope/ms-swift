@@ -67,7 +67,7 @@ Recommended Operating Environment:
 | apex |   |  0.1 | |
 | megatron_core    | >=0.12       | 0.13      |                  |
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.56.1      |                    |
+| transformers | >=4.33       | 4.56.2      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |

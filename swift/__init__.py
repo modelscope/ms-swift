@@ -12,9 +12,8 @@ if TYPE_CHECKING:
                          PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, get_peft_config, get_peft_model,
                          get_peft_model_state_dict, Prompt, PromptConfig, PromptModule, SwiftConfig, SwiftOutput, Swift,
                          SwiftTuners, LongLoRAConfig, LongLoRA, LongLoRAModelType, SCETuning, SCETuningConfig)
-    from .trainers import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
-                           SchedulerType, ShardedDDPOption, TrainingArguments, Seq2SeqTrainingArguments, Trainer,
-                           Seq2SeqTrainer)
+    from .trainers import (FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType, ShardedDDPOption,
+                           TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer)
     from .utils import get_logger
 else:
     _import_structure = {
@@ -29,7 +28,6 @@ else:
             'Swift', 'SwiftTuners', 'LongLoRAConfig', 'LongLoRA', 'LongLoRAModelType', 'SCETuning', 'SCETuningConfig'
         ],
         'trainers': [
-            'EvaluationStrategy',
             'FSDPOption',
             'HPSearchBackend',
             'HubStrategy',
