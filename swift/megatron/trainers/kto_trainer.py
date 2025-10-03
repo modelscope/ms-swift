@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from collections import namedtuple
 from functools import partial
 
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
 from megatron.training import get_args
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
+from trl import KTOTrainer
 
 from swift.llm import to_device
 from swift.utils import get_current_device, get_logger
@@ -18,14 +18,23 @@ from .utils import get_packed_seq_params, mcore_get_batch_on_this_cp_rank, split
 logger = get_logger()
 
 
-class MegatronKTOTrainer(MegatronRLHFTrainer):
-
-    def __init__(self, args, template):
-        super().__init__(args, template)
+class DummyKTOTrainer(KTOTrainer):
+    # For reusing the dpo_loss function in TRL.
+    def __init__(self, args):
+        self.accelerator = namedtuple('Accelerator', ['device'])(device=get_current_device())
+        self.loss_type = args.loss_type
         self.beta = args.beta
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.calculate_KL = args.calculate_KL
+
+
+class MegatronKTOTrainer(MegatronRLHFTrainer):
+
+    def __init__(self, args, template):
+        super().__init__(args, template)
+        self.calculate_KL = args.calculate_KL
+        self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params=None):
@@ -64,37 +73,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
         return all_logps
 
-    @staticmethod
-    def kto_loss(policy_chosen_logps, policy_rejected_logps, policy_KL_logps, reference_chosen_logps,
-                 reference_rejected_logps, reference_KL_logps, beta, desirable_weight, undesirable_weight, calculate_KL,
-                 device):
-        if calculate_KL and policy_KL_logps is not None and reference_KL_logps is not None:
-            kl = (policy_KL_logps - reference_KL_logps).mean().detach()
-            dist.all_reduce(kl, group=mpu.get_data_parallel_group())
-            kl = kl / mpu.get_data_parallel_world_size()
-            kl = kl.clamp(min=0)
-        else:
-            kl = torch.tensor(0.0, device=device)
-
-        chosen_rewards = torch.tensor([], device=kl.device)
-        if policy_chosen_logps.shape[0] > 0:
-            chosen_logratios = policy_chosen_logps - reference_chosen_logps
-            chosen_losses = 1 - F.sigmoid(beta * (chosen_logratios - kl))
-            chosen_rewards = beta * chosen_logratios.detach()
-        else:
-            chosen_losses = torch.tensor([], device=kl.device)
-
-        rejected_rewards = torch.tensor([], device=kl.device)
-        if policy_rejected_logps.shape[0] > 0:
-            rejected_logratios = policy_rejected_logps - reference_rejected_logps
-            rejected_losses = 1 - F.sigmoid(beta * (kl - rejected_logratios))
-            rejected_rewards = beta * rejected_logratios.detach()
-        else:
-            rejected_losses = torch.tensor([], device=kl.device)
-
-        losses = torch.cat((desirable_weight * chosen_losses, undesirable_weight * rejected_losses), 0)
-        return losses, chosen_rewards, rejected_rewards, kl
-
     def loss_func(self, output_tensor, *, policy_KL_logps, reference_logps, reference_KL_logps, labels, all_labels,
                   packed_seq_params):
         policy_logps = self.get_logps(output_tensor, labels, packed_seq_params)
@@ -105,18 +83,13 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         reference_chosen_logps = reference_logps[is_desirable]
         reference_rejected_logps = reference_logps[~is_desirable]
 
-        loss, chosen_rewards, rejected_rewards, kl = self.kto_loss(
+        loss, chosen_rewards, rejected_rewards, kl = self.dummy_kto_trainer.kto_loss(
             policy_chosen_logps=policy_chosen_logps,
             policy_rejected_logps=policy_rejected_logps,
             policy_KL_logps=policy_KL_logps,
             reference_chosen_logps=reference_chosen_logps,
             reference_rejected_logps=reference_rejected_logps,
             reference_KL_logps=reference_KL_logps,
-            beta=self.beta,
-            desirable_weight=self.desirable_weight,
-            undesirable_weight=self.undesirable_weight,
-            calculate_KL=self.calculate_KL,
-            device=policy_logps.device,
         )
 
         loss = loss.mean() if loss.numel() > 0 else torch.tensor(0.0, device=policy_logps.device)
