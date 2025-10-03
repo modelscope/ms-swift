@@ -55,10 +55,7 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         outputs = model(**model_kwargs)
         completion_logits = outputs.logits
 
-        completion_logps = self.get_batch_logps(
-            completion_logits,
-            labels,
-        )
+        completion_logps = self.get_batch_logps(completion_logits, labels)
 
         if completion_logps.shape[0] != len(batch['label']):
             raise ValueError('There is a mismatch between the number of examples in this batch and the number of '
@@ -114,8 +111,5 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             KL_model_kwargs, labels = self._get_model_kwargs(batch, 'KL_completion_')
             with torch.no_grad():
                 KL_logits = model(**KL_model_kwargs).logits
-            KL_logps = self.get_batch_logps(
-                KL_logits,
-                labels,
-            )
+            KL_logps = self.get_batch_logps(KL_logits, labels)
         return KL_logps
