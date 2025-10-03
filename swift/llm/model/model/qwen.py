@@ -857,8 +857,14 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen3_moe_vl, [
             ModelGroup([
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking', 'Qwen/Qwen3-VL-30B-A3B-Thinking'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-VL-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking-FP8', 'Qwen/Qwen3-VL-30B-A3B-Thinking-FP8'),
                 Model('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-235B-A22B-Instruct'),
                 Model('Qwen/Qwen3-VL-235B-A22B-Thinking', 'Qwen/Qwen3-VL-235B-A22B-Thinking'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct-FP8', 'Qwen/Qwen3-VL-235B-A22B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking-FP8', 'Qwen/Qwen3-VL-235B-A22B-Thinking-FP8'),
             ]),
         ],
         TemplateType.qwen3_vl,
