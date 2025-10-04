@@ -12,7 +12,6 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
-from .utils import get_batch
 
 logger = get_logger()
 

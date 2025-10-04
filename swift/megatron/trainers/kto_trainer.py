@@ -5,15 +5,12 @@ from functools import partial
 import torch
 from megatron.core import mpu
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
-from megatron.training import get_args
-from megatron.training.utils import unwrap_model
+from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 from trl import KTOTrainer
 
-from swift.llm import to_device
 from swift.utils import get_current_device, get_logger
 from .base import MegatronRLHFTrainer
-from .utils import get_packed_seq_params, mcore_get_batch_on_this_cp_rank, split_cp_inputs
 
 logger = get_logger()
 
@@ -33,7 +30,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        self.calculate_KL = args.calculate_KL
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     @staticmethod
@@ -124,150 +120,39 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, reporting_metric
 
-    def _replace_data_iterator(self, data_iterator, model):
-        args = get_args()
-        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-
-        processed_data_list = []
-        policy_model = unwrap_model(model)[0]
-
-        for _ in range(num_iters_per_step):
-            with torch.no_grad(), self.null_ref_context() as ref_models:
-                assert len(ref_models) == 1, 'KTO currently does not support VPP.'
-                data = self.ref_forward(ref_models[0], data_iterator)
-
-            if self.calculate_KL:
-                with torch.no_grad():
-                    kl_inputs = {
-                        'input_ids': data.get('KL_completion_input_ids'),
-                        'attention_mask': data.get('KL_completion_attention_mask'),
-                        'position_ids': data.get('KL_completion_position_ids'),
-                    }
-
-                    kl_output_tensor = self._forward_step_helper(policy_model, kl_inputs)
-
-                    policy_KL_logps = self.get_logps(kl_output_tensor, data['KL_completion_labels'],
-                                                     data.get('KL_completion_packed_seq_params'))
-                    data['policy_KL_logps'] = policy_KL_logps
-
-            processed_data_list.append(data)
-
-        return iter(processed_data_list)
-
-    def ref_forward(self, ref_model, data_iterator):
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator)
-        data.pop('loss_scale', None)
-
-        ref_inputs = {
-            'input_ids': data.get('completion_input_ids'),
-            'attention_mask': data.get('completion_attention_mask'),
-            'position_ids': data.get('completion_position_ids'),
-        }
-        with torch.no_grad():
-            output_tensor = self._forward_step_helper(ref_model, ref_inputs)
-        data['reference_logps'] = self.get_logps(output_tensor, data['completion_labels'],
-                                                 data.get('completion_packed_seq_params'))
-
-        if self.calculate_KL:
-            kl_inputs = {
-                'input_ids': data.get('KL_completion_input_ids'),
-                'attention_mask': data.get('KL_completion_attention_mask'),
-                'position_ids': data.get('KL_completion_position_ids'),
-            }
-            with torch.no_grad():
-                kl_output_tensor = self._forward_step_helper(ref_model, kl_inputs)
-            data['reference_KL_logps'] = self.get_logps(kl_output_tensor, data['KL_completion_labels'],
-                                                        data.get('KL_completion_packed_seq_params'))
-        else:
-            data['reference_KL_logps'] = None
-        return data
+    @staticmethod
+    def _get_input_tensor(input_tensor, is_ref: bool, is_KL: bool):
+        i = (not is_ref) * 2 + is_KL
+        return input_tensor[i:i + 1]
 
     def forward_step(self, data_iterator, model):
-        data = next(data_iterator)
+        timers = get_timers()
+        # Get the batch.
+        unwrapped_model = model.module.module
+        input_tensor = unwrapped_model.get_input_tensor()
+        vp_stage = unwrapped_model.vp_stage
+        timers('batch-generator', log_level=2).start()
+        with self.stimer(bdata=True):
+            data = self.get_batch(data_iterator, vp_stage)
+        timers('batch-generator').stop()
+        data.pop('loss_scale', None)
 
-        reference_logps = data.pop('reference_logps')
-        reference_KL_logps = data.pop('reference_KL_logps', None)
-        policy_KL_logps = data.pop('policy_KL_logps', None)
-        all_labels = torch.tensor(data.pop('label')).to(get_current_device())
-        completion_packed_seq_params = data.get('completion_packed_seq_params')
+        with torch.no_grad(), self.null_ref_context() as ref_models:
+            ref_model = ref_models[vp_stage or 0]
+            if input_tensor is not None:
+                ref_model.set_input_tensor(self._get_input_tensor(True, False).detach())
+            ref_output_tensor = ref_model(**data)
+            if input_tensor is not None:
+                ref_model.set_input_tensor(self._get_input_tensor(True, True).detach())
+            ref_KL_output_tensor = ref_model(**data)
+        with torch.no_grad():
+            if input_tensor is not None:
+                unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, True))
+            KL_output_tensor = model(*data)
 
-        main_inputs = {
-            'input_ids': data['completion_input_ids'],
-            'attention_mask': data.get('completion_attention_mask'),
-            'position_ids': data.get('completion_position_ids')
-        }
-        with self.stimer():
-            output_tensor = model(**main_inputs)
-
-        return output_tensor, partial(
-            self.loss_func,
-            policy_KL_logps=policy_KL_logps,
-            reference_logps=reference_logps,
-            reference_KL_logps=reference_KL_logps,
-            labels=data['completion_labels'],
-            all_labels=all_labels,
-            packed_seq_params=completion_packed_seq_params)
-
-    def get_batch(self, data_iterator, vp_stage=None):
-        """Generate a kto batch."""
-        args = get_args()
-
-        data = next(data_iterator)
-        is_finished = data.pop('is_finished', False)
-
-        batch = to_device(data, 'cuda', non_blocking=True)
-
-        kto_tensor_keys = [
-            'completion_input_ids', 'completion_labels', 'completion_attention_mask', 'completion_position_ids',
-            'KL_completion_input_ids', 'KL_completion_labels', 'KL_completion_attention_mask',
-            'KL_completion_position_ids'
-        ]
-
-        # pp
-        if args.pipeline_model_parallel_size == 1:
-            pass
-        elif mpu.is_pipeline_first_stage():
-            for key in kto_tensor_keys:
-                if 'labels' in key:
-                    batch[key] = None
-        elif mpu.is_pipeline_last_stage():
-            for key in kto_tensor_keys:
-                if 'input_ids' in key:
-                    batch[key] = None
-        else:
-            for key in kto_tensor_keys:
-                batch[key] = None
-
-        # Padding-Free
-        num_samples = batch.get('num_samples')
-        if args.padding_free:
-            if 'completion_position_ids' in batch and batch['completion_position_ids'] is not None:
-                batch['completion_packed_seq_params'] = get_packed_seq_params(batch['completion_position_ids'])
-                if num_samples is not None:
-                    batch['completion_packed_seq_params'].num_samples = num_samples
-
-            if 'KL_completion_position_ids' in batch and batch['KL_completion_position_ids'] is not None:
-                batch['KL_completion_packed_seq_params'] = get_packed_seq_params(batch['KL_completion_position_ids'])
-                if num_samples is not None:
-                    batch['KL_completion_packed_seq_params'].num_samples = num_samples
-
-        # cp
-        cp_size = mpu.get_context_parallel_world_size()
-        if cp_size > 1:
-            completion_psp = batch.get('completion_packed_seq_params')
-            kl_psp = batch.get('KL_completion_packed_seq_params')
-
-            if completion_psp is None and kl_psp is None:
-                batch = mcore_get_batch_on_this_cp_rank(batch)
-            else:
-                for key, val in batch.items():
-                    if key in kto_tensor_keys and val is not None:
-                        if key.startswith('KL_completion_') and kl_psp is not None:
-                            batch[key] = split_cp_inputs(val, kl_psp.cu_seqlens_q, -1)
-                        elif key.startswith('completion_') and completion_psp is not None:
-                            batch[key] = split_cp_inputs(val, completion_psp.cu_seqlens_q, -1)
-
-        if is_finished:
-            args.train_iters = args.curr_iteration + 1
-        return batch
+        if input_tensor is not None:
+            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False))
+        with self.stimer:
+            output_tensor = model(**data)
+        return torch.concat([ref_output_tensor, ref_KL_output_tensor, output_tensor, KL_output_tensor], dim=0), partial(
+            self.loss_func, labels=data.get('labels'), packed_seq_params=data.get('packed_seq_params'))
