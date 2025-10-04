@@ -267,7 +267,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT part during multimodal model training. Default: True.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Default: None.
-- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO.
+- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO/KTO.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - streaming: Stream data loading and processing, default is False.
   - Note: Since the length of a streaming dataset cannot be determined, the `--train_iters` parameter must be set. Also set the `max_epochs` parameter to ensure training exits after the specified number of epochs, and to validate and save the model weights accordingly.
