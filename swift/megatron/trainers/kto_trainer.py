@@ -1,30 +1,40 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from collections import namedtuple
 from functools import partial
 
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
 from megatron.training import get_args
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
+from trl import KTOTrainer
 
+from swift.llm import to_device
 from swift.utils import get_current_device, get_logger
 from .base import MegatronRLHFTrainer
-from .utils import get_kto_batch
+from .utils import get_packed_seq_params, mcore_get_batch_on_this_cp_rank, split_cp_inputs
 
 logger = get_logger()
+
+
+class DummyKTOTrainer(KTOTrainer):
+    # For reusing the dpo_loss function in TRL.
+    def __init__(self, args):
+        self.accelerator = namedtuple('Accelerator', ['device'])(device=get_current_device())
+        self.loss_type = args.loss_type
+        self.beta = args.beta
+        self.desirable_weight = args.desirable_weight
+        self.undesirable_weight = args.undesirable_weight
+        self.calculate_KL = args.calculate_KL
 
 
 class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        self.beta = args.beta
-        self.desirable_weight = args.desirable_weight
-        self.undesirable_weight = args.undesirable_weight
         self.calculate_KL = args.calculate_KL
+        self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params=None):
@@ -63,37 +73,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
         return all_logps
 
-    @staticmethod
-    def kto_loss(policy_chosen_logps, policy_rejected_logps, policy_KL_logps, reference_chosen_logps,
-                 reference_rejected_logps, reference_KL_logps, beta, desirable_weight, undesirable_weight, calculate_KL,
-                 device):
-        if calculate_KL and policy_KL_logps is not None and reference_KL_logps is not None:
-            kl = (policy_KL_logps - reference_KL_logps).mean().detach()
-            dist.all_reduce(kl, group=mpu.get_data_parallel_group())
-            kl = kl / mpu.get_data_parallel_world_size()
-            kl = kl.clamp(min=0)
-        else:
-            kl = torch.tensor(0.0, device=device)
-
-        chosen_rewards = torch.tensor([], device=kl.device)
-        if policy_chosen_logps.shape[0] > 0:
-            chosen_logratios = policy_chosen_logps - reference_chosen_logps
-            chosen_losses = 1 - F.sigmoid(beta * (chosen_logratios - kl))
-            chosen_rewards = beta * chosen_logratios.detach()
-        else:
-            chosen_losses = torch.tensor([], device=kl.device)
-
-        rejected_rewards = torch.tensor([], device=kl.device)
-        if policy_rejected_logps.shape[0] > 0:
-            rejected_logratios = policy_rejected_logps - reference_rejected_logps
-            rejected_losses = 1 - F.sigmoid(beta * (kl - rejected_logratios))
-            rejected_rewards = beta * rejected_logratios.detach()
-        else:
-            rejected_losses = torch.tensor([], device=kl.device)
-
-        losses = torch.cat((desirable_weight * chosen_losses, undesirable_weight * rejected_losses), 0)
-        return losses, chosen_rewards, rejected_rewards, kl
-
     def loss_func(self, output_tensor, *, policy_KL_logps, reference_logps, reference_KL_logps, labels, all_labels,
                   packed_seq_params):
         policy_logps = self.get_logps(output_tensor, labels, packed_seq_params)
@@ -104,18 +83,13 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         reference_chosen_logps = reference_logps[is_desirable]
         reference_rejected_logps = reference_logps[~is_desirable]
 
-        loss, chosen_rewards, rejected_rewards, kl = self.kto_loss(
+        loss, chosen_rewards, rejected_rewards, kl = self.dummy_kto_trainer.kto_loss(
             policy_chosen_logps=policy_chosen_logps,
             policy_rejected_logps=policy_rejected_logps,
             policy_KL_logps=policy_KL_logps,
             reference_chosen_logps=reference_chosen_logps,
             reference_rejected_logps=reference_rejected_logps,
             reference_KL_logps=reference_KL_logps,
-            beta=self.beta,
-            desirable_weight=self.desirable_weight,
-            undesirable_weight=self.undesirable_weight,
-            calculate_KL=self.calculate_KL,
-            device=policy_logps.device,
         )
 
         loss = loss.mean() if loss.numel() > 0 else torch.tensor(0.0, device=policy_logps.device)
@@ -150,7 +124,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, reporting_metric
 
-    def _replace_data_iterator_with_model(self, data_iterator, model):
+    def _replace_data_iterator(self, data_iterator, model):
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
 
@@ -182,7 +156,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def ref_forward(self, ref_model, data_iterator):
         with self.stimer(bdata=True):
-            data = get_kto_batch(data_iterator)
+            data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
 
         ref_inputs = {
@@ -208,11 +182,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         else:
             data['reference_KL_logps'] = None
         return data
-
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator_with_model(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
 
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
@@ -240,14 +209,65 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             all_labels=all_labels,
             packed_seq_params=completion_packed_seq_params)
 
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
-        self._replace_data_iterator = partial(self._replace_data_iterator_with_model, model=model)
-        return super().evaluate(forward_step_func, data_iterator, model, process_non_loss_data_func, config, verbose,
-                                non_loss_data_func)
+    def get_batch(self, data_iterator, vp_stage=None):
+        """Generate a kto batch."""
+        args = get_args()
+
+        data = next(data_iterator)
+        is_finished = data.pop('is_finished', False)
+
+        batch = to_device(data, 'cuda', non_blocking=True)
+
+        kto_tensor_keys = [
+            'completion_input_ids', 'completion_labels', 'completion_attention_mask', 'completion_position_ids',
+            'KL_completion_input_ids', 'KL_completion_labels', 'KL_completion_attention_mask',
+            'KL_completion_position_ids'
+        ]
+
+        # pp
+        if args.pipeline_model_parallel_size == 1:
+            pass
+        elif mpu.is_pipeline_first_stage():
+            for key in kto_tensor_keys:
+                if 'labels' in key:
+                    batch[key] = None
+        elif mpu.is_pipeline_last_stage():
+            for key in kto_tensor_keys:
+                if 'input_ids' in key:
+                    batch[key] = None
+        else:
+            for key in kto_tensor_keys:
+                batch[key] = None
+
+        # Padding-Free
+        num_samples = batch.get('num_samples')
+        if args.padding_free:
+            if 'completion_position_ids' in batch and batch['completion_position_ids'] is not None:
+                batch['completion_packed_seq_params'] = get_packed_seq_params(batch['completion_position_ids'])
+                if num_samples is not None:
+                    batch['completion_packed_seq_params'].num_samples = num_samples
+
+            if 'KL_completion_position_ids' in batch and batch['KL_completion_position_ids'] is not None:
+                batch['KL_completion_packed_seq_params'] = get_packed_seq_params(batch['KL_completion_position_ids'])
+                if num_samples is not None:
+                    batch['KL_completion_packed_seq_params'].num_samples = num_samples
+
+        # cp
+        cp_size = mpu.get_context_parallel_world_size()
+        if cp_size > 1:
+            completion_psp = batch.get('completion_packed_seq_params')
+            kl_psp = batch.get('KL_completion_packed_seq_params')
+
+            if completion_psp is None and kl_psp is None:
+                batch = mcore_get_batch_on_this_cp_rank(batch)
+            else:
+                for key, val in batch.items():
+                    if key in kto_tensor_keys and val is not None:
+                        if key.startswith('KL_completion_') and kl_psp is not None:
+                            batch[key] = split_cp_inputs(val, kl_psp.cu_seqlens_q, -1)
+                        elif key.startswith('completion_') and completion_psp is not None:
+                            batch[key] = split_cp_inputs(val, completion_psp.cu_seqlens_q, -1)
+
+        if is_finished:
+            args.train_iters = args.curr_iteration + 1
+        return batch

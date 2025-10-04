@@ -10,7 +10,6 @@ from torch.distributed.nn import all_reduce
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
 from .base import MegatronRLHFTrainer
-from .utils import get_batch
 
 logger = get_logger()
 
@@ -108,7 +107,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
                 ref_model.set_input_tensor(input_tensor[:input_tensor.shape[0] // 2].detach())
             timers('batch-generator', log_level=2).start()
             with self.stimer(bdata=True):
-                data = get_batch(data_iterator, vp_stage)
+                data = self.get_batch(data_iterator, vp_stage)
             timers('batch-generator').stop()
             data.pop('loss_scale', None)
             ref_output_tensor = ref_model(**data)

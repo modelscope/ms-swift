@@ -20,7 +20,7 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
                                get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
@@ -35,7 +35,8 @@ from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
-from .utils import get_swift_datasets_provider
+from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
+                    get_swift_datasets_provider)
 
 logger = get_logger()
 
@@ -123,7 +124,7 @@ class BaseMegatronTrainer(ABC):
                     yield x
             i += 1
 
-    def _replace_data_iterator(self, data_iterator):
+    def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
 
     @staticmethod
@@ -151,7 +152,6 @@ class BaseMegatronTrainer(ABC):
 
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -180,7 +180,6 @@ class BaseMegatronTrainer(ABC):
         return res
 
     def _load_base_checkpoint(self, *_args, **kwargs):
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -224,7 +223,6 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_load_state_dict(self, load_base_checkpoint):
-        from megatron.training import checkpointing
         checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
         checkpointing._load_base_checkpoint = load_base_checkpoint
 
@@ -325,7 +323,7 @@ class BaseMegatronTrainer(ABC):
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator(data_iterator)
+        new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                        config)
 
@@ -374,7 +372,7 @@ class BaseMegatronTrainer(ABC):
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
-                new_data_iterator = self._replace_data_iterator(data_iterator)
+                new_data_iterator = self._replace_data_iterator(data_iterator, model)
                 loss_dicts = forward_backward_func(
                     forward_step_func=forward_step_func,
                     data_iterator=new_data_iterator,
@@ -867,3 +865,19 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             output_tensor = None
 
         return output_tensor
+
+    def get_batch(self, data_iterator, vp_stage=None):
+        """Generate a batch."""
+        # get batches based on the TP rank you are on
+        batch = get_batch_on_this_tp_rank(data_iterator, vp_stage=vp_stage)
+        args = get_args()
+        num_samples = batch.pop('num_samples')
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
+        if args.padding_free and text_position_ids is not None:
+            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+            batch['packed_seq_params'].num_samples = num_samples
+        # slice batch along sequence dimension for context parallelism
+        batch = get_batch_on_this_cp_rank(batch)
+        return batch
