@@ -248,13 +248,15 @@ LoRA Training:
 - reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
 - label_smoothing: Default is 0.
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
-- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions) for possible values.
 
 **KTO Parameters**:
-- beta: Coefficient for the KL regularization term. Default is `0.1`.
-- desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
-- undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
-- calculate_KL: Whether to calculate KL divergence. Default is `True`.
+- ref_load: same meaning as in DPO.
+- ref_adapter_load: same meaning as in DPO.
+- beta: parameter controlling the deviation from the ref_model. Higher `beta` means less deviation from the ref_model. Default is `0.1`.
+- loss_type: default is `'kto'`. See possible values in the TRL docs: https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type.
+- desirable_weight: factor to weight desirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
+- undesirable_weight: factor to weight undesirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 
 ## Training Parameters
 
