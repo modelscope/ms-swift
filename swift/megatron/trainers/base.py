@@ -315,11 +315,12 @@ class BaseMegatronTrainer(ABC):
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
 
-    def _all_reduce_metric(self, metric: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def _all_reduce_metric(self,
+                           metric: Dict[str, torch.Tensor],
+                           reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
         values = list(metric.values())
         reporting_metric = values[0].new_tensor(values)
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
@@ -800,6 +801,30 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
+    def _prepare_batch(self, data, vp_stage, num_samples=None):
+        batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
+        if num_samples is None:
+            num_samples = batch.pop('num_samples')
+        args = get_args()
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
+        if args.padding_free and text_position_ids is not None:
+            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+            batch['packed_seq_params'].num_samples = num_samples
+        # slice batch along sequence dimension for context parallelism
+        batch = get_batch_on_this_cp_rank(batch)
+        return batch
+
+    def get_batch(self, data_iterator, vp_stage=None):
+        """Generate a batch."""
+        args = get_args()
+        data = next(data_iterator)
+        is_finished = data.pop('is_finished', False)
+        if is_finished:
+            args.train_iters = args.curr_iteration + 1
+        return self._prepare_batch(data, vp_stage)
+
 
 class MegatronRLHFTrainer(BaseMegatronTrainer):
 
@@ -866,18 +891,18 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
         return output_tensor
 
-    def get_batch(self, data_iterator, vp_stage=None):
-        """Generate a batch."""
-        # get batches based on the TP rank you are on
-        batch = get_batch_on_this_tp_rank(data_iterator, vp_stage=vp_stage)
+    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples=None):
         args = get_args()
-        num_samples = batch.pop('num_samples')
-        text_position_ids = batch.pop('text_position_ids', None)
-        if text_position_ids is None:
-            text_position_ids = batch.get('position_ids')
-        if args.padding_free and text_position_ids is not None:
-            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
-            batch['packed_seq_params'].num_samples = num_samples
-        # slice batch along sequence dimension for context parallelism
-        batch = get_batch_on_this_cp_rank(batch)
-        return batch
+        per_token_logps = -output_tensor
+        loss_mask = labels != -100
+        per_token_logps = per_token_logps * loss_mask
+        if num_samples is None:
+            num_samples = packed_seq_params.num_samples * 2
+        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
+        all_logps = per_token_logps.new_zeros((num_samples, ))
+        for i in range(num_samples):
+            start, end = cu_seqlens[i], cu_seqlens[i + 1]
+            all_logps[i] = per_token_logps[:, start:end].sum()
+        if args.context_parallel_size > 1:
+            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
+        return all_logps

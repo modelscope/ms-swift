@@ -27,11 +27,9 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(data_iterator, vp_stage=None):
+def get_batch_on_this_tp_rank(data, vp_stage=None):
     args = get_args()
 
-    data = next(data_iterator)
-    is_finished = data.pop('is_finished', False)
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
@@ -47,9 +45,6 @@ def get_batch_on_this_tp_rank(data_iterator, vp_stage=None):
     else:
         for key in ('input_ids', 'labels', 'loss_scale'):
             batch[key] = None
-
-    if is_finished:
-        args.train_iters = args.curr_iteration + 1
 
     return batch
 
