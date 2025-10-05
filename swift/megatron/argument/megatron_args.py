@@ -17,7 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', None] = None
+    rlhf_type: Literal['dpo', 'kto'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 

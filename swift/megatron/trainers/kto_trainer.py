@@ -6,9 +6,7 @@ from typing import Literal
 import torch
 from accelerate.utils import gather
 from megatron.core import mpu
-from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
 from megatron.training import get_args, get_timers
-from torch.distributed.nn import all_reduce
 from trl import KTOTrainer
 
 from swift.utils import get_current_device, get_logger

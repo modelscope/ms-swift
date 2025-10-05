@@ -28,6 +28,7 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.llm import dynamic_gradient_checkpointing

@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
+from swift.llm.train.kto import prepare_kto_dataset
 from swift.utils import get_logger
-from ...llm.train.kto import prepare_kto_dataset
 from ..argument import MegatronRLHFArguments
 from ..trainers import MegatronDPOTrainer, MegatronKTOTrainer
 from .sft import MegatronSft
