@@ -18,7 +18,7 @@ logger = get_logger()
 class DummyKTOTrainer(KTOTrainer):
     # For reusing the dpo_loss function in TRL.
     def __init__(self, args):
-        self.accelerator = namedtuple('Accelerator', ['device'])(device=get_current_device())
+        self.accelerator = namedtuple('Accelerator', ['device', 'gather_for_metrics'])(device=get_current_device(), gather_for_metrics=)
         self.loss_type = args.loss_type
         self.beta = args.beta
         self.desirable_weight = args.desirable_weight
@@ -33,21 +33,20 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         assert args.padding_free, 'Currently `rlhf_type="kto"` only supports padding_free.'
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
-    def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool):
+    def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):
         labels = data['labels']
         packed_seq_params = data['packed_seq_params']
-        length = packed_seq_params.cu_seqlens_q[-1]
         output = self._get_input_tensor(output_tensor, is_KL, is_ref, length, dim=1)
         return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
 
     def loss_func(self, output_tensor, *, data, kl_data, label):
-        label = data['label']
-        policy_logps = self._kto_get_logps(output_tensor, data, False, False)
-        ref_logps = self._kto_get_logps(output_tensor, data, False, True)
-        policy_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, False)
-        ref_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, True)
+        length = data['packed_seq_params'].cu_seqlens_q[-1]
+        policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
+        ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
+        policy_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, False, length)
+        ref_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, True, length)
 
-        label = label.bool()
+        label = output_tensor.new_tensor(label, dtype=torch.bool)
         policy_chosen_logps = policy_logps[label]
         policy_rejected_logps = policy_logps[~label]
         ref_chosen_logps = ref_logps[label]
@@ -129,9 +128,9 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         with self.stimer:
             output_tensor = model(**data)
         if self.args.calculate_KL:
-            res = torch.concat([output_tensor, ref_output_tensor], dim=1)
-        else:
             res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=1)
+        else:
+            res = torch.concat([output_tensor, ref_output_tensor], dim=1)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
 
     def _prepare_batch(self, data, vp_stage):
