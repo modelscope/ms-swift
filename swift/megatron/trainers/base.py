@@ -468,7 +468,6 @@ class BaseMegatronTrainer(ABC):
         return total_loss_dict, collected_non_loss_data, False
 
     def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
-        prefix = '' if mode == 'train' else 'eval_'
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
         total_loss_dict.update({
             k: torch.tensor([v * advanced_iters], device='cuda')
