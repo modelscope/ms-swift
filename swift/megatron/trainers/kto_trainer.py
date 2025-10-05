@@ -152,16 +152,17 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+        prefix = '' if mode == 'train' else 'eval_'
         super().custom_log(total_loss_dict, mode)
         res = {}
         for k, v in total_loss_dict.items():
-            if k.startswith('count/'):
+            if k.startswith(f'{prefix}count/') or k.endswith('_sum'):
                 continue
-            if k.endswith('_sum'):
-                new_k = k.rsplit('_', 1)[-2]
-                count = total_loss_dict[f"count/{new_k.rsplit('/', 1)[-1]}"]
-                res[new_k] = v / count
-            else:
-                res[k] = v
+            res[k] = v
+        for key in ['chosen', 'rejected']:
+            count = total_loss_dict[f'{prefix}count/{key}']
+            res[f'{prefix}logps/{key}'] = total_loss_dict[f'{prefix}logps/{key}_sum'] / count
+            res[f'{prefix}rewards/{key}'] = total_loss_dict[f'{prefix}rewards/{key}_sum'] / count
+        res[f'{prefix}rewards/margins'] = res[f'{prefix}rewards/chosen'] - res[f'{prefix}rewards/rejected']
         total_loss_dict.clear()
         total_loss_dict.update(res)
