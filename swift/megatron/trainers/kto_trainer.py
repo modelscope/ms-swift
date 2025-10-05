@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
 from functools import partial
+from typing import Literal
 
 import torch
+from accelerate.utils import gather
 from megatron.core import mpu
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
 from megatron.training import get_args, get_timers
@@ -17,8 +19,13 @@ logger = get_logger()
 
 class DummyKTOTrainer(KTOTrainer):
     # For reusing the dpo_loss function in TRL.
+
+    def gather_for_metrics(self, input_data, *args, **kwargs):
+        return gather(input_data)
+
     def __init__(self, args):
-        self.accelerator = namedtuple('Accelerator', ['device', 'gather_for_metrics'])(device=get_current_device(), gather_for_metrics=)
+        self.accelerator = namedtuple('Accelerator', ['device', 'gather_for_metrics'])(
+            device=get_current_device(), gather_for_metrics=self.gather_for_metrics)
         self.loss_type = args.loss_type
         self.beta = args.beta
         self.desirable_weight = args.desirable_weight
@@ -68,10 +75,12 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         }
         metric = self._all_reduce_metric(mean_metric)
         sum_metric = {
-            'logps/chosen': torch.stack([policy_chosen_logps.nansum(), policy_chosen_logps.shape[0]]),
-            'logps/rejected': torch.stack([policy_rejected_logps.nansum(), policy_rejected_logps.shape[0]]),
-            'rewards/chosen': torch.stack([chosen_rewards.nansum(), chosen_rewards.shape[0]]),
-            'rewards/rejected': torch.stack([rejected_rewards.nansum(), rejected_rewards.shape[0]]),
+            'logps/chosen_sum': policy_chosen_logps.nansum(),
+            'logps/rejected_sum': policy_rejected_logps.nansum(),
+            'rewards/chosen_sum': chosen_rewards.nansum(),
+            'rewards/rejected_sum': rejected_rewards.nansum(),
+            'count/chosen': loss.new_tensor(policy_rejected_logps.shape[0]),
+            'count/rejected': loss.new_tensor(rejected_rewards.shape[0]),
         }
         metric.update(self._all_reduce_metric(sum_metric, torch.distributed.ReduceOp.SUM))
         # fix megatron-lm bug
@@ -141,3 +150,18 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             res.append(super()._prepare_batch(_data, vp_stage, num_samples))
         res[0]['label'] = data['label']
         return res
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+        super().custom_log(total_loss_dict, mode)
+        res = {}
+        for k, v in total_loss_dict.items():
+            if k.startswith('count/'):
+                continue
+            if k.endswith('_sum'):
+                new_k = k.rsplit('_', 1)[-2]
+                count = total_loss_dict[f"count/{new_k.rsplit('/', 1)[-1]}"]
+                res[new_k] = v / count
+            else:
+                res[k] = v
+        total_loss_dict.clear()
+        total_loss_dict.update(res)

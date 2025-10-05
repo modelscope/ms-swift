@@ -5,7 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Literal
 
 import megatron.core
 import torch
@@ -457,11 +457,7 @@ class BaseMegatronTrainer(ABC):
 
         timers('evaluate').stop()
         timers.log(['evaluate'])
-
-        total_loss_dict.update({
-            k: torch.tensor([v], device='cuda')
-            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['eval'], 'eval_').items()
-        })
+        self.custom_log(total_loss_dict, 'eval')
         rerun_state_machine.set_mode(rerun_mode)
         if is_last_rank():
             logs = {}
@@ -469,6 +465,14 @@ class BaseMegatronTrainer(ABC):
                 logs[f'eval_{key}'] = round(val.item(), 8)
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+        prefix = '' if mode == 'train' else 'eval_'
+        advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
+        total_loss_dict.update({
+            k: torch.tensor([v * advanced_iters], device='cuda')
+            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode], prefix).items()
+        })
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
@@ -618,10 +622,7 @@ class BaseMegatronTrainer(ABC):
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
         if iteration % args.log_interval == 0 or iteration == 1:
-            total_loss_dict.update({
-                k: torch.tensor([v * total_loss_dict[advanced_iters_key]], device='cuda')
-                for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['train']).items()
-            })
+            self.custom_log(total_loss_dict, 'train')
             origin_total_loss_dict = total_loss_dict.copy()
 
             if args.record_memory_history and is_last_rank():
