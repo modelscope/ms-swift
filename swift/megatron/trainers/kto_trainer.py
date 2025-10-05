@@ -79,7 +79,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             'logps/rejected_sum': policy_rejected_logps.nansum(),
             'rewards/chosen_sum': chosen_rewards.nansum(),
             'rewards/rejected_sum': rejected_rewards.nansum(),
-            'count/chosen': loss.new_tensor(policy_rejected_logps.shape[0]),
+            'count/chosen': loss.new_tensor(chosen_rewards.shape[0]),
             'count/rejected': loss.new_tensor(rejected_rewards.shape[0]),
         }
         metric.update(self._all_reduce_metric(sum_metric, torch.distributed.ReduceOp.SUM))

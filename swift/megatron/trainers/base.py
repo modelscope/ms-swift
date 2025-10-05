@@ -470,8 +470,8 @@ class BaseMegatronTrainer(ABC):
         prefix = '' if mode == 'train' else 'eval_'
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
         total_loss_dict.update({
-            k: torch.tensor([v * advanced_iters], device='cuda')
-            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode], prefix).items()
+            f'{prefix}{k}': torch.tensor([v * advanced_iters], device='cuda')
+            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
         })
 
     # Code borrowed from NVIDIA/Megatron-LM
