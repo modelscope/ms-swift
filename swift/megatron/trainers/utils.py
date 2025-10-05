@@ -36,15 +36,12 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
             data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
-        pass
-    elif mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
+        return batch
+    if not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
+        batch['input_ids'] = None
+    if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
         batch['labels'] = None
         batch['loss_scale'] = None
-    elif mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
-        batch['input_ids'] = None
-    else:
-        for key in ('input_ids', 'labels', 'loss_scale'):
-            batch[key] = None
 
     return batch
 

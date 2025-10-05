@@ -48,9 +48,11 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         length = data['packed_seq_params'].cu_seqlens_q[-1]
         policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
         ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
-        policy_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, False, length)
-        ref_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, True, length)
-
+        if self.args.calculate_KL:
+            policy_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, False, length)
+            ref_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, True, length)
+        else:
+            policy_KL_logps, ref_KL_logps = None, None
         label = output_tensor.new_tensor(label, dtype=torch.bool)
         policy_chosen_logps = policy_logps[label]
         policy_rejected_logps = policy_logps[~label]
@@ -111,31 +113,35 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             data, kl_data = self.get_batch(data_iterator, vp_stage)
         timers('batch-generator').stop()
         label = data.pop('label')
+        data.pop('loss_scale', None)
+        kl_data.pop('loss_scale', None)
+
         length = data['packed_seq_params'].cu_seqlens_q[-1]
 
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:
                 if input_tensor is not None:
-                    ref_model.set_input_tensor(self._get_input_tensor(True, True, length))
+                    ref_model.set_input_tensor(self._get_input_tensor(input_tensor, True, True, length, 0))
                 ref_KL_output_tensor = ref_model(**kl_data)
 
             if input_tensor is not None:
-                ref_model.set_input_tensor(self._get_input_tensor(True, False, length))
+                ref_model.set_input_tensor(self._get_input_tensor(input_tensor, False, True, length, 0))
             ref_output_tensor = ref_model(**data)
 
         if self.args.calculate_KL:
             with torch.no_grad():
                 if input_tensor is not None:
-                    unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, True))
+                    unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, True, False, 0))
                 KL_output_tensor = model(**kl_data)
 
         if input_tensor is not None:
-            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False))
+            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, 0))
         with self.stimer:
             output_tensor = model(**data)
+        dim = 1 if mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage) else 0
         if self.args.calculate_KL:
-            res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=1)
+            res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=dim)
         else:
             res = torch.concat([output_tensor, ref_output_tensor], dim=1)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
@@ -154,13 +160,13 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         super().custom_log(total_loss_dict, mode)
         res = {}
         for k, v in total_loss_dict.items():
-            if k.startswith(f'{prefix}count/') or k.endswith('_sum'):
+            if k.startswith(f'count/') or k.endswith('_sum'):
                 continue
             res[k] = v
         for key in ['chosen', 'rejected']:
-            count = total_loss_dict[f'{prefix}count/{key}']
-            res[f'{prefix}logps/{key}'] = total_loss_dict[f'{prefix}logps/{key}_sum'] / count
-            res[f'{prefix}rewards/{key}'] = total_loss_dict[f'{prefix}rewards/{key}_sum'] / count
-        res[f'{prefix}rewards/margins'] = res[f'{prefix}rewards/chosen'] - res[f'{prefix}rewards/rejected']
+            count = total_loss_dict[f'count/{key}']
+            res[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
+            res[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
+        res[f'rewards/margins'] = res[f'rewards/chosen'] - res[f'rewards/rejected']
         total_loss_dict.clear()
         total_loss_dict.update(res)
