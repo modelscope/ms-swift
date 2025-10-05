@@ -762,6 +762,8 @@ class VllmEngine(InferEngine):
     @staticmethod
     def patch_remove_log():
         from vllm.engine import async_llm_engine
+        if not hasattr(async_llm_engine, '_log_task_completion'):
+            return
 
         async_llm_engine._origin_log_task_completion = async_llm_engine._log_task_completion
 
