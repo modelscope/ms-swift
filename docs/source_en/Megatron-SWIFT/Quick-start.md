@@ -36,19 +36,24 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
+# Note: This step is crucial; otherwise multi-machine training may hang due to data inconsistencies caused by randomness in data preprocessing.
 export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
 # The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
 git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
+
+# flash_attn
+# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.7.4.post1
+# Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
 ```
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.3
 ```
 
 Recommended Operating Environment:
@@ -62,7 +67,7 @@ Recommended Operating Environment:
 | apex |   |  0.1 | |
 | megatron_core    | >=0.12       | 0.13      |                  |
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.56.1      |                    |
+| transformers | >=4.33       | 4.56.2      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
@@ -156,6 +161,15 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 - Megatron-SWIFT uses the same dataset and template processing modules as ms-swift, thus supporting techniques such as packing, loss scale, and agent training. For custom dataset formats, please refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md).
 - **More Examples**: Including packing, multi-node training, 32K context length, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron).
+
+Training tips:
+- Ways to increase training throughput: use packing, increase DP (data parallelism), reduce recomputation, and increase computation-communication overlap.
+- Parallelism choices:
+  - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.
+  - DP is the fastest but consumes the most memory; use other parallel techniques to reduce memory usage.
+  - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for cross-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
+  - MoE parallel folding: separate MoE parallel groups from Dense groups. Attention uses tp-cp-dp-pp groups, while MoE uses etp-ep-dp-pp groups.
+- Choosing parallelism for weight conversion: Megatron-SWIFT uses the torch_dist storage format on the MCore side; you can adjust parallelism at training time and do not need to specify it during weight conversion.
 
 
 ## Benchmark

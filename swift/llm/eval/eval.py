@@ -101,7 +101,7 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir,
             limit=args.eval_limit,
             eval_batch_size=args.eval_num_proc,
-            dataset_args=args.dataset_args,
+            dataset_args=args.eval_dataset_args,
             generation_config=args.eval_generation_config,
             **args.extra_eval_args)
 

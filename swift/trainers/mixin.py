@@ -34,7 +34,7 @@ from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
-                                  ParallelMode, TrainerCallback, reissue_pt_warnings)
+                                  ParallelMode, Trainer, TrainerCallback, reissue_pt_warnings)
 from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
@@ -102,6 +102,9 @@ class SwiftMixin:
         self.model_meta = model.model_meta
 
         kwargs.update(self.create_loss_and_metric(args))
+        trainer_parameters = inspect.signature(Trainer.__init__).parameters
+        tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
+        kwargs[tokenizer_key] = template.tokenizer
         with self.hub.patch_hub():
             super().__init__(
                 model=model,
@@ -109,7 +112,6 @@ class SwiftMixin:
                 data_collator=data_collator,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
-                tokenizer=template.tokenizer,
                 model_init=model_init,
                 callbacks=callbacks,
                 optimizers=optimizers,
@@ -129,6 +131,11 @@ class SwiftMixin:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    @property
+    def tokenizer(self):
+        # compat transformers5.0
+        return self.processing_class
 
     @contextmanager
     def _patch_deepspeed_load_checkpoint(self):
@@ -593,8 +600,8 @@ class SwiftMixin:
             model = self.model
         if 'SentenceTransformer' in model.__class__.__name__:
 
-            def forward_transformer(transformer, features: dict[str, torch.Tensor],
-                                    **kwargs) -> dict[str, torch.Tensor]:
+            def forward_transformer(transformer, features: Dict[str, torch.Tensor],
+                                    **kwargs) -> Dict[str, torch.Tensor]:
                 trans_features = {
                     key: value
                     for key, value in features.items()
@@ -614,7 +621,7 @@ class SwiftMixin:
             if isinstance(model[0], Transformer):
                 model[0].forward = MethodType(forward_transformer, model[0])
 
-            def forward_sentence_transformer(sentence_transformer, **kwargs) -> dict[str, torch.Tensor]:
+            def forward_sentence_transformer(sentence_transformer, **kwargs) -> Dict[str, torch.Tensor]:
                 input = kwargs
                 kwargs = {}
                 for idx, (module_name, module) in enumerate(sentence_transformer.named_children()):
@@ -798,7 +805,7 @@ class SwiftMixin:
                 logs.pop(k)
         return logs
 
-    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
+    def log(self, logs: Dict[str, float], *args, **kwargs) -> None:
         mode = 'train' if self.model.training else 'eval'
         metrics = self.custom_metrics[mode]
         prefix = 'eval_' if mode == 'eval' else ''

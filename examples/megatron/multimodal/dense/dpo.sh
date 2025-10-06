@@ -1,4 +1,4 @@
-# 4 * 60GiB 14s/it
+# 4 * 50GiB 14s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
@@ -34,7 +34,7 @@ megatron rlhf \
     --num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
-    --dataset_num_proc 16 \
+    --dataset_num_proc 8 \
     --attention_backend flash \
     --beta 0.1 \
     --loss_type sigmoid

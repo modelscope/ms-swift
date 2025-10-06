@@ -826,6 +826,20 @@ register_model(
         tags=['vision', 'video']))
 
 
+def patch_Qwen3VLMoeTextExperts_dtype():
+    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextExperts
+    if hasattr(Qwen3VLMoeTextExperts, '_patch'):
+        return
+    Qwen3VLMoeTextExperts._patch = True
+    origin_forward = Qwen3VLMoeTextExperts.forward
+
+    def forward(self, hidden_states, *args, **kwargs):
+        res = origin_forward(self, hidden_states, *args, **kwargs)
+        return res.to(hidden_states.dtype)
+
+    Qwen3VLMoeTextExperts.forward = forward
+
+
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
@@ -850,6 +864,7 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     require_version('qwen_vl_utils>=0.0.14')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
+    patch_Qwen3VLMoeTextExperts_dtype()
     return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
 
 
@@ -857,8 +872,14 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen3_moe_vl, [
             ModelGroup([
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking', 'Qwen/Qwen3-VL-30B-A3B-Thinking'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-VL-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking-FP8', 'Qwen/Qwen3-VL-30B-A3B-Thinking-FP8'),
                 Model('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-235B-A22B-Instruct'),
                 Model('Qwen/Qwen3-VL-235B-A22B-Thinking', 'Qwen/Qwen3-VL-235B-A22B-Thinking'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct-FP8', 'Qwen/Qwen3-VL-235B-A22B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking-FP8', 'Qwen/Qwen3-VL-235B-A22B-Thinking-FP8'),
             ]),
         ],
         TemplateType.qwen3_vl,
