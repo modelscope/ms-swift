@@ -234,8 +234,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _replace_data_iterator(self, data_iterator):
 
-        args = get_args()
-        if args._step % self.steps_per_generation == 0:
+        if self._step % self.steps_per_generation == 0:
             # each rollout DP group will generate generation_batch_size / world_size completions
             completions_to_rollout = self.generation_batch_size // mpu.get_data_parallel_world_size()
             # completions will be repeated num_generations times after
