@@ -3,7 +3,7 @@ import collections
 import os
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from typing import Dict
 
@@ -28,6 +28,7 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.llm import Template, dynamic_gradient_checkpointing
@@ -35,7 +36,7 @@ from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
-from .utils import get_swift_datasets_provider
+from .utils import get_batch, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -71,9 +72,11 @@ class BaseMegatronTrainer(ABC):
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
+            num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
@@ -83,6 +86,7 @@ class BaseMegatronTrainer(ABC):
                     args.eval_iters = 0
                 elif hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
                     raise ValueError(
@@ -867,3 +871,43 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             output_tensor = None
 
         return output_tensor
+
+    def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
+        # used to calculate model forward (logps)
+        with self.stimer(bdata=True):
+            data = get_batch(data_iterator)
+        data.pop('loss_scale', None)
+        labels = data.get('labels')
+        context = torch.no_grad() if no_grad else nullcontext()
+        with context:
+            output_tensor = self._forward_step_helper(model, data)
+        data['logps'] = None if labels is None else self.get_logps(
+            output_tensor, labels, data['packed_seq_params'], per_token=per_token)
+        return data
+
+    @staticmethod
+    def get_logps(output_tensor, labels, packed_seq_params, per_token: bool = False):
+        args = get_args()
+        per_token_logps = -output_tensor
+        loss_mask = labels != -100
+        per_token_logps = per_token_logps * loss_mask
+        num_samples = packed_seq_params.num_samples
+        if args.rlhf_type == 'dpo':
+            total_samples = num_samples * 2
+        elif args.rlhf_type in 'grpo':
+            total_samples = num_samples
+
+        cu_seqlens = packed_seq_params.cu_seqlens_q[:total_samples + 1] // args.context_parallel_size
+
+        if per_token:
+            if args.context_parallel_size > 1:
+                per_token_logps = all_reduce(per_token_logps, group=mpu.get_context_parallel_group())
+            return per_token_logps
+        else:
+            all_logps = per_token_logps.new_zeros((total_samples, ))
+            for i in range(total_samples):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                all_logps[i] = per_token_logps[:, start:end].sum()
+            if args.context_parallel_size > 1:
+                all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
+            return all_logps

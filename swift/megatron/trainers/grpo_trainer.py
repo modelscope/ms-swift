@@ -22,7 +22,7 @@ from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from .rlhf_base import MegatronRLHFTrainer
+from .base import MegatronRLHFTrainer
 from .utils import gather, gather_object, get_batch, process_packed_seq_params, profiling_context
 
 try:
