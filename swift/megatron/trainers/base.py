@@ -5,7 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Literal
 
 import megatron.core
 import torch
@@ -13,14 +13,13 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.enums import ModelType
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
                                get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
@@ -28,14 +27,14 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
-from transformers.utils import ContextManagers
 
 from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
-from .utils import get_swift_datasets_provider
+from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
+                    get_swift_datasets_provider)
 
 logger = get_logger()
 
@@ -123,7 +122,7 @@ class BaseMegatronTrainer(ABC):
                     yield x
             i += 1
 
-    def _replace_data_iterator(self, data_iterator):
+    def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
 
     @staticmethod
@@ -151,7 +150,6 @@ class BaseMegatronTrainer(ABC):
 
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -180,7 +178,6 @@ class BaseMegatronTrainer(ABC):
         return res
 
     def _load_base_checkpoint(self, *_args, **kwargs):
-        from megatron.training import checkpointing
         sharded_state_dict = kwargs.get('sharded_state_dict')
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -224,7 +221,6 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_load_state_dict(self, load_base_checkpoint):
-        from megatron.training import checkpointing
         checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
         checkpointing._load_base_checkpoint = load_base_checkpoint
 
@@ -317,15 +313,16 @@ class BaseMegatronTrainer(ABC):
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
 
-    def _all_reduce_metric(self, metric: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def _all_reduce_metric(self,
+                           metric: Dict[str, torch.Tensor],
+                           reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
         values = list(metric.values())
         reporting_metric = values[0].new_tensor(values)
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator(data_iterator)
+        new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                        config)
 
@@ -374,7 +371,7 @@ class BaseMegatronTrainer(ABC):
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
-                new_data_iterator = self._replace_data_iterator(data_iterator)
+                new_data_iterator = self._replace_data_iterator(data_iterator, model)
                 loss_dicts = forward_backward_func(
                     forward_step_func=forward_step_func,
                     data_iterator=new_data_iterator,
@@ -458,11 +455,7 @@ class BaseMegatronTrainer(ABC):
 
         timers('evaluate').stop()
         timers.log(['evaluate'])
-
-        total_loss_dict.update({
-            k: torch.tensor([v], device='cuda')
-            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['eval'], 'eval_').items()
-        })
+        self.custom_log(total_loss_dict, 'eval')
         rerun_state_machine.set_mode(rerun_mode)
         if is_last_rank():
             logs = {}
@@ -470,6 +463,13 @@ class BaseMegatronTrainer(ABC):
                 logs[f'eval_{key}'] = round(val.item(), 8)
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+        advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
+        total_loss_dict.update({
+            k: torch.tensor([v * advanced_iters], device='cuda')
+            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
+        })
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
@@ -619,10 +619,7 @@ class BaseMegatronTrainer(ABC):
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
         if iteration % args.log_interval == 0 or iteration == 1:
-            total_loss_dict.update({
-                k: torch.tensor([v * total_loss_dict[advanced_iters_key]], device='cuda')
-                for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['train']).items()
-            })
+            self.custom_log(total_loss_dict, 'train')
             origin_total_loss_dict = total_loss_dict.copy()
 
             if args.record_memory_history and is_last_rank():
@@ -802,68 +799,26 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
-
-class MegatronRLHFTrainer(BaseMegatronTrainer):
-
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+    def _prepare_batch(self, data, vp_stage, num_samples=None):
+        batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
+        if num_samples is None:
+            num_samples = batch.pop('num_samples')
         args = get_args()
-        if args.train_type == 'full':
-            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
-            for m in ref_models:
-                m = unwrap_model(m)
-                m.requires_grad_(False).eval()
-            if args.ref_load is None:
-                args.ref_load = args.load
-            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_models, None, None, load_arg='ref_load')
-            self.ref_models = ref_models
-        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
+        if args.padding_free and text_position_ids is not None:
+            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+            batch['packed_seq_params'].num_samples = num_samples
+        # slice batch along sequence dimension for context parallelism
+        batch = get_batch_on_this_cp_rank(batch)
+        return batch
 
-    @contextmanager
-    def null_ref_context(self):
+    def get_batch(self, data_iterator, vp_stage=None):
+        """Generate a batch."""
         args = get_args()
-        contexts = []
-        if args.train_type == 'full':
-            ref_models = self.ref_models
-        else:
-            if args.ref_adapter_load is None:
-                for m in self.peft_models:
-                    contexts.append(m.disable_adapter())
-            ref_models = self.unwrapped_models
-        with ContextManagers(contexts):
-            if args.ref_adapter_load:
-                for m in self.peft_models:
-                    m.set_adapter('ref_adapter')
-            yield ref_models
-            if args.ref_adapter_load:
-                for m in self.peft_models:
-                    m.set_adapter('default')
-
-    @staticmethod
-    def _forward_step_helper(model, inputs):
-        args = get_args()
-        if mpu.is_pipeline_first_stage():
-            micro_batch_size = 1  # use qkv_format 'thd'
-            seq_length = inputs['input_ids'].shape[1]
-            if args.sequence_parallel:
-                seq_length //= mpu.get_tensor_model_parallel_world_size()
-            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
-                                             device=torch.cuda.current_device(),
-                                             dtype=torch.int64)
-        else:
-            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
-            recv_from_prev_pipeline_rank_(recv_shape_buffer)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(recv_shape_buffer)
-        shape = recv_shape_buffer.tolist()
-
-        if not mpu.is_pipeline_first_stage():
-            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
-            recv_from_prev_pipeline_rank_(recv_buffer)
-            model.set_input_tensor(recv_buffer)
-        output_tensor = model(**inputs)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(output_tensor)
-            output_tensor = None
-
-        return output_tensor
+        data = next(data_iterator)
+        is_finished = data.pop('is_finished', False)
+        if is_finished:
+            args.train_iters = args.curr_iteration + 1
+        return self._prepare_batch(data, vp_stage)

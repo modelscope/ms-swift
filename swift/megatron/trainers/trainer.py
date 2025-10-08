@@ -12,7 +12,6 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
-from .utils import get_batch
 
 logger = get_logger()
 
@@ -139,7 +138,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         vp_stage = model.module.module.vp_stage
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
-            data = get_batch(data_iterator, vp_stage)
+            data = self.get_batch(data_iterator, vp_stage)
         timers('batch-generator').stop()
         loss_scale = data.pop('loss_scale', None)
         channels = data.pop('channel', None)

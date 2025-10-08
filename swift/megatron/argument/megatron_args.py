@@ -17,6 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
+    rlhf_type: Literal['dpo', 'kto'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -25,7 +26,28 @@ class RLHFMegatronArgumentsMixin:
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
-    loss_type: str = 'sigmoid'
+    loss_type: Optional[str] = None
+
+    # kto
+    desirable_weight: float = 1.
+    undesirable_weight: float = 1.
+    calculate_KL: Optional[bool] = None
+
+    def _init_kto(self):
+        if self.calculate_KL is None:
+            # Not all losses require a KL calculation
+            self.calculate_KL = True
+            if self.loss_type in ['apo_zero_unpaired']:
+                self.calculate_KL = False
+
+    def __post_init__(self):
+        if self.rlhf_type is None:
+            return
+        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid'}
+        if self.loss_type is None:
+            self.loss_type = default_loss_type[self.rlhf_type]
+        if self.rlhf_type == 'kto':
+            self._init_kto()
 
 
 @dataclass
@@ -403,6 +425,7 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.15')
             else:
                 require_version('peft>=0.12')
+        RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()

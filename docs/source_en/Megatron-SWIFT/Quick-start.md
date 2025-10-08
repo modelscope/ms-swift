@@ -8,6 +8,7 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | Pretraining                        | ✅              | ✅    | ✅    | ✅          |
 | Instruction-supervised fine-tuning | ✅              | ✅    | ✅    | ✅          |
 | DPO                                | ✅              | ✅    | ✅    | ✅          |
+| KTO                                | ✅              | ✅    | ✅    | ✅          |
 | Classification tasks               | ✅              | ✅    | ✅    | ✅          |
 
 ## Environment Setup

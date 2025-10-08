@@ -9,8 +9,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from .base import MegatronRLHFTrainer
-from .utils import get_batch
+from .rlhf_mixin import MegatronRLHFTrainer
 
 logger = get_logger()
 
@@ -36,22 +35,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
         self.ref_models = []
-
-    @staticmethod
-    def get_logps(output_tensor, labels, packed_seq_params):
-        args = get_args()
-        per_token_logps = -output_tensor
-        loss_mask = labels != -100
-        per_token_logps = per_token_logps * loss_mask
-        num_samples = packed_seq_params.num_samples
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples * 2 + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((num_samples * 2, ))
-        for i in range(num_samples * 2):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            all_logps[i] = per_token_logps[:, start:end].sum()
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-        return all_logps
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
@@ -99,20 +82,21 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
-        if input_tensor is not None:
-            unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
         vp_stage = unwrapped_model.vp_stage
+        timers('batch-generator', log_level=2).start()
+        with self.stimer(bdata=True):
+            data = self.get_batch(data_iterator, vp_stage)
+        timers('batch-generator').stop()
+        data.pop('loss_scale', None)
+        # ref_model
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if input_tensor is not None:
                 ref_model.set_input_tensor(input_tensor[:input_tensor.shape[0] // 2].detach())
-            timers('batch-generator', log_level=2).start()
-            with self.stimer(bdata=True):
-                data = get_batch(data_iterator, vp_stage)
-            timers('batch-generator').stop()
-            data.pop('loss_scale', None)
             ref_output_tensor = ref_model(**data)
 
+        if input_tensor is not None:
+            unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
         with self.stimer:
             output_tensor = model(**data)
         return torch.concat([ref_output_tensor, output_tensor], dim=0), partial(
