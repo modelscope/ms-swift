@@ -872,19 +872,6 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
         return output_tensor
 
-    def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
-        # used to calculate model forward (logps)
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        data.pop('loss_scale', None)
-        labels = data.get('labels')
-        context = torch.no_grad() if no_grad else nullcontext()
-        with context:
-            output_tensor = self._forward_step_helper(model, data)
-        data['logps'] = None if labels is None else self.get_logps(
-            output_tensor, labels, data['packed_seq_params'], per_token=per_token)
-        return data
-
     @staticmethod
     def get_logps(output_tensor, labels, packed_seq_params, per_token: bool = False):
         args = get_args()

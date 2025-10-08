@@ -169,7 +169,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.bridge is None:
             self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
             self._patch_mbridge(self.bridge)
-        per_tensor_params = self.bridge.export_weights([self.unwrapped_model])
+        per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
         self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
 
     def _prepare_rewards(self):
@@ -560,7 +560,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
             # rewards: [prompt_batch_size, self.num_generations]
             # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
-            mode = 'train' if self.unwrapped_model.training else 'eval'
+            mode = 'train' if self.unwrapped_models[0].training else 'eval'
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             rewards_std = group_rewards.std(-1).mean().item()
@@ -587,19 +587,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
         inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
-
         if self.beta != 0.0:
-            with torch.no_grad(), self.null_ref_context() as ref_model:
+            with torch.no_grad(), self.null_ref_context() as ref_models:
+                assert len(ref_models) == 1, 'KTO currently does not support VPP.'
+                ref_model = ref_models[0]
                 batch['ref_per_token_logps'] = self.model_forward(
                     ref_model, iter([inputs]), no_grad=True, per_token=True)['logps']
 
         if not self.on_policy:
             batch['old_per_token_logps'] = self.model_forward(
-                self.unwrapped_model, iter([inputs]), no_grad=True, per_token=True)['logps']
-
-        # get packed_seq_params, from get_batch func
-        # batch = process_packed_seq_params(batch)
-
+                self.unwrapped_models[0], iter([inputs]), no_grad=True, per_token=True)['logps']
         return batch
 
     @contextmanager
@@ -685,8 +682,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
             padding_length = completion_mask.shape[1] - truncated_mask.shape[1]
             if padding_length > 0:
-                padding = torch.zeros(padding_length, device=truncated_mask.device, dtype=truncated_mask.dtype)
-                truncated_mask = torch.cat([truncated_mask, padding])
+                padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
+                truncated_mask = torch.cat([truncated_mask, padding], dim=1)
             completion_mask = completion_mask & (~truncated_mask)
 
         if self.beta != 0.0:
@@ -737,8 +734,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
             sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0) for loss, mask in zip(loss_list, mask_list)]
             loss = torch.stack(sample_loss[:micro_batch_size]).mean()
-
-            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
@@ -782,3 +777,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, reporting_metric
+
+    def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
+        # used to calculate model forward (logps) in GRPO
+        with self.stimer(bdata=True):
+            data = get_batch(data_iterator)
+        data.pop('loss_scale', None)
+        labels = data.get('labels')
+        context = torch.no_grad() if no_grad else nullcontext()
+        with context:
+            output_tensor = self._forward_step_helper(model, data)
+        data['logps'] = None if labels is None else self.get_logps(
+            output_tensor, labels, data['packed_seq_params'], per_token=per_token)
+        return data
