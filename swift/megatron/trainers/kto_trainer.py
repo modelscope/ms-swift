@@ -4,7 +4,6 @@ from functools import partial
 from typing import Literal
 
 import torch
-from accelerate.utils import gather
 from megatron.core import mpu
 from megatron.training import get_args, get_timers
 from trl import KTOTrainer
