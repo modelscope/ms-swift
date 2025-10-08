@@ -380,9 +380,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
             self.engine.engine.wake_up(tags=['kv_cache'])
 
+        # Step3: Rollout
         batch = self.preprocess_rollout_data(batch)
         outputs: List[RolloutOutput] = self._rollout(batch)
+
+        # Step4: Sleep to release memory
+        if self.args.sleep_level > 0:
+            self.engine.engine.sleep(self.args.sleep_level)
+
         batch = self.postprocess_rollout_data(batch, outputs)
+
         return batch
 
     def preprocess_rollout_data(self, batch):

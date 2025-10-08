@@ -9,6 +9,7 @@ from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
+from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args, get_wandb_writer
@@ -270,7 +271,7 @@ def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] =
         raise
 
 
-# code borrowed from VeRL
+# code borrowed from verl
 @torch.no_grad()
 def load_megatron_model_to_gpu(models, load_grad=True):
     for model_chunk in models:
@@ -332,3 +333,68 @@ def offload_megatron_model_to_cpu(models):
                     param.grad = param.grad.to('cpu', non_blocking=True)
     gc.collect()
     empty_cache()
+
+
+@torch.no_grad()
+def load_megatron_copy_params(optimizers):
+    """
+    Load optimizer parameters back to GPU. Handles ChainedOptimizer.
+
+    Args:
+        optimizers: Optimizer or ChainedOptimizer instance.
+    """
+
+    def _iter_opts(opt):
+        if isinstance(opt, ChainedOptimizer):
+            return opt.chained_optimizers
+        return [opt]
+
+    def load_tensor_to_gpu(tensor):
+        if tensor is None:
+            return
+        device_id = get_current_device()
+        tensor.data = tensor.data.to(device_id, non_blocking=True)
+
+    def load_group_to_gpu(group):
+        if group is None:
+            return
+
+        if isinstance(group, list):
+            for param_group in group:
+                if isinstance(param_group, list):
+                    for param in param_group:
+                        load_tensor_to_gpu(param)
+                else:
+                    load_tensor_to_gpu(param_group)
+        else:
+            load_tensor_to_gpu(group)
+
+    # Load all parameter groups to GPU for each underlying optimizer
+
+    for _opt in _iter_opts(optimizers):
+        if hasattr(_opt, 'shard_fp32_from_float16_groups'):
+            load_group_to_gpu(_opt.shard_fp32_from_float16_groups)
+
+
+@torch.no_grad()
+def load_megatron_optimizer(optimizers):
+
+    def _iter_opts(opt):
+        if isinstance(opt, ChainedOptimizer):
+            return opt.chained_optimizers
+        return [opt]
+
+    for _opt in _iter_opts(optimizers):
+        load_megatron_copy_params(_opt)
+        # if we are using HybridDeviceOptimizer, we need to only move gpu optimizer state to gpu
+        if hasattr(_opt.optimizer, '_move_new_state_to_right_device'):
+            _opt.optimizer._move_new_state_to_right_device()
+        else:
+            opt_state_dict_values = _opt.optimizer.state.values()
+            for v in opt_state_dict_values:
+                if 'exp_avg' in v:
+                    v['exp_avg'] = v['exp_avg'].to(get_current_device(), non_blocking=True)
+                if 'exp_avg_sq' in v:
+                    v['exp_avg_sq'] = v['exp_avg_sq'].to(get_current_device(), non_blocking=True)
+        gc.collect()
+        empty_cache()
