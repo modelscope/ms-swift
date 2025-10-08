@@ -19,7 +19,13 @@ class DummyKTOTrainer(KTOTrainer):
     # For reusing the kto_loss function in TRL.
 
     def gather_for_metrics(self, input_data, *args, **kwargs):
-        return gather(input_data)
+        output_tensors = torch.empty(
+            mpu.get_data_parallel_world_size() * input_data.numel(),
+            dtype=input_data.dtype,
+            device=input_data.device,
+        )
+        torch.distributed.all_gather_into_tensor(output_tensors, input_data, group=mpu.get_data_parallel_group())
+        return output_tensors
 
     def __init__(self, args):
         self.accelerator = namedtuple('Accelerator', ['device', 'gather_for_metrics'])(
@@ -163,9 +169,12 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
                 continue
             res[k] = v
         for key in ['chosen', 'rejected']:
-            count = total_loss_dict[f'count/{key}']
+            count = total_loss_dict.get(f'count/{key}')
+            if count is None or count.item() == 0:
+                continue
             res[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
             res[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
-        res['rewards/margins'] = res['rewards/chosen'] - res['rewards/rejected']
+        if 'rewards/chosen' in res and 'rewards/rejected' in res:
+            res['rewards/margins'] = res['rewards/chosen'] - res['rewards/rejected']
         total_loss_dict.clear()
         total_loss_dict.update(res)
