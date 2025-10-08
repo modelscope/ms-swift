@@ -16,7 +16,7 @@ logger = get_logger()
 
 
 class DummyKTOTrainer(KTOTrainer):
-    # For reusing the dpo_loss function in TRL.
+    # For reusing the kto_loss function in TRL.
 
     def gather_for_metrics(self, input_data, *args, **kwargs):
         return gather(input_data)
@@ -90,7 +90,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     @staticmethod
     def _get_input_tensor(input_tensor, is_KL: bool, is_ref: bool, length: int, dim: int):
-        # polocy, ref, polocy_KL, ref_KL
+        # policy, ref, policy_KL, ref_KL
         total_length = input_tensor.shape[dim]
         KL_length = (total_length - 2 * length) // 2
         slice_list = [0, length, 2 * length, total_length - KL_length, total_length]
@@ -132,18 +132,18 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         if self.args.calculate_KL:
             with torch.no_grad():
                 if input_tensor is not None:
-                    unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, True, False, 0))
+                    unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, True, False, length, 0))
                 KL_output_tensor = model(**kl_data)
 
         if input_tensor is not None:
-            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, 0))
+            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
         with self.stimer:
             output_tensor = model(**data)
         dim = 1 if mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage) else 0
         if self.args.calculate_KL:
             res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=dim)
         else:
-            res = torch.concat([output_tensor, ref_output_tensor], dim=1)
+            res = torch.concat([output_tensor, ref_output_tensor], dim=dim)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
 
     def _prepare_batch(self, data, vp_stage):
