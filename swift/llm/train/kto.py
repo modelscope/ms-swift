@@ -72,7 +72,7 @@ def prepare_kto_dataset(args, train_dataset, val_dataset):
                 f"""
         You have different amounts of desirable/positive and undesirable/negative examples but the
         weights on the desirable and undesirable losses don't seem to be in an ideal range. Based
-        on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, '{des_weight_upper_bound}]
+        on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, {des_weight_upper_bound}]
         or undesirable_weight in [{und_weight_lower_bound}, {und_weight_upper_bound}] (but NOT BOTH).
         See the documentation on how to optimally set these weights.""", UserWarning)
     return train_dataset, val_dataset
