@@ -9,7 +9,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from .base import MegatronRLHFTrainer
+from .rlhf_mixin import MegatronRLHFTrainer
 
 logger = get_logger()
 

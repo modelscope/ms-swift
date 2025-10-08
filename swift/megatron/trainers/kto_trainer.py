@@ -9,7 +9,7 @@ from megatron.training import get_args, get_timers
 from trl import KTOTrainer
 
 from swift.utils import get_current_device, get_logger
-from .base import MegatronRLHFTrainer
+from .rlhf_mixin import MegatronRLHFTrainer
 
 logger = get_logger()
 
