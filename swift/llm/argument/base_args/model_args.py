@@ -118,6 +118,12 @@ class ModelArguments:
             # reset the factor
             rope_scaling.pop('factor', None)
 
+        if 'factor' not in rope_scaling and self.max_model_len is None:
+            # fix megatron qwen2_5_vl
+            self.rope_scaling = rope_scaling
+            logger.info(f'Setting args.rope_scaling: {rope_scaling}')
+            return
+
         # get origin_max_model_len
         origin_max_model_len = None
         if rope_scaling and rope_scaling.get('original_max_position_embeddings') is not None:
@@ -133,7 +139,6 @@ class ModelArguments:
         rope_scaling['original_max_position_embeddings'] = origin_max_model_len
 
         if 'factor' not in rope_scaling:
-            assert self.max_model_len is not None, '`max_model_len` or `rope_scaling_factor` is not set'
             rope_scaling['factor'] = max(float(math.ceil(self.max_model_len / origin_max_model_len)), 1.0)
         rope_model_len = int(origin_max_model_len * rope_scaling['factor'])
         if self.max_model_len is None:
