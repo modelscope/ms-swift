@@ -39,6 +39,8 @@ class RLHFMegatronArgumentsMixin:
     steps_per_generation: Optional[int] = None
     num_generations: int = 8
     max_completion_length: int = 512
+    # GSPO https://www.arxiv.org/abs/2507.18071
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     # ───────────────────────────  Sampling  ───────────────────────────
     epsilon: float = 0.2
@@ -60,7 +62,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_disable_cascade_attn: bool = False
     sleep_level: Literal[0, 1, 2] = 0
 
-    # ──────────────  External VLLM (server)  ──────────────
+    # ──────────────  External VLLM (server, not supported yet)  ──────────────
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
@@ -83,9 +85,6 @@ class RLHFMegatronArgumentsMixin:
     # soft_overlong, https://arxiv.org/abs/2503.14476
     soft_max_length: Optional[int] = None
     soft_cache_length: Optional[int] = None
-
-    reward_model: Optional[List[str]] = None
-    reward_model_plugin: Optional[List[str]] = None
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
     # reward model
@@ -123,9 +122,6 @@ class RLHFMegatronArgumentsMixin:
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
-    # GSPO https://www.arxiv.org/abs/2507.18071
-    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
-
     wandb_log_unique_prompts: Optional[bool] = None
     num_iterations: int = 1
 
@@ -149,11 +145,6 @@ class RLHFMegatronArgumentsMixin:
             self._init_kto()
         if self.rlhf_type == 'grpo':
             self._init_grpo()
-            self._set_grpo_default()
-
-    def _set_grpo_default(self):
-        if self.beta is None:
-            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
 
     def _init_grpo(self):
 
@@ -172,23 +163,9 @@ class RLHFMegatronArgumentsMixin:
                 logger.info('Connected to vLLM server')
 
         def _check_not_supported():
-            # TODO: check
-            # bool
-            not_supported_args = [
-                'sync_ref_model',
-                'async_generate',
-            ]
-            for arg in not_supported_args:
-                if getattr(self, arg):
-                    raise ValueError(f'{arg} is not supported for Megatron-GRPO yet, please unset it.')
-            # else
-            if self.num_iterations > 1:
-                raise ValueError('num_iterations > 1 is not supported for Megatron-GRPO yet, please set it to 1.')
+            pass
 
         def _check_batch_params():
-            # assert self.micro_batch_size % self.num_generations == 0, \
-            #     f'micro_batch_size ({self.micro_batch_size}) must be divisible' \
-            #     f' by the number of generations ({self.num_generations})'
             if self.generation_batch_size is None and self.steps_per_generation is None:
                 self.steps_per_generation = 1
                 self.generation_batch_size = self.global_batch_size * self.steps_per_generation
@@ -213,8 +190,6 @@ class RLHFMegatronArgumentsMixin:
         _check_not_supported()
         _check_batch_params()
         # default loss_type if no loss_type is provided
-        if self.loss_type == 'sigmoid':
-            self.loss_type = 'grpo'
         assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
             f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
         if self.async_generate or not self.use_vllm:

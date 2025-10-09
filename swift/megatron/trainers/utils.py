@@ -65,18 +65,6 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         qkv_format='thd')
 
 
-def process_packed_seq_params(batch: Dict[str, Any]) -> int:
-    args = get_args()
-    num_samples = batch.pop('num_samples')
-    text_position_ids = batch.pop('text_position_ids', None)
-    if text_position_ids is None:
-        text_position_ids = batch.get('position_ids')
-    if args.padding_free and text_position_ids is not None:
-        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
-        batch['packed_seq_params'].num_samples = num_samples
-    return batch
-
-
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
     if dim < 0:
         dim = (dim + inputs.ndim) % inputs.ndim
