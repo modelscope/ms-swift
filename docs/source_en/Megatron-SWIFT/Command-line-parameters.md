@@ -283,7 +283,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss).
 - 🔥task_type: Defaults to "causal_lm". Options: "causal_lm", "seq_cls".
 - num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
-- problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Default is "single_label_classification".
+- problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Defaults to None. If the model is a reward_model or num_labels equals 1, this parameter is 'regression'; otherwise it is 'single_label_classification'.
 
 
 ## RLHF Parameters

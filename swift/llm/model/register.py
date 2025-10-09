@@ -717,10 +717,12 @@ def get_model_tokenizer(
 
     if task_type == 'seq_cls':
         problem_type = kwargs.get('problem_type')
-        if problem_type is None and model_info.num_labels == 1:
-            problem_type = 'regression'
-        if problem_type is not None:
-            model_info.config.problem_type = problem_type
+        if problem_type is None:
+            if model_info.num_labels == 1 or model_meta.is_reward:
+                problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'
+        model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
