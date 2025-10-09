@@ -2513,7 +2513,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return []
 
         # Define core metadata fields required for all requests
-        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'objects', 'uuid']
+        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
         requests_dicts = []
 
         for data in inputs:
