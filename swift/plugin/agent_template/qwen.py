@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from .base import AgentKeyword, BaseAgentTemplate
 
@@ -24,8 +24,9 @@ class QwenEnAgentTemplate(BaseAgentTemplate):
                               f'Parameters: {tool_desc.parameters} {tool_desc.args_format}')
         return tool_names, tool_descs
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
+        system = system or ''
         return f"""{system}
 
 # Tools
@@ -56,8 +57,9 @@ class QwenZhAgentTemplate(BaseAgentTemplate):
                               f'输入参数：{tool_desc.parameters} {tool_desc.args_format}')
         return tool_names, tool_descs
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
+        system = system or ''
         return f"""{system}
 
 # 工具
@@ -76,8 +78,9 @@ class QwenZhAgentTemplate(BaseAgentTemplate):
 
 class QwenEnParallelAgentTemplate(QwenEnAgentTemplate):
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
+        system = system or ''
         return f"""{system}
 
 # Tools
@@ -104,8 +107,9 @@ class QwenEnParallelAgentTemplate(QwenEnAgentTemplate):
 
 class QwenZhParallelAgentTemplate(QwenZhAgentTemplate):
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
+        system = system or ''
         return f"""{system}
 
 # 工具

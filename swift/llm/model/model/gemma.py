@@ -6,7 +6,7 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
+                        get_model_tokenizer_sentence_transformers, get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
 
 
@@ -200,4 +200,17 @@ register_model(
         architectures=['Gemma3nForConditionalGeneration'],
         model_arch=ModelArch.gemma3n,
         requires=['transformers>=4.53.1'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma_emb,
+        [
+            ModelGroup([
+                Model('google/embeddinggemma-300m', 'google/embeddinggemma-300m'),
+            ], ),
+        ],
+        None,
+        get_model_tokenizer_sentence_transformers,
+        architectures=['Gemma3TextModel'],
     ))

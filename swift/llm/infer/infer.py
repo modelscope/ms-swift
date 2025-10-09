@@ -32,6 +32,7 @@ class SwiftInfer(SwiftPipeline):
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
             self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
+            self.infer_engine.reranker_use_activation = args.reranker_use_activation
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.template = args.get_template(None)
@@ -56,6 +57,8 @@ class SwiftInfer(SwiftPipeline):
             'template': template,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        if infer_backend in {'pt', 'vllm'}:
+            kwargs['reranker_use_activation'] = args.reranker_use_activation
         if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine

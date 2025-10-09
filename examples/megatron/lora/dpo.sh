@@ -6,6 +6,7 @@ megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

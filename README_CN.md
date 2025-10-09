@@ -71,6 +71,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.09.29: 支持embedding/reranker/seq_cls任务的padding_free参数, 使用`--padding_free true --task_type embedding/reranker/generative_reranker/seq_cls`开始训练!
 - 🎁 2025.09.07: 支持CHORD训练算法，请查看[文档](docs/source/Instruction/GRPO/AdvancedResearch/CHORD.md)。
 - 🎁 2025.09.06: Ulysses现已支持与ring-attention结合使用，使得输入序列可以被切分成任意数量的块（不再受限于num_heads），命令参数仍然是`--sequence_parallel_size N`。
 - 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/多模态模型.md)。
@@ -120,19 +121,19 @@ pip install -e .
 
 |              | 范围           | 推荐                  | 备注                 |
 |--------------|--------------|---------------------|--------------------|
-| python       | >=3.9        | 3.10                |                    |
+| python       | >=3.9        | 3.10/3.11            |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.7.1               |                    |
-| transformers | >=4.33       | 4.55.4              |                    |
+| transformers | >=4.33       | 4.56.2              |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.18 |                     |                    |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                    |
 | trl          | >=0.15,<0.21 | 0.20.0              | RLHF               |
-| deepspeed    | >=0.14       | 0.16.9              | 训练                 |
-| vllm         | >=0.5.1      | 0.10                | 推理/部署              |
-| sglang       | >=0.4.6      | 0.4.9.post6         | 推理/部署              |
-| lmdeploy     | >=0.5   | 0.9.2                 | 推理/部署              |
-| evalscope    | >=0.11       |                     | 评测                 |
+| deepspeed    | >=0.14       | 0.17.5              | 训练                 |
+| vllm         | >=0.5.1      | 0.10.1.1                | 推理/部署              |
+| sglang       | >=0.4.6      | 0.4.10.post2         | 推理/部署              |
+| lmdeploy     | >=0.5   | 0.9.2.post1                 | 推理/部署              |
+| evalscope    | >=1.0       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。

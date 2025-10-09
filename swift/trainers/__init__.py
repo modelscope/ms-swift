@@ -2,8 +2,7 @@
 from typing import TYPE_CHECKING
 
 from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
-                                        SchedulerType)
+from transformers.trainer_utils import FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType
 
 from swift.utils.import_utils import _LazyModule
 from . import callback

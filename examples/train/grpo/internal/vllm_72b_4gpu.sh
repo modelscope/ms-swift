@@ -12,6 +12,7 @@ swift rlhf \
     --vllm_max_model_len 2048 \
     --vllm_tensor_parallel_size 4 \
     --dataset AI-MO/NuminaMath-TIR#10000 \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --max_length 2048 \

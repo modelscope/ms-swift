@@ -99,9 +99,10 @@ class EvalModel(ModelAPI):
         # Extract required model parameters
         self.model = collect_model_arg('model')  # model path or identifier
         self.template = collect_model_arg('template')  # conversation template
+        self.max_batch_size = collect_model_arg('max_batch_size')  # maximum batch size
 
         # Initialize the inference engine with batch support
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=self.config.batch_size)
+        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=self.max_batch_size)
 
     def generate(
         self,

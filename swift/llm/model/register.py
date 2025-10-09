@@ -7,6 +7,7 @@ from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -90,7 +91,8 @@ class ModelMeta:
             for model in model_group.models:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
-                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
+
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
                         return model_group
 
     def check_requires(self, model_info=None):
@@ -229,6 +231,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
+    return_dummy_model = kwargs.get('return_dummy_model')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
     if max_model_len:
@@ -248,19 +251,13 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
-        # fix seq_cls
-        if model_info.task_type == 'seq_cls' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
-        elif model_info.task_type == 'reranker' and automodel_class is None:
-            try:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-            except ValueError:
-                model = None
+        if model_info.task_type in {'seq_cls', 'reranker'} and automodel_class is None and not return_dummy_model:
+            with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                except ValueError:
+                    model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
         model_meta = kwargs['model_meta']
@@ -268,10 +265,12 @@ def get_model_tokenizer_from_local(model_dir: str,
             'model_info': model_info,
             'model_meta': model_meta,
             'automodel_class': automodel_class,
-            'return_dummy_model': kwargs['return_dummy_model']
+            'return_dummy_model': return_dummy_model,
         }
         if model is None:
-            if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+            if return_dummy_model:
+                context = partial(patch_automodel, **context_kwargs)
+            elif model_info.task_type == 'seq_cls' and not model_meta.is_reward:
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
             elif model_info.task_type == 'seq_cls' and model_meta.is_reward and model_config.num_labels > 1:
                 logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '
@@ -322,6 +321,45 @@ def get_model_tokenizer_from_local(model_dir: str,
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
 
+    return model, tokenizer
+
+
+def get_model_tokenizer_sentence_transformers(model_dir: str,
+                                              model_info: ModelInfo,
+                                              model_kwargs: Dict[str, Any],
+                                              load_model: bool = True,
+                                              *,
+                                              tokenizer=None,
+                                              model_config=None,
+                                              automodel_class=None,
+                                              **kwargs):
+    from sentence_transformers import SentenceTransformer
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if load_model:
+        model = SentenceTransformer(
+            model_dir, trust_remote_code=True, model_kwargs={
+                'torch_dtype': torch_dtype,
+            })
+        model.config = model_config
+
+        def enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                output.requires_grad_(True)
+
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        tokenizer = model.tokenizer
+    else:
+        model = None
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     return model, tokenizer
 
 
@@ -434,7 +472,7 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    model_name = get_model_name(model_id_or_path)
+    model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
@@ -677,11 +715,12 @@ def get_model_tokenizer(
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
-    problem_type = kwargs.get('problem_type')
-    if problem_type is None and model_info.num_labels == 1:
-        problem_type = 'regression'
-    if problem_type is not None:
-        model_info.config.problem_type = problem_type
+    if task_type == 'seq_cls':
+        problem_type = kwargs.get('problem_type')
+        if problem_type is None and model_info.num_labels == 1:
+            problem_type = 'regression'
+        if problem_type is not None:
+            model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 

@@ -129,6 +129,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/clevr_cogen_a_train' \
+    --load_from_cache_file true \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -203,6 +204,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/GEOQA_R1V_Train_8K' \
+    --load_from_cache_file true \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -270,6 +272,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'lmms-lab/multimodal-open-r1-8k-verified' \
+    --load_from_cache_file true \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \

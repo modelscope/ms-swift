@@ -7,6 +7,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type full \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

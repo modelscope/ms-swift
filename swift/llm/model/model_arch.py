@@ -31,6 +31,8 @@ class MLLMModelArch:
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
     qwen2_5_omni = 'qwen2_5_omni'
+    qwen3_vl = 'qwen3_vl'
+    qwen3_omni = 'qwen3_omni'
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
@@ -80,6 +82,7 @@ class MLLMModelArch:
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
+    step_audio2_mini = 'step_audio2_mini'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -523,6 +526,14 @@ else:
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.qwen3_vl,
+        language_model='model.language_model',
+        aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
+        vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.qwen2_5_omni,
         language_model='thinker.model',
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
@@ -532,10 +543,30 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.qwen3_omni,
+        language_model='thinker.model',
+        vision_tower=['thinker.audio_tower', 'thinker.visual'],
+        aligner=[
+            'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
+            'thinker.visual.merger_list'
+        ],
+        generator=['talker', 'token2wav'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.midashenglm,
         language_model='decoder',
         aligner=['audio_projector'],
         vision_tower=['audio_encoder'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.step_audio2_mini,
+        language_model='model',
+        aligner=['adapter'],
+        vision_tower=['encoder'],
     ))
 
 register_model_arch(

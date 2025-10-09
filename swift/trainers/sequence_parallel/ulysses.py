@@ -9,7 +9,7 @@ from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
 
 from swift.llm import HfConfigFactory, get_llm_model
-from ...utils import get_device, get_dist_setting
+from swift.utils import get_cu_seqlens_from_position_ids, get_device, get_dist_setting
 from .utils import GatherLoss
 
 
@@ -252,7 +252,7 @@ class SequenceParallel:
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
                         position_ids = kwargs['position_ids']
-                        cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
                         position_ids = self._split_packed(position_ids, cu_seqlens)
                         mask = position_ids != -1
@@ -375,27 +375,22 @@ class SequenceParallel:
 
         llm_model = get_llm_model(model)
 
-        if hasattr(llm_model, 'thinker'):
-            base_model = llm_model.thinker.model
+        if hasattr(llm_model, 'language_model'):
+            if hasattr(llm_model.language_model, '_update_causal_mask'):
+                self.causal_mask_func = llm_model.language_model._update_causal_mask
         else:
-            base_model = llm_model.model
-
-        if hasattr(base_model, 'language_model'):
-            if hasattr(base_model.language_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model.language_model._update_causal_mask
-        else:
-            if hasattr(base_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model._update_causal_mask
+            if hasattr(llm_model, '_update_causal_mask'):
+                self.causal_mask_func = llm_model._update_causal_mask
 
         if not SequenceParallel._global_inited:
             # these operations are global initializations and patches
             self._init_device_mesh()
-            self._prepare_flash_attn(base_model)
+            self._prepare_flash_attn(llm_model)
             SequenceParallel._global_inited = True
 
-        self._prepare_forward_hook(base_model)
+        self._prepare_forward_hook(llm_model)
         if model.model_info.is_moe_model:
-            self._prepare_moe_aux_loss(base_model)
+            self._prepare_moe_aux_loss(llm_model)
 
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
@@ -435,7 +430,7 @@ class SequenceParallel:
             return tensor
 
         if position_ids is not None and self.rp_world_size > 1:
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             all_tensors = []
             for i in range(len(cu_seqlens) - 1):
                 if dim == 1:
@@ -473,7 +468,7 @@ class SequenceParallel:
             gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
             torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
 
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             all_tensor_length = []
             for i in range(len(cu_seqlens) - 1):
                 length = cu_seqlens[i + 1] - cu_seqlens[i]
@@ -506,17 +501,6 @@ class SequenceParallel:
             gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
 
-    @staticmethod
-    def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
-        position_ids = position_ids[0]
-        seq_start_indices = torch.where(position_ids == 0)[0]
-        seq_end_indices = torch.cat(
-            [seq_start_indices[1:],
-             torch.tensor([len(position_ids)], device=position_ids.device)])
-        seq_lengths = seq_end_indices - seq_start_indices
-        cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=position_ids.device), seq_lengths]), dim=0)
-        return cu_seqlens
-
     def _split_packed(self, value, cu_seqlens, dim=1):
         """Split and re-group in zigzag"""
         local_values = []
@@ -543,7 +527,7 @@ class SequenceParallel:
         if self.rp_world_size > 1:
             input_dim = input.dim()
             assert input_dim >= 2
-            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
             assert torch.all(cu_seqlens % (2 * self.rp_world_size) == 0)
             value_chunks = self._split_packed(input, cu_seqlens, dim=dim)
             local_value = value_chunks.chunk(self.sp_world_size, dim=dim)[self.sp_rank].contiguous()
@@ -708,10 +692,9 @@ class SequenceParallel:
         2. split labels
         """
         position_ids = None
-        if self.padding_free:
-            position_ids = inputs.get('text_position_ids')
-            if position_ids is None:
-                position_ids = inputs.get('position_ids')
+        position_ids = inputs.get('text_position_ids')
+        if position_ids is None:
+            position_ids = inputs.get('position_ids')
         if position_ids is not None and position_ids.shape[0] == 1:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if 'labels' in inputs:

@@ -1,14 +1,18 @@
 import os
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Type
+from typing import Any, Dict, List, Literal, Optional, Type
 
+import torch
+from torch import nn
 from transformers.utils import strtobool
 
-from swift.llm.template.constant import LLMTemplateType
+from swift.llm.template.constant import LLMTemplateType, MLLMTemplateType
 from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.utils import is_deepspeed_enabled
 from ..register import Template, TemplateMeta, register_template
-from ..utils import Prompt, Word
+from ..utils import Context, Prompt, Word, findall
+from .utils import ChatmlTemplateMeta
 
 
 class SeedTemplate(Template):
@@ -24,9 +28,10 @@ class SeedTemplate(Template):
                     if '<think>' in m['content'] and '</think>' in m['content']:
                         _, think = m['content'].split('<think>', maxsplit=1)
                         think, _ = think.split('</think>', maxsplit=1)
-                        thinking_token_len = len(self.tokenizer(think)['input_ids'])
-                        if thinking_token_len > max_length:
-                            max_length = thinking_token_len
+                        if think.strip():
+                            thinking_token_len = len(self.tokenizer(think)['input_ids'])
+                            if thinking_token_len > max_length:
+                                max_length = thinking_token_len
 
         def convert_integer_v2(n):
             if n is None:
@@ -170,3 +175,89 @@ class SeedTemplateMeta(TemplateMeta):
 
 
 register_template(SeedTemplateMeta(LLMTemplateType.seed_oss, default_system=None, template_cls=SeedTemplate))
+
+SAIL_VL_DEFAULT_SYSTEM = '你是由抖音内容理解组开发的多模态大模型，英文名叫UniVL, 是一个有用无害的人工智能助手。'
+
+
+class SailVLTemplate(Template):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.skip_prompt = False
+        self.num_image_token = self.processor.num_image_token
+        self.img_context_token_id = self.tokenizer.convert_tokens_to_ids('<IMG_CONTEXT>')
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image', 'This model only supports image input'
+        if self.mode == 'vllm':
+            raise NotImplementedError('vLLM not support this model now')
+        else:
+            image_context = ['<img>', [-100], '</img>\n']
+        return image_context
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        idx_list = findall(input_ids, -100)
+        pixel_values = None
+        loss_scale = encoded.get('loss_scale', None)
+        images = inputs.images
+        processor = self.processor
+        if images:
+            labels = encoded.get('labels')
+            image_inputs = processor.image_processor(images)
+            num_patches = image_inputs['num_patches_list']
+            pixel_values = image_inputs['pixel_values']
+        else:
+            pixel_values = None
+            num_patches = []
+        assert len(num_patches) == len(
+            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+
+        def _get_new_tokens(i):
+            img_tokens: List[int] = self.processor.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patches[i]
+            return img_tokens
+
+        encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+            input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+        encoded['pixel_values'] = pixel_values
+        return encoded
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        embedding = model.language_model.get_input_embeddings()
+        device = embedding.weight.device
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        if pixel_values is not None:
+            vit_embeds = model.extract_feature(pixel_values)
+            inputs_embeds = embedding(input_ids)
+            B, N, C = inputs_embeds.shape
+            inputs_embeds = inputs_embeds.reshape(B * N, C)
+
+            input_ids = input_ids.reshape(B * N)
+            selected = (input_ids == self.img_context_token_id)
+            assert selected.sum() != 0
+            inputs_embeds = inputs_embeds.clone()
+            inputs_embeds[selected] = vit_embeds.reshape(-1, C).to(inputs_embeds.device)
+
+            inputs_embeds = inputs_embeds.reshape(B, N, C)
+        elif is_deepspeed_enabled():
+            inputs_embeds = embedding(input_ids).to(device=device)
+            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
+            vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
+            inputs_embeds = inputs_embeds + vit_embeds.mean() * 0.
+
+        return {'inputs_embeds': inputs_embeds.to(input_ids.device)}
+
+
+@dataclass
+class SailVLTemplateMeta(ChatmlTemplateMeta):
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    prompt: Prompt = field(default_factory=lambda: ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'])
+
+
+register_template(
+    SailVLTemplateMeta(MLLMTemplateType.sail_vl2, default_system=SAIL_VL_DEFAULT_SYSTEM, template_cls=SailVLTemplate))

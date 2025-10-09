@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
 import torch
@@ -28,7 +29,7 @@ class MultimodalGPTModel(MegatronModule):
         self.post_process = post_process
         self.language_model = GPTModel(config, transformer_layer_spec, vocab_size, max_sequence_length, pre_process,
                                        post_process, *args, **kwargs)
-
+        self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
         self.visual = None
@@ -40,13 +41,24 @@ class MultimodalGPTModel(MegatronModule):
         origin_forward = VocabParallelEmbedding.forward
 
         def forward(_self, input_):
+            from ..trainers.utils import split_cp_inputs
+            args = get_args()
             reduce_scatter_embeddings = _self.reduce_scatter_embeddings
             _self.reduce_scatter_embeddings = False
             input_ = torch.masked_fill(input_, input_ < 0, 0)
             res = origin_forward(_self, input_)
             _self.reduce_scatter_embeddings = reduce_scatter_embeddings
+            packed_seq_params = kwargs.get('packed_seq_params')
             if self.visual is not None:
                 res = self.visual.get_inputs_embeds(res, **kwargs)
+                kwargs.clear()
+                if isinstance(res, dict):
+                    # compat dict
+                    inputs_embeds = res.pop('inputs_embeds')
+                    kwargs.update(res)
+                    res = inputs_embeds
+            if args.context_parallel_size > 1:
+                res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
@@ -73,18 +85,14 @@ class MultimodalGPTModel(MegatronModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            from ..trainers.utils import get_batch_on_this_cp_rank
-            kwargs.update({'input_ids': input_ids})
+            kwargs.update({'input_ids': input_ids, 'packed_seq_params': packed_seq_params})
             with self._patch_word_embeddings(kwargs):
                 decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
-                decoder_input = get_batch_on_this_cp_rank({
-                    'decoder_input': decoder_input,
-                    'packed_seq_params': packed_seq_params
-                })['decoder_input']
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
             decoder_input = None
+            kwargs = {}
         return self.language_model(
             input_ids=input_ids,
             position_ids=position_ids,
@@ -93,7 +101,14 @@ class MultimodalGPTModel(MegatronModule):
             labels=labels,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            **kwargs,
         )
 
     def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
         return self.language_model.set_input_tensor(input_tensor)
+
+    def get_input_tensor(self):
+        return self.language_model.get_input_tensor()
+
+    def shared_embedding_or_output_weight(self) -> torch.Tensor:
+        return self.language_model.shared_embedding_or_output_weight()
