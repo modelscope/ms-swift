@@ -22,10 +22,9 @@ from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from .base import MegatronRLHFTrainer
-from .utils import (gather, gather_object, get_batch, load_megatron_model_to_gpu, load_megatron_optimizer,
-                    log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
-                    process_packed_seq_params, profiling_context)
+from .rlhf_mixin import MegatronRLHFTrainer
+from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
+                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context)
 
 try:
     from mbridge import AutoBridge
@@ -235,7 +234,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         bridge._weight_to_hf_format = _weight_to_hf_format_patched
 
-    def _replace_data_iterator(self, data_iterator):
+    def _replace_data_iterator(self, data_iterator, model):
 
         if self._step % self.steps_per_generation == 0:
             # each rollout DP group will generate generation_batch_size / world_size completions
@@ -667,7 +666,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
-        data = get_batch(data_iterator)
+        data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
         inputs = {
             k: v
@@ -689,7 +688,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
         lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
-        per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, per_token=True)
+        per_token_logps = self.get_logps(
+            output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
 
         if self.args.overlong_filter and any(truncated_mask):
             # TODO: non-padding-free
@@ -795,14 +795,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
         # used to calculate model forward (logps) in GRPO
         with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
+            data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
         labels = data.get('labels')
         context = torch.no_grad() if no_grad else nullcontext()
         with context:
             output_tensor = self._forward_step_helper(model, data)
+        packed_seq_params = data['packed_seq_params']
         data['logps'] = None if labels is None else self.get_logps(
-            output_tensor, labels, data['packed_seq_params'], per_token=per_token)
+            output_tensor, labels, data['packed_seq_params'], packed_seq_params.num_samples, per_token=per_token)
         return data
 
     @contextmanager

@@ -29,7 +29,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             if getattr(self, k) is None:
                 setattr(self, k, v)
         MegatronArguments.__post_init__(self)
-        RLHFMegatronArgumentsMixin.__post_init__(self)
         self.extra_args = self.parse_to_megatron()
         self.extra_args['model_info'] = self.model_info
         self.extra_args['model_meta'] = self.model_meta

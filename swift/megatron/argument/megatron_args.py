@@ -149,8 +149,6 @@ class RLHFMegatronArgumentsMixin:
             self._init_kto()
         if self.rlhf_type == 'grpo':
             self._init_grpo()
-        super().__post_init__()
-        if self.rlhf_type == 'grpo':
             self._set_grpo_default()
 
     def _set_grpo_default(self):
