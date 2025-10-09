@@ -173,7 +173,6 @@ class InferClient(InferEngine):  # 定义面向服务的推理客户端，继承
             return  # 返回 None，表示本行可忽略
         assert data.startswith('data:'), f'data: {data}'  # 断言行以 'data:' 开头，符合 SSE 数据格式
         return data[5:].strip()  # 去除前缀并再次去空白，得到纯净的 JSON 文本
-
     async def infer_async(  # 异步推理入口：单请求，支持流式与非流式两种返回形态
         self,  # 实例自身引用
         infer_request: InferRequest,  # 单个推理请求对象
