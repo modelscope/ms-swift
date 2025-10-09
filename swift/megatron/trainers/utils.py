@@ -16,6 +16,7 @@ from megatron.training import get_args, get_wandb_writer
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
+from swift.utils import get_logger
 from swift.utils.torch_utils import empty_cache, get_current_device
 
 
@@ -246,29 +247,9 @@ def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] =
     if group is None:
         return hf_gather_object(object)
     size = torch.distributed.get_world_size(group=group)
-    rank = torch.distributed.get_rank(group=group)
     output_objects = [None for _ in range(size)]
-
-    try:
-        # 添加调试信息
-        from swift.utils import get_logger
-        logger = get_logger()
-        logger.info(f'Rank {rank}/{size} in group starting all_gather_object with {len(object)} objects')
-
-        torch.distributed.all_gather_object(output_objects, object, group=group)
-
-        logger.info(f'Rank {rank}/{size} in group completed all_gather_object successfully')
-        # flatten
-        return [x for y in output_objects for x in y]
-    except Exception as e:
-        from swift.utils import get_logger
-        logger = get_logger()
-        logger.error(f'Rank {rank}/{size} in group failed at all_gather_object: {e}')
-        logger.error(f"Object size: {len(object) if hasattr(object, '__len__') else 'unknown'}")
-        if torch.cuda.is_available():
-            logger.error(f'GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
-                         f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
-        raise
+    torch.distributed.all_gather_object(output_objects, object, group=group)
+    return [x for y in output_objects for x in y]
 
 
 # code borrowed from verl
@@ -377,6 +358,47 @@ def load_megatron_copy_params(optimizers):
 
 
 @torch.no_grad()
+def offload_megatron_copy_params(optimizers):
+    """
+    Offload optimizer parameters to CPU. Supports both Megatron optimizers
+    and `ChainedOptimizer`, which wraps a list of underlying optimizers.
+
+    Args:
+        optimizers: The optimizer or ChainedOptimizer instance.
+    """
+
+    def _iter_opts(opt):
+        if isinstance(opt, ChainedOptimizer):
+            return opt.chained_optimizers
+        return [opt]
+
+    def offload_tensor_to_cpu(tensor):
+        if tensor is None:
+            return
+        tensor.data = tensor.data.to('cpu', non_blocking=True)
+
+    def offload_group_to_cpu(group):
+        if group is None:
+            return
+
+        if isinstance(group, list):
+            for param_group in group:
+                if isinstance(param_group, list):
+                    for param in param_group:
+                        offload_tensor_to_cpu(param)
+                else:
+                    offload_tensor_to_cpu(param_group)
+        else:
+            offload_tensor_to_cpu(group)
+
+    # Offload all parameter groups to CPU for each underlying optimizer
+
+    for _opt in _iter_opts(optimizers):
+        if hasattr(_opt, 'shard_fp32_from_float16_groups'):
+            offload_group_to_cpu(_opt.shard_fp32_from_float16_groups)
+
+
+@torch.no_grad()
 def load_megatron_optimizer(optimizers):
 
     def _iter_opts(opt):
@@ -398,3 +420,30 @@ def load_megatron_optimizer(optimizers):
                     v['exp_avg_sq'] = v['exp_avg_sq'].to(get_current_device(), non_blocking=True)
         gc.collect()
         empty_cache()
+
+
+@torch.no_grad()
+def offload_megatron_optimizer(optimizers):
+
+    def _iter_opts(opt):
+        if isinstance(opt, ChainedOptimizer):
+            return opt.chained_optimizers
+        return [opt]
+
+    for _opt in _iter_opts(optimizers):
+        offload_megatron_copy_params(_opt)
+        opt_state_dict_values = _opt.optimizer.state.values()
+        for v in opt_state_dict_values:
+            if 'exp_avg' in v:
+                v['exp_avg'] = v['exp_avg'].to('cpu', non_blocking=True)
+            if 'exp_avg_sq' in v:
+                v['exp_avg_sq'] = v['exp_avg_sq'].to('cpu', non_blocking=True)
+        gc.collect()
+        empty_cache()
+
+
+def log_gpu_memory(prefix: str = ''):
+    logger = get_logger()
+
+    logger.info(f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
+                f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')

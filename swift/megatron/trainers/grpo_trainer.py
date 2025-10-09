@@ -23,7 +23,9 @@ from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_id
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from .base import MegatronRLHFTrainer
-from .utils import gather, gather_object, get_batch, process_packed_seq_params, profiling_context
+from .utils import (gather, gather_object, get_batch, load_megatron_model_to_gpu, load_megatron_optimizer,
+                    log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
+                    process_packed_seq_params, profiling_context)
 
 try:
     from mbridge import AutoBridge
@@ -133,6 +135,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.engine = self.prepare_vllm()
                 if self.args.sleep_level > 0:
                     self.engine.engine.sleep(self.args.sleep_level)
+                    log_gpu_memory('after sleep vLLM engine')
 
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
@@ -367,28 +370,32 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: server mode
         assert self.vllm_mode == 'colocate'
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
-        if self.engine.inner_model_executor.is_sleeping:
-            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-            # Load weights only (faster and reduces memory peak)
-            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-            self.engine.engine.wake_up(**kwargs)
+        context = self.offload_context if self.enable_offload else nullcontext
+        with context():
+            if self.engine.inner_model_executor.is_sleeping:
+                wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
+                # Load weights only (faster and reduces memory peak)
+                kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+                self.engine.engine.wake_up(**kwargs)
+                log_gpu_memory(f'after wake up vLLM engine with {kwargs}')
 
-        # Step 2: Load model weights
-        self._move_model_to_vllm()
+            # Step 2: Load model weights
+            self._move_model_to_vllm()
 
-        if (self.engine.inner_model_executor.is_sleeping
-                and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
-            self.engine.engine.wake_up(tags=['kv_cache'])
+            if (self.engine.inner_model_executor.is_sleeping
+                    and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                self.engine.engine.wake_up(tags=['kv_cache'])
+                log_gpu_memory('after wake up vLLM engine with kv_cache')
 
-        # Step3: Rollout
-        batch = self.preprocess_rollout_data(batch)
-        outputs: List[RolloutOutput] = self._rollout(batch)
+            # Step3: Rollout
+            batch = self.preprocess_rollout_data(batch)
+            outputs: List[RolloutOutput] = self._rollout(batch)
 
-        # Step4: Sleep to release memory
-        if self.args.sleep_level > 0:
-            self.engine.engine.sleep(self.args.sleep_level)
-
-        batch = self.postprocess_rollout_data(batch, outputs)
+            # Step4: Sleep to release memory
+            if self.args.sleep_level > 0:
+                self.engine.engine.sleep(self.args.sleep_level)
+                log_gpu_memory('after sleep vLLM engine')
+            batch = self.postprocess_rollout_data(batch, outputs)
 
         return batch
 
@@ -797,3 +804,21 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         data['logps'] = None if labels is None else self.get_logps(
             output_tensor, labels, data['packed_seq_params'], per_token=per_token)
         return data
+
+    @contextmanager
+    def offload_context(self):
+        if self.args.offload_model:
+            offload_megatron_model_to_cpu(self.unwrapped_models)
+            log_gpu_memory('after offload model to cpu')
+        # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+        #     self.offload_optimizer()
+
+        try:
+            yield
+        finally:
+            # reload (load back) model when exiting context
+            if self.args.offload_model:
+                load_megatron_model_to_gpu(self.unwrapped_models)
+                log_gpu_memory('after load model to gpu')
+            # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+            #     self.load_optimizer()
