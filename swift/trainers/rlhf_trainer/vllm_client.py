@@ -288,6 +288,44 @@ class VLLMClient:
         if all_errors:
             raise RuntimeError(f'Multiple errors: {all_errors}')
 
+    def update_flattened_params(self, metadatas, flattened_tensor):
+        """
+        Updates model parameters using flattened tensor data.
+
+        Args:
+            metadatas: List of FlattenedTensorMetadata objects
+            flattened_tensor: The flattened tensor containing all parameters
+        """
+        errors = [None] * self.num_servers
+        metadatas = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in metadatas]
+
+        def _update_single_server(i):
+            try:
+                data = {
+                    'metadatas': metadatas,
+                }
+
+                response = self.sessions[i].post(
+                    f'{self.base_urls[i]}/update_flattened_params/',
+                    json=data,
+                )
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} update flattened params failed: {response.text}')
+
+                self.pynccl_comms[i].broadcast(flattened_tensor, src=self.pynccl_comms[i].rank)
+                self.pynccl_comms[i].group.barrier()
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_update_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors: {all_errors}')
+
     def update_model_params(self, model: nn.Module):
         for name, param in model.named_parameters():
             self.update_named_param(name, param.data)

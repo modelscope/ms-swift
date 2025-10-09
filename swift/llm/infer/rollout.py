@@ -29,7 +29,8 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedT
                                                patch_vllm_load_adapter)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest, UpdateWeightsRequest
+from .protocol import (InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest,
+                       UpdateFlattenedParamsRequest, UpdateWeightsRequest)
 
 try:
     from vllm.utils import get_open_port
@@ -106,6 +107,30 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             peft_config=peft_config,
             lora_tensors=named_params)
         self.add_lora(lora_request)
+
+    def update_flattened_params(self, metadatas: list[Dict]) -> None:
+        """
+        Receives updated flattened weights from the client process and updates the model parameters.
+
+        Args:
+            metadatas (list[Dict]): List of metadata dictionaries for the flattened tensors.
+        """
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+
+        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+
+        # Load the reconstructed parameters into the model
+        self.model_runner.model.load_weights(weights=list(named_params.items()))
 
 
 logger = get_logger()
@@ -229,6 +254,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
         self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
+        self.app.post('/update_flattened_params/')(self.update_flattened_params)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
@@ -386,6 +412,25 @@ class SwiftRolloutDeploy(SwiftPipeline):
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, updating adapter parameter'}
+
+    async def update_flattened_params(self, request: UpdateFlattenedParamsRequest):
+        """
+        Updates the model weights with flattened tensor data.
+
+        Args:
+            request (UpdateFlattenedParamsRequest):
+                - metadatas (List[FlattenedTensorMetadata]): Metadata for the flattened tensors.
+
+        """
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_flattened_params', 'args': (metadatas, )}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating flattened parameters'}
 
     async def reset_prefix_cache(self):
         """

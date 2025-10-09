@@ -49,11 +49,11 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (FlattenedTensorBucket, TensorLoRARequest, _ForwardRedirection, compute_chord_loss,
-                    get_gather_if_zero3_context, identity_data_collator, load_pil_img, make_chord_sft_dataset,
-                    patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
-                    patch_save_last_checkpoint, patch_vllm_load_adapter, replace_assistant_response_with_ids,
-                    set_expandable_segments)
+from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets, _ForwardRedirection,
+                    _process_bucket_with_flattened_tensor, compute_chord_loss, get_gather_if_zero3_context,
+                    identity_data_collator, load_pil_img, make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_save_last_checkpoint,
+                    patch_vllm_load_adapter, replace_assistant_response_with_ids, set_expandable_segments)
 from .vllm_client import VLLMClient
 
 try:
@@ -663,8 +663,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         [state.shape != torch.Size([0]) for state in state_dict.values()])
 
                     if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        for name, param in state_dict.items():
-                            self.vllm_client.update_named_param(name, param)
+                        # Create parameter buckets and process them efficiently
+                        named_params = list(state_dict.items())
+                        parameter_buckets = _create_parameter_buckets(named_params)
+
+                        # Process each bucket using flattened tensor approach
+                        for bucket in parameter_buckets:
+                            _process_bucket_with_flattened_tensor(self, bucket)
+
+                        del named_params, parameter_buckets
                     elif self.vllm_mode == 'colocate':
                         llm_model = self.engine.inner_model
                         llm_model.load_weights(state_dict.items())
@@ -673,13 +680,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     del state_dict
             self.base_sync_done = True
         else:
-            for name, param in self.model.named_parameters():
-                with gather_if_zero3([param]):
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        self.vllm_client.update_named_param(name, param.data)
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.engine.inner_model
-                        llm_model.load_weights([(name, param.data)])
+            if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                # For non-PEFT models, use streaming bucket approach to avoid memory peaks
+                # Collect parameters in small batches and process them immediately
+                current_bucket = []
+                current_size = 0
+                bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
+                for name, param in self.model.named_parameters():
+                    with gather_if_zero3([param]):
+                        # Ensure we have the full parameter (not sharded) and COPY it
+                        # to avoid the parameter being re-partitioned when exiting context
+                        full_param = param.data.clone() if hasattr(param, 'data') else param.clone()
+                        param_size = full_param.numel() * full_param.element_size()
+
+                        # If adding this param would exceed bucket size, process current bucket first
+                        if current_size + param_size > bucket_size_bytes and current_bucket:
+                            _process_bucket_with_flattened_tensor(self, current_bucket)
+                            current_bucket = []
+                            current_size = 0
+
+                        current_bucket.append((name, full_param))
+                        current_size += param_size
+
+                # Process remaining parameters in the last bucket
+                if current_bucket:
+                    _process_bucket_with_flattened_tensor(self, current_bucket)
+            else:
+                for name, param in self.model.named_parameters():
+                    with gather_if_zero3([param]):
+                        if self.vllm_mode == 'colocate':
+                            llm_model = self.engine.inner_model
+                            llm_model.load_weights([(name, param.data)])
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()

@@ -23,6 +23,7 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from transformers import Trainer
 
+from swift.trainers.rlhf_trainer.grpo_trainer import GRPOTrainer
 from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
@@ -45,7 +46,7 @@ if is_vllm_available():
         @property
         def config(self):
             return self.peft_config
-        
+
         @property
         def embeddings(self):
             return self.lora_embeddings
@@ -812,3 +813,65 @@ def peft_config_to_dict(peft_config):
         peft_config['target_modules'] = list(peft_config['target_modules'])
 
     return peft_config
+
+
+def _create_parameter_buckets(named_params, bucket_size_mb=100):
+    """Create parameter buckets grouped by dtype for efficient processing"""
+    buckets = []
+    current_bucket = []
+    current_size = 0
+    bucket_size_bytes = bucket_size_mb * 1024 * 1024
+
+    # Group parameters by dtype first, then by size
+    dtype_groups = {}
+    for name, param in named_params:
+        dtype = param.dtype
+        if dtype not in dtype_groups:
+            dtype_groups[dtype] = []
+        dtype_groups[dtype].append((name, param))
+
+    # Create buckets within each dtype group
+    for dtype, params in dtype_groups.items():
+        for name, param in params:
+            param_size = param.numel() * param.element_size()
+
+            # If adding this param would exceed bucket size, start a new bucket
+            if current_size + param_size > bucket_size_bytes and current_bucket:
+                buckets.append(current_bucket)
+                current_bucket = []
+                current_size = 0
+
+            current_bucket.append((name, param))
+            current_size += param_size
+
+        # Add remaining params in current bucket
+        if current_bucket:
+            buckets.append(current_bucket)
+            current_bucket = []
+            current_size = 0
+
+    return buckets
+
+
+def _process_bucket_with_flattened_tensor(trainer: GRPOTrainer, bucket_params):
+    """Process a bucket of parameters using FlattenedTensorBucket for efficiency"""
+    if not bucket_params:
+        return
+
+    # Create FlattenedTensorBucket for efficient processing
+    bucket = FlattenedTensorBucket(named_tensors=bucket_params)
+    metadatas = bucket.get_metadata()
+    flattened_tensor = bucket.get_flattened_tensor()
+
+    # Use the new flattened parameter update method
+    # If not available, fall back to individual parameter updates
+    try:
+        trainer.vllm_client.update_flattened_params(metadatas, flattened_tensor)
+    except AttributeError:
+        # Fallback to individual parameter updates
+        reconstructed = bucket.reconstruct_tensors()
+        for name, param in reconstructed.items():
+            trainer.vllm_client.update_named_param(name, param)
+
+    # Clean up
+    del bucket, metadatas, flattened_tensor
