@@ -73,13 +73,14 @@ class SglangEngine(InferEngine):
         parameters = inspect.signature(ServerArgs).parameters
         if 'pp_size' in parameters:
             engine_kwargs['pp_size'] = pp_size
+        if 'enable_ep_moe' in parameters:
+            engine_kwargs['enable_ep_moe'] = enable_ep_moe
         self.server_args = ServerArgs(
             model_path=self.model_dir,
             dtype=self.model_info.torch_dtype,
             tp_size=tp_size,
             dp_size=dp_size,
             ep_size=ep_size,
-            enable_ep_moe=enable_ep_moe,
             mem_fraction_static=mem_fraction_static,
             context_length=context_length,
             disable_cuda_graph=disable_cuda_graph,
