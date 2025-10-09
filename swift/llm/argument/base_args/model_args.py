@@ -119,6 +119,7 @@ class ModelArguments:
             rope_scaling.pop('factor', None)
 
         if 'factor' not in rope_scaling and self.max_model_len is None:
+            # fix megatron qwen2_5_vl
             self.rope_scaling = rope_scaling
             logger.info(f'Setting args.rope_scaling: {rope_scaling}')
             return
