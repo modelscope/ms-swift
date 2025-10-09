@@ -198,7 +198,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
   - Note: In ms-swift versions earlier than 3.7.1, the default is None and the value is automatically loaded from config.json.
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
-- moe_expert_capacity_factor: Capacity factor for each expert. `None` means no tokens will be dropped. Default is `None`. When `--moe_expert_capacity_factor` is set, tokens exceeding an expert’s capacity will be dropped based on their selection probability. This can balance the training load and improve training speed.
+- 🔥moe_expert_capacity_factor: Capacity factor for each expert. `None` means no tokens will be dropped. Default is `None`. When `--moe_expert_capacity_factor` is set, tokens exceeding an expert’s capacity will be dropped based on their selection probability. This can balance the training load and improve training speed (for example, set it to 1.).
 - moe_pad_expert_input_to_capacity: Pad the input of each expert so that its length aligns with the expert capacity length. Default is `False`. This option only takes effect if `--moe_expert_capacity_factor` is set.
 - moe_token_drop_policy: Options are 'probs' and 'position'. Default is 'probs'.
 
@@ -248,13 +248,15 @@ LoRA Training:
 - reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
 - label_smoothing: Default is 0.
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
-- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions) for possible values.
 
 **KTO Parameters**:
-- beta: Coefficient for the KL regularization term. Default is `0.1`.
-- desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
-- undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
-- calculate_KL: Whether to calculate KL divergence. Default is `True`.
+- ref_load: same meaning as in DPO.
+- ref_adapter_load: same meaning as in DPO.
+- beta: parameter controlling the deviation from the ref_model. Higher `beta` means less deviation from the ref_model. Default is `0.1`.
+- loss_type: default is `'kto'`. See possible values in the TRL docs: https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type.
+- desirable_weight: factor to weight desirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
+- undesirable_weight: factor to weight undesirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 
 ## Training Parameters
 
@@ -267,7 +269,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT part during multimodal model training. Default: True.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Default: None.
-- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO.
+- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO/KTO.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - streaming: Stream data loading and processing, default is False.
   - Note: Since the length of a streaming dataset cannot be determined, the `--train_iters` parameter must be set. Also set the `max_epochs` parameter to ensure training exits after the specified number of epochs, and to validate and save the model weights accordingly.

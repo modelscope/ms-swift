@@ -1,253 +1,179 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from collections import namedtuple
 from functools import partial
+from typing import Literal
 
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
 from megatron.core import mpu
-from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
-from megatron.training import get_args
-from megatron.training.utils import unwrap_model
-from torch.distributed.nn import all_reduce
+from megatron.training import get_args, get_timers
+from trl import KTOTrainer
 
 from swift.utils import get_current_device, get_logger
-from .base import MegatronRLHFTrainer
-from .utils import get_kto_batch
+from .rlhf_mixin import MegatronRLHFTrainer
 
 logger = get_logger()
+
+
+class DummyKTOTrainer(KTOTrainer):
+    # For reusing the kto_loss function in TRL.
+
+    def gather_for_metrics(self, input_data, *args, **kwargs):
+        output_tensors = torch.empty(
+            mpu.get_data_parallel_world_size() * input_data.numel(),
+            dtype=input_data.dtype,
+            device=input_data.device,
+        )
+        torch.distributed.all_gather_into_tensor(output_tensors, input_data, group=mpu.get_data_parallel_group())
+        return output_tensors
+
+    def __init__(self, args):
+        self.accelerator = namedtuple('Accelerator', ['device', 'gather_for_metrics'])(
+            device=get_current_device(), gather_for_metrics=self.gather_for_metrics)
+        self.loss_type = args.loss_type
+        self.beta = args.beta
+        self.desirable_weight = args.desirable_weight
+        self.undesirable_weight = args.undesirable_weight
+        self.calculate_KL = args.calculate_KL
 
 
 class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        self.beta = args.beta
-        self.desirable_weight = args.desirable_weight
-        self.undesirable_weight = args.undesirable_weight
-        self.calculate_KL = args.calculate_KL
+        assert args.padding_free, 'Currently `rlhf_type="kto"` only supports padding_free.'
+        self.dummy_kto_trainer = DummyKTOTrainer(args)
 
-    @staticmethod
-    def get_logps(output_tensor, labels, packed_seq_params=None):
-        args = get_args()
-        if output_tensor is None:
-            return None
+    def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):
+        labels = data['labels']
+        packed_seq_params = data['packed_seq_params']
+        output = self._get_input_tensor(output_tensor, is_KL, is_ref, length, dim=1)
+        return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
 
-        shifted_logits = output_tensor[:, :-1, :].contiguous()
-        shifted_labels = labels[:, 1:].contiguous()
-
-        logits_for_loss = shifted_logits.transpose(0, 1).contiguous()
-        labels_for_loss = shifted_labels.transpose(0, 1).contiguous()
-
-        per_token_cross_entropy_loss = vocab_parallel_cross_entropy(
-            logits_for_loss, labels_for_loss, label_smoothing=0.0)
-
-        per_token_logps = -per_token_cross_entropy_loss
-        loss_mask = (labels_for_loss != -100)
-        masked_logps = per_token_logps * loss_mask
-
-        if args.padding_free and packed_seq_params is not None:
-            flattened_logps = masked_logps.squeeze(1)  # [seq-1]
-
-            cu_seqlens = packed_seq_params.cu_seqlens_q
-            num_sequences = cu_seqlens.shape[0] - 1
-            all_logps = flattened_logps.new_zeros((num_sequences, ))
-            for i in range(num_sequences):
-                start_index, end_index = cu_seqlens[i], cu_seqlens[i + 1] - 1
-                if end_index > start_index:
-                    all_logps[i] = flattened_logps[start_index:end_index].sum()
+    def loss_func(self, output_tensor, *, data, kl_data, label):
+        length = data['packed_seq_params'].cu_seqlens_q[-1]
+        policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
+        ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
+        if self.args.calculate_KL:
+            policy_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, False, length)
+            ref_KL_logps = self._kto_get_logps(output_tensor, kl_data, True, True, length)
         else:
-            all_logps = masked_logps.sum(dim=0)
+            policy_KL_logps, ref_KL_logps = None, None
+        label = output_tensor.new_tensor(label, dtype=torch.bool)
+        policy_chosen_logps = policy_logps[label]
+        policy_rejected_logps = policy_logps[~label]
+        ref_chosen_logps = ref_logps[label]
+        ref_rejected_logps = ref_logps[~label]
 
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-
-        return all_logps
-
-    @staticmethod
-    def kto_loss(policy_chosen_logps, policy_rejected_logps, policy_KL_logps, reference_chosen_logps,
-                 reference_rejected_logps, reference_KL_logps, beta, desirable_weight, undesirable_weight, calculate_KL,
-                 device):
-        if calculate_KL and policy_KL_logps is not None and reference_KL_logps is not None:
-            kl = (policy_KL_logps - reference_KL_logps).mean().detach()
-            dist.all_reduce(kl, group=mpu.get_data_parallel_group())
-            kl = kl / mpu.get_data_parallel_world_size()
-            kl = kl.clamp(min=0)
-        else:
-            kl = torch.tensor(0.0, device=device)
-
-        chosen_rewards = torch.tensor([], device=kl.device)
-        if policy_chosen_logps.shape[0] > 0:
-            chosen_logratios = policy_chosen_logps - reference_chosen_logps
-            chosen_losses = 1 - F.sigmoid(beta * (chosen_logratios - kl))
-            chosen_rewards = beta * chosen_logratios.detach()
-        else:
-            chosen_losses = torch.tensor([], device=kl.device)
-
-        rejected_rewards = torch.tensor([], device=kl.device)
-        if policy_rejected_logps.shape[0] > 0:
-            rejected_logratios = policy_rejected_logps - reference_rejected_logps
-            rejected_losses = 1 - F.sigmoid(beta * (kl - rejected_logratios))
-            rejected_rewards = beta * rejected_logratios.detach()
-        else:
-            rejected_losses = torch.tensor([], device=kl.device)
-
-        losses = torch.cat((desirable_weight * chosen_losses, undesirable_weight * rejected_losses), 0)
-        return losses, chosen_rewards, rejected_rewards, kl
-
-    def loss_func(self, output_tensor, *, policy_KL_logps, reference_logps, reference_KL_logps, labels, all_labels,
-                  packed_seq_params):
-        policy_logps = self.get_logps(output_tensor, labels, packed_seq_params)
-        is_desirable = all_labels.bool()
-
-        policy_chosen_logps = policy_logps[is_desirable]
-        policy_rejected_logps = policy_logps[~is_desirable]
-        reference_chosen_logps = reference_logps[is_desirable]
-        reference_rejected_logps = reference_logps[~is_desirable]
-
-        loss, chosen_rewards, rejected_rewards, kl = self.kto_loss(
-            policy_chosen_logps=policy_chosen_logps,
-            policy_rejected_logps=policy_rejected_logps,
-            policy_KL_logps=policy_KL_logps,
-            reference_chosen_logps=reference_chosen_logps,
-            reference_rejected_logps=reference_rejected_logps,
-            reference_KL_logps=reference_KL_logps,
-            beta=self.beta,
-            desirable_weight=self.desirable_weight,
-            undesirable_weight=self.undesirable_weight,
-            calculate_KL=self.calculate_KL,
-            device=policy_logps.device,
+        loss, chosen_rewards, rejected_rewards, kl = self.dummy_kto_trainer.kto_loss(
+            policy_chosen_logps,
+            policy_rejected_logps,
+            policy_KL_logps,
+            ref_chosen_logps,
+            ref_rejected_logps,
+            ref_KL_logps,
         )
 
-        loss = loss.mean() if loss.numel() > 0 else torch.tensor(0.0, device=policy_logps.device)
-
-        with torch.no_grad():
-            chosen_rewards_mean = chosen_rewards.mean() if chosen_rewards.numel() > 0 else torch.tensor(
-                0.0, device=loss.device)
-            rejected_rewards_mean = rejected_rewards.mean() if rejected_rewards.numel() > 0 else torch.tensor(
-                0.0, device=loss.device)
-            policy_chosen_logps_mean = policy_chosen_logps.mean() if policy_chosen_logps.numel() > 0 else torch.tensor(
-                0.0, device=loss.device)
-            policy_rejected_logps_mean = policy_rejected_logps.mean(
-            ) if policy_rejected_logps.numel() > 0 else torch.tensor(
-                0.0, device=loss.device)
-
-        metric = {
-            'loss': loss.clone().detach(),
-            'logps/chosen': policy_chosen_logps_mean,
-            'logps/rejected': policy_rejected_logps_mean,
-            'rewards/chosen': chosen_rewards_mean,
-            'rewards/rejected': rejected_rewards_mean,
-            'rewards/margins': chosen_rewards_mean - rejected_rewards_mean,
-            'kl': kl.detach() if kl is not None else torch.tensor(0.0, device=loss.device),
+        loss = loss.mean()
+        mean_metric = {
+            'loss': loss.detach().clone(),
+            'kl': kl.detach(),
         }
-
-        reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+        metric = self._all_reduce_metric(mean_metric)
+        sum_metric = {
+            'logps/chosen_sum': policy_chosen_logps.nansum(),
+            'logps/rejected_sum': policy_rejected_logps.nansum(),
+            'rewards/chosen_sum': chosen_rewards.nansum(),
+            'rewards/rejected_sum': rejected_rewards.nansum(),
+            'count/chosen': loss.new_tensor(chosen_rewards.shape[0]),
+            'count/rejected': loss.new_tensor(rejected_rewards.shape[0]),
+        }
+        metric.update(self._all_reduce_metric(sum_metric, torch.distributed.ReduceOp.SUM))
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
-        return loss, reporting_metric
+        return loss, metric
 
-    def _replace_data_iterator_with_model(self, data_iterator, model):
-        args = get_args()
-        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-
-        processed_data_list = []
-        policy_model = unwrap_model(model)[0]
-
-        for _ in range(num_iters_per_step):
-            with torch.no_grad(), self.null_ref_context() as ref_models:
-                assert len(ref_models) == 1, 'KTO currently does not support VPP.'
-                data = self.ref_forward(ref_models[0], data_iterator)
-
-            if self.calculate_KL:
-                with torch.no_grad():
-                    kl_inputs = {
-                        'input_ids': data.get('KL_completion_input_ids'),
-                        'attention_mask': data.get('KL_completion_attention_mask'),
-                        'position_ids': data.get('KL_completion_position_ids'),
-                    }
-
-                    kl_output_tensor = self._forward_step_helper(policy_model, kl_inputs)
-
-                    policy_KL_logps = self.get_logps(kl_output_tensor, data['KL_completion_labels'],
-                                                     data.get('KL_completion_packed_seq_params'))
-                    data['policy_KL_logps'] = policy_KL_logps
-
-            processed_data_list.append(data)
-
-        return iter(processed_data_list)
-
-    def ref_forward(self, ref_model, data_iterator):
-        with self.stimer(bdata=True):
-            data = get_kto_batch(data_iterator)
-        data.pop('loss_scale', None)
-
-        ref_inputs = {
-            'input_ids': data.get('completion_input_ids'),
-            'attention_mask': data.get('completion_attention_mask'),
-            'position_ids': data.get('completion_position_ids'),
-        }
-        with torch.no_grad():
-            output_tensor = self._forward_step_helper(ref_model, ref_inputs)
-        data['reference_logps'] = self.get_logps(output_tensor, data['completion_labels'],
-                                                 data.get('completion_packed_seq_params'))
-
-        if self.calculate_KL:
-            kl_inputs = {
-                'input_ids': data.get('KL_completion_input_ids'),
-                'attention_mask': data.get('KL_completion_attention_mask'),
-                'position_ids': data.get('KL_completion_position_ids'),
-            }
-            with torch.no_grad():
-                kl_output_tensor = self._forward_step_helper(ref_model, kl_inputs)
-            data['reference_KL_logps'] = self.get_logps(kl_output_tensor, data['KL_completion_labels'],
-                                                        data.get('KL_completion_packed_seq_params'))
-        else:
-            data['reference_KL_logps'] = None
-        return data
-
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        new_data_iterator = self._replace_data_iterator_with_model(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
+    @staticmethod
+    def _get_input_tensor(input_tensor, is_KL: bool, is_ref: bool, length: int, dim: int):
+        # policy, ref, policy_KL, ref_KL
+        total_length = input_tensor.shape[dim]
+        KL_length = (total_length - 2 * length) // 2
+        slice_list = [0, length, 2 * length, total_length - KL_length, total_length]
+        idx = is_KL * 2 + is_ref
+        slice_ = (slice(None), ) * dim + (slice(slice_list[idx], slice_list[idx + 1]), )
+        res = input_tensor[slice_]
+        if is_KL or is_ref:
+            res = res.detach()
+        return res
 
     def forward_step(self, data_iterator, model):
-        data = next(data_iterator)
+        timers = get_timers()
+        # Get the batch.
+        unwrapped_model = model.module.module
+        input_tensor = unwrapped_model.get_input_tensor()
+        vp_stage = unwrapped_model.vp_stage
+        timers('batch-generator', log_level=2).start()
+        with self.stimer(bdata=True):
+            # not support loss_scale
+            data, kl_data = self.get_batch(data_iterator, vp_stage)
+        timers('batch-generator').stop()
+        label = data.pop('label')
+        data.pop('loss_scale', None)
+        kl_data.pop('loss_scale', None)
 
-        reference_logps = data.pop('reference_logps')
-        reference_KL_logps = data.pop('reference_KL_logps', None)
-        policy_KL_logps = data.pop('policy_KL_logps', None)
-        all_labels = torch.tensor(data.pop('label')).to(get_current_device())
-        completion_packed_seq_params = data.get('completion_packed_seq_params')
+        length = data['packed_seq_params'].cu_seqlens_q[-1]
 
-        main_inputs = {
-            'input_ids': data['completion_input_ids'],
-            'attention_mask': data.get('completion_attention_mask'),
-            'position_ids': data.get('completion_position_ids')
-        }
-        with self.stimer():
-            output_tensor = model(**main_inputs)
+        with torch.no_grad(), self.null_ref_context() as ref_models:
+            ref_model = ref_models[vp_stage or 0]
+            if self.args.calculate_KL:
+                if input_tensor is not None:
+                    ref_model.set_input_tensor(self._get_input_tensor(input_tensor, True, True, length, 0))
+                ref_KL_output_tensor = ref_model(**kl_data)
 
-        return output_tensor, partial(
-            self.loss_func,
-            policy_KL_logps=policy_KL_logps,
-            reference_logps=reference_logps,
-            reference_KL_logps=reference_KL_logps,
-            labels=data['completion_labels'],
-            all_labels=all_labels,
-            packed_seq_params=completion_packed_seq_params)
+            if input_tensor is not None:
+                ref_model.set_input_tensor(self._get_input_tensor(input_tensor, False, True, length, 0))
+            ref_output_tensor = ref_model(**data)
 
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
-        self._replace_data_iterator = partial(self._replace_data_iterator_with_model, model=model)
-        return super().evaluate(forward_step_func, data_iterator, model, process_non_loss_data_func, config, verbose,
-                                non_loss_data_func)
+        if self.args.calculate_KL:
+            with torch.no_grad():
+                if input_tensor is not None:
+                    unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, True, False, length, 0))
+                KL_output_tensor = model(**kl_data)
+
+        if input_tensor is not None:
+            unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
+        with self.stimer:
+            output_tensor = model(**data)
+        dim = 1 if mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage) else 0
+        if self.args.calculate_KL:
+            res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=dim)
+        else:
+            res = torch.concat([output_tensor, ref_output_tensor], dim=dim)
+        return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
+
+    def _prepare_batch(self, data, vp_stage):
+        res = []
+        num_samples = data.pop('num_samples')
+        for key in ['completion_', 'KL_completion_']:
+            _data = {k[len(key):]: v for k, v in data.items() if k.startswith(key)}
+            res.append(super()._prepare_batch(_data, vp_stage, num_samples))
+        res[0]['label'] = data['label']
+        return res
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+        super().custom_log(total_loss_dict, mode)
+        res = {}
+        for k, v in total_loss_dict.items():
+            if k.startswith('count/') or k.endswith('_sum'):
+                continue
+            res[k] = v
+        for key in ['chosen', 'rejected']:
+            count = total_loss_dict.get(f'count/{key}')
+            if count is None or count.item() == 0:
+                continue
+            res[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
+            res[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
+        if 'rewards/chosen' in res and 'rewards/rejected' in res:
+            res['rewards/margins'] = res['rewards/chosen'] - res['rewards/rejected']
+        total_loss_dict.clear()
+        total_loss_dict.update(res)

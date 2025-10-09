@@ -9,8 +9,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from .base import MegatronRLHFTrainer
-from .utils import get_batch
+from .rlhf_mixin import MegatronRLHFTrainer
 
 logger = get_logger()
 
@@ -83,20 +82,21 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
-        if input_tensor is not None:
-            unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
         vp_stage = unwrapped_model.vp_stage
+        timers('batch-generator', log_level=2).start()
+        with self.stimer(bdata=True):
+            data = self.get_batch(data_iterator, vp_stage)
+        timers('batch-generator').stop()
+        data.pop('loss_scale', None)
+        # ref_model
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if input_tensor is not None:
                 ref_model.set_input_tensor(input_tensor[:input_tensor.shape[0] // 2].detach())
-            timers('batch-generator', log_level=2).start()
-            with self.stimer(bdata=True):
-                data = get_batch(data_iterator, vp_stage)
-            timers('batch-generator').stop()
-            data.pop('loss_scale', None)
             ref_output_tensor = ref_model(**data)
 
+        if input_tensor is not None:
+            unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
         with self.stimer:
             output_tensor = model(**data)
         return torch.concat([ref_output_tensor, output_tensor], dim=0), partial(

@@ -11,7 +11,3 @@ class MegatronRLHFArguments(MegatronTrainArguments):
     loss_scale: str = 'last_round'
 
     calculate_per_token_loss: bool = False
-
-    desirable_weight: float = 1.
-    undesirable_weight: float = 1.
-    calculate_KL: bool = True
