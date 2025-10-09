@@ -316,6 +316,8 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         )
         logger.info(f'bone config: {bone_config}')
         model = Swift.prepare_model(model, bone_config)
+    else:
+        raise ValueError(f'Unknown train_type: {args.train_type}')
     return model
 
 
