@@ -87,16 +87,18 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
+        if per_token:
+            if args.context_parallel_size > 1:
+                per_token_logps = all_reduce(per_token_logps, group=mpu.get_context_parallel_group())
+            return per_token_logps
+
         if num_samples is None:
             num_samples = packed_seq_params.num_samples * 2
         cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
         all_logps = per_token_logps.new_zeros((num_samples, ))
         for i in range(num_samples):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            if per_token:
-                all_logps[i] = per_token_logps[:, start:end]
-            else:
-                all_logps[i] = per_token_logps[:, start:end].sum()
+            all_logps[i] = per_token_logps[:, start:end].sum()
         if args.context_parallel_size > 1:
             all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
         return all_logps

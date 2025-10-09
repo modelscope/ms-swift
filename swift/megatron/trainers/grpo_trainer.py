@@ -602,7 +602,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
-                assert len(ref_models) == 1, 'KTO currently does not support VPP.'
+                assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
                 ref_model = ref_models[0]
                 batch['ref_per_token_logps'] = self.model_forward(
                     ref_model, iter([inputs]), no_grad=True, per_token=True)['logps']
