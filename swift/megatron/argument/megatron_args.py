@@ -102,8 +102,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     enable_channel_loss: bool = False
     task_type: Literal['causal_lm', 'seq_cls'] = None
     num_labels: Optional[int] = None
-    problem_type: Literal['regression', 'single_label_classification',
-                          'multi_label_classification'] = 'single_label_classification'
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None

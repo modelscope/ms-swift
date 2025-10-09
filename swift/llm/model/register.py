@@ -232,6 +232,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
+    model_meta = kwargs.get('model_meta')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
     if max_model_len:
@@ -244,6 +245,15 @@ def get_model_tokenizer_from_local(model_dir: str,
     if num_labels and model_info.task_type in ['seq_cls', 'reranker']:
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
+
+    if model_info.task_type == 'seq_cls':
+        problem_type = kwargs.get('problem_type')
+        if problem_type is None:
+            if model_info.num_labels == 1 or model_meta.is_reward:
+                problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'
+        model_config.problem_type = problem_type
 
     if model_info.quant_method == 'fp8':
         torch_dtype = 'auto'
@@ -260,7 +270,6 @@ def get_model_tokenizer_from_local(model_dir: str,
                     model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
-        model_meta = kwargs['model_meta']
         context_kwargs = {
             'model_info': model_info,
             'model_meta': model_meta,
@@ -715,12 +724,6 @@ def get_model_tokenizer(
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
-    if task_type == 'seq_cls':
-        problem_type = kwargs.get('problem_type')
-        if problem_type is None and model_info.num_labels == 1:
-            problem_type = 'regression'
-        if problem_type is not None:
-            model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
