@@ -9,6 +9,7 @@ NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \

@@ -145,6 +145,7 @@ swift sft \
     --train_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -222,6 +223,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
@@ -292,6 +294,7 @@ swift rlhf \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
@@ -325,7 +328,7 @@ swift rlhf \
 
 Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
-ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
+ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO/KTO。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
 
 关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/快速开始.md)。
 
@@ -339,6 +342,7 @@ NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \

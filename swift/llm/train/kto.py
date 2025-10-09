@@ -42,7 +42,10 @@ def _get_kl_dataset(dataset: Optional[HfDataset],
 
 def prepare_kto_dataset(args, train_dataset, val_dataset):
     world_size = get_dist_setting()[2]
-    total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
+    if hasattr(args, 'global_batch_size') and args.global_batch_size is not None:
+        total_batch_size = args.global_batch_size
+    else:
+        total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
     if total_batch_size <= 1:
         raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
                          'will be equivalent to the implied reward.')
@@ -69,7 +72,7 @@ def prepare_kto_dataset(args, train_dataset, val_dataset):
                 f"""
         You have different amounts of desirable/positive and undesirable/negative examples but the
         weights on the desirable and undesirable losses don't seem to be in an ideal range. Based
-        on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, '{des_weight_upper_bound}]
+        on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, {des_weight_upper_bound}]
         or undesirable_weight in [{und_weight_lower_bound}, {und_weight_upper_bound}] (but NOT BOTH).
         See the documentation on how to optimally set these weights.""", UserWarning)
     return train_dataset, val_dataset

@@ -12,9 +12,9 @@ from transformers import PretrainedConfig, PreTrainedModel
 from transformers.utils import ContextManagers
 
 from swift.llm import deep_getattr, get_model_tokenizer
+from swift.utils import disable_safe_ddp_context_use_barrier
 from ..gpt.config import convert_gpt_hf_config
 from ..mm_gpt_model import MultimodalGPTModel
-from ..model_provider import model_provider as model_provider_func
 from ..register import MegatronModelMeta
 
 
@@ -52,7 +52,6 @@ def patch_device_map_meta(model_cls):
 @dataclass
 class MMGPTMegatronModelMeta(MegatronModelMeta):
     model_cls: Type[nn.Module] = MultimodalGPTModel
-    model_provider: Callable[[], nn.Module] = model_provider_func
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
 
 
@@ -63,14 +62,15 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         super().__init__(config)
         args = get_args()
         model_dir = args.model_info.model_dir
-        kwargs = {'attn_impl': 'flash_attn'} if args.attention_backend.name == 'flash' else {}
+        attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
+        kwargs = {'attn_impl': attn_impl} if args.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []
         if not isinstance(ignore_init_model_cls, list):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
         context_list.append(patch_hf_initialize_weight())
         kwargs['model_type'] = args.model_info.model_type
-        with ContextManagers(context_list):
+        with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
         self.processor = get_tokenizer()

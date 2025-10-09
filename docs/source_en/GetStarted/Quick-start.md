@@ -10,7 +10,7 @@ ms-swift is a comprehensive training and deployment framework for large language
 - Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
 - 🍊 RLHF Training: Supports human alignment training methods like DPO, GRPO, RM, PPO, GKD, KTO, CPO, SimPO, ORPO for both text-based and multimodal large models.
 - 🍓 Multimodal Training: Capable of training models for different modalities such as images, videos, and audios; supports tasks like VQA (Visual Question Answering), Captioning, OCR (Optical Character Recognition), and Grounding.
-- 🥥 Megatron Parallelism: Supports accelerating CPT/SFT/DPO using Megatron parallelism techniques, currently compatible with 200+ large language models.
+- 🥥 Megatron Parallelism: Supports accelerating CPT/SFT/DPO/KTO using Megatron parallelism techniques, currently compatible with 200+ large language models.
 - Interface-driven Training: Offers training, inference, evaluation, and quantization capabilities through an interface, enabling a complete workflow for large models.
 - Plugins and Extensions: Allows customization and extension of models and datasets, and supports customizations for components like loss, metric, trainer, loss-scale, callback, optimizer, etc.
 - 🍉 Toolbox Capabilities: Offers not only training support for large models and multi-modal large models but also covers the entire process of inference, evaluation, quantization, and deployment.

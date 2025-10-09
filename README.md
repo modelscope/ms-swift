@@ -75,6 +75,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.09.29: Support padding_free for embedding/reranker/seq_cls tasks, use `--padding_free true --task_type embedding/reranker/generative_reranker/seq_cls` to begin!
 - 🎁 2025.09.07: Added support for CHORD training algorithm. See the [documentation](./docs/source_en/Instruction/GRPO/AdvancedResearch/CHORD.md)
 - 🎁 2025.09.06: Ulysses can now be used with ring-attention, allowing sequences to be sharded into any number of chunks (no longer limited by the number of heads). The argument remains `--sequence_parallel_size N`.
 - 🎁 2025.09.02: Megatron-SWIFT now supports multimodal model training. Documentation can be found [here](./docs/source_en/Megatron-SWIFT/Multimodal-Model.md).
@@ -124,19 +125,19 @@ Running Environment:
 
 |              | Range        | Recommended         | Notes                                     |
 |--------------|--------------|---------------------|-------------------------------------------|
-| python       | >=3.9        | 3.10                |                                           |
+| python       | >=3.9        | 3.10/3.11                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.7.1               |                                           |
-| transformers | >=4.33       | 4.55.4              |                                           |
+| transformers | >=4.33       | 4.56.2              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.18 |                     |                                           |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.21 | 0.20.0              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.16.9              | Training                                  |
-| vllm         | >=0.5.1      | 0.10                | Inference/Deployment                      |
-| sglang       | >=0.4.6      | 0.4.9.post6         | Inference/Deployment                      |
-| lmdeploy     | >=0.5   | 0.9.2                 | Inference/Deployment                      |
-| evalscope    | >=0.11       |                     | Evaluation                                |
+| deepspeed    | >=0.14       | 0.17.5              | Training                                  |
+| vllm         | >=0.5.1      | 0.10.1.1                | Inference/Deployment                      |
+| sglang       | >=0.4.6      | 0.4.10.post2         | Inference/Deployment                      |
+| lmdeploy     | >=0.5   | 0.9.2.post1                 | Inference/Deployment                      |
+| evalscope    | >=1.0       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).

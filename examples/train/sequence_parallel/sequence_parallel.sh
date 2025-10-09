@@ -6,6 +6,7 @@ CELOSS_PARALLEL_SIZE=2048 \
 swift sft \
     --model Qwen/Qwen2.5-3B-Instruct \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
+    --load_from_cache_file true \
     --train_type lora \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 4 \

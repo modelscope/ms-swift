@@ -66,7 +66,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
                              'Please input the training dataset.')
         self._init_save()
-        self.seq_length = self.seq_length or self.max_length
+        self.seq_length = self.seq_length or self.packing_length or self.max_length
         if self.streaming:
             self.dataloader_type = 'external'
             if self.num_workers > 1:
@@ -75,3 +75,5 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         if self.load is None and self.no_initialization:
             raise ValueError('You did not pass `--load`, so you need to set `--no_initialization false` '
                              'to allow the model to initialize weights properly.')
+        if self.cached_dataset and self.context_parallel_size > 1:
+            raise ValueError('`cached_dataset` does not support context parallelism.')

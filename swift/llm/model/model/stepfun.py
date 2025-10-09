@@ -90,9 +90,7 @@ register_model(
         get_model_tokenizer_step_audio2_mini,
         model_arch=ModelArch.step_audio2_mini,
         architectures=['StepAudio2ForCausalLM'],
-        requires=[
-            'transformers==4.53.2', 'torchaudio', 'librosa', 'onnxruntime', 's3tokenizer', 'diffusers', 'hyperpyyaml'
-        ],
+        requires=['transformers==4.53.3', 'torchaudio', 'librosa'],
         tags=['audio'],
     ))
 

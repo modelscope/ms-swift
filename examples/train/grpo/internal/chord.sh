@@ -16,6 +16,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-MO/NuminaMath-TIR \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --beta 0.0 \
     --steps_per_generation 4 \

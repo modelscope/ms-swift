@@ -6,6 +6,7 @@ swift sft \
     --loss_type listwise_reranker \
     --train_type full \
     --dataset MTEB/scidocs-reranking \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \
     --output_dir output \

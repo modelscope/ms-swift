@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -205,6 +205,22 @@ register_model(
         requires=['keye_vl_utils'],
     ))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.keye_vl_1_5,
+        [
+            ModelGroup([
+                Model('Kwai-Keye/Keye-VL-1_5-8B', 'Kwai-Keye/Keye-VL-1_5-8B'),
+            ]),
+        ],
+        TemplateType.keye_vl_1_5,
+        get_model_tokenizer_keye_vl,
+        model_arch=ModelArch.keye_vl,
+        architectures=['KeyeVL1_5ForConditionalGeneration'],
+        tags=['vision'],
+        requires=['keye_vl_utils>=1.5.2'],
+    ))
+
 
 def get_model_tokenizer_dots_ocr(model_dir, *args, **kwargs):
     model_cls = get_class_from_dynamic_module('modeling_dots_vision.DotsVisionTransformer', model_dir)
@@ -225,3 +241,28 @@ register_model(
         architectures=['DotsOCRForCausalLM'],
         requires=['transformers>=4.51.0'],
     ))
+
+
+def get_model_tokenizer_sail2_vl(model_dir, *args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    if model is not None:
+        use_submodel_func(model, 'language_model')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.sail_vl2, [
+            ModelGroup([
+                Model('BytedanceDouyinContent/SAIL-VL2-2B', 'BytedanceDouyinContent/SAIL-VL2-2B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-2B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-2B-Thinking'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B', 'BytedanceDouyinContent/SAIL-VL2-8B'),
+                Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
+            ])
+        ],
+        TemplateType.sail_vl2,
+        get_model_tokenizer_sail2_vl,
+        model_arch=ModelArch.internvl,
+        architectures=['SAILVLModel'],
+        requires=['transformers<=4.51.3'],
+        tags=['vision']))

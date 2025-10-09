@@ -1,4 +1,4 @@
-# 8 * 65GiB; 13s/it
+# 8 * 46GiB; 13s/it
 # Note: "ms-swift<3.8" does not support DPO packing; please remove --packing true.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
@@ -7,6 +7,7 @@ megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --packing true \
     --tensor_model_parallel_size 4 \

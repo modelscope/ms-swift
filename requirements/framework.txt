@@ -12,6 +12,7 @@ fastapi
 gradio>=3.40.0
 importlib_metadata
 jieba
+json_repair
 matplotlib
 modelscope>=1.23
 nltk
@@ -32,7 +33,7 @@ sortedcontainers>=1.5.9
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<4.57
+transformers>=4.33,<4.58
 transformers_stream_generator
 trl>=0.15,<0.21
 uvicorn

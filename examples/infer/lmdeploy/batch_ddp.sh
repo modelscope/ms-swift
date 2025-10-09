@@ -1,4 +1,4 @@
-# test env: lmdeploy 0.9.2
+# test env: lmdeploy 0.9.2.post1
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift infer \

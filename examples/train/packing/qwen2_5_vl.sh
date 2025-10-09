@@ -4,8 +4,6 @@
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 # You can also use padding_free to avoid the space/time cost caused by multi-modal packing:
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/padding_free/sft.sh
-pip install "transformers==4.51.*"
-
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -13,6 +11,7 @@ swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
     --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \

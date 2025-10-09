@@ -17,15 +17,23 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
-    if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM'}:
+    if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
+            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
+            'Qwen3VLMoeForConditionalGeneration'
+    }:
         res['qk_layernorm'] = True
-    if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM'}:
+    if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
+            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLMoeForConditionalGeneration'
+    }:
         res.pop('ffn_hidden_size', None)
-        if llm_architectures == 'Qwen2MoeForCausalLM':
+        if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3NextForCausalLM'}:
             res['use_shared_expert_gate'] = True
     if llm_architectures in {
-            'DeepseekForCausalLM', 'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM', 'Dots1ForCausalLM'
-    }:
+            'DeepseekForCausalLM',
+            'DeepseekV2ForCausalLM',
+            'DeepseekV3ForCausalLM',
+            'Dots1ForCausalLM',
+    } or architectures == 'KimiVLForConditionalGeneration':
         if llm_architectures != 'DeepseekForCausalLM':
             res['qk_layernorm'] = True
         res['moe_router_load_balancing_type'] = 'seq_aux_loss'
@@ -45,10 +53,19 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
         res['rotary_interleaved'] = True
     elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
-
+    elif llm_architectures == 'Qwen3NextForCausalLM':
+        full_attention_interval = res.pop('full_attention_interval')
+        num_layers = res['num_layers']
+        res['layer_types'] = [
+            'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
+            for i in range(num_layers)
+        ]
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
+        mrope_interleaved = res['rope_scaling'].get('mrope_interleaved', False) or res['rope_scaling'].get(
+            'interleaved', False)
+        res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'

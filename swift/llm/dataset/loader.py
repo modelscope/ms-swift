@@ -14,6 +14,7 @@ from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as hf_load_dataset
 from modelscope.hub.api import ModelScopeConfig
+from modelscope.hub.utils.utils import get_cache_dir
 from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import get_hub
@@ -210,6 +211,7 @@ class DatasetLoader:
         if file_type == 'csv':
             kwargs['na_filter'] = False
         with safe_ddp_context(None, True):
+            kwargs['cache_dir'] = os.path.join(get_cache_dir(), 'datasets')
             dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)

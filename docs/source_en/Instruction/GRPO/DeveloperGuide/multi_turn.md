@@ -172,6 +172,15 @@ The complete trajectory can be accessed via `trajectory_inputs` in `kwargs`.
 
 For a concrete implementation, see the [MultiTurnThinkingTips class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
 
+### Multimodal Data Override
+In multimodal, multi-turn interactions, you may need to dynamically add, delete, or modify multimodal data during the conversation and ensure these changes are synchronized to the trainer.
+
+Implementation: Use `rollout_infos` to override the original multimodal content in the dataset by specifying the corresponding keys.
+
+Supported override keys: images, audios, videos.
+
+For details, see [DeepEyes Scheduler](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/deepeyes/deepeyes_plugin.py#L403-L404).
+
 ### Returning response token IDs
 
 In the default workflow the scheduler returns text, the trainer re-encodes it to token IDs for training.

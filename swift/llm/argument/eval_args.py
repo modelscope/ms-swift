@@ -30,7 +30,7 @@ class EvalArguments(DeployArguments):
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
-    dataset_args: Optional[Union[Dict, str]] = None
+    eval_dataset_args: Optional[Union[Dict, str]] = None
     eval_generation_config: Optional[Union[Dict, str]] = field(default_factory=dict)
     eval_output_dir: str = 'eval_output'
     eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
@@ -48,7 +48,7 @@ class EvalArguments(DeployArguments):
         super().__post_init__()
         self._init_eval_url()
         self._init_eval_dataset()
-        self.dataset_args = json_parse_to_dict(self.dataset_args)
+        self.eval_dataset_args = json_parse_to_dict(self.eval_dataset_args)
         self.eval_generation_config = json_parse_to_dict(self.eval_generation_config)
         self.extra_eval_args = json_parse_to_dict(self.extra_eval_args)
         self.eval_output_dir = to_abspath(self.eval_output_dir)

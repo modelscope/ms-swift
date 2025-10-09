@@ -1,6 +1,6 @@
 # Multimodal Models
 
-ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL, Qwen2.5-Omni, InternVL3.5, GLM4.5v. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO/KTO for models such as Qwen3-VL, Qwen3-Omni, Qwen2.5-VL, Qwen2.5-Omni, InternVL3.5, GLM4.5v, Kimi-VL. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./Quick-start.md).
 
@@ -31,6 +31,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
     --packing true \
@@ -85,6 +86,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -171,6 +173,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load InternVL3_5-30B-A3B-mcore \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+    --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

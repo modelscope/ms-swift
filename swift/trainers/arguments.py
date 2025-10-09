@@ -138,7 +138,7 @@ class RLHFArgumentsMixin:
     # gkd
     sft_alpha: float = 0
     # chord
-    chord_sft_dataset: Optional[str] = None
+    chord_sft_dataset: List[str] = field(default_factory=list)
     chord_sft_per_device_train_batch_size: Optional[int] = None
 
     chord_enable_phi_function: bool = False
@@ -154,6 +154,9 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
+    padding_side: Optional[str] = None
+    padding_free: Optional[bool] = None
+    task_type: Optional[str] = None
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
@@ -247,10 +250,12 @@ class VllmArguments:
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
-            'disable_cascade_attn': self.vllm_disable_cascade_attn
+            'disable_cascade_attn': self.vllm_disable_cascade_attn,
+            'num_labels': self.num_labels,
         }
-        if self.task_type == 'embedding':
-            kwargs['task_type'] = 'embedding'
+        if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
+            kwargs['task_type'] = self.task_type
+
         return kwargs
 
 

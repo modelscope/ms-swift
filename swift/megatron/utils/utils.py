@@ -47,8 +47,8 @@ def get_multimodal_target_regex(
 ) -> str:
     modules = []
     visual_cls = args.megatron_model_meta.visual_cls
-    vision_tower = [f'visual.{vit}' for vit in visual_cls.vision_tower]
-    aligner = [f'visual.{_aligner}' for _aligner in visual_cls.aligner]
+    vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
+    aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
     if not freeze_llm:
         modules.append('language_model')
     if not freeze_vit:
@@ -109,6 +109,8 @@ def get_modules_to_save(args, model):
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')
         modules_to_save += find_embedding(model)
+    if args.task_type == 'seq_cls':
+        modules_to_save.append('output_layer')
     return modules_to_save
 
 

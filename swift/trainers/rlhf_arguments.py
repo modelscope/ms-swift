@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
@@ -15,7 +15,7 @@ from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
 
 @dataclass
 class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
-    pass
+    ld_alpha: Optional[float] = None  # compat trl==0.15
 
 
 @dataclass

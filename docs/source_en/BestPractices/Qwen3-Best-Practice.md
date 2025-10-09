@@ -149,6 +149,7 @@ swift sft \
     --train_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -225,6 +226,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
@@ -296,6 +298,7 @@ swift rlhf \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
@@ -329,7 +332,7 @@ swift rlhf \
 
 Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/KTO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 
@@ -343,6 +346,7 @@ NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
