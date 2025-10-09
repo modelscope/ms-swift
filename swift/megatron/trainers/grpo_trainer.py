@@ -605,11 +605,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
                 ref_model = ref_models[0]
                 batch['ref_per_token_logps'] = self.model_forward(
-                    ref_model, iter([inputs]), no_grad=True, per_token=True)['logps']
+                    ref_model, iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
 
         if not self.on_policy:
             batch['old_per_token_logps'] = self.model_forward(
-                self.unwrapped_models[0], iter([inputs]), no_grad=True, per_token=True)['logps']
+                self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
         return batch
 
     @contextmanager
