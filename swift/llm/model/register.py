@@ -268,6 +268,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     torch_dtype = model_info.torch_dtype
     HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
+    leaf_modules = kwargs.get('leaf_modules')
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
@@ -368,8 +369,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     if model is not None:
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
-        # deepspeed zero3
-        deepspeed_set_z3_leaf_modules(model)
+        if leaf_modules is not None or model_info.is_moe_model:
+            # deepspeed zero3
+            deepspeed_set_z3_leaf_modules(model)
 
     return model, tokenizer
 
