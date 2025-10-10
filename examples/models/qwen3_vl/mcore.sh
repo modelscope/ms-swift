@@ -1,4 +1,6 @@
 # 8 * 80GiB; 45min
+# If you're doing full-parameter training, you'll need 64 × 80 GiB of GPU memory
+
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 IMAGE_MAX_TOKEN_NUM=1024 \
