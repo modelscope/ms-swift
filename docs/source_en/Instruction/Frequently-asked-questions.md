@@ -107,7 +107,7 @@ Currently, it supports one object corresponding to multiple bounding boxes. Refe
 Try using `numpy==1.26.3`.
 
 ### Q33: Does the Swift framework support sequence parallelism now?
-Yes, it supports it. Refer to the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text) here.
+Yes, it supports it. Refer to the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel) here.
 
 ### Q34: When fine-tuning qwen2-1.5B on a V100, I see `loss': 0.0, 'acc': 0.0, 'grad_norm': nan`. What is the issue?
 Try using fp32.
@@ -119,7 +119,7 @@ No, GPTQ model's int-type parameters cannot participate in gradients; they can o
 Refer to the QLoRA [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora).
 
 ### Q37: How do I expand my vocabulary within the Swift framework?
-Swift currently does not support vocabulary expansion.
+Please refer to the command-line-parameters documentation for [new_special_tokens](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#model-arguments) for more information.
 
 ### Q38: Can I directly use models with the same name from Hugging Face?
 Set the environment variable `USE_HF=1`.
