@@ -405,7 +405,12 @@ def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
-    from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+
+    try:
+        from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+    except ImportError:
+        # removed in https://github.com/vllm-project/vllm/pull/24078
+        TokenizerGroup = None
 
     def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
         """
@@ -484,8 +489,9 @@ def patch_vllm_load_adapter():
         _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
         LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
         LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
-        TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
-        TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
+        if TokenizerGroup is not None:
+            TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
+            TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
 
 
 # FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py
