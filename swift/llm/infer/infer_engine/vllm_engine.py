@@ -576,7 +576,7 @@ class VllmEngine(InferEngine):  # 定义基于 vLLM 的推理引擎类，继承�
                 continue  # 跳过本次迭代
             yield res  # 产出流式响应对象给调用方
 
-    def _create_chat_completion_stream_response(self, result, template, request_config, request_id, infer_streamers,  # 构造聊天补全流式响应（内部方法）
+    def _create_chat_completion_stream_response(self, result, template, request_config, request_id, infer_streamers,  # 构造流式聊天补全响应（内部方法）
                                                 token_idxs) -> Optional[ChatCompletionStreamResponse]:  # token 索引列表（跟踪每个候选已处理的 token 数）
         """函数功能：
         从 vLLM 的原始输出构造聊天补全流式响应对象。
