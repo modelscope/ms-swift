@@ -276,7 +276,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. This is generally less efficient than the data sharding approach used in non-streaming datasets. When the training world_size is large, preprocessing and data distribution can become a training bottleneck.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
 - cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
-  - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
+  - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`. Cached dataset is currently not supported for CP.
 - max_epochs: Forces the training to exit after reaching `max_epochs`, and performs validation and saving of the model weights. This parameter is especially useful when using a streaming dataset. Default is None.
   - Note: If you use a non-streaming dataset, this parameter will automatically calculate train_iters for you, so there is no need to pass `train_iters` manually.
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
