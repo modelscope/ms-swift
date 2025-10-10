@@ -815,7 +815,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     @contextmanager
     def offload_context(self):
         if self.args.offload_model:
-            offload_megatron_model_to_cpu(self.unwrapped_models)
+            offload_megatron_model_to_cpu(self.wrapped_models)
             log_gpu_memory('after offload model to cpu')
         # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
         #     self.offload_optimizer()
@@ -825,7 +825,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         finally:
             # reload (load back) model when exiting context
             if self.args.offload_model:
-                load_megatron_model_to_gpu(self.unwrapped_models)
+                load_megatron_model_to_gpu(self.wrapped_models)
                 log_gpu_memory('after load model to gpu')
             # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             #     self.load_optimizer()

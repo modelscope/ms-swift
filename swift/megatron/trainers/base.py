@@ -48,6 +48,7 @@ class BaseMegatronTrainer(ABC):
         self.template = template
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
+        self.wrapped_models = []
         self.peft_models = []
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
@@ -266,6 +267,7 @@ class BaseMegatronTrainer(ABC):
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
+        self.wrapped_models = model
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
