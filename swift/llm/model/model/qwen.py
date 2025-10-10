@@ -861,10 +861,12 @@ register_model(
 
 def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
+    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
     require_version('qwen_vl_utils>=0.0.14')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     patch_Qwen3VLMoeTextExperts_dtype()
+    kwargs['z3_leaf_modules'] = [Qwen3VLMoeTextSparseMoeBlock]
     return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
 
 

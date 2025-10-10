@@ -229,6 +229,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     torch_dtype = model_info.torch_dtype
     HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
+    z3_leaf_modules = kwargs.get('z3_leaf_modules')
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
@@ -329,6 +330,11 @@ def get_model_tokenizer_from_local(model_dir: str,
     if model is not None:
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
+        # deepspeed zero3
+        if is_deepspeed_zero3_enabled():
+            from deepspeed.utils import set_z3_leaf_modules
+            set_z3_leaf_modules(model, z3_leaf_modules)
+            logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
 
     return model, tokenizer
 
