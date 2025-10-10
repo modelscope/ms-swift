@@ -23,7 +23,6 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from transformers import Trainer
 
-from swift.trainers.rlhf_trainer.grpo_trainer import GRPOTrainer
 from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
@@ -853,7 +852,7 @@ def _create_parameter_buckets(named_params, bucket_size_mb=100):
     return buckets
 
 
-def _process_bucket_with_flattened_tensor(trainer: GRPOTrainer, bucket_params):
+def _process_bucket_with_flattened_tensor(trainer, bucket_params):
     """Process a bucket of parameters using FlattenedTensorBucket for efficiency"""
     if not bucket_params:
         return
