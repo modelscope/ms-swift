@@ -34,7 +34,6 @@ class MegatronRLHF(MegatronSft):
 
     def _get_data_collator(self):
         if self.args.rlhf_type == 'grpo':
-            super()._get_data_collator()
             return identity_data_collator
         return super()._get_data_collator()
 

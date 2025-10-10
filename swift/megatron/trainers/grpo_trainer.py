@@ -172,7 +172,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
             self._patch_mbridge(self.bridge)
         per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
-        self.engine.inner_model.load_weights(per_tensor_params)  # TODO: check tensor_model_parallel
+        self.engine.inner_model.load_weights(per_tensor_params)
 
     def _prepare_rewards(self):
         # TODO: reward model
@@ -300,31 +300,31 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             labels = encoded_batch['labels']
             # TODO: logits_to_keep
             # logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-            if self.template.padding_free:
-                position_ids = encoded_batch.get('text_position_ids')
-                if position_ids is None:
-                    position_ids = encoded_batch.get('position_ids')
-                squeezed_position_ids = position_ids.squeeze()
-                assert squeezed_position_ids is not None
-                # Remove trailing padding zeros from position_ids to avoid interference
-                # Find the last non-zero position
-                last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
-                if len(last_nonzero_idx) > 0:
-                    # Keep only up to the last non-zero position + 1 to include the last valid position
-                    squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
+            assert self.template.padding_free
+            position_ids = encoded_batch.get('text_position_ids')
+            if position_ids is None:
+                position_ids = encoded_batch.get('position_ids')
+            squeezed_position_ids = position_ids.squeeze()
+            assert squeezed_position_ids is not None
+            # Remove trailing padding zeros from position_ids to avoid interference
+            # Find the last non-zero position
+            last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
+            if len(last_nonzero_idx) > 0:
+                # Keep only up to the last non-zero position + 1 to include the last valid position
+                squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
 
-                # Calculate lengths based on sequence boundaries (position_ids == 0)
-                lengths = torch.diff(
-                    torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
-                               torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
-                advantages = torch.repeat_interleave(advantages, lengths)
+            # Calculate lengths based on sequence boundaries (position_ids == 0)
+            lengths = torch.diff(
+                torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
+                           torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
+            advantages = torch.repeat_interleave(advantages, lengths)
 
-                # Pad advantages to match the original position_ids length
-                original_length = position_ids.shape[1]
-                if advantages.shape[0] < original_length:
-                    padding_length = original_length - advantages.shape[0]
-                    padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
-                    advantages = torch.cat([advantages, padding])
+            # Pad advantages to match the original position_ids length
+            original_length = position_ids.shape[1]
+            if advantages.shape[0] < original_length:
+                padding_length = original_length - advantages.shape[0]
+                padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
+                advantages = torch.cat([advantages, padding])
 
             encoded_batch.update({
                 'completion_mask':
@@ -338,13 +338,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             return encoded_batch
 
         # Step2: ref/old logps
-        rollout_group
         total_batch = gather_object(rollout_batch, group=rollout_group)
         total_advantages = gather(advantages, group=rollout_group)
         mini_batch_data = []
         for idx in range(0, len(total_batch), self.micro_batch_size):
-            micro_batch_data = _get_encoded_batch(total_batch[idx:idx + self.micro_batch_size],
-                                                  total_advantages[idx:idx + self.micro_batch_size])
+            micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
+            micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
+            micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
+            micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
             micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
 
@@ -369,18 +370,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: server mode
         assert self.vllm_mode == 'colocate'
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
+        if self.engine.inner_model_executor.is_sleeping:
+            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
+            # Load weights only (faster and reduces memory peak)
+            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            self.engine.engine.wake_up(**kwargs)
+            log_gpu_memory(f'after wake up vLLM engine with {kwargs}')
+
+        # Step 2: Load model weights
+        self._move_model_to_vllm()
+
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            if self.engine.inner_model_executor.is_sleeping:
-                wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-                # Load weights only (faster and reduces memory peak)
-                kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-                self.engine.engine.wake_up(**kwargs)
-                log_gpu_memory(f'after wake up vLLM engine with {kwargs}')
-
-            # Step 2: Load model weights
-            self._move_model_to_vllm()
-
             if (self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
                 self.engine.engine.wake_up(tags=['kv_cache'])
@@ -555,6 +556,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 return advantages / (rewards_std + 1e-4)
             return advantages
 
+        assert len(batch) == rewards_per_func.shape[0]
         total_rewards_per_func = gather(rewards_per_func)
         rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -624,6 +626,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _maybe_replace_response_token(self, batch):
         # maybe replace the response token with the response token ids to avoid repetitive tokenize
+
+        # ignore when loss_scale is set
+        if self.template.loss_scale.name != 'last_round':
+            return batch
         for data in batch:
             if 'response_token_ids' in data and data['response_token_ids']:
                 loss_mask = None
@@ -711,7 +717,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
-        elif self.importance_sampling_level == 'sequence':
+        elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
             seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
@@ -755,7 +761,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
-        loss = loss.mean()
+        # loss = loss.mean()
         avg_metric = {
             'loss': loss.clone().detach(),
             'completions/mean_length': lengths.float().mean(),
