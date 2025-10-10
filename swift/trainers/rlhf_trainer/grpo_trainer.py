@@ -611,7 +611,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
-                cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
+                cur_lora_params = {
                     name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
                     for name, param in cur_lora_params.items()
                 }
@@ -681,8 +681,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.base_sync_done = True
         else:
             if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                # For non-PEFT models, use streaming bucket approach to avoid memory peaks
-                # Collect parameters in small batches and process them immediately
                 current_bucket = []
                 current_size = 0
                 bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
