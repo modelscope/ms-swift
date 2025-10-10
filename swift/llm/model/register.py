@@ -268,7 +268,6 @@ def get_model_tokenizer_from_local(model_dir: str,
     torch_dtype = model_info.torch_dtype
     HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
-    z3_leaf_modules = kwargs.get('z3_leaf_modules')
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
