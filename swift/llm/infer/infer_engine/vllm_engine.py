@@ -576,10 +576,10 @@ class VllmEngine(InferEngine):  # 定义基于 vLLM 的推理引擎类，继承�
                 continue  # 跳过本次迭代
             yield res  # 产出流式响应对象给调用方
 
-    def _create_chat_completion_stream_response(self, result, template, request_config, request_id, infer_streamers,  # 构造流式聊天补全响应（内部方法）
+    def _create_chat_completion_stream_response(self, result, template, request_config, request_id, infer_streamers,  # 构造聊天补全流式响应（内部方法）
                                                 token_idxs) -> Optional[ChatCompletionStreamResponse]:  # token 索引列表（跟踪每个候选已处理的 token 数）
         """函数功能：
-        从 vLLM 的原始输出构造流式聊天补全响应对象。
+        从 vLLM 的原始输出构造聊天补全流式响应对象。
         处理增量文本、对数概率、工具调用等信息。
         
         参数：
@@ -611,6 +611,16 @@ class VllmEngine(InferEngine):  # 定义基于 vLLM 的推理引擎类，继承�
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)  # 计算所有候选的总生成 token 数
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)  # 构造用量信息（prompt token 数、生成 token 数）
         choices = []  # 初始化选项列表
+        # NOTE: 关于为什么使用token_idxs[output.index]截取output.token_ids，然后又实用len(output.token_ids)为token_idxs[output.index]赋值？如下，
+        # 1.首先，理解token_idxs[output.index] 的含义：
+        # token_idxs 是一个字典，记录每个输出候选（beam 或 sample）已经处理到的 token 索引。
+        # output.index 是候选的编号（例如 beam search 中第几个 beam）。
+        # 因此，token_idxs[output.index] 就表示这个候选 上一次处理的 token 的截止位置。
+        # 2.为什么用 output.token_ids[token_idxs[output.index]:]
+        # output.token_ids 是该候选到目前为止生成的所有 token 序列。我们只需要处理 新生成的部分（从上次处理的截止点开始，到当前为止）。所以要用切片 token_idxs[output.index]: 来 跳过已经处理过的 token。
+        # 3.为什么要更新为 len(output.token_ids)
+        # 本次处理了从旧索引到最新生成位置的所有新 token。处理完之后，下次继续时的起点就应该是“当前序列长度”。
+        # 所以 token_idxs[output.index] = len(output.token_ids)，表示 下次从这个新位置开始。
         for output in result.outputs:  # 遍历每个输出
             logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],  # 获取本次新增 token 的对数概率（从上次索引到当前索引的 token）
                                           request_config.top_logprobs)  # 传入 top_logprobs 参数
