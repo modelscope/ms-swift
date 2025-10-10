@@ -23,7 +23,6 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from transformers import Trainer
 
-from swift.trainers.rlhf_trainer.grpo_trainer import GRPOTrainer
 from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
@@ -406,7 +405,12 @@ def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
-    from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+
+    try:
+        from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+    except ImportError:
+        # removed in https://github.com/vllm-project/vllm/pull/24078
+        TokenizerGroup = None
 
     def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
         """
@@ -485,8 +489,9 @@ def patch_vllm_load_adapter():
         _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
         LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
         LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
-        TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
-        TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
+        if TokenizerGroup is not None:
+            TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
+            TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
 
 
 # FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py
@@ -853,7 +858,7 @@ def _create_parameter_buckets(named_params, bucket_size_mb=100):
     return buckets
 
 
-def _process_bucket_with_flattened_tensor(trainer: GRPOTrainer, bucket_params):
+def _process_bucket_with_flattened_tensor(trainer, bucket_params):
     """Process a bucket of parameters using FlattenedTensorBucket for efficiency"""
     if not bucket_params:
         return
