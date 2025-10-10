@@ -34,7 +34,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: The concept of `model_type` in MS-Swift differs from the `model_type` in `config.json`.
   - Custom models typically require manually registering a `model_type` and `template`. See the [Custom Model Documentation](../Customization/Custom-model.md) for details.
 - model_revision: Model version. Default is `None`.
-- task_type: Default is `'causal_lm'`. Options include `'causal_lm'`, `'seq_cls'`, `'embedding'`, `'reranker'`, and`'generative_reranker'`. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
+- task_type: Default is `'causal_lm'`. Options include `'causal_lm'`, `'seq_cls'`, `'embedding'`, `'reranker'`, and `'generative_reranker'`. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type for model weights. Supported values: `float16`, `bfloat16`, `float32`. Default is `None`, which reads from the `config.json` file.
 - attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
@@ -94,7 +94,6 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: This parameter applies to all multimodal models. The Qwen2.5-VL specific parameter `MAX_PIXELS` (see bottom of doc) only affects Qwen2.5-VL.
 - 🔥agent_template: Agent template that defines how the tool list `'tools'` is converted into the `'system'` message, how tool calls are extracted from model responses during inference/deployment, and the formatting of `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}` in `messages`. Options include `'react_en'`, `'hermes'`, `'glm4'`, `'qwen_en'`, `'toolbench'`, etc. See [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py) for more. Default is `None`, automatically selected based on model type. Refer to [Agent Documentation](./Agent-support.md).
 - norm_bbox: Controls how bounding boxes ("bbox" in dataset, containing absolute coordinates; see [Custom Dataset Documentation](../Customization/Custom-dataset.md#grounding)) are normalized. Options: `'norm1000'` (scale coordinates to thousandths), `'none'` (no scaling). Default is `None`, automatically chosen based on model.
-Controls how to scale bounding boxes (bbox). Options are 'norm1000' and 'none'. 'norm1000' represents scaling bbox coordinates to one-thousandths, and 'none' means no scaling. Default is None, automatically selected based on the model.
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
   - Note: `swift pt` defaults to `False`, using the generation template. This setting provides good **compatibility with multimodal models**.
@@ -153,7 +152,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 
 - 🔥output_dir: Default is `None`, automatically set to `'output/<model_name>'`.
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing. Default is `True`. This significantly reduces GPU memory usage but slows down training.
-- 🔥vit_gradient_checkpointing: - 🔥vit_gradient_checkpointing: For multimodal model training, whether to enable gradient checkpointing for the ViT (Vision Transformer) component. Default is `None`, meaning it follows the value of `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
+- 🔥vit_gradient_checkpointing: For multimodal model training, whether to enable gradient checkpointing for the ViT (Vision Transformer) component. Default is `None`, meaning it follows the value of `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
   - Note: When training multimodal models with LoRA and `--freeze_vit false`, if you see the warning: `UserWarning: None of the inputs have requires_grad=True. Gradients will be None`, try setting `--vit_gradient_checkpointing false` or open an issue. This issue does not occur in full-parameter training. (If this warning comes from the `ref_model` during RLHF LoRA training, it is normal.)
 - 🔥deepspeed: Default is `None`. Can be set to `'zero0'`, `'zero1'`, `'zero2'`, `'zero3'`, `'zero2_offload'`, `'zero3_offload'` to use built-in DeepSpeed configurations in ms-swift. You can also pass a path to a custom DeepSpeed config file.
 - zero_hpz_partition_size: Default is `None`. This enables ZeRO++ functionality—model sharding within nodes and data sharding across nodes. If encountering `grad_norm NaN`, try using `--torch_dtype float16`.
@@ -274,7 +273,7 @@ FourierFt uses three parameters: `target_modules`, `target_regex`, and `modules_
 
 #### BOFT
 
-BOFT uses the three parameters `target_modules`, `target_regex`, and `modules_to_save`, , whose meanings are described in the documentation above. Additional parameters include:
+BOFT uses the three parameters `target_modules`, `target_regex`, and `modules_to_save`, whose meanings are described in the documentation above. Additional parameters include:
 
 - boft_block_size: Size of BOFT blocks, default value is 4.
 - boft_block_num: Number of BOFT blocks, cannot be used simultaneously with `boft_block_size`.
@@ -373,7 +372,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_disable_cascade_attn: Whether to forcibly disable the V1 engine’s cascade-attention implementation to avoid potential numerical issues. Defaults to False; vLLM’s internal heuristics determine whether cascade attention is actually used.
 - 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
-- vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+- vllm_quantization: vllm is able to quantize model with this argument, supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - vllm_enable_prefix_caching: Enable vLLM's automatic prefix caching to save processing time for repeated prompt prefixes. Default is `False`. **It is recommended to set this to `True` in real-world scenarios**, as it can significantly improve inference efficiency.
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
@@ -621,8 +620,8 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 
 ### Rollout Arguments
 The rollout parameters inherit from the [deployment parameters](#deployment-arguments).
-- `multi_turn_scheduler`: The scheduler for multi-turn GRPO training. Pass the corresponding plugin name, and ensure the implementation is added in `plugin/multi_turn.py`. Default is `None`. See [documentation](./GRPO/DeveloperGuide/multi_turn.md) for details.
-- `max_turns`: Maximum number of turns in multi-turn GRPO training. Default is `None`, meaning no limit.
+- multi_turn_scheduler: The scheduler for multi-turn GRPO training. Pass the corresponding plugin name, and ensure the implementation is added in `plugin/multi_turn.py`. Default is `None`. See [documentation](./GRPO/DeveloperGuide/multi_turn.md) for details.
+- max_turns: Maximum number of turns in multi-turn GRPO training. Default is `None`, meaning no limit.
 
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
