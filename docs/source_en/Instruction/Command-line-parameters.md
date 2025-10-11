@@ -214,7 +214,7 @@ Other important parameters:
 - train_dataloader_shuffle: Whether to shuffle the dataloader in CPT/SFT training. Default is `True`. Not effective for `IterableDataset`, which uses sequential loading.
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
-  - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training.
+  - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
 - average_tokens_across_devices: Whether to average token counts across devices. If `True`, `num_tokens_in_batch` is synchronized via `all_reduce` for accurate loss computation. Default is `False`.
 - max_grad_norm: Gradient clipping. Default is 1.
   - Note: The logged `grad_norm` reflects the value **before** clipping.
@@ -456,7 +456,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
 - 🔥rlhf_type: Type of human alignment algorithm, supporting 'dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo' and 'gkd'. Default is 'dpo'.
-- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
+- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None, set to `--model`.
 - ref_adapters: Default is `[]`. If you want to use the LoRA weights generated from SFT for DPO/KTO/GRPO, please use "ms-swift>=3.8" and set `--adapters sft_ckpt --ref_adapters sft_ckpt`. For resuming training from a checkpoint in this scenario, set `--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
