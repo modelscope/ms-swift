@@ -5,7 +5,6 @@ from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
-from types import MethodType
 from typing import Any, Dict, List, Union
 
 import torch
@@ -24,7 +23,7 @@ from swift.utils import get_current_device, get_logger, is_vllm_available, remov
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
-                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context, split_cp_inputs)
+                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context)
 
 try:
     from mbridge import AutoBridge
@@ -326,9 +325,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _generate_and_score_completions(self, batch):
         # Get or create the rollout group (TP×PP×CP)
-        # We need to include CP in the rollout group because:
-        # 1. Data slicing: each rank (including CP ranks) should get different data
-        # 2. Gather operations: we need to gather data from all TP×PP×CP ranks
         rollout_group = self._get_rollout_group()
 
         # batch : same across DP groups
@@ -336,17 +332,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # repeat num_generations times
             global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
             # get local rollout data
-            # For rollout, we need to distribute data across TP×PP×CP ranks
-            # Note: During rollout (vLLM inference), each GPU processes different data
-            # CP will only take effect during training (forward/backward)
             rollout_rank = torch.distributed.get_rank(group=rollout_group)
             rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
 
             per_device_batch_size = self.per_device_generation_batch_size
-            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch), (
-                f'rollout_group_size ({rollout_group_size}) * per_device_batch_size ({per_device_batch_size}) '
-                f'!= len(global_rollout_batch) ({len(global_rollout_batch)}). '
-                f'rollout_rank={rollout_rank}')
+            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
             data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
             rollout_batch = global_rollout_batch[data_slice]
             return rollout_batch
@@ -366,8 +356,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
             encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
             labels = encoded_batch['labels']
-            # TODO: logits_to_keep
-            # logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
             assert self.template.padding_free
             position_ids = encoded_batch.get('text_position_ids')
             if position_ids is None:
@@ -699,9 +687,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _maybe_replace_response_token(self, batch):
         # maybe replace the response token with the response token ids to avoid repetitive tokenize
 
-        # ignore when loss_scale is set
-        if self.template.loss_scale.name != 'last_round':
-            return batch
         for data in batch:
             if 'response_token_ids' in data and data['response_token_ids']:
                 loss_mask = None
@@ -777,7 +762,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         per_token_logps = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
 
-        if self.args.overlong_filter and any(truncated_mask):
+        if self.args.overlong_filter and truncated_mask.any():
             completion_mask = completion_mask & (~truncated_mask)
 
         if self.beta != 0.0:
