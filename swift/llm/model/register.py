@@ -240,6 +240,9 @@ def deepspeed_set_z3_leaf_modules(model):
     elif architecture == 'Llama4ForCausalLM':
         from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
         z3_leaf_modules = [Llama4TextMoe]
+    elif architecture == 'Qwen3NextForCausalLM':
+        from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
+        z3_leaf_modules = [Qwen3NextSparseMoeBlock]
 
     if z3_leaf_modules:
         from deepspeed.utils import set_z3_leaf_modules
