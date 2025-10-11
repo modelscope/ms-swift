@@ -895,15 +895,10 @@ class SwiftMixin:
                     labels.long(),
                     acc_strategy=args.acc_strategy,
                     is_encoder_decoder=self.template.is_encoder_decoder)
-        elif logits.dim() == 1:
+        elif logits.dim() == 1 or (logits.dim() == 2 and logits.size(-1) == 1):
+            if logits.dim() == 2:
+                logits = logits.squeeze(-1)
             binary_preds = (logits > 0).long()
-            metrics = compute_acc(
-                binary_preds,
-                labels.long(),
-                acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.template.is_encoder_decoder)
-        elif logits.dim() == 2 and logits.size(-1) == 1:
-            binary_preds = (logits.squeeze(-1) > 0).long()
             metrics = compute_acc(
                 binary_preds,
                 labels.long(),
