@@ -816,9 +816,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def offload_context(self):
         if self.args.offload_model:
             offload_megatron_model_to_cpu(self.wrapped_models)
+            if hasattr(self, 'ref_models') and self.ref_models:
+                offload_megatron_model_to_cpu(self.ref_models)
             log_gpu_memory('after offload model to cpu')
-        # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-        #     self.offload_optimizer()
+        if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+            offload_megatron_optimizer(self.optimizer)
+            log_gpu_memory('after offload optimizer to cpu')
 
         try:
             yield
@@ -826,6 +829,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # reload (load back) model when exiting context
             if self.args.offload_model:
                 load_megatron_model_to_gpu(self.wrapped_models)
+                if hasattr(self, 'ref_models') and self.ref_models:
+                    load_megatron_model_to_gpu(self.ref_models)
                 log_gpu_memory('after load model to gpu')
-            # if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-            #     self.load_optimizer()
+            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+                load_megatron_optimizer(self.optimizer)
+                log_gpu_memory('after load optimizer to gpu')
