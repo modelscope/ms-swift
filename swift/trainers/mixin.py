@@ -658,8 +658,8 @@ class SwiftMixin:
                 @wraps(model.forward.__func__)
                 def seq_cls_forward(model, *args, **kwargs):
 
-                    def inner_forward(**kwargs):
-                        output = llm_model.forward(**kwargs)
+                    def inner_forward(*args, **kwargs):
+                        output = llm_model.forward(*args, **kwargs)
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
                     return transformers_seq_cls_forward(model, *args, origin_forward=inner_forward, **kwargs)
