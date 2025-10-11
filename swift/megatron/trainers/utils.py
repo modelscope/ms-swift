@@ -74,7 +74,7 @@ def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
     for i in range(cu_seqlens.shape[0] - 1):
         slices = [slice(None)] * inputs.ndim
         slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
-        val = inputs[slices]
+        val = inputs[tuple(slices)]
         view_shape = (*inputs.shape[:dim], 2 * cp_size, val.shape[dim] // (2 * cp_size), *inputs.shape[dim + 1:])
         val = val.view(view_shape)
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
@@ -104,6 +104,11 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
             keys.append('decoder_input')
         else:
             keys.append('input_ids')
+        if hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo':
+            keys.append('truncated_mask')
+            keys.append('advantages')
+            keys.append('completion_mask')
+
         packed_seq_params = batch.get('packed_seq_params')
         if packed_seq_params is None:
             return mcore_get_batch_on_this_cp_rank(batch)

@@ -24,7 +24,7 @@ from swift.utils import get_current_device, get_logger, is_vllm_available, remov
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
-                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context)
+                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context, split_cp_inputs)
 
 try:
     from mbridge import AutoBridge
@@ -102,6 +102,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             return_details=True)
 
         self._step = 0
+        self._rollout_group = None  # Will be lazily initialized
 
     def _prepare_rollout_engine(self):
         args = self.args
@@ -234,6 +235,62 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         bridge._weight_to_hf_format = _weight_to_hf_format_patched
 
+    def _get_rollout_group(self):
+        """
+        Get or create the rollout process group (TP×PP×CP).
+
+        The rollout group is used for:
+        1. Data slicing: distributing rollout data across all model parallel ranks (including CP)
+        2. Gather operations: collecting results from all model parallel ranks (including CP)
+
+        Note: MODEL_PARALLEL_GROUP only includes TP×PP, but we need TP×PP×CP for correct
+        data distribution during rollout phase.
+
+        Key insight: ranks with the same DP index but different TP/PP/CP indices should be
+        in the same rollout group. These ranks will:
+        - During rollout: each process different data slices
+        - During training: TP/PP ranks process same data (model split), CP ranks process same data (sequence split)
+        - During gather: collect all data from TP×PP×CP ranks for training
+        """
+        if self._rollout_group is not None:
+            return self._rollout_group
+
+        cp_size = mpu.get_context_parallel_world_size()
+        if cp_size == 1:
+            # No CP, use the standard MODEL_PARALLEL_GROUP
+            self._rollout_group = mpu.get_model_parallel_group()
+            return self._rollout_group
+
+        # Get parallel dimensions
+        tp_size = mpu.get_tensor_model_parallel_world_size()
+        pp_size = mpu.get_pipeline_model_parallel_world_size()
+        dp_size = mpu.get_data_parallel_world_size()
+        global_rank = torch.distributed.get_rank()
+
+        # Calculate rollout group size
+        rollout_group_size = tp_size * pp_size * cp_size
+
+        # Simple and reliable method: assume ranks are organized in contiguous blocks per DP group
+        # This is typically true for the default order (tp-cp-ep-dp-pp)
+        # Each DP group has rollout_group_size consecutive ranks
+        ranks_per_dp_group = rollout_group_size
+        my_dp_block_index = global_rank // ranks_per_dp_group
+
+        # Calculate the rank range for my rollout group
+        group_start = my_dp_block_index * ranks_per_dp_group
+
+        # Create all rollout groups (must be done on all ranks)
+        if not hasattr(self, '_rollout_groups_created'):
+            for dp_idx in range(dp_size):
+                group_start = dp_idx * ranks_per_dp_group
+                group_ranks = list(range(group_start, min(group_start + ranks_per_dp_group, self.world_size)))
+                group = torch.distributed.new_group(ranks=group_ranks, group_desc='ROLLOUT_GROUP')
+                if global_rank in group_ranks:
+                    self._rollout_group = group
+            self._rollout_groups_created = True
+
+        return self._rollout_group
+
     def _replace_data_iterator(self, data_iterator, model):
 
         if self._step % self.steps_per_generation == 0:
@@ -268,17 +325,28 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return iter(inputs)
 
     def _generate_and_score_completions(self, batch):
-        rollout_group = mpu.get_model_parallel_group()
+        # Get or create the rollout group (TP×PP×CP)
+        # We need to include CP in the rollout group because:
+        # 1. Data slicing: each rank (including CP ranks) should get different data
+        # 2. Gather operations: we need to gather data from all TP×PP×CP ranks
+        rollout_group = self._get_rollout_group()
 
         # batch : same across DP groups
         def get_local_rollout_batch(batch):
             # repeat num_generations times
             global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
             # get local rollout data
+            # For rollout, we need to distribute data across TP×PP×CP ranks
+            # Note: During rollout (vLLM inference), each GPU processes different data
+            # CP will only take effect during training (forward/backward)
             rollout_rank = torch.distributed.get_rank(group=rollout_group)
             rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
+
             per_device_batch_size = self.per_device_generation_batch_size
-            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
+            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch), (
+                f'rollout_group_size ({rollout_group_size}) * per_device_batch_size ({per_device_batch_size}) '
+                f'!= len(global_rollout_batch) ({len(global_rollout_batch)}). '
+                f'rollout_rank={rollout_rank}')
             data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
             rollout_batch = global_rollout_batch[data_slice]
             return rollout_batch
@@ -318,7 +386,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
                            torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
             advantages = torch.repeat_interleave(advantages, lengths)
-
+            truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
+                                          dtype=torch.bool,
+                                          device=self.device)
+            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
+            padding_length = labels.shape[1] - truncated_mask.shape[1]
+            if padding_length > 0:
+                padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
+                truncated_mask = torch.cat([truncated_mask, padding], dim=1)
             # Pad advantages to match the original position_ids length
             original_length = position_ids.shape[1]
             if advantages.shape[0] < original_length:
@@ -327,12 +402,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 advantages = torch.cat([advantages, padding])
 
             encoded_batch.update({
-                'completion_mask':
-                labels != -100,
-                'truncated_mask':
-                torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool, device=self.device),
-                'advantages':
-                advantages,
+                'completion_mask': labels != -100,
+                'truncated_mask': truncated_mask,
+                'advantages': advantages,
             })
 
             return encoded_batch
@@ -694,16 +766,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
         lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
+        if mpu.get_context_parallel_world_size() > 1:
+            # When using Context Parallel, each rank only processes a portion of the sequence
+            # So we need to divide the lengths by CP size
+            cp_size = mpu.get_context_parallel_world_size()
+            cu_seqlens_cp = packed_seq_params.cu_seqlens_q // cp_size
+            lengths_with_padding = cu_seqlens_cp[1:] - cu_seqlens_cp[:-1]
+            lengths = cu_seqlens_cp[1:micro_batch_size + 1] - cu_seqlens_cp[:micro_batch_size]
+
         per_token_logps = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
 
         if self.args.overlong_filter and any(truncated_mask):
-            # TODO: non-padding-free
-            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
-            padding_length = completion_mask.shape[1] - truncated_mask.shape[1]
-            if padding_length > 0:
-                padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
-                truncated_mask = torch.cat([truncated_mask, padding], dim=1)
             completion_mask = completion_mask & (~truncated_mask)
 
         if self.beta != 0.0:
