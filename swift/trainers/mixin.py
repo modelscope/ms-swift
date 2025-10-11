@@ -865,6 +865,7 @@ class SwiftMixin:
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
         logits = outputs.logits
+        metrics = None
         if getattr(args, 'loss_type', None) in {'generative_reranker', 'listwise_generative_reranker'} \
                 and logits is not None and logits.dim() == 3:
             tokenizer = getattr(self, 'processing_class', None)
@@ -879,7 +880,8 @@ class SwiftMixin:
             try:
                 positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
                 negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
-            except Exception:
+            except Exception as e:
+                logger.warning(f'Failed to convert reranker tokens to ids: {e}')
                 positive_token_id = None
                 negative_token_id = None
 
@@ -893,9 +895,6 @@ class SwiftMixin:
                     labels.long(),
                     acc_strategy=args.acc_strategy,
                     is_encoder_decoder=self.template.is_encoder_decoder)
-                mode = 'train' if self.model.training else 'eval'
-                for k, v in metrics.items():
-                    self.custom_metrics[mode][k].update(v)
         elif logits.dim() == 1:
             binary_preds = (logits > 0).long()
             metrics = compute_acc(
@@ -903,9 +902,6 @@ class SwiftMixin:
                 labels.long(),
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.template.is_encoder_decoder)
-            mode = 'train' if self.model.training else 'eval'
-            for k, v in metrics.items():
-                self.custom_metrics[mode][k].update(v)
         elif logits.dim() == 2 and logits.size(-1) == 1:
             binary_preds = (logits.squeeze(-1) > 0).long()
             metrics = compute_acc(
@@ -913,9 +909,6 @@ class SwiftMixin:
                 labels.long(),
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.template.is_encoder_decoder)
-            mode = 'train' if self.model.training else 'eval'
-            for k, v in metrics.items():
-                self.custom_metrics[mode][k].update(v)
         else:
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:
@@ -941,6 +934,8 @@ class SwiftMixin:
 
             metrics = compute_acc(
                 preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+
+        if metrics:
             mode = 'train' if self.model.training else 'eval'
             for k, v in metrics.items():
                 self.custom_metrics[mode][k].update(v)
