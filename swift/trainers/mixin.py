@@ -870,33 +870,76 @@ class SwiftMixin:
 
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
-        preds = outputs.logits.argmax(dim=-1)
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            # Gather preds and labels across the sp group
-            if isinstance(preds, np.ndarray):
-                preds = torch.from_numpy(preds).to(get_current_device())
-            if isinstance(labels, np.ndarray):
-                labels = torch.from_numpy(labels).to(get_current_device())
-            assert labels.shape[1] == preds.shape[1]
+        logits = outputs.logits
+        metrics = None
+        if getattr(args, 'loss_type', None) in {'generative_reranker', 'listwise_generative_reranker'} \
+                and logits is not None and logits.dim() == 3:
+            tokenizer = getattr(self, 'processing_class', None)
+            if tokenizer is None and getattr(self, 'template', None) is not None:
+                tokenizer = self.template.tokenizer
+            if tokenizer is None:
+                raise RuntimeError('tokenizer not available for generative_reranker acc')
 
-            if sequence_parallel.rp_world_size > 1:
-                position_ids = sequence_parallel.real_position_ids
-                position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-            else:
-                position_ids = None
-            preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
-            labels_output = sequence_parallel.gather(labels, dim=1, position_ids=position_ids)
-            # roll back to fit compute_acc
-            labels_output = torch.roll(labels_output, shifts=1, dims=1)
-            preds = preds_output
-            labels = labels_output.int()
+            positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+            negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
 
-        metrics = compute_acc(
-            preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-        mode = 'train' if self.model.training else 'eval'
-        for k, v in metrics.items():
-            self.custom_metrics[mode][k].update(v)
+            try:
+                positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
+                negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
+            except Exception as e:
+                logger.warning(f'Failed to convert reranker tokens to ids: {e}')
+                positive_token_id = None
+                negative_token_id = None
+
+            if isinstance(positive_token_id, int) and isinstance(negative_token_id, int) \
+                    and positive_token_id >= 0 and negative_token_id >= 0:
+                positive_logits = logits[:, -1, positive_token_id]
+                negative_logits = logits[:, -1, negative_token_id]
+                binary_preds = (positive_logits > negative_logits).long()
+                metrics = compute_acc(
+                    binary_preds,
+                    labels.long(),
+                    acc_strategy=args.acc_strategy,
+                    is_encoder_decoder=self.template.is_encoder_decoder)
+        elif logits.dim() == 1 or (logits.dim() == 2 and logits.size(-1) == 1):
+            if logits.dim() == 2:
+                logits = logits.squeeze(-1)
+            binary_preds = (logits > 0).long()
+            metrics = compute_acc(
+                binary_preds,
+                labels.long(),
+                acc_strategy=args.acc_strategy,
+                is_encoder_decoder=self.template.is_encoder_decoder)
+        else:
+            preds = logits.argmax(dim=-1)
+            if self.template.sequence_parallel_size > 1:
+                from swift.trainers.sequence_parallel import sequence_parallel
+                # Gather preds and labels across the sp group
+                if isinstance(preds, np.ndarray):
+                    preds = torch.from_numpy(preds).to(get_current_device())
+                if isinstance(labels, np.ndarray):
+                    labels = torch.from_numpy(labels).to(get_current_device())
+                assert labels.shape[1] == preds.shape[1]
+
+                if sequence_parallel.rp_world_size > 1:
+                    position_ids = sequence_parallel.real_position_ids
+                    position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                else:
+                    position_ids = None
+                preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
+                labels_output = sequence_parallel.gather(labels, dim=1, position_ids=position_ids)
+                # roll back to fit compute_acc
+                labels_output = torch.roll(labels_output, shifts=1, dims=1)
+                preds = preds_output
+                labels = labels_output.int()
+
+            metrics = compute_acc(
+                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+
+        if metrics:
+            mode = 'train' if self.model.training else 'eval'
+            for k, v in metrics.items():
+                self.custom_metrics[mode][k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
