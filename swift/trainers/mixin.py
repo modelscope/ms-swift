@@ -668,10 +668,16 @@ class SwiftMixin:
             elif self.args.task_type == 'reranker':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
 
-                def revert_padding_free_hook(module, args, input, output):
-                    return revert_padding_free(output, input, self.args.padding_side)
+                @wraps(model.forward.__func__)
+                def reranker_forward(model, *args, **kwargs):
 
-                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+                    def inner_forward(*args, **kwargs):
+                        output = llm_model.forward(*args, **kwargs)
+                        return revert_padding_free(output, kwargs, self.args.padding_side)
+
+                    return transformers_seq_cls_forward(model, *args, origin_forward=inner_forward, **kwargs)
+
+                model.forward = MethodType(reranker_forward, model)
             elif self.args.task_type == 'generative_reranker':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
 
