@@ -349,60 +349,51 @@ register_model(
             ]),
             # other
             ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')]),
-        ],
-        TemplateType.qwen,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen2ForCausalLM'],
-        requires=['transformers>=4.37'],
-        model_arch=ModelArch.llama))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen2_5,
-        [
             # qwen2.5
-            ModelGroup([
-                # instruct
-                Model('Qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B-Instruct'),
-                Model('Qwen/Qwen2.5-1.5B-Instruct', 'Qwen/Qwen2.5-1.5B-Instruct'),
-                Model('Qwen/Qwen2.5-3B-Instruct', 'Qwen/Qwen2.5-3B-Instruct'),
-                Model('Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-7B-Instruct'),
-                Model('Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-14B-Instruct'),
-                Model('Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
-                Model('Qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
-                # base
-                Model('Qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
-                Model('Qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
-                Model('Qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
-                Model('Qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
-                Model('Qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
-                Model('Qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
-                Model('Qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
-                # gptq-int4
-                Model('Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4'),
-                Model('Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4'),
-                # gptq-int8
-                Model('Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8'),
-                Model('Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8'),
-                # awq-int4
-                Model('Qwen/Qwen2.5-0.5B-Instruct-AWQ', 'Qwen/Qwen2.5-0.5B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-1.5B-Instruct-AWQ', 'Qwen/Qwen2.5-1.5B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-3B-Instruct-AWQ', 'Qwen/Qwen2.5-3B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-7B-Instruct-AWQ', 'Qwen/Qwen2.5-7B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-14B-Instruct-AWQ', 'Qwen/Qwen2.5-14B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-32B-Instruct-AWQ'),
-                Model('Qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
-            ]),
+            ModelGroup(
+                [
+                    # instruct
+                    Model('Qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B-Instruct'),
+                    Model('Qwen/Qwen2.5-1.5B-Instruct', 'Qwen/Qwen2.5-1.5B-Instruct'),
+                    Model('Qwen/Qwen2.5-3B-Instruct', 'Qwen/Qwen2.5-3B-Instruct'),
+                    Model('Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-7B-Instruct'),
+                    Model('Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-14B-Instruct'),
+                    Model('Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
+                    Model('Qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
+                    Model('Qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
+                    Model('Qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
+                    Model('Qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
+                    Model('Qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
+                    Model('Qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
+                    Model('Qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
+                    # gptq-int4
+                    Model('Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4'),
+                    Model('Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4'),
+                    # gptq-int8
+                    Model('Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8'),
+                    Model('Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8'),
+                    # awq-int4
+                    Model('Qwen/Qwen2.5-0.5B-Instruct-AWQ', 'Qwen/Qwen2.5-0.5B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-1.5B-Instruct-AWQ', 'Qwen/Qwen2.5-1.5B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-3B-Instruct-AWQ', 'Qwen/Qwen2.5-3B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-7B-Instruct-AWQ', 'Qwen/Qwen2.5-7B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-14B-Instruct-AWQ', 'Qwen/Qwen2.5-14B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-32B-Instruct-AWQ'),
+                    Model('Qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
+                ],
+                TemplateType.qwen2_5),
             # qwen2.5-coder
             ModelGroup(
                 [
@@ -441,21 +432,11 @@ register_model(
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4'),
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8'),
                 ],
+                TemplateType.qwen2_5,
                 tags=['coding']),
             ModelGroup([
                 Model('moonshotai/Kimi-Dev-72B', 'moonshotai/Kimi-Dev-72B'),
-            ]),
-        ],
-        TemplateType.qwen2_5,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen2ForCausalLM'],
-        requires=['transformers>=4.37'],
-        model_arch=ModelArch.llama))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen2_5_math,
-        [
+            ], TemplateType.qwen2_5),
             # qwen2.5-math
             ModelGroup(
                 [
@@ -468,9 +449,16 @@ register_model(
                     Model('Qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
                     Model('Qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
                 ],
+                TemplateType.qwen2_5_math,
                 tags=['math']),
+            ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')], TemplateType.qwq_preview),
+            ModelGroup([
+                Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
+                Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
+            ], TemplateType.qwq),
+            ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')], TemplateType.marco_o1)
         ],
-        TemplateType.qwen2_5_math,
+        TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
@@ -530,6 +518,14 @@ register_model(
                 # swift
                 Model('swift/Qwen3-32B-AWQ'),
             ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
+                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
+            ], TemplateType.qwen3_thinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
+                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
+            ], TemplateType.qwen3_nothinking)
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -555,7 +551,36 @@ register_model(
             ]),
             ModelGroup([
                 Model('iic/Tongyi-DeepResearch-30B-A3B', 'Alibaba-NLP/Tongyi-DeepResearch-30B-A3B'),
-            ])
+            ]),
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
+                    Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
+                    Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+                    Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
+                    # awq
+                    Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
+                ],
+                TemplateType.qwen3_nothinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       TemplateType.qwen3_coder,
+                       tags=['coding']),
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
+                    Model('Qwen/Qwen3-30B-A3B-Thinking-2507-FP8', 'Qwen/Qwen3-30B-A3B-Thinking-2507-FP8'),
+                    Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
+                    Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
+                    # awq
+                    Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
+                ],
+                TemplateType.qwen3_thinking),
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -565,104 +590,21 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwen3_thinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
-                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
-            ]),
-        ],
-        TemplateType.qwen3_thinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_nothinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
-                # awq
-                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
-            ]),
-            ModelGroup([
-                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
-                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
-            ])
-        ],
-        TemplateType.qwen3_nothinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_coder,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
-            ],
-                       tags=['coding']),
-        ],
-        TemplateType.qwen3_coder,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_moe_thinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
-                Model('Qwen/Qwen3-30B-A3B-Thinking-2507-FP8', 'Qwen/Qwen3-30B-A3B-Thinking-2507-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
-                Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
-                # awq
-                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
-            ]),
-        ],
-        TemplateType.qwen3_thinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
         LLMModelType.qwen3_next,
-        [ModelGroup([
-            Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
-            Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
-        ])],
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
+            ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
+                Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
+            ], TemplateType.qwen3_thinking)
+        ],
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_next_thinking,
-        [ModelGroup([
-            Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
-            Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
-        ])],
-        TemplateType.qwen3_thinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
+        requires=['transformers>=4.57'],
     ))
 
 
@@ -773,22 +715,11 @@ register_model(
             ModelGroup([
                 Model('allenai/olmOCR-7B-0225-preview', 'allenai/olmOCR-7B-0225-preview'),
             ]),
-        ],
-        TemplateType.qwen2_vl,
-        get_model_tokenizer_qwen2_vl,
-        model_arch=ModelArch.qwen2_vl,
-        architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'decord'],
-        tags=['vision', 'video']))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.qvq, [
             ModelGroup([
                 Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
-            ]),
+            ], TemplateType.qvq),
         ],
-        TemplateType.qvq,
+        TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
@@ -855,7 +786,7 @@ register_model(
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
@@ -886,7 +817,7 @@ register_model(
         get_model_tokenizer_qwen3_moe_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
@@ -1034,37 +965,6 @@ register_model(
         requires=['transformers>=4.45,<4.49', 'librosa'],
         tags=['audio'],
     ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.marco_o1, [ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')])],
-        TemplateType.marco_o1,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['Qwen2ForCausalLM'],
-        requires=['transformers>=4.37']))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwq_preview, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
-        TemplateType.qwq_preview,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['Qwen2ForCausalLM'],
-        requires=['transformers>=4.37']))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwq,
-        [ModelGroup([
-            Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
-            Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
-        ])],
-        TemplateType.qwq,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['Qwen2ForCausalLM'],
-        requires=['transformers>=4.37']))
 
 
 def get_model_tokenizer_ovis(*args, **kwargs):

@@ -7,29 +7,18 @@ from typing import List
 class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
-    qwen2_5 = 'qwen2_5'
-    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
-    qwq_preview = 'qwq_preview'
-    qwq = 'qwq'
     qwen3 = 'qwen3'
-    qwen3_thinking = 'qwen3_thinking'
-    qwen3_nothinking = 'qwen3_nothinking'
-    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
-    qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_next = 'qwen3_next'
-    qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
-
     qwen2_gte = 'qwen2_gte'
 
     bge_reranker = 'bge_reranker'
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
-    marco_o1 = 'marco_o1'
 
     llama = 'llama'
     llama3 = 'llama3'
@@ -168,7 +157,6 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qwen3_vl = 'qwen3_vl'
     qwen3_moe_vl = 'qwen3_moe_vl'
-    qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
