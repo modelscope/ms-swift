@@ -17,7 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto'] = None
+    rlhf_type: Literal['dpo', 'kto', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -32,6 +32,9 @@ class RLHFMegatronArgumentsMixin:
     desirable_weight: float = 1.
     undesirable_weight: float = 1.
     calculate_KL: Optional[bool] = None
+
+    # rm
+    center_rewards_coefficient: Optional[float] = None
 
     def _init_kto(self):
         if self.calculate_KL is None:

@@ -268,6 +268,10 @@ LoRA Training:
 - desirable_weight: factor to weight desirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 - undesirable_weight: factor to weight undesirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 
+**RM Parameters**:
+- center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
+
+
 ## Training Parameters
 
 Megatron training parameters are inherited from Megatron parameters and basic parameters (**sharing dataset, template, etc. with ms-swift, and also supporting model-specific parameters from ms-swift**). For details on basic parameters, please refer to [here](../Instruction/Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
@@ -300,6 +304,6 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo' and 'kto' are available.
+- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', kto', and 'rm' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.

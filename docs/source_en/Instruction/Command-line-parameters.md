@@ -475,6 +475,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: In the KTO algorithm, this weight compensates for the imbalance between the number of desirable and undesirable samples by scaling the desirable loss. Default is `1.0`.
 - undesirable_weight: In the KTO algorithm, this weight compensates for the imbalance between desirable and undesirable samples by scaling the undesirable loss. Default is `1.0`.
+- center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 - loss_scale: Overrides the template parameter. During RLHF training, the default is `'last_round'`.
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
