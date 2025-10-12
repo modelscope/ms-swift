@@ -37,7 +37,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
             center_rewards_loss = self.args.center_rewards_coefficient * torch.mean(
                 (rewards_chosen + rewards_rejected)**2)
             loss += center_rewards_loss
-            self.custom_metrics[mode]['center_rewards_loss'].update(center_rewards_loss)
+            self.custom_metrics[mode]['center_rewards_loss'].update(center_rewards_loss.detach())
         # metrics
         rewards_chosen, rewards_rejected = rewards_chosen.detach(), rewards_rejected.detach()
         self.custom_metrics[mode]['rewards/chosen'].update(rewards_chosen.mean())

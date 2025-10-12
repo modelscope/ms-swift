@@ -41,7 +41,7 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
             'rewards/margins': (rewards_chosen - rewards_rejected).mean(),
         }
         if self.args.center_rewards_coefficient is not None:
-            metric['center_rewards_loss'] = center_rewards_loss
+            metric['center_rewards_loss'] = center_rewards_loss.detach()
         metric = self._all_reduce_metric(metric)
         return loss, metric
 
