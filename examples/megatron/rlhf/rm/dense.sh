@@ -31,4 +31,5 @@ megatron rlhf \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash
+    --attention_backend flash \
+    --center_rewards_coefficient 0.01
