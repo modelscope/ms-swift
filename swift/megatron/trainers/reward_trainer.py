@@ -29,7 +29,9 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
         if self.args.center_rewards_coefficient is not None:
-            loss += self.args.center_rewards_coefficient * torch.mean((rewards_chosen + rewards_rejected)**2)
+            center_rewards_loss = self.args.center_rewards_coefficient * torch.mean(
+                (rewards_chosen + rewards_rejected)**2)
+            loss += center_rewards_loss
         rewards_chosen, rewards_rejected = rewards_chosen.detach(), rewards_rejected.detach()
         metric = {
             'loss': loss.detach().clone(),
@@ -38,6 +40,8 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
             'rewards/accuracies': (rewards_chosen > rewards_rejected).float().mean(),
             'rewards/margins': (rewards_chosen - rewards_rejected).mean(),
         }
+        if self.args.center_rewards_coefficient is not None:
+            metric['center_rewards_loss'] = center_rewards_loss
         metric = self._all_reduce_metric(metric)
         return loss, metric
 

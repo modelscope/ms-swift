@@ -1,6 +1,7 @@
-# 2 * 80GiB
+# 2 * 70GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
+MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type rm \
@@ -24,7 +25,7 @@ megatron rlhf \
     --save megatron_output/Qwen2.5-VL-7B-Instruct \
     --eval_interval 200 \
     --save_interval 200 \
-    --max_length 4096 \
+    --max_length 8192 \
     --num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
@@ -39,4 +40,3 @@ megatron rlhf \
 
 
 # infer
-
