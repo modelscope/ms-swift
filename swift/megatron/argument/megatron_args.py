@@ -48,7 +48,7 @@ class RLHFMegatronArgumentsMixin:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid'}
         if self.loss_type is None:
-            self.loss_type = default_loss_type[self.rlhf_type]
+            self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
             self._init_kto()
 

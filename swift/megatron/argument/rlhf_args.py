@@ -11,3 +11,9 @@ class MegatronRLHFArguments(MegatronTrainArguments):
     loss_scale: str = 'last_round'
 
     calculate_per_token_loss: bool = False
+
+    def __post_init__(self):
+        if self.rlhf_type == 'rm':
+            self.task_type = 'seq_cls'
+            self.num_labels = 1
+        super().__post_init__()
