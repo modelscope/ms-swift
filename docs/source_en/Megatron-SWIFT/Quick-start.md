@@ -163,7 +163,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - Megatron-SWIFT uses the same dataset and template processing modules as ms-swift, thus supporting techniques such as packing, loss scale, and agent training. For custom dataset formats, please refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md).
 - **More Examples**: Including packing, multi-node training, 32K context length, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron).
 
-Training tips:
+
+## Training Tips
 - Ways to increase training throughput: use packing, increase DP (data parallelism), reduce recomputation, and increase computation-communication overlap.
 - Parallelism choices:
   - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.

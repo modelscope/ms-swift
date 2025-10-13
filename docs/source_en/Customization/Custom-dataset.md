@@ -146,6 +146,8 @@ If `seq_kd` is enabled, the final round of the 'assistant' part is not required 
 **Multi-label Task**:
 
 ```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": []}
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [0, 2]}
 {"messages": [{"role": "user", "content": "<sentence>"}], "label": [1, 3, 5]}
 ```
 
