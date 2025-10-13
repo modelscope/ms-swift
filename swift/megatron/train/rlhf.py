@@ -2,9 +2,10 @@
 from typing import List, Optional, Union
 
 from swift.llm.train.kto import prepare_kto_dataset
+from swift.trainers.rlhf_trainer.utils import identity_data_collator
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
-from ..trainers import MegatronDPOTrainer, MegatronKTOTrainer
+from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer
 from .sft import MegatronSft
 
 logger = get_logger()
@@ -18,6 +19,8 @@ class MegatronRLHF(MegatronSft):
         args = self.args
         if args.rlhf_type == 'dpo':
             trainer_cls = MegatronDPOTrainer
+        elif args.rlhf_type == 'grpo':
+            trainer_cls = MegatronGRPOTrainer
         elif args.rlhf_type == 'kto':
             trainer_cls = MegatronKTOTrainer
         else:
@@ -26,10 +29,13 @@ class MegatronRLHF(MegatronSft):
 
     def _prepare_template(self) -> None:
         super()._prepare_template()
-        if self.args.rlhf_type == 'kto':
-            self.template.set_mode('kto')
-        else:
-            self.template.set_mode('rlhf')
+        model_mapping = {'grpo': 'train', 'kto': 'kto'}
+        self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
+
+    def _get_data_collator(self):
+        if self.args.rlhf_type == 'grpo':
+            return identity_data_collator
+        return super()._get_data_collator()
 
     def _get_dataset(self):
         args = self.args

@@ -1266,6 +1266,8 @@ class Template(ProcessorMixin):
         cp_size = self.sequence_parallel_size
         if not self.use_megatron or cp_size == 1:
             return
+        if self.mode == 'vllm':  # skip for megatron grpo rollout
+            return
         input_ids = encoded['input_ids']
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
