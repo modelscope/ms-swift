@@ -850,7 +850,18 @@ def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_vl, [],
+        MLLMModelType.qwen3_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-4B-Instruct', 'Qwen/Qwen3-VL-4B-Instruct'),
+                Model('Qwen/Qwen3-VL-4B-Thinking', 'Qwen/Qwen3-VL-4B-Thinking'),
+                Model('Qwen/Qwen3-VL-4B-Instruct-FP8', 'Qwen/Qwen3-VL-4B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-4B-Thinking-FP8', 'Qwen/Qwen3-VL-4B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Instruct', 'Qwen/Qwen3-VL-8B-Instruct'),
+                Model('Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3-VL-8B-Thinking'),
+                Model('Qwen/Qwen3-VL-8B-Instruct-FP8', 'Qwen/Qwen3-VL-8B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Thinking-FP8', 'Qwen/Qwen3-VL-8B-Thinking-FP8'),
+            ]),
+        ],
         TemplateType.qwen3_vl,
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
