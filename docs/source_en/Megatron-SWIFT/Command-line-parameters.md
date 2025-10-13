@@ -250,7 +250,7 @@ LoRA Training:
 - use_rslora: Default is `False`. Whether to use `RS-LoRA`.
 
 **DPO Parameters**
-- ref_load: The loading path for the reference model. This must be provided when using DPO/KTO algorithms with full-parameter training. Defaults to `None`, which means it will be set to the same value as `load`.
+- ref_load: The loading path for the reference model. This must be provided when using DPO/GRPO/KTO algorithms with full-parameter training. Defaults to `None`, which means it will be set to the same value as `load`.
 - ref_adapter_load: The path to load the ref_adapter weights, default is `None`. If you want to use LoRA weights generated from SFT for DPO, please use "ms-swift>=3.8" and set `--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true` during training. For resuming training from a checkpoint in this scenario, set `--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`.
 - beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
 - 🔥rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
@@ -267,6 +267,36 @@ LoRA Training:
 - loss_type: default is `'kto'`. See possible values in the TRL docs: https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type.
 - desirable_weight: factor to weight desirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 - undesirable_weight: factor to weight undesirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
+
+**GRPO Parameters**
+- ref_load: Same meaning as in DPO.
+- ref_adapter_load: Same meaning as in DPO.
+- beta: KL regularization coefficient, default is 0.04. When set to 0, the reference model is not loaded.
+- epsilon: Clip coefficient, default is 0.2.
+- epsilon_high: Upper clip coefficient, default is None. When set, forms a clipping range [epsilon, epsilon_high] together with epsilon.
+- overlong_filter: Skips samples that are truncated due to excessive length and excludes them from loss computation. Default is False.
+- importance_sampling_level: Controls the level at which importance sampling ratios are computed. Options are `token`, `sequence`, and `sequence_token`. Default is `token`. See [GSPO Documentation](../Instruction/GRPO/AdvancedResearch/GSPO.md) for details.
+- Batch Size Related Parameters (Note: all are completion-level)
+  - micro_batch_size: Batch size per device, default is 1.
+  - global_batch_size: Total batch size, equivalent to `micro_batch_size * data parallelism size * gradient accumulation steps`. Default is 16. Corresponds to the mini_batch_size (number of training samples per weight update).
+  - generation_batch_size: Sampling batch size, must be a multiple of global_batch_size. Default equals global_batch_size.
+  - steps_per_generation: Number of optimization steps per generation round, i.e., the ratio of generation_batch_size to global_batch_size. Default is 1.
+  - num_generations: Number of samples generated per prompt (the "G" value in the paper). generation_batch_size must be divisible by num_generations. Default is 8.
+- reward_funcs: Reward functions used in GRPO algorithm. Options include `accuracy`, `format`, `cosine`, `repetition`, and `soft_overlong`, defined in swift/plugin/orm.py. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_weights: Weights assigned to each reward function. Must match the total number of reward functions and reward models. If None, all rewards are equally weighted with `1.0`.
+- loss_type: Type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo']. Default is 'grpo'. See this [PR](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348) for details.
+
+- vLLM Parameters
+  - vllm_gpu_memory_utilization: Pass-through parameter to vLLM, default is 0.9.
+  - vllm_max_model_len: Pass-through parameter to vLLM, default is None.
+  - vllm_enforce_eager: Pass-through parameter to vLLM, default is False.
+  - vllm_limit_mm_per_prompt: Pass-through parameter to vLLM, default is None.
+  - vllm_enable_prefix_caching: Pass-through parameter to vLLM, default is True.
+  - sleep_level: Release vLLM GPU memory during training. Options are [0, 1], default is 0 (no release).
+  - offload_optimizer: Whether to offload optimizer states during vLLM inference. Default is False.
+  - offload_model: Whether to offload model weights during vLLM inference. Default is False.
+
+For built-in reward function parameters, refer to the [documentation](../Instruction/GRPO/DeveloperGuide/reward_function.md).
 
 ## Training Parameters
 
