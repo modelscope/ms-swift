@@ -35,8 +35,7 @@ class SwiftDeploy(SwiftInfer):
         if isinstance(args, DeployArguments) and args.infer_backend == 'vllm' and args.vllm_data_parallel_size > 1:
             if not args.vllm_use_async_engine:
                 raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
-            engine_kwargs = kwargs.pop('engine_kwargs', None) or {}
-            engine_kwargs = dict(engine_kwargs)
+            engine_kwargs = (kwargs.get('engine_kwargs') or {}).copy()
             engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
             kwargs['engine_kwargs'] = engine_kwargs
             logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
