@@ -17,7 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto'] = None
+    rlhf_type: Literal['dpo', 'kto', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -33,6 +33,9 @@ class RLHFMegatronArgumentsMixin:
     undesirable_weight: float = 1.
     calculate_KL: Optional[bool] = None
 
+    # rm
+    center_rewards_coefficient: Optional[float] = None
+
     def _init_kto(self):
         if self.calculate_KL is None:
             # Not all losses require a KL calculation
@@ -45,7 +48,7 @@ class RLHFMegatronArgumentsMixin:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid'}
         if self.loss_type is None:
-            self.loss_type = default_loss_type[self.rlhf_type]
+            self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
             self._init_kto()
 

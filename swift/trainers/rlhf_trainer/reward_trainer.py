@@ -32,8 +32,18 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
+        mode = 'train' if self.model.training else 'eval'
         if self.args.center_rewards_coefficient is not None:
-            loss += self.args.center_rewards_coefficient * torch.mean((rewards_chosen + rewards_rejected)**2)
+            center_rewards_loss = self.args.center_rewards_coefficient * torch.mean(
+                (rewards_chosen + rewards_rejected)**2)
+            loss += center_rewards_loss
+            self.custom_metrics[mode]['center_rewards_loss'].update(center_rewards_loss.detach())
+        # metrics
+        rewards_chosen, rewards_rejected = rewards_chosen.detach(), rewards_rejected.detach()
+        self.custom_metrics[mode]['rewards/chosen'].update(rewards_chosen.mean())
+        self.custom_metrics[mode]['rewards/rejected'].update(rewards_rejected.mean())
+        self.custom_metrics[mode]['rewards/accuracies'].update((rewards_chosen > rewards_rejected).float().mean())
+        self.custom_metrics[mode]['rewards/margins'].update((rewards_chosen - rewards_rejected).mean())
         # compat transformers>=4.46.*
         if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
             loss = loss / self.args.gradient_accumulation_steps

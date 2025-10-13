@@ -197,6 +197,7 @@ Supervised Fine-tuning:
   - videos: video, videos.
   - audios: audio, audios.
 - If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
+- If you wish to directly pass in video frames instead of a video file, you can use the following format (requires `ms-swift>=3.8.3`): `"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`. This format is supported only by certain models, including Qwen2/2.5/3-VL, Qwen2.5/3-Omni, and their derivative models.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
