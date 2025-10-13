@@ -555,7 +555,7 @@ class Template(ProcessorMixin):
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'length':
-                packed[key] = sum((x.get(key) or [] for x in row))
+                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
