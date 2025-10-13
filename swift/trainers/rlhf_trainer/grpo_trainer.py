@@ -247,7 +247,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
         self.enable_offload = False
@@ -308,6 +307,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
+
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -493,7 +494,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'lora_' in name:
                 return ''
             else:
-                return name.replace('base_layer.', '')
+                if not self.rollout_enable_lora:
+                    return name.replace('base_layer.', '')
+                else:
+                    return name
 
         def remove_lora_and_prefix(names):
             names = set([re.sub(r'^_model\.', '', replace_lora(n)) for n in names])
