@@ -553,7 +553,7 @@ class Template(ProcessorMixin):
             length.append(r['length'])
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
-                packed[key] = sum((x[key] for x in row), start=[])
+                packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'length':
                 packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
