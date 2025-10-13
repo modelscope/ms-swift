@@ -7,6 +7,7 @@ from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
+from .seed_oss import SeedAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
 
 agent_templates = {
@@ -18,6 +19,7 @@ agent_templates = {
     'qwen_zh': QwenZhAgentTemplate,
     'qwen_en_parallel': QwenEnParallelAgentTemplate,
     'qwen_zh_parallel': QwenZhParallelAgentTemplate,
+    'seed_oss': SeedAgentTemplate,
     'hermes': HermesAgentTemplate,
     'hunyuan_hermes': HunyuanHermesAgentTemplate,
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
