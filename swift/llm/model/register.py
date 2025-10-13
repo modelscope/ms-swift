@@ -208,6 +208,48 @@ def _patch_awq_compat(model_info):
         pass
 
 
+def deepspeed_set_z3_leaf_modules(model):
+    if not is_deepspeed_zero3_enabled():
+        return
+    try:
+        architecture = model.config.architectures[0]
+    except Exception:
+        return
+    z3_leaf_modules = None
+    if architecture == 'Qwen3VLMoeForConditionalGeneration':
+        from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
+        z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
+    elif architecture == 'Qwen3OmniMoeForConditionalGeneration':
+        from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerTextSparseMoeBlock
+        z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
+    elif architecture == 'Qwen2MoeForCausalLM':
+        from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
+        z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
+    elif architecture == 'Qwen3MoeForCausalLM':
+        from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
+        z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+    elif architecture == 'Glm4MoeForCausalLM':
+        from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
+        z3_leaf_modules = [Glm4MoeMoE]
+    elif architecture == 'Glm4vMoeForConditionalGeneration':
+        from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
+        z3_leaf_modules = [Glm4vMoeTextMoE]
+    elif architecture == 'GptOssForCausalLM':
+        from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
+        z3_leaf_modules = [GptOssMLP]
+    elif architecture == 'Llama4ForCausalLM':
+        from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
+        z3_leaf_modules = [Llama4TextMoe]
+    elif architecture == 'Qwen3NextForCausalLM':
+        from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
+        z3_leaf_modules = [Qwen3NextSparseMoeBlock]
+
+    if z3_leaf_modules:
+        from deepspeed.utils import set_z3_leaf_modules
+        set_z3_leaf_modules(model, z3_leaf_modules)
+        logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
+
+
 def get_model_tokenizer_from_local(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -229,9 +271,11 @@ def get_model_tokenizer_from_local(model_dir: str,
     torch_dtype = model_info.torch_dtype
     HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
+    leaf_modules = kwargs.get('leaf_modules')
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
+    model_meta = kwargs.get('model_meta')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
     if max_model_len:
@@ -244,6 +288,15 @@ def get_model_tokenizer_from_local(model_dir: str,
     if num_labels and model_info.task_type in ['seq_cls', 'reranker']:
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
+
+    if model_info.task_type == 'seq_cls':
+        problem_type = kwargs.get('problem_type')
+        if problem_type is None:
+            if model_info.num_labels == 1 or model_meta.is_reward:
+                problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'
+        model_config.problem_type = problem_type
 
     if model_info.quant_method == 'fp8':
         torch_dtype = 'auto'
@@ -260,7 +313,6 @@ def get_model_tokenizer_from_local(model_dir: str,
                     model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
-        model_meta = kwargs['model_meta']
         context_kwargs = {
             'model_info': model_info,
             'model_meta': model_meta,
@@ -320,6 +372,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     if model is not None:
         # fix seq classification task
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
+        if leaf_modules is not None or model_info.is_moe_model:
+            # deepspeed zero3
+            deepspeed_set_z3_leaf_modules(model)
 
     return model, tokenizer
 
@@ -715,12 +770,6 @@ def get_model_tokenizer(
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
-    if task_type == 'seq_cls':
-        problem_type = kwargs.get('problem_type')
-        if problem_type is None and model_info.num_labels == 1:
-            problem_type = 'regression'
-        if problem_type is not None:
-            model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
