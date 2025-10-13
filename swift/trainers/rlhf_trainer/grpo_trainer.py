@@ -247,8 +247,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        if is_peft_model(self.model):
-            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
         self.enable_offload = False
@@ -548,6 +547,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'max_loras': 1,
                 'max_lora_rank': self.args.lora_rank,
             }
+            self.rollout_enable_lora = True
             patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
@@ -640,7 +640,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _move_full_model_to_vllm(self):
         gather_if_zero3 = get_gather_if_zero3_context(self)
         if is_peft_model(self.model):
-            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+            for i, parameter_group in enumerate(self.parameter_groups):
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
                 parameters = [
                     parameter for name, parameter in self.model.named_parameters()
@@ -649,7 +649,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
                     state_dict = self.model.state_dict()
-                    state_dict = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
+                    prefix_removed = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
+                    state_dict = prefix_removed if self.rollout_enable_lora else {
+                        k.replace('.base_layer', ''): v
+                        for k, v in prefix_removed.items()
+                    }
                     state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {
@@ -680,31 +684,44 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     del state_dict
             self.base_sync_done = True
         else:
-            if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                # For non-PEFT models, use streaming bucket approach to avoid memory peaks
-                # Collect parameters in small batches and process them immediately
-                current_bucket = []
-                current_size = 0
+            if self.vllm_mode == 'server':
                 bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
-                for name, param in self.model.named_parameters():
-                    with gather_if_zero3([param]):
-                        # Ensure we have the full parameter (not sharded) and COPY it
-                        # to avoid the parameter being re-partitioned when exiting context
-                        full_param = param.data.clone() if hasattr(param, 'data') else param.clone()
-                        param_size = full_param.numel() * full_param.element_size()
+                for i, parameter_group in enumerate(self.parameter_groups):
+                    parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                    parameters = [
+                        parameter for name, parameter in self.model.named_parameters()
+                        if not parameter_group or name in parameter_group
+                    ]
+                    with gather_if_zero3(parameters):
+                        if self.accelerator.is_main_process:
+                            # Get state_dict AFTER gather to get full parameters
+                            state_dict = self.model.state_dict()
 
-                        # If adding this param would exceed bucket size, process current bucket first
-                        if current_size + param_size > bucket_size_bytes and current_bucket:
-                            _process_bucket_with_flattened_tensor(self, current_bucket)
+                            # Filter by parameter_group_no_lora if specified
+                            if parameter_group_no_lora:
+                                state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+
+                            # Split gathered parameters into buckets
                             current_bucket = []
                             current_size = 0
 
-                        current_bucket.append((name, full_param))
-                        current_size += param_size
+                            for name, param in state_dict.items():
+                                param_size = param.numel() * param.element_size()
 
-                # Process remaining parameters in the last bucket
-                if current_bucket:
-                    _process_bucket_with_flattened_tensor(self, current_bucket)
+                                # If adding this param would exceed bucket size, process current bucket first
+                                if current_size + param_size > bucket_size_bytes and current_bucket:
+                                    _process_bucket_with_flattened_tensor(self, current_bucket)
+                                    current_bucket = []
+                                    current_size = 0
+
+                                current_bucket.append((name, param))
+                                current_size += param_size
+
+                            # Process remaining parameters in the last bucket
+                            if current_bucket:
+                                _process_bucket_with_flattened_tensor(self, current_bucket)
+
+                            del state_dict
             else:
                 for name, param in self.model.named_parameters():
                     with gather_if_zero3([param]):

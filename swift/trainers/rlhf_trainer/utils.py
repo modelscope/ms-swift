@@ -554,17 +554,11 @@ class FlattenedTensorBucket:
             if not named_tensors:
                 raise ValueError('Cannot create empty tensor bucket')
 
-            # Collect metadata and flatten tensors
+            # First pass: compute total size and metadata
             current_idx = 0
-            flattened_tensors: List[torch.Tensor] = [None] * len(named_tensors)
-
+            total_numel = 0
             for i, (name, tensor) in enumerate(named_tensors):
-                flattened = tensor.flatten()
-                flattened_tensors[i] = flattened
-
-                # Store metadata
-
-                numel = flattened.numel()
+                numel = tensor.numel()
                 metadata_obj = FlattenedTensorMetadata(
                     name=name,
                     shape=tuple(tensor.shape),
@@ -575,9 +569,16 @@ class FlattenedTensorBucket:
                 )
                 self.metadata[i] = metadata_obj
                 current_idx += numel
+                total_numel += numel
 
-            # Concatenate all flattened tensors
-            self.flattened_tensor = torch.cat(flattened_tensors, dim=0)
+            # Pre-allocate the final flattened tensor to avoid intermediate copies
+            # Use the dtype and device of the first tensor
+            first_tensor = named_tensors[0][1]
+            self.flattened_tensor = torch.empty(total_numel, dtype=first_tensor.dtype, device=first_tensor.device)
+
+            # Second pass: copy data directly into pre-allocated tensor
+            for meta, (name, tensor) in zip(self.metadata, named_tensors):
+                self.flattened_tensor[meta.start_idx:meta.end_idx].copy_(tensor.flatten())
         else:
             # Initialize from pre-flattened data
             if flattened_tensor is None or metadata is None:
