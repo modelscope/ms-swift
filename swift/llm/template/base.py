@@ -422,8 +422,6 @@ class Template(ProcessorMixin):
             anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
-        if not any([key.endswith('loss_scale') for key in _encoded.keys()]):
-            print()
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
