@@ -15,7 +15,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments
+from swift.llm import AdapterRequest, DeployArguments, InferArguments
 from swift.llm.infer.protocol import EmbeddingRequest, MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
@@ -29,6 +29,18 @@ logger = get_logger()
 class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
     args: args_class
+
+    @staticmethod
+    def get_infer_engine(args: InferArguments, template=None, **kwargs):
+        if isinstance(args, DeployArguments) and args.infer_backend == 'vllm' and args.vllm_data_parallel_size > 1:
+            if not args.vllm_use_async_engine:
+                raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
+            engine_kwargs = kwargs.pop('engine_kwargs', None) or {}
+            engine_kwargs = dict(engine_kwargs)
+            engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
+            kwargs['engine_kwargs'] = engine_kwargs
+            logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
+        return SwiftInfer.get_infer_engine(args, template, **kwargs)
 
     def _register_app(self):
         self.app.get('/v1/models')(self.get_available_models)
