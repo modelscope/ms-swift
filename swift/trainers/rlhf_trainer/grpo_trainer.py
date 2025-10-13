@@ -611,7 +611,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
-                cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
+                cur_lora_params = {
                     name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
                     for name, param in cur_lora_params.items()
                 }
