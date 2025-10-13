@@ -214,7 +214,7 @@ Other important parameters:
 - train_dataloader_shuffle: Whether to shuffle the dataloader in CPT/SFT training. Default is `True`. Not effective for `IterableDataset`, which uses sequential loading.
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
-  - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training.
+  - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
 - average_tokens_across_devices: Whether to average token counts across devices. If `True`, `num_tokens_in_batch` is synchronized via `all_reduce` for accurate loss computation. Default is `False`.
 - max_grad_norm: Gradient clipping. Default is 1.
   - Note: The logged `grad_norm` reflects the value **before** clipping.
@@ -423,7 +423,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
   - Note: If you want to perform image data augmentation, you need to set `lazy_tokenize` (or `streaming`) to True and modify the `encode` method in the Template class.
-- cached_dataset: Use cached datasets during training (generated via the command `swift export --to_cached_dataset true ...`) to avoid GPU memory being occupied by tokenization when training with large datasets. Default is `[]`. Example: [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
+- cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default is `[]`. Example: [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
   - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
@@ -456,7 +456,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
 - 🔥rlhf_type: Type of human alignment algorithm, supporting 'dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo' and 'gkd'. Default is 'dpo'.
-- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
+- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None, set to `--model`.
 - ref_adapters: Default is `[]`. If you want to use the LoRA weights generated from SFT for DPO/KTO/GRPO, please use "ms-swift>=3.8" and set `--adapters sft_ckpt --ref_adapters sft_ckpt`. For resuming training from a checkpoint in this scenario, set `--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
@@ -475,6 +475,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: In the KTO algorithm, this weight compensates for the imbalance between the number of desirable and undesirable samples by scaling the desirable loss. Default is `1.0`.
 - undesirable_weight: In the KTO algorithm, this weight compensates for the imbalance between desirable and undesirable samples by scaling the undesirable loss. Default is `1.0`.
+- center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 - loss_scale: Overrides the template parameter. During RLHF training, the default is `'last_round'`.
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
@@ -749,14 +750,14 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 
 - SPATIAL_MERGE_SIZE: default 2.
 - IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
-- 🔥 IMAGE_MAX_TOKEN_NUM: default `16384`, denotes the maximum number of image tokens per image. (used to avoid OOM)
+- 🔥IMAGE_MAX_TOKEN_NUM: default `16384`, denotes the maximum number of image tokens per image. (used to avoid OOM)
 - VIDEO_MIN_TOKEN_NUM: default `128`, denotes the minimum number of video tokens per frame.
-- 🔥 VIDEO_MAX_TOKEN_NUM: default `768`, denotes the maximum number of video tokens per frame. (used to avoid OOM)
+- 🔥VIDEO_MAX_TOKEN_NUM: default `768`, denotes the maximum number of video tokens per frame. (used to avoid OOM)
 - MAX_RATIO: default 200.
 - FRAME_FACTOR: default 2.
 - FPS: default 2.0.
 - FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
-- 🔥 FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+- 🔥FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
 
 
 ### internvl, internvl_phi3

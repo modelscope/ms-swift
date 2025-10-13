@@ -354,7 +354,7 @@ class SequenceParallel:
             if isinstance(router_logits, tuple):
                 compute_device = router_logits[0].device
                 router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
-            router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
+            router_logits, _ = GatherLoss.apply(router_logits, None)
             router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
                                                   -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
                                                                               -1)

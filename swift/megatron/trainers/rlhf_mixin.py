@@ -21,7 +21,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
-        if args.train_type == 'full':
+        if args.train_type == 'full' and args.rlhf_type != 'rm':
             ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
             for m in ref_models:
                 m = unwrap_model(m)
