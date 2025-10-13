@@ -616,7 +616,7 @@ class PtEngine(InferEngine):  # 定义基于 PyTorch 的推理引擎类，继承
         if generation_config.num_beams != 1:  # 若生成配置中启用了束搜索（num_beams > 1）
             error_msg = 'Streaming generation does not support beam search.'  # 定义错误信息
             raise ValueError(error_msg)  # 抛出异常（流式生成与束搜索不兼容，因为束搜索需要等待所有候选完成）
-        
+
         streamer = TokensIteratorStreamer()  # 创建 token 流式输出器（线程安全的队列，用于在生成时逐步产出 token）
         # TokensIteratorStreamer 是一个迭代器，后台线程生成的 token 会放入其内部队列，主线程通过 next() 获取
         
@@ -646,8 +646,8 @@ class PtEngine(InferEngine):  # 定义基于 PyTorch 的推理引擎类，继承
             template.generate(self.model, **kwargs)  # 调用模板的 generate 方法，执行 model.generate()
             # 这个调用会阻塞，直到生成完成或达到 max_new_tokens
 
-        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)  # 调用模板方法准备最终生成参数
-        # 可能会添加多模态数据（如图像特征）、调整 input_ids 格式等
+        # 调用模板方法准备最终生成参数。可能会添加多模态数据（如图像特征）、调整 input_ids 格式等
+        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)  # 创建后台线程
         # target=_model_generate: 线程的执行函数
@@ -822,14 +822,14 @@ class PtEngine(InferEngine):  # 定义基于 PyTorch 的推理引擎类，继承
                         choices=choices,  # 选项列表
                         usage=usage_info,  # 用量信息
                         id=request_id_list[i]))  # 请求 ID（用于追踪）
-            
+
             # --- 4.5 产出响应 ---
             if any(res):  # 若响应列表中有非 None 元素（至少有一个样本产出了响应）
                 yield res  # 通过生成器产出响应列表给调用方
                 # yield 使当前函数成为生成器，调用方通过 for 循环或 next() 逐步获取响应
                 # 产出后，函数暂停，等待调用方请求下一批响应，然后从此处继续执行
 
-    def _get_adapter_names(self, adapter_request: Optional[AdapterRequest]) -> Optional[List[str]]:  # 获取适配器名称列表（内部方法）
+    def _get_adapter_names(self, adapter_request: Optional[AdapterRequest]) -> Optional[List[str]]:
         """函数功能：
         根据适配器请求获取适配器名称列表，支持动态加载新适配器。
         
@@ -853,7 +853,7 @@ class PtEngine(InferEngine):  # 定义基于 PyTorch 的推理引擎类，继承
             self._add_adapter(adapter_request.path, adapter_name)  # 动态加载适配器
         return [adapter_name]  # 返回适配器名称列表
 
-    def _infer_forward(self, template: Template, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],  # 前向推理方法（用于非生成任务）
+    def _infer_forward(self, template: Template, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
                        request_config: RequestConfig, **kwargs):  # 请求配置和额外参数
         """函数功能：
         执行前向推理（Forward Pass），用于非文本生成任务（序列分类、PRM、嵌入等）。
@@ -917,79 +917,262 @@ class PtEngine(InferEngine):  # 定义基于 PyTorch 的推理引擎类，继承
                 res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))  # 添加聊天补全响应到结果列表
         return res  # 返回结果列表
 
-    def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,  # 非流式完整推理方法（内部方法）
-                    adapter_request: Optional[AdapterRequest], request_config: RequestConfig,  # 适配器请求和请求配置
-                    template_inputs) -> List[ChatCompletionResponse]:  # 返回聊天补全响应列表
+    def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+                    adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
+                    template_inputs) -> List[ChatCompletionResponse]:
         """函数功能：
-        执行非流式完整推理，一次性生成所有 token 后返回完整响应。
-        适用于不需要实时显示的场景（如批处理）。
+        执行非流式完整推理，一次性生成所有 token 后返回完整响应（而非逐步产出）。
+        这是文本生成任务的非流式推理核心方法，等待模型完全生成后一次性返回所有结果。
         
-        参数：见上方签名注释。
+        工作原理：
+        1. 调用 model.generate() 完整执行自回归生成（阻塞，直到生成完成）
+        2. 获取生成的完整序列（prompt + 生成部分）
+        3. 提取纯生成部分（去除 prompt）
+        4. 处理 logits，计算对数概率（若启用）
+        5. 为每个样本的每个候选序列构造响应对象
+        6. 返回完整的响应列表
+        
+        与 _infer_stream 的区别：
+        - _infer_stream：后台线程生成，主线程逐步产出增量响应（实时流式）
+        - _infer_full：主线程阻塞等待完整生成，一次性返回所有响应（批处理）
+        
+        适用场景：
+        - 批量处理（不需要实时显示）
+        - 需要完整内容后再处理（如打分、分类）
+        - 支持 num_return_sequences > 1（生成多个候选）
+        - 支持束搜索（beam search）
+        
+        参数：
+        - template (Template): 
+          对话模板，用于编码/解码、多模态处理等
+        
+        - inputs (Dict[str, Any]): 
+          模型输入字典，包含以下关键字段：
+          - 'input_ids': Tensor，形状 [batch_size, prompt_len]，输入 token IDs
+          - 'attention_mask': Tensor，形状 [batch_size, prompt_len]，注意力掩码
+          - 可能包含多模态数据（images, videos 等）
+        
+        - generation_config (GenerationConfig): 
+          生成配置，包含：
+          - max_new_tokens: 最大生成 token 数
+          - num_return_sequences: 每个样本返回的候选数（n参数）
+          - num_beams: 束搜索的束宽度
+          - temperature, top_p, top_k: 采样参数
+        
+        - adapter_request (Optional[AdapterRequest]): 
+          LoRA/Swift 适配器请求，None 表示使用基础模型
+        
+        - request_config (RequestConfig): 
+          请求配置，包含 top_logprobs、return_details 等参数
+        
+        - template_inputs: 
+          模板输入列表，长度为 batch_size，用于解码时的特殊处理
+          例如：包含对话历史、系统提示等信息
         
         返回值：
-        - List[ChatCompletionResponse]: 聊天补全响应列表
+        - List[ChatCompletionResponse]: 
+          聊天补全响应列表，长度为 batch_size
+          每个响应包含 num_return_sequences 个候选（choices）
         
         示例：
-        >>> # 内部调用，通常由 _infer 调用
-        >>> responses = self._infer_full(template, inputs, ...)
+        >>> # 假设：batch_size=2，每个样本生成 num_return_sequences=2 个候选
+        >>> template = get_template('qwen')
+        >>> inputs = {
+        ...     'input_ids': torch.tensor([[151643, 872, 你好], [151643, 872, 嗨]]),  # shape: [2, 3]
+        ...     'attention_mask': torch.tensor([[1, 1, 1], [1, 1, 1]])                # shape: [2, 3]
+        ... }
+        >>> gen_config = GenerationConfig(max_new_tokens=10, num_return_sequences=2)
+        >>> req_config = RequestConfig(stream=False, top_logprobs=2)
+        >>> template_inputs = [{'system': '...'}, {'system': '...'}]  # 长度为 2
+        >>> 
+        >>> # 调用非流式推理
+        >>> responses = self._infer_full(template, inputs, 
+        ...                               generation_config=gen_config,
+        ...                               adapter_request=None,
+        ...                               request_config=req_config,
+        ...                               template_inputs=template_inputs)
+        >>> 
+        >>> # 返回结果：长度为 2 的列表（对应 2 个样本）
+        >>> len(responses)  # 2
+        >>> 
+        >>> # 第1个样本的响应，包含 2 个候选
+        >>> responses[0].choices[0].message.content  # "你好啊，很高兴见到你！"
+        >>> responses[0].choices[1].message.content  # "你好，有什么可以帮助你的吗？"
+        >>> 
+        >>> # 第2个样本的响应，包含 2 个候选
+        >>> responses[1].choices[0].message.content  # "嗨！今天过得怎么样？"
+        >>> responses[1].choices[1].message.content  # "嗨，你好！"
         """
-        # bos_token TODO: encoder-decoder  # 注释：BOS token 处理待实现（编码器-解码器模型）
-        generate_kwargs = {'generation_config': generation_config, **inputs}  # 初始化生成参数字典（合并生成配置和输入）
-        adapter_names = self._get_adapter_names(adapter_request)  # 获取适配器名称列表
-        if adapter_names is not None:  # 若存在适配器
-            generate_kwargs['adapter_names'] = adapter_names  # 添加适配器名称到生成参数
-        num_prompt_tokens = self._get_num_tokens(inputs)  # 计算 prompt 的 token 数量
-        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)  # 调用模板方法准备生成参数（可能添加多模态数据等）
-        output = dict(template.generate(self.model, **generate_kwargs))  # 调用模板的 generate 方法执行完整生成，并转为字典
-        output.pop('past_key_values', None)  # 移除 past_key_values（KV 缓存，不需要返回）
-        batched_generate_ids = output['sequences']  # 提取生成的序列张量（包含 prompt + 生成部分）
-        batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)  # 调用模板方法提取纯生成部分（去除 prompt）
-        template.debug_logger({'generate_ids': batched_generate_ids})  # debug  # 记录调试日志（生成的 token ID）
-        batched_logprobs = self.preprocess_logits(  # 预处理 logits 为对数概率
-            output.get('logits'), batched_generate_ids, request_config.top_logprobs)  # 传入 logits、生成 ID 和 top_logprobs 参数
+        # ============ 第1步：准备生成参数 ============
+        # bos_token TODO: encoder-decoder  # 待办事项：BOS token 处理（编码器-解码器模型如 T5、BART 等）
+        
+        generate_kwargs = {'generation_config': generation_config, **inputs}  # 初始化生成参数字典
+        # 合并生成配置和输入：
+        #   - generation_config: GenerationConfig 对象（max_new_tokens、temperature 等）
+        #   - **inputs: 展开输入字典（input_ids [batch_size, prompt_len]、attention_mask 等）
+        
+        adapter_names = self._get_adapter_names(adapter_request)  # 获取 LoRA/Swift 适配器名称列表
+        if adapter_names is not None:  # 若存在适配器（例如 ['lora_adapter_1']）
+            generate_kwargs['adapter_names'] = adapter_names  # 添加适配器名称到生成参数（模型会使用对应的适配器权重）
+        
+        num_prompt_tokens = self._get_num_tokens(inputs)  # 计算 prompt 的 token 数量（从 input_ids 或 attention_mask 计算）
+        # 用于后续提取纯生成部分：generated_tokens = total_tokens - num_prompt_tokens
+        
+        # 调用模板方法准备最终生成参数（可能添加多模态数据、调整格式等）
+        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        # 例如：添加图像特征、调整 input_ids 格式、设置特殊标记等
 
-        res = []  # 初始化结果列表
-        num_return_sequences = generation_config.num_return_sequences  # 获取每个样本需要返回的序列数（n 参数）
-        for i in range(inputs['attention_mask'].shape[0]):  # 遍历批次中的每个样本
-            choices = []  # 初始化该样本的选项列表
-            usage_info = self._get_usage_info(num_prompt_tokens, 0)  # 初始化用量信息（生成 token 数为 0，后续会更新）
-            for j in range(num_return_sequences):  # 遍历该样本的每个候选序列
-                batched_index = i * num_return_sequences + j  # 计算在批量张量中的索引（批大小 * 候选数）
-                generate_ids = batched_generate_ids[batched_index]  # 获取该候选的生成 ID 张量
+        # ============ 第2步：执行完整生成 ============
+        output = dict(template.generate(self.model, **generate_kwargs))  # 调用模板的 generate 方法执行完整生成
+        # template.generate() 内部会调用 model.generate(**generate_kwargs)
+        # 这是一个**阻塞调用**，会等待模型完全生成完所有 token 后返回
+        # 返回值是一个字典（或类似对象），包含：
+        #   - 'sequences': 生成的完整序列，shape: [batch_size * num_return_sequences, prompt_len + gen_len]
+        #   - 'logits': 每个时间步的 logits（若启用），列表，长度为 gen_len
+        #   - 'past_key_values': KV 缓存（不需要）
+        # 转为字典以便后续操作
+        
+        output.pop('past_key_values', None)  # 移除 past_key_values 字段
+        # past_key_values 是 KV 缓存，用于加速生成，但占用大量内存且不需要返回，所以删除
+        
+        batched_generate_ids = output['sequences']  # 提取生成的序列张量
+        # batched_generate_ids shape: [batch_size * num_return_sequences, prompt_len + gen_len]
+        # 例如：batch_size=2, num_return_sequences=3 -> shape: [6, total_len]
+        # 包含 prompt 和生成部分的完整序列
+        
+        # ============ 第3步：提取纯生成部分 ============
+        batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
+        # 调用模板方法提取纯生成部分（去除 prompt token）
+        # 输入 shape: [batch_size * num_return_sequences, prompt_len + gen_len]
+        # 输出 shape: [batch_size * num_return_sequences, gen_len]
+        # 例如：[[prompt..., 你, 好], ...] -> [[你, 好], ...]
+        
+        template.debug_logger({'generate_ids': batched_generate_ids})  # debug  # 记录调试日志（用于开发调试）
+        # 将生成的 token IDs 记录到日志，方便排查问题
 
-                # ignore pad_token  # 注释：忽略填充 token
-                masks = generate_ids != self.tokenizer.pad_token_id  # 创建掩码（非填充 token 为 True）
-                generate_ids = generate_ids[masks].tolist()  # 过滤掉填充 token 并转为列表
-                logprobs_list = None  # 初始化对数概率列表为 None
-                if batched_logprobs is not None:  # 若有对数概率数据
-                    logprobs_list = [  # 根据掩码过滤对数概率
-                        logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()  # 仅保留非填充 token 的对数概率
+        # ============ 第4步：计算对数概率（若启用）============
+        batched_logprobs = self.preprocess_logits(  # 调用静态方法预处理 logits 为对数概率
+            output.get('logits'),  # 从 output 中获取 logits（可能为 None）
+            # output.get('logits') 返回 List[Tensor] 或 None
+            # 若启用，列表长度为 gen_len，每个元素 shape: [batch_size * num_return_sequences, vocab_size]
+            batched_generate_ids,  # 生成的 token IDs，shape: [batch_size * num_return_sequences, gen_len]
+            request_config.top_logprobs)  # top-k 候选数量
+        # 返回值 batched_logprobs：
+        #   - None（若未启用 logits）
+        #   - List[List[Dict]]：[batch_size * num_return_sequences][gen_len][Dict[token_id, logprob]]
+        #     例如：[[{123: -0.1, 456: -2.0}, {...}], ...]
+
+        # ============ 第5步：构造响应对象 ============
+        res = []  # 初始化结果列表，长度将为 batch_size
+        num_return_sequences = generation_config.num_return_sequences  # 获取每个样本需要返回的候选数（n 参数）
+        # 例如：num_return_sequences=3 表示每个样本生成 3 个候选答案
+        
+        for i in range(inputs['attention_mask'].shape[0]):  # 遍历批次中的每个原始样本
+            # inputs['attention_mask'].shape[0] = batch_size（原始批大小，不包含候选数）
+            # 注意：batched_generate_ids 的大小是 batch_size * num_return_sequences
+            choices = []  # 初始化该样本的选项列表，长度将为 num_return_sequences
+            usage_info = self._get_usage_info(num_prompt_tokens, 0)  # 初始化用量信息
+            # num_prompt_tokens: prompt 的 token 数
+            # 0: 生成 token 数初始化为 0，后续会累加（因为多个候选可能长度不同，取最长的）
+            
+            # --- 5.1 处理该样本的每个候选序列 ---
+            for j in range(num_return_sequences):  # 遍历该样本的每个候选序列（j 为候选索引，0 到 num_return_sequences-1）
+                # 例如：num_return_sequences=3，则 j 依次为 0, 1, 2
+                
+                batched_index = i * num_return_sequences + j  # 计算该候选在 batched_generate_ids 中的索引
+                # 索引映射公式：batched_index = 样本索引 * 候选数 + 候选索引
+                # 例如：batch_size=2, num_return_sequences=3
+                #   样本0的候选0: 0*3+0=0, 候选1: 0*3+1=1, 候选2: 0*3+2=2
+                #   样本1的候选0: 1*3+0=3, 候选1: 1*3+1=4, 候选2: 1*3+2=5
+                
+                generate_ids = batched_generate_ids[batched_index]  # 获取该候选的生成 ID 张量（一维）
+                # generate_ids shape: [gen_len]，例如：tensor([你, 好, 啊, <pad>])
+
+                # --- 5.1.1 过滤填充 token ---
+                # ignore pad_token  # 原注释：忽略填充 token
+                masks = generate_ids != self.tokenizer.pad_token_id  # 创建布尔掩码
+                # generate_ids shape: [gen_len]
+                # masks shape: [gen_len]，例如：[True, True, True, False] 表示前3个有效，第4个是填充
+                
+                generate_ids = generate_ids[masks].tolist()  # 根据掩码过滤，保留有效 token，并转为 Python 列表
+                # 过滤后的 generate_ids 是列表，例如：[你, 好, 啊]（去除了 <pad>）
+                
+                logprobs_list = None  # 初始化对数概率列表为 None（默认不返回对数概率）
+                if batched_logprobs is not None:  # 若有对数概率数据（已在第4步计算）
+                    logprobs_list = [  # 根据掩码过滤对数概率列表
+                        logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
+                        # 仅保留非填充 token 的对数概率
                     ]
+                    # masks: [True, True, True, False]
+                    # batched_logprobs[batched_index]: [{...}, {...}, {...}, {...}]
+                    # 过滤后 logprobs_list: [{...}, {...}, {...}]（去除第4个）
 
-                logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)  # 获取对数概率信息
-                usage_info = self._update_usage_info(usage_info, len(generate_ids))  # 更新用量信息（累加生成 token 数）
-                response = template.decode(generate_ids, template_inputs=template_inputs[i])  # 使用模板解码生成 ID 为文本（传入模板输入用于解码）
-                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)  # 获取完成原因（True 表示已完成）
+                # --- 5.1.2 解码和元数据构造 ---
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
+                # 将对数概率字典列表转换为符合 OpenAI API 格式的对象（或 None）
+                
+                usage_info = self._update_usage_info(usage_info, len(generate_ids))  # 更新用量信息
+                # 累加生成 token 数：usage_info.completion_tokens += len(generate_ids)
+                # 注意：多个候选的 completion_tokens 会累加（取所有候选的总和）
+                
+                response = template.decode(generate_ids, template_inputs=template_inputs[i])
+                # 使用模板解码生成 ID 为文本
+                # generate_ids: token ID 列表，例如：[你, 好, 啊]
+                # template_inputs[i]: 第 i 个样本的模板输入（包含对话历史等）
+                # 返回：解码后的文本字符串，例如："你好啊"
+                
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
+                # 获取完成原因：
+                #   - 'stop': 遇到停止词或 EOS（生成自然结束）
+                #   - 'length': 达到 max_new_tokens 限制（被截断）
+                # True 表示已完成（非流式推理总是完成的）
+                
                 toolcall = self._get_toolcall(response, template)  # 从解码文本中提取工具调用信息
-                token_ids = template.skip_stop_tokens(generate_ids) if request_config.return_details else None  # 若需要返回详细信息，则跳过停止 token 并返回 token_ids
+                # 解析文本中的 JSON 格式函数调用（如 Claude/OpenAI 的 function calling）
+                # 返回：ToolCall 对象列表或 None
+                
+                token_ids = template.skip_stop_tokens(generate_ids) if request_config.return_details else None
+                # 若 return_details=True，则返回去除停止 token 后的 token_ids
+                # 例如：generate_ids=[你, 好, <eos>] -> token_ids=[你, 好]
+                # 用于调试或详细分析
+                
+                # --- 5.1.3 构造响应选项对象 ---
                 choices.append(  # 添加到选项列表
-                    ChatCompletionResponseChoice(  # 创建响应选项对象
-                        index=j,  # 候选索引
-                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),  # 完整消息（角色、内容、工具调用）
-                        finish_reason=finish_reason,  # 完成原因
-                        logprobs=logprobs,  # 对数概率信息
-                        token_ids=token_ids))  # token_ids（若 return_details=True）
+                    ChatCompletionResponseChoice(  # 创建响应选项对象（非流式，包含完整消息）
+                        index=j,  # 候选索引（0 到 num_return_sequences-1）
+                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                        # message: 完整消息对象（而非 delta）
+                        #   - role: 'assistant'（模型角色）
+                        #   - content: 完整生成文本（例如 "你好啊"）
+                        #   - tool_calls: 工具调用（若有）
+                        finish_reason=finish_reason,  # 完成原因（'stop' 或 'length'）
+                        logprobs=logprobs,  # 对数概率信息（符合 OpenAI API 格式）
+                        token_ids=token_ids))  # token_ids（若 return_details=True，用于调试）
+            
+            # --- 5.2 提取 prompt token_ids（若需要详细信息）---
             prompt_token_ids = None  # 初始化 prompt token_ids 为 None
             if request_config.return_details and 'input_ids' in inputs:  # 若需要返回详细信息且输入中有 input_ids
-                non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()  # 找到非填充 token 的索引
-                if non_pad_indices.numel() > 0:  # 若存在非填充 token
-                    idx = non_pad_indices.min().item()  # 获取第一个非填充 token 的索引
+                non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()
+                # 找到非填充 token 的索引
+                # inputs['input_ids'][i] shape: [prompt_len]
+                # non_pad_indices shape: [num_non_pad, 1]，包含所有非填充 token 的位置
+                
+                if non_pad_indices.numel() > 0:  # 若存在非填充 token（.numel() 返回元素总数）
+                    idx = non_pad_indices.min().item()  # 获取第一个非填充 token 的索引（标量）
                     prompt_token_ids = inputs['input_ids'][i][idx:].tolist()  # 提取 prompt 的 token_ids（去除前面的填充）
+                    # 例如：input_ids[i] = [<pad>, <pad>, 你, 好]，idx=2
+                    #      -> prompt_token_ids = [你, 好]
+            
+            # --- 5.3 构造该样本的完整响应 ---
             res.append(  # 添加到结果列表
                 ChatCompletionResponse(  # 创建聊天补全响应对象
-                    model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids))  # 包含模型名、选项、用量、prompt token_ids
-        return res  # 返回结果列表
-
+                    model=self.model_name,  # 模型名称（例如 'Qwen/Qwen-7B-Chat'）
+                    choices=choices,  # 选项列表（长度为 num_return_sequences）
+                    usage=usage_info,  # 用量信息（prompt_tokens + completion_tokens）
+                    prompt_token_ids=prompt_token_ids))  # prompt token_ids（若 return_details=True，用于调试）
+        
+        return res  # 返回结果列表（长度为 batch_size）
+ 
     async def infer_async(  # 异步推理入口（公开方法）
         self,  # 实例自身引用
         infer_request: InferRequest,  # 单个推理请求

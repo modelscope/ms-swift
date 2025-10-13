@@ -1,16 +1,22 @@
 # 注释prompt
 
 ```
-需要你完成的任务和目标是：参考infer_client.py中注释的风格，pt_engine.py的每一行代码生成详细、准确的注释，使得阅读代码的人能够轻易理解代码的含义和功能。
+需要你完成的任务和目标是：参考infer_client.py中注释的风格，给utils.py的每一行代码生成详细、准确的注释，使得阅读代码的人能够轻易理解代码的含义和功能。
 重点需要注意的是：每一行代码都需要进行注释！每一行代码都需要进行注释！每一行代码都需要进行注释！
 ```
 
 
 
 ```
-请重新注释_update_batched_logprobs方法，因为目前的注释并没有让我理解该方法的作用和具体运行过程。
+请你继续注释grpo_vllm_engine.py脚本，我要求的是：每一行代码都需要进行注释！每一行代码都需要进行注释！每一行代码都需要进行注释！
+```
+
+
+
+```
+请重新注释_infer_full方法，因为目前的注释并没有让我理解该方法的作用和具体运行过程。
 要求：
-1、在函数注释中，给出batched_logits的形状；
+1、在函数注释中，如果入参涉及Tensor，则给出相关Tensor的形状；
 2、在示例中，给出更加具体、但是简单易懂的实际例子；
 3、在代码体中（具体代码逻辑）中，给出更加详细的注释，说明这一行代码在做什么事情；
 4、如果当前行涉及到tensor，则注释tensor的shape
@@ -35,17 +41,20 @@
 
 对应顶层目录/文件的学习顺序：
 
-1) README_CN.md/README.md（总览与能力边界，使用中文版）
-2) docs/（阅读相关文档：微调、RLHF、量化、vLLM/SGLang/LmDeploy、评测 EvalScope、UI）
-3) requirements/ + requirements.txt（依赖与可选组件）
-4) Makefile、scripts/、.dev_scripts/、.pre-commit-config*.yaml（本地常用命令与工程规范）
-5) examples/（先跑通：训练/推理/评测/部署）
-6) setup.py → 定位入口：swift/cli/main.py、swift/cli/_megatron/main.py
-7) swift/（源码主线：CLI → 配置解析 → 模型/数据加载 → 训练循环 → 加速/量化/评测/部署）
-8) docs/（深挖：微调、RLHF、量化、vLLM/SGLang/LmDeploy、评测 EvalScope、UI）
-9) tests/（验证思路与用法，学习最小可复现实例）
-10) CONTRIBUTING*.md、CODE_OF_CONDUCT.md、.github/（提交流程与质量保障）
-11) setup.cfg、MANIFEST.in、LICENSE、asset/（工程化与发布收尾）
+1) README_CN.md/README.md（总
+2) 
+3) 
+4) 能力边界，使用中文版）
+5) docs/（阅读相关文档：微调、RLHF、量化、vLLM/SGLang/LmDeploy、评测 EvalScope、UI）
+6) requirements/ + requirements.txt（依赖与可选组件）
+7) Makefile、scripts/、.dev_scripts/、.pre-commit-config*.yaml（本地常用命令与工程规范）
+8) examples/（先跑通：训练/推理/评测/部署）
+9) setup.py → 定位入口：swift/cli/main.py、swift/cli/_megatron/main.py
+10) swift/（源码主线：CLI → 配置解析 → 模型/数据加载 → 训练循环 → 加速/量化/评测/部署）
+11) docs/（深挖：微调、RLHF、量化、vLLM/SGLang/LmDeploy、评测 EvalScope、UI）
+12) tests/（验证思路与用法，学习最小可复现实例）
+13) CONTRIBUTING*.md、CODE_OF_CONDUCT.md、.github/（提交流程与质量保障）
+14) setup.cfg、MANIFEST.in、LICENSE、asset/（工程化与发布收尾）
 
 
 

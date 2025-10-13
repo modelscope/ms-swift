@@ -752,7 +752,7 @@ class VllmEngine(InferEngine):  # 定义基于 vLLM 的推理引擎类，继承�
             self.engine.engine.model_executor.parallel_worker_tasks = None  # 重置并行 worker 任务为 None（修复已知的并发问题）
         return super()._batch_infer_stream(*args, **kwargs)  # 调用父类的批量流式推理方法
 
-    def infer(  # 同步推理入口（公开方法）
+    def infer(
         self,  # 实例自身引用
         infer_requests: List[InferRequest],  # 批量推理请求列表
         request_config: Optional[RequestConfig] = None,  # 可选的统一推理配置
@@ -763,7 +763,7 @@ class VllmEngine(InferEngine):  # 定义基于 vLLM 的推理引擎类，继承�
         adapter_request: Optional[AdapterRequest] = None,  # 可选的 LoRA 适配器请求
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:  # 返回响应列表（非流式或流式迭代器）
         """函数功能：
-        同步推理入口，支持批量处理和流式/非流式输出。
+        公有方法，同步推理入口，支持批量处理和流式/非流式输出。
         异步引擎模式下，调用父类方法；同步引擎模式下，使用 vLLM 的 step() API。
         
         参数：见上方签名注释。
