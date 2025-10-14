@@ -649,7 +649,7 @@ register_model(
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
+        requires=['transformers>=4.57'],
     ))
 
 register_model(
@@ -662,7 +662,7 @@ register_model(
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
+        requires=['transformers>=4.57'],
     ))
 
 
@@ -866,7 +866,7 @@ register_model(
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
@@ -897,7 +897,7 @@ register_model(
         get_model_tokenizer_qwen3_moe_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
