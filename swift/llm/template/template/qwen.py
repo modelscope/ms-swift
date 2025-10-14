@@ -536,7 +536,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
+            _video = fetch_video({'video': video})
+            if isinstance(_video, torch.Tensor):
+                _video = _video.to(torch.uint8)
+            inputs.videos[index] = _video
             if self.use_audio_in_video:
                 import librosa
                 if video.startswith('http://') or video.startswith('https://'):
