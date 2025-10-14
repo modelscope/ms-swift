@@ -38,9 +38,9 @@ class QuantEngine(ProcessorMixin):
             self.awq_model_quantize()
             self.model.save_quantized(
                 args.output_dir, safetensors=args.safe_serialization, shard_size=args.max_shard_size)
-        elif args.quant_method == 'gptq':
+        elif args.quant_method in {'gptq', 'gptq_v2'}:
             self.template.model = self.model
-            gptq_quantizer = self.gptq_model_quantize()
+            gptq_quantizer = self.gptq_model_quantize(v2=(args.quant_method == 'gptq_v2'))
             gptq_quantizer.save(
                 self.model,
                 args.output_dir,
@@ -226,7 +226,7 @@ class QuantEngine(ProcessorMixin):
         res[experts_idx:experts_idx] = experts.values()
         return res
 
-    def gptq_model_quantize(self):
+    def gptq_model_quantize(self, v2: bool = False):
         from optimum.gptq import GPTQQuantizer
         args = self.args
         logger.info(f'Quantization dataset: {args.dataset}')
@@ -241,7 +241,8 @@ class QuantEngine(ProcessorMixin):
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
                 block_name_to_quantize=block_name_to_quantize,
-                modules_in_block_to_quantize=modules_in_block_to_quantize)
+                modules_in_block_to_quantize=modules_in_block_to_quantize,
+                checkpoint_format='gptq_v2' if v2 else 'gptq')
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
