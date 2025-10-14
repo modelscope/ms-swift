@@ -76,7 +76,7 @@ class QuantEngine(ProcessorMixin):
     @torch.inference_mode()
     def _get_quant_dataset(self, *args, **kwargs):
         args = self.args
-        assert args.quant_method in {'awq', 'gptq'}
+        assert args.quant_method in {'awq', 'gptq', 'gptq_v2'}
         template = self.template
         n_samples = args.quant_n_samples
         block_size = args.max_length
@@ -96,7 +96,7 @@ class QuantEngine(ProcessorMixin):
                 inputs = template.encode(data)
             except MaxLengthError:
                 continue
-            if is_multimodal and args.quant_method == 'gptq':
+            if is_multimodal and args.quant_method in {'gptq', 'gptq_v2'}:
                 inputs.pop('labels', None)
                 samples.append(inputs)
             else:
@@ -107,7 +107,7 @@ class QuantEngine(ProcessorMixin):
             if i == n_samples:
                 break
         prog_bar.close()
-        if is_multimodal and args.quant_method == 'gptq':
+        if is_multimodal and args.quant_method in {'gptq', 'gptq_v2'}:
             return samples
         # now concatenate all samples and split according to block size
         n_split = max(len(samples) // block_size, 1)
@@ -115,7 +115,7 @@ class QuantEngine(ProcessorMixin):
         res = []
         for i in range(n_split):
             input_ids = samples[i * block_size:(i + 1) * block_size]
-            if args.quant_method == 'gptq':
+            if args.quant_method in {'gptq', 'gptq_v2'}:
                 res.append({'input_ids': input_ids})
             else:
                 res.append(torch.tensor(input_ids)[None])
