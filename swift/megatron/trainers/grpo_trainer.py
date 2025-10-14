@@ -23,7 +23,8 @@ from swift.utils import get_current_device, get_logger, is_vllm_available, remov
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
-                    offload_megatron_model_to_cpu, offload_megatron_optimizer, profiling_context)
+                    offload_megatron_model_to_cpu, offload_megatron_optimizer, patch_model_for_lora_export,
+                    profiling_context)
 
 try:
     from mbridge import AutoBridge
@@ -167,12 +168,32 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return engine
 
     def _move_model_to_vllm(self):
-        # TODO: LoRA, server
+        # TODO: server
         if self.bridge is None:
             self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
             self._patch_mbridge(self.bridge)
-        per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
-        self.engine.inner_model.load_weights(per_tensor_params)
+
+        # Handle LoRA: merge adapters before exporting weights
+        is_lora_training = self.args.train_type == 'lora'
+        restore_funcs = []
+
+        try:
+            if is_lora_training:
+                self._merge_lora_adapters()
+                for model in self.unwrapped_models:
+                    restore_func = patch_model_for_lora_export(model)
+                    restore_funcs.append(restore_func)
+
+            per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
+            self.engine.inner_model.load_weights(per_tensor_params)
+        finally:
+            for restore_func in restore_funcs:
+                restore_func()
+
+            # Unmerge adapters to restore training state
+            if is_lora_training:
+                logger.info('Unmerging LoRA adapters to restore training state...')
+                self._unmerge_lora_adapters()
 
     def _prepare_rewards(self):
         # TODO: reward model
@@ -221,6 +242,24 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         assert self.reward_funcs, 'reward_funcs is not set'
 
+    def _merge_lora_adapters(self):
+        """Merge LoRA adapters into base model weights for vLLM inference."""
+        from ..tuners import LoraParallelLinear
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Merge all active adapters
+                    module.merge()
+
+    def _unmerge_lora_adapters(self):
+        """Unmerge LoRA adapters to restore training state."""
+        from ..tuners import LoraParallelLinear
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Unmerge to restore separate LoRA weights for training
+                    module.unmerge()
+
     def _patch_mbridge(self, bridge):
         original_method = bridge._weight_to_hf_format
 
@@ -230,6 +269,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 if 'visual.visual' in mcore_weights_name:
                     mcore_weights_name = mcore_weights_name.replace('visual.visual', 'visual')
                 return [mcore_weights_name], [mcore_weights]
+
+            if '.base_layer.' in mcore_weights_name:
+                mcore_weights_name = mcore_weights_name.replace('.base_layer.', '.')
+
+            if '.modules_to_save.default.' in mcore_weights_name:
+                mcore_weights_name = mcore_weights_name.replace('.modules_to_save.default.', '.')
             return original_method(mcore_weights_name, mcore_weights)
 
         bridge._weight_to_hf_format = _weight_to_hf_format_patched
