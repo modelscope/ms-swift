@@ -47,6 +47,7 @@ class ModelGroup:
     models: List[Model]
 
     # Higher priority. If set to None, the attributes of the ModelMeta will be used.
+    template: Optional[str] = None
     ignore_patterns: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
