@@ -67,8 +67,9 @@ class SeedAgentTemplate(BaseAgentTemplate):
         """Helper to build a single tool definition string."""
         func = tool['function']
         func_name = func['name']
-        
-        properties = func.get('parameters', {}).get('properties', {})
+
+        parameters = func.get('parameters', {})
+        properties = parameters.get('properties', {})
         params = [f"{name}: {self._py_type(spec.get('type', 'any'))}" for name, spec in properties.items()]
         param_str = ', '.join(params)
 
@@ -125,9 +126,9 @@ class SeedAgentTemplate(BaseAgentTemplate):
         split_token = "<seed:eos><seed:bos>system"
         if split_token in system_prompt:
             parts = system_prompt.split(split_token, 1)
-            return f"{parts[0]}\n\n" + '\n\n'.join(tool_defs) + f"\n{tool_call_format_instruction}\n{split_token}{parts[1]}"
+            return f"{parts[0]}\n\n{'\n\n'.join(tool_defs)}\n{tool_call_format_instruction}\n{split_token}{parts[1]}"
         else:
-            return f"{system_prompt}\n\n" + '\n\n'.join(tool_defs) + f"\n{tool_call_format_instruction}"
+            return f"{system_prompt}\n\n{'\n\n'.join(tool_defs)}\n{tool_call_format_instruction}"
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []
@@ -143,7 +144,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
             
             call_parts.append(f'</{self.FUNCTION_TAG}>')
             
-            full_call = f"{self.TOOL_CALL_START}\n" + '\n'.join(call_parts) + f"\n{self.TOOL_CALL_END}"
+            full_call = f"{self.TOOL_CALL_START}\n{'\n'.join(call_parts)}\n{self.TOOL_CALL_END}"
             formatted_calls.append(full_call)
             
         return '\n'.join(formatted_calls)
