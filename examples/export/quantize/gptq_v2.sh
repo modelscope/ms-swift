@@ -1,3 +1,4 @@
+# You need to install gptqmodel.
 # OMP_NUM_THREADS=14 please Check issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
@@ -10,4 +11,4 @@ swift export \
     --max_length 2048 \
     --quant_method gptq_v2 \
     --quant_bits 4 \
-    --output_dir Qwen2.5-1.5B-Instruct-GPTQ-Int4
+    --output_dir Qwen2.5-1.5B-Instruct-GPTQ-V2-Int4

@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
+import transformers
+from packaging import version
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, load_dataset,
@@ -41,6 +43,10 @@ class QuantEngine(ProcessorMixin):
         elif args.quant_method in {'gptq', 'gptq_v2'}:
             self.template.model = self.model
             gptq_quantizer = self.gptq_model_quantize(v2=(args.quant_method == 'gptq_v2'))
+            if args.quant_method == 'gptq_v2':
+                if not getattr(self.model, '_dynamic_tied_weights_keys', None):
+                    self.model._dynamic_tied_weights_keys = []
+                self.model._dynamic_tied_weights_keys += ['wf_unsqueeze_zero', 'wf_unsqueeze_neg_one']
             gptq_quantizer.save(
                 self.model,
                 args.output_dir,
@@ -76,7 +82,7 @@ class QuantEngine(ProcessorMixin):
     @torch.inference_mode()
     def _get_quant_dataset(self, *args, **kwargs):
         args = self.args
-        assert args.quant_method in {'awq', 'gptq'}
+        assert args.quant_method in {'awq', 'gptq', 'gptq_v2'}
         template = self.template
         n_samples = args.quant_n_samples
         block_size = args.max_length
@@ -96,7 +102,7 @@ class QuantEngine(ProcessorMixin):
                 inputs = template.encode(data)
             except MaxLengthError:
                 continue
-            if is_multimodal and args.quant_method == 'gptq':
+            if is_multimodal and args.quant_method in {'gptq', 'gptq_v2'}:
                 inputs.pop('labels', None)
                 samples.append(inputs)
             else:
@@ -107,7 +113,7 @@ class QuantEngine(ProcessorMixin):
             if i == n_samples:
                 break
         prog_bar.close()
-        if is_multimodal and args.quant_method == 'gptq':
+        if is_multimodal and args.quant_method in {'gptq', 'gptq_v2'}:
             return samples
         # now concatenate all samples and split according to block size
         n_split = max(len(samples) // block_size, 1)
@@ -115,7 +121,7 @@ class QuantEngine(ProcessorMixin):
         res = []
         for i in range(n_split):
             input_ids = samples[i * block_size:(i + 1) * block_size]
-            if args.quant_method == 'gptq':
+            if args.quant_method in {'gptq', 'gptq_v2'}:
                 res.append({'input_ids': input_ids})
             else:
                 res.append(torch.tensor(input_ids)[None])
@@ -226,6 +232,29 @@ class QuantEngine(ProcessorMixin):
         res[experts_idx:experts_idx] = experts.values()
         return res
 
+    @contextmanager
+    def _patch_gptq_block(self, model, block_name_to_quantize):
+        if version.parse(transformers.__version__) < version.parse('4.54'):
+            yield
+            return
+        # compat transformers>=4.54
+        blocks = deep_getattr(model, block_name_to_quantize)
+        hooks = []
+
+        def _to_tuple(module, input, output):
+            if not isinstance(output, (list, tuple)):
+                output = (output, )
+            return output
+
+        for block in blocks:
+            hooks.append(block.register_forward_hook(_to_tuple))
+
+        try:
+            yield
+        finally:
+            for hook in hooks:
+                hook.remove()
+
     def gptq_model_quantize(self, v2: bool = False):
         from optimum.gptq import GPTQQuantizer
         args = self.args
@@ -247,7 +276,8 @@ class QuantEngine(ProcessorMixin):
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')
-            gptq_quantizer.quantize_model(self.model, self.tokenizer)
+            with self._patch_gptq_block(self.model, block_name_to_quantize):
+                gptq_quantizer.quantize_model(self.model, self.tokenizer)
             self.model.config.quantization_config.pop('dataset', None)
         return gptq_quantizer
 

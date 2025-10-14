@@ -39,7 +39,7 @@ class QuantizeArguments:
     bnb_4bit_quant_storage: Optional[str] = None
 
     def get_quantization_config(self):
-        if self.quant_method is None or self.quant_method in {'awq', 'gptq'}:
+        if self.quant_method is None or self.quant_method in {'awq', 'gptq', 'gptq_v2'}:
             return None
         assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto', 'fp8'}
         if self.quant_method != 'fp8' and self.quant_bits is None:
