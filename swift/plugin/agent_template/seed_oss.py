@@ -110,6 +110,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
             self._build_tool_def_string(self.wrap_tool(tool))
             for tool in tools if self.wrap_tool(tool).get('type') == 'function'
         ]
+        tool_defs_joined = '\n\n'.join(tool_defs)
 
         tool_call_format_instruction = (
             "工具调用请遵循如下格式:\n"
@@ -126,9 +127,9 @@ class SeedAgentTemplate(BaseAgentTemplate):
         split_token = "<seed:eos><seed:bos>system"
         if split_token in system_prompt:
             parts = system_prompt.split(split_token, 1)
-            return f"{parts[0]}\n\n{'\n\n'.join(tool_defs)}\n{tool_call_format_instruction}\n{split_token}{parts[1]}"
+            return f"{parts[0]}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}{parts[1]}"
         else:
-            return f"{system_prompt}\n\n{'\n\n'.join(tool_defs)}\n{tool_call_format_instruction}"
+            return f"{system_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}"
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []
@@ -143,8 +144,9 @@ class SeedAgentTemplate(BaseAgentTemplate):
                 call_parts.append(f'<{self.PARAMETER_TAG}={arg_name}>{arg_value_str}</{self.PARAMETER_TAG}>')
             
             call_parts.append(f'</{self.FUNCTION_TAG}>')
+            call_parts_joined = '\n'.join(call_parts)
             
-            full_call = f"{self.TOOL_CALL_START}\n{'\n'.join(call_parts)}\n{self.TOOL_CALL_END}"
+            full_call = f"{self.TOOL_CALL_START}\n{call_parts_joined}\n{self.TOOL_CALL_END}"
             formatted_calls.append(full_call)
             
         return '\n'.join(formatted_calls)
