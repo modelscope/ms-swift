@@ -1,3 +1,4 @@
+# You need to install gptqmodel.
 # OMP_NUM_THREADS=14 please Check issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
