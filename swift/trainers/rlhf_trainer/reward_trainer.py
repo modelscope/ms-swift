@@ -80,7 +80,10 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
                 break
         df = pd.DataFrame(table)
         if self.accelerator.process_index == 0:
-            print_rich_table(df[:num_print_samples])
+            try:
+                print_rich_table(df[:num_print_samples])
+            except Exception as e:
+                logger.error(e)
             if 'wandb' in self.args.report_to:
                 import wandb
 
