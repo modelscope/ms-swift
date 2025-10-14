@@ -10,4 +10,4 @@ swift export \
     --max_length 2048 \
     --quant_method gptq_v2 \
     --quant_bits 4 \
-    --output_dir Qwen2.5-1.5B-Instruct-GPTQ-Int4
+    --output_dir Qwen2.5-1.5B-Instruct-GPTQ-V2-Int4
