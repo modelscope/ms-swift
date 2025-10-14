@@ -649,7 +649,7 @@ register_model(
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
+        requires=['transformers>=4.57'],
     ))
 
 register_model(
@@ -662,7 +662,7 @@ register_model(
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
+        requires=['transformers>=4.57'],
     ))
 
 
@@ -850,12 +850,23 @@ def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_vl, [],
+        MLLMModelType.qwen3_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-4B-Instruct', 'Qwen/Qwen3-VL-4B-Instruct'),
+                Model('Qwen/Qwen3-VL-4B-Thinking', 'Qwen/Qwen3-VL-4B-Thinking'),
+                Model('Qwen/Qwen3-VL-4B-Instruct-FP8', 'Qwen/Qwen3-VL-4B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-4B-Thinking-FP8', 'Qwen/Qwen3-VL-4B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Instruct', 'Qwen/Qwen3-VL-8B-Instruct'),
+                Model('Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3-VL-8B-Thinking'),
+                Model('Qwen/Qwen3-VL-8B-Instruct-FP8', 'Qwen/Qwen3-VL-8B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Thinking-FP8', 'Qwen/Qwen3-VL-8B-Thinking-FP8'),
+            ]),
+        ],
         TemplateType.qwen3_vl,
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
@@ -886,7 +897,7 @@ register_model(
         get_model_tokenizer_qwen3_moe_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
