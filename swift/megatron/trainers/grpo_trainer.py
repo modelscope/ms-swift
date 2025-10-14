@@ -262,6 +262,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _patch_mbridge(self, bridge):
         original_method = bridge._weight_to_hf_format
+        original_export = bridge.export_weights
 
         def _weight_to_hf_format_patched(mcore_weights_name, mcore_weights):
             # skip ViT weights
@@ -277,7 +278,35 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 mcore_weights_name = mcore_weights_name.replace('.modules_to_save.default.', '.')
             return original_method(mcore_weights_name, mcore_weights)
 
+        def export_weights_patched(models):
+            """Patched export_weights that filters out LoRA parameters and cleans names."""
+            for name, param in original_export(models):
+                # Skip LoRA-related parameters (lora_A, lora_B)
+                # These should not be exported as they are already merged into base weights
+                if 'lora_A.' in name or 'lora_B.' in name:
+                    logger.debug(f'Skipping LoRA parameter during export: {name}')
+                    continue
+                # Skip lora embedding parameters if any
+                if 'lora_embedding_A' in name or 'lora_embedding_B' in name:
+                    logger.debug(f'Skipping LoRA embedding parameter during export: {name}')
+                    continue
+
+                # Clean LoRA-specific prefixes from parameter names
+                # LoRA wraps base layers, adding '.base_layer' to the parameter path
+                # We need to remove this so mbridge can recognize standard Megatron parameter names
+                if '.base_layer.' in name:
+                    name = name.replace('.base_layer.', '.')
+                    logger.debug(f'Cleaned LoRA base_layer from parameter name: {name}')
+
+                # Handle modules_to_save if needed
+                if '.modules_to_save.default.' in name:
+                    name = name.replace('.modules_to_save.default.', '.')
+                    logger.debug(f'Cleaned modules_to_save from parameter name: {name}')
+
+                yield name, param
+
         bridge._weight_to_hf_format = _weight_to_hf_format_patched
+        bridge.export_weights = export_weights_patched
 
     def _get_rollout_group(self):
         """

@@ -183,7 +183,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
             audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
-            audio_mask = (input_ids == config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_mask = (input_ids == config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
         res['inputs_embeds'] = inputs_embeds

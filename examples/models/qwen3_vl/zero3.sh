@@ -1,4 +1,4 @@
-# zero2: 70GiB
+# 2 * 42GiB
 IMAGE_MAX_TOKEN_NUM=1024 \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -30,7 +30,7 @@ swift sft \
     --max_length 2048 \
     --output_dir output \
     --warmup_ratio 0.05 \
-    --deepspeed zero2 \
+    --deepspeed zero3 \
     --use_liger_kernel true \
     --dataset_num_proc 4 \
     --dataloader_num_workers 4
