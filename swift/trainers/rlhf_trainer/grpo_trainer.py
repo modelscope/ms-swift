@@ -495,7 +495,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return ''
             else:
                 if not self.rollout_enable_lora:
-                    return name.replace('base_layer.', '')
+                    return re.sub(r'\.base_layer\.', '.', name)
                 else:
                     return name
 
@@ -651,7 +651,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if not parameter_group or name in parameter_group
                 ]
                 with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
-                    self.model.merge_adapter()
+                    if self.should_merge_adapter:
+                        # if rollout enable lora, we will only execute once before the first rollout
+                        self.model.merge_adapter()
                     state_dict = self.model.state_dict()
                     prefix_removed = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
                     state_dict = prefix_removed if self.rollout_enable_lora else {
@@ -683,8 +685,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     elif self.vllm_mode == 'colocate':
                         llm_model = self.engine.inner_model
                         llm_model.load_weights(state_dict.items())
-                    with patch_lora_unmerge(self.model):
-                        self.model.unmerge_adapter()
+                    if self.should_merge_adapter:
+                        with patch_lora_unmerge(self.model):
+                            self.model.unmerge_adapter()
                     del state_dict
             self.base_sync_done = True
         else:
@@ -3046,3 +3049,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
                 chunk_inputs.pop('labels', None)
         return chunk_inputs
+
+    @property
+    def should_merge_adapter(self):
+        """
+        Determine whether the LoRA adapter should be merged into the base model during weight synchronization.
+
+        Note:
+            Merging or unmerging adapters in MoE models is computationally expensive and should be minimized.
+
+        Raises:
+            AssertionError: If full-parameter training is used, as adapter merging is not supported.
+
+        Returns:
+            bool: True if the adapter should be merged; False otherwise.
+                - Returns True when LoRA is not enabled for rollout.
+                - Returns True when loading from a checkpoint or using pre-trained adapters.
+                - Returns False during normal LoRA training (weights are already synchronized).
+        """
+        assert self.args.train_type != 'full', 'Full-parameter training should not merge adapter'
+
+        # Rollout does not support LoRA
+        if not self.rollout_enable_lora:
+            return True
+
+        if self.args.resume_from_checkpoint:
+            # Resuming training: merge into base model
+            return True
+
+        # base model weights are synced before training; no need to merge
+        return False
