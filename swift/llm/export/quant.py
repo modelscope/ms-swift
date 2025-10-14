@@ -44,7 +44,7 @@ class QuantEngine(ProcessorMixin):
             self.template.model = self.model
             gptq_quantizer = self.gptq_model_quantize(v2=(args.quant_method == 'gptq_v2'))
             if args.quant_method == 'gptq_v2':
-                if not getattr(self.model, '_dynamic_tied_weights_keys'):
+                if not getattr(self.model, '_dynamic_tied_weights_keys', None):
                     self.model._dynamic_tied_weights_keys = []
                 self.model._dynamic_tied_weights_keys += ['wf_unsqueeze_zero', 'wf_unsqueeze_neg_one']
             gptq_quantizer.save(
