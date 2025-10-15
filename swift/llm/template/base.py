@@ -1146,7 +1146,8 @@ class Template(ProcessorMixin):
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
-        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
+        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages,
+                                                            **inputs.extra_kwargs)
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
@@ -1673,7 +1674,7 @@ class Template(ProcessorMixin):
                 seq_len = max(seq_lens) if padding_to is None else padding_to
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
-                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res['attention_mask'].dtype}'
                 for i, seq_len in enumerate(seq_lens):
                     res['attention_mask'][i, :, seq_len:] = 0
 
