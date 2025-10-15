@@ -1146,7 +1146,7 @@ class Template(ProcessorMixin):
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
-        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
+        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages, **inputs.extra_kwargs)
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
