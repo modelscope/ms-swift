@@ -514,8 +514,8 @@ class SequenceParallel:
                 raise NotImplementedError()
             local_value = sub_value.chunk(2 * self.rp_world_size, dim=dim)
             local_values.extend([
-                local_value[self.rp_rank].detach().clone(),
-                local_value[2 * self.rp_world_size - 1 - self.rp_rank].detach().clone(),
+                local_value[self.rp_rank],
+                local_value[2 * self.rp_world_size - 1 - self.rp_rank],
             ])
         return torch.cat(local_values, dim=dim).contiguous()
 
