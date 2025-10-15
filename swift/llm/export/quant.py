@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
+import transformers
+from packaging import version
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, load_dataset,
@@ -226,6 +228,29 @@ class QuantEngine(ProcessorMixin):
         res[experts_idx:experts_idx] = experts.values()
         return res
 
+    @contextmanager
+    def _patch_gptq_block(self, model, block_name_to_quantize):
+        if version.parse(transformers.__version__) < version.parse('4.54'):
+            yield
+            return
+        # compat transformers>=4.54
+        blocks = deep_getattr(model, block_name_to_quantize)
+        hooks = []
+
+        def _to_tuple(module, input, output):
+            if not isinstance(output, (list, tuple)):
+                output = (output, )
+            return output
+
+        for block in blocks:
+            hooks.append(block.register_forward_hook(_to_tuple))
+
+        try:
+            yield
+        finally:
+            for hook in hooks:
+                hook.remove()
+
     def gptq_model_quantize(self):
         from optimum.gptq import GPTQQuantizer
         args = self.args
@@ -246,7 +271,8 @@ class QuantEngine(ProcessorMixin):
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')
-            gptq_quantizer.quantize_model(self.model, self.tokenizer)
+            with self._patch_gptq_block(self.model, block_name_to_quantize):
+                gptq_quantizer.quantize_model(self.model, self.tokenizer)
             self.model.config.quantization_config.pop('dataset', None)
         return gptq_quantizer
 
