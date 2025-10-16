@@ -274,7 +274,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         'you can write a new implementation in the plugin/callback.py.')
 
     @staticmethod
-    def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
+        if isinstance(dataset, LazyLLMDataset):
+            dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:
