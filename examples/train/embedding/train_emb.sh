@@ -28,6 +28,5 @@ swift sft \
     --gradient_accumulation_steps 4 \
     --learning_rate 6e-6 \
     --loss_type infonce \
-    --label_names labels \
     --dataloader_drop_last true \
     --deepspeed zero2

@@ -240,6 +240,7 @@ class SequenceParallel:
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
             if module.__class__ not in [m.__class__ for m in text_model.modules()]:
+                module.is_causal = True
                 return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
@@ -278,6 +279,15 @@ class SequenceParallel:
                             group=self.rp_group)
                         return output
                     else:
+                        assert module.is_causal
+                        if 'cu_seq_lens_q' in kwargs:
+                            position_ids = kwargs['position_ids']
+                            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                            max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+                            kwargs['cu_seq_lens_q'] = cu_seqlens
+                            kwargs['cu_seq_lens_k'] = cu_seqlens
+                            kwargs['max_length_q'] = max_seqlen
+                            kwargs['max_length_k'] = max_seqlen
                         return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key, value, *args,
                                                                                    **kwargs)[0]
 
@@ -494,9 +504,10 @@ class SequenceParallel:
 
             return full_output.unsqueeze(0).contiguous()
         else:
-            gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
-                                      dtype=local_output.dtype,
-                                      device=local_output.device)
+            gathered_sp = torch.empty(
+                [local_output.shape[0] * self.sp_world_size] + list(local_output.shape[1:]),
+                dtype=local_output.dtype,
+                device=local_output.device)
             dist.all_gather_into_tensor(gathered_sp, local_output, group=self.sp_group)
             gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
