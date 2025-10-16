@@ -10,6 +10,8 @@ import numpy as np
 import requests
 import torch
 from PIL import Image
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from swift.utils import get_env_args
 
@@ -105,12 +107,19 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     if isinstance(path, str):
         path = path.strip()
         if path.startswith('http'):
-            request_kwargs = {}
-            timeout = float(os.getenv('TIMEOUT', '300'))
-            if timeout > 0:
-                request_kwargs['timeout'] = timeout
-            content = requests.get(path, **request_kwargs).content
-            res = BytesIO(content)
+            retries = Retry(total=3, backoff_factor=1, allowed_methods=['GET'])
+            with requests.Session() as session:
+                session.mount('http://', HTTPAdapter(max_retries=retries))
+                session.mount('https://', HTTPAdapter(max_retries=retries))
+
+                timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
+                request_kwargs = {'timeout': timeout} if timeout > 0 else {}
+
+                response = session.get(path, **request_kwargs)
+                response.raise_for_status()
+                content = response.content
+                res = BytesIO(content)
+
         elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
             ROOT_IMAGE_DIR = get_env_args('ROOT_IMAGE_DIR', str, None)
             if ROOT_IMAGE_DIR is not None and not os.path.exists(path):
