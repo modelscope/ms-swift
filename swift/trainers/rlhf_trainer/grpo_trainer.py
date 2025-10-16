@@ -545,7 +545,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         lora_kwargs = {}
-        if self.args.train_type == 'lora':
+        is_moe = model.model_info.is_moe_model
+        if self.args.train_type == 'lora' and not is_moe:
+            # MoE LoRA is not supported now
             lora_kwargs = {
                 'enable_lora': True,
                 'max_loras': 1,
@@ -691,22 +693,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     del state_dict
             self.base_sync_done = True
         else:
-            if self.vllm_mode == 'server':
-                bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
-                for i, parameter_group in enumerate(self.parameter_groups):
-                    parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                    parameters = [
-                        parameter for name, parameter in self.model.named_parameters()
-                        if not parameter_group or name in parameter_group
-                    ]
-                    with gather_if_zero3(parameters):
+            for i, parameter_group in enumerate(self.parameter_groups):
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+                with gather_if_zero3(parameters):
+                    state_dict = self.model.state_dict()
+                    # Filter by parameter_group_no_lora if specified
+                    if parameter_group_no_lora:
+                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+
+                    if self.vllm_mode == 'server':
+                        bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
                         if self.accelerator.is_main_process:
                             # Get state_dict AFTER gather to get full parameters
-                            state_dict = self.model.state_dict()
-
-                            # Filter by parameter_group_no_lora if specified
-                            if parameter_group_no_lora:
-                                state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
 
                             # Split gathered parameters into buckets
                             current_bucket = []
@@ -729,12 +731,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 _process_bucket_with_flattened_tensor(self, current_bucket)
 
                             del state_dict
-            else:
-                for name, param in self.model.named_parameters():
-                    with gather_if_zero3([param]):
+                    else:
                         if self.vllm_mode == 'colocate':
                             llm_model = self.engine.inner_model
-                            llm_model.load_weights([(name, param.data)])
+                            llm_model.load_weights(state_dict.items())
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()

@@ -1,23 +1,15 @@
-# 8*80G A100
-# 200s/it
-
-# CUDA_VISIBLE_DEVICES=0 \
-# swift rollout \
-#     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-#     --vllm_max_model_len 16384 \
-#     --vllm_enable_prefix_caching true
-
-CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 \
-NPROC_PER_NODE=7 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --reward_funcs accuracy \
     --use_vllm true \
-    --vllm_mode server \
-    --vllm_server_host 127.0.0.1 \
-    --vllm_server_port 8000 \
-    --train_type full \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.4 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 16384 \
+    --train_type lora \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --max_length 12000 \
@@ -35,12 +27,14 @@ swift rlhf \
     --logging_steps 1 \
     --warmup_ratio 0.01 \
     --dataloader_num_workers 4 \
-    --num_generations 14 \
+    --num_generations 16 \
     --temperature 1.0 \
-    --deepspeed zero3_offload \
+    --deepspeed zero2 \
     --log_completions true \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
     --report_to tensorboard swanlab \
     --num_iterations 1 \
-    --async_generate false \
     --beta 0.001 \
     --move_model_batches 5
