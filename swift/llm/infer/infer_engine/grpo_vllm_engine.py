@@ -48,7 +48,7 @@ class GRPOVllmEngine(VllmEngine):
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
