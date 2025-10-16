@@ -4,12 +4,13 @@ from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
-from swift.llm import TemplateType
+from swift.llm import TemplateType, to_device
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
@@ -841,7 +842,7 @@ def patch_Qwen3VLMoeTextExperts_dtype():
     Qwen3VLMoeTextExperts.forward = forward
 
 
-def _compat_qwen3_vl_mixed_data(model):
+def _compat_qwen3_vl_mixed_data(model, processor):
     if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
@@ -868,52 +869,73 @@ def _compat_qwen3_vl_mixed_data(model):
         video_grid_thw (`torch.LongTensor` of shape `(num_videos, 3)`, *optional*):
             The temporal, height and width of feature shape of each video in LLM.
         """
+        if not self.training:
+            return self.origin_forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                cache_position=cache_position,
+                **kwargs,
+            )
+
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError('You must specify exactly one of input_ids or inputs_embeds')
 
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
-        image_mask = None
-        video_mask = None
+        dtype = self.visual.dtype
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = processor.image_processor(images=images, return_tensors='pt')
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            image_embeds, deepstack_visual_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+            visual_pos_masks = None
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds, deepstack_visual_embeds = self.visual(pixel_values_mixed, grid_thw=grid_thw)
+            deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
 
-        if pixel_values is not None:
-            image_embeds, deepstack_image_embeds = self.get_image_features(pixel_values, image_grid_thw)
-            image_embeds = torch.cat(image_embeds, dim=0).to(inputs_embeds.device, inputs_embeds.dtype)
-            image_mask, _ = self.get_placeholder_mask(
-                input_ids, inputs_embeds=inputs_embeds, image_features=image_embeds)
-            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+            image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            video_mask = (input_ids == self.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            if image_embeds is not None:
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
-        if pixel_values_videos is not None:
-            video_embeds, deepstack_video_embeds = self.get_video_features(pixel_values_videos, video_grid_thw)
-            video_embeds = torch.cat(video_embeds, dim=0).to(inputs_embeds.device, inputs_embeds.dtype)
-            _, video_mask = self.get_placeholder_mask(
-                input_ids, inputs_embeds=inputs_embeds, video_features=video_embeds)
-            inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
-        visual_pos_masks = None
-        deepstack_visual_embeds = None
-        if image_mask is not None and video_mask is not None:
-            # aggregate visual_pos_masks and deepstack_visual_embeds
-            image_mask = image_mask[..., 0]
-            video_mask = video_mask[..., 0]
-            visual_pos_masks = image_mask | video_mask
-            deepstack_visual_embeds = []
-            image_mask_joint = image_mask[visual_pos_masks]
-            video_mask_joint = video_mask[visual_pos_masks]
-            for img_embed, vid_embed in zip(deepstack_image_embeds, deepstack_video_embeds):
-                embed_joint = img_embed.new_zeros(visual_pos_masks.sum(), img_embed.shape[-1]).to(img_embed.device)
-                embed_joint[image_mask_joint, :] = img_embed
-                embed_joint[video_mask_joint, :] = vid_embed
-                deepstack_visual_embeds.append(embed_joint)
-        elif image_mask is not None:
-            image_mask = image_mask[..., 0]
-            visual_pos_masks = image_mask
-            deepstack_visual_embeds = deepstack_image_embeds
-        elif video_mask is not None:
-            video_mask = video_mask[..., 0]
-            visual_pos_masks = video_mask
-            deepstack_visual_embeds = deepstack_video_embeds
+            if video_embeds is not None:
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+            visual_pos_masks = image_mask[..., 0] | video_mask[..., 0]
 
         if position_ids is None:
             attention_mask_tensor = (
@@ -976,6 +998,18 @@ def _compat_qwen3_vl_mixed_data(model):
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
 
+    def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
+                           visual_embeds: torch.Tensor):
+        if visual_pos_masks is None:
+            return hidden_states + visual_embeds.mean() * 0
+        visual_pos_masks = visual_pos_masks.to(hidden_states.device)
+        visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
+        hidden_states[visual_pos_masks, :] = local_this
+        return hidden_states
+
+    model.language_model._deepstack_process = MethodType(_deepstack_process, model.language_model)
+
 
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
@@ -984,7 +1018,7 @@ def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
     if model is not None:
-        _compat_qwen3_vl_mixed_data(model.model)
+        _compat_qwen3_vl_mixed_data(model.model, processor)
     return model, processor
 
 
@@ -1015,8 +1049,11 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     require_version('qwen_vl_utils>=0.0.14')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
+    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
     patch_Qwen3VLMoeTextExperts_dtype()
-    return get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    if model is not None:
+        _compat_qwen3_vl_mixed_data(model.model, processor)
+    return model, processor
 
 
 register_model(
