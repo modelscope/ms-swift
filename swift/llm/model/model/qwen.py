@@ -911,7 +911,6 @@ def _compat_qwen3_vl_mixed_data(model, processor):
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
             mixed_embeds, deepstack_visual_embeds = self.visual(pixel_values_mixed, grid_thw=grid_thw)
-            deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds
@@ -935,7 +934,19 @@ def _compat_qwen3_vl_mixed_data(model, processor):
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 video_mask = video_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-            visual_pos_masks = image_mask[..., 0] | video_mask[..., 0]
+            image_mask, video_mask = image_mask[..., 0], video_mask[..., 0]
+            visual_pos_masks = image_mask | video_mask
+            if image_embeds is not None and video_embeds is not None:
+                deepstack_image_embeds = [tensor[:image_tokens] for tensor in deepstack_visual_embeds]
+                deepstack_video_embeds = [tensor[image_tokens:] for tensor in deepstack_visual_embeds]
+                deepstack_visual_embeds = []
+                image_mask_joint = image_mask[visual_pos_masks]
+                video_mask_joint = video_mask[visual_pos_masks]
+                for img_embed, vid_embed in zip(deepstack_image_embeds, deepstack_video_embeds):
+                    embed_joint = img_embed.new_zeros(visual_pos_masks.sum(), img_embed.shape[-1]).to(img_embed.device)
+                    embed_joint[image_mask_joint, :] = img_embed
+                    embed_joint[video_mask_joint, :] = vid_embed
+                    deepstack_visual_embeds.append(embed_joint)
 
         if position_ids is None:
             attention_mask_tensor = (
