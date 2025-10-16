@@ -240,7 +240,6 @@ class SequenceParallel:
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
             if module.__class__ not in [m.__class__ for m in text_model.modules()]:
-                module.is_causal = True
                 return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
@@ -279,7 +278,6 @@ class SequenceParallel:
                             group=self.rp_group)
                         return output
                     else:
-                        assert module.is_causal
                         if 'cu_seq_lens_q' in kwargs:
                             position_ids = kwargs['position_ids']
                             cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)

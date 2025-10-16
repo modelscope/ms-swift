@@ -83,7 +83,6 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     if position_ids is not None:
         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
     from swift.trainers.sequence_parallel.utils import GatherLoss
-    _logits, _ = GatherLoss.apply(outputs.logits, labels.reshape(batch_size, -1), 1, position_ids)
     loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
