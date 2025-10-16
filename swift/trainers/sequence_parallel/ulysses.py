@@ -279,9 +279,13 @@ class SequenceParallel:
                         return output
                     else:
                         if 'cu_seq_lens_q' in kwargs:
-                            position_ids = kwargs['position_ids']
+                            position_ids = kwargs.get('position_ids')
+                            if position_ids is None:
+                                position_ids = self.real_position_ids
+                            position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
                             cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                             max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+                            assert query.shape[2] == cu_seqlens[-1]
                             kwargs['cu_seq_lens_q'] = cu_seqlens
                             kwargs['cu_seq_lens_k'] = cu_seqlens
                             kwargs['max_length_q'] = max_seqlen
