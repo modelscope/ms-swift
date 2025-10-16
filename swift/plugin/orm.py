@@ -266,13 +266,11 @@ class MathAccuracy(ORM):
                                     nits=False,
                                     malformed_operators=False,
                                     basic_latex=True,
-                                    equations=True,
                                     boxed=True,
                                     units=True,
                                 ),
-                                # Ensures that boxed is tried first
                                 boxed_match_priority=0,
-                                try_extract_without_anchor=True,  # Allow extraction of plain numbers without \boxed{}
+                                try_extract_without_anchor=False,
                             )
                         ],
                         extraction_mode='first_match',

@@ -227,6 +227,34 @@ class TestMathAccuracy(unittest.TestCase):
         self.assertEqual(len(rewards), 1)
         self.assertEqual(rewards[0], 1.0)
 
+    def test_latex_inline_math_delimiters(self):
+        completions = ['<answer>84</answer>', '<answer>3</answer>']
+        solutions = ['\n\n\\[\n\\boxed{84}\n\\]', 'Therefore, the value of \\(a^2 - a + 2\\) is \\(\\boxed{3}\\).']
+
+        rewards = self.math_accuracy(completions, solutions)
+
+        self.assertEqual(len(rewards), 2)
+        self.assertEqual(rewards[0], 1.0)
+        self.assertEqual(rewards[1], 1.0)
+
+    def test_latex_display_math_delimiters(self):
+        completions = ['<answer>100</answer>']
+        solutions = ['\\[\\boxed{100}\\]']
+
+        rewards = self.math_accuracy(completions, solutions)
+
+        self.assertEqual(len(rewards), 1)
+        self.assertEqual(rewards[0], 1.0)
+
+    def test_mixed_latex_delimiters(self):
+        completions = ['<answer>\\(x = 42\\)</answer>']
+        solutions = ['\\[\\boxed{x = 42}\\]']
+
+        rewards = self.math_accuracy(completions, solutions)
+
+        self.assertEqual(len(rewards), 1)
+        self.assertEqual(rewards[0], 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()
