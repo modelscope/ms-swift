@@ -362,7 +362,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
   - Note: For ms-swift versions earlier than 3.7, this parameter is named `gpu_memory_utilization`. The same applies to the following `vllm_` parameters. If you encounter parameter mismatch issues, please refer to the [ms-swift 3.6 documentation](https://swift.readthedocs.io/en/v3.6/Instruction/Command-line-parameters.html#vllm-arguments).
 - 🔥vllm_tensor_parallel_size: Tensor parallelism size. Default is `1`.
 - vllm_pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
-- vllm_data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
+- vllm_data_parallel_size: Data parallelism size, default is `1`, effective in the `swift deploy/rollout` command.
   - In `swift infer`, use `NPROC_PER_NODE` to set the data parallelism (DP) degree. See the example [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_ddp.sh).
 - vllm_enable_expert_parallel: Enable expert parallelism. Default is False.
 - vllm_max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
@@ -373,7 +373,8 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument, supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
-- vllm_enable_prefix_caching: Enable vLLM's automatic prefix caching to save processing time for repeated prompt prefixes. Default is `False`. **It is recommended to set this to `True` in real-world scenarios**, as it can significantly improve inference efficiency.
+- 🔥vllm_enable_prefix_caching: Enables vLLM's automatic prefix caching to save processing time for repeated prompt prefixes, improving inference efficiency. Default is `None`, following vLLM's default behavior.
+  - The default value of this parameter is `False` in "ms-swift<3.9.1".
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
 
