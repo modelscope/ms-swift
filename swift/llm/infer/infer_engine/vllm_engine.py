@@ -73,7 +73,7 @@ class VllmEngine(InferEngine):
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
@@ -163,7 +163,7 @@ class VllmEngine(InferEngine):
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
         task: Optional[str] = None,
@@ -214,6 +214,8 @@ class VllmEngine(InferEngine):
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
         self.default_template.set_mode('vllm')
         engine_kwargs.update(self.default_template.prepare_engine_kwargs())
+        if enable_prefix_caching is not None:
+            engine_kwargs['enable_prefix_caching'] = enable_prefix_caching
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
@@ -226,7 +228,6 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             trust_remote_code=True,
-            enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
             **engine_kwargs,
         )
