@@ -472,6 +472,8 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                         **inputs.mm_processor_kwargs)
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
+                    media_inputs.pop('input_ids')
+                    media_inputs.pop('attention_mask')
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
