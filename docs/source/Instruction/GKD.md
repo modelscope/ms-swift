@@ -147,3 +147,54 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
+
+## 采样加速
+
+在 GKD 训练中，涉及到两种在线采样的情况：
+
+1. **学生模型采样**（当 `lmbda > 0`）：以 $\lambda$ 概率触发学生模型采样
+2. **教师模型采样**（当 `seq_kd=True`）：以 $1-\lambda$ 概率触发教师模型采样
+
+由于采样过程会显著减慢训练速度，可参考以下两种加速方案：
+
+### 方案 1：学生模型采样加速
+
+**要求**：swift >= 3.10.dev
+
+使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式，与 GRPO 一致，参考[GRPO文档](./GRPO/GetStarted/GRPO.md#集群支持)
+
+训练脚本参考[colocate] 和 [server]
+
+### 方案 2：教师模型预采样
+
+对于教师模型采样（`seq_kd=True`），推荐使用 **预采样** 方式：先用教师模型离线生成高质量数据，再进行训练。
+
+**步骤 1：使用教师模型生成数据**
+```bash
+export teacher_model='OpenGVLab/InternVL3-8B'
+
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift infer \
+    --model $teacher_model \
+    --infer_backend vllm \
+    --val_dataset 'modelscope/coco_2014_caption:validation#5000' \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 8192 \
+    --max_new_tokens 2048 \
+    --write_batch_size 1000 \
+    --result_path teacher_generated_data.jsonl
+```
+
+**步骤 2：使用预生成数据训练**
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model OpenGVLab/InternVL3-2B-Pretrained \
+    --teacher_model $teacher_model \
+    --dataset 'teacher_generated_data.jsonl' \
+    --seq_kd false \
+    ...
+```
+
+训练脚本参考[这里](../../../examples/train/multimodal/rlhf/gkd/fast.sh)
