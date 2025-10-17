@@ -104,7 +104,7 @@ class GRPOVllmEngine(VllmEngine):
             if lora_int_ids:
                 # since max_lora = 1, pick the first lora
                 adapter_request = LoRARequest(
-                    lora_name=f'lora_{lora_int_ids[0]}',
+                    lora_name=f'{lora_int_ids[0]}',
                     lora_int_id=lora_int_ids[0],
                     lora_path='dummy_lora_path',
                 )

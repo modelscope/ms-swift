@@ -197,14 +197,15 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 #### 权重同步加速
-swift 3.9对 LoRA 训练的权重同步进行了优化（相比swift3.8加速约10倍）
-
-为开启LoRA权重同步优化，请在rollout命令中设置以下参数
+swift 3.10 优化了权重同步，同时在 rollout 命令(server mode)中设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
 ```bash
     --vllm_enable_lora true
     --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
 ```
-注意：对于多模态模型训练，vLLM 仅支持多模态模型的语言模型部分的adapter加载，如果需要训练多模态模型的ViT层(freeze_vit false)，请设置`vllm_enable_lora false`
+注意：以下情况无法使用该优化：
+
+- 训练多模态模型的ViT层(freeze_vit false)
+- MoE 模型
 
 优化实现细节请参考该[PR](https://github.com/modelscope/ms-swift/pull/5773)
 
