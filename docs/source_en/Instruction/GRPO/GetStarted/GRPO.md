@@ -202,7 +202,7 @@ Swift 3.10 optimizes weight synchronization, and setting the following parameter
 # rollout(server mode)
 swift rollout \
     --vllm_enable_lora true \
-    --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
+    --vllm_max_lora_rank xxx # match the lora_rank in the training script
     ...
 
 # grpo(colocate mode)
@@ -212,7 +212,6 @@ swift rlhf \
     --vllm_enable_lora true \
     ...
 ```
-
 Note: This optimization cannot be used in the following cases:
 
 - Training the ViT layers of multimodal models (freeze_vit set to false)
