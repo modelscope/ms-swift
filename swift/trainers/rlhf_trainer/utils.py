@@ -821,40 +821,28 @@ def peft_config_to_dict(peft_config):
     return peft_config
 
 
-def _create_parameter_buckets(named_params, bucket_size_mb=100):
-    """Create parameter buckets grouped by dtype for efficient processing"""
+def _create_parameter_buckets(named_params, bucket_size_mb=512):
+    """Create parameter buckets for efficient processing"""
     buckets = []
     current_bucket = []
     current_size = 0
     bucket_size_bytes = bucket_size_mb * 1024 * 1024
 
-    # Group parameters by dtype first, then by size
-    dtype_groups = {}
     for name, param in named_params:
-        dtype = param.dtype
-        if dtype not in dtype_groups:
-            dtype_groups[dtype] = []
-        dtype_groups[dtype].append((name, param))
+        param_size = param.numel() * param.element_size()
 
-    # Create buckets within each dtype group
-    for dtype, params in dtype_groups.items():
-        for name, param in params:
-            param_size = param.numel() * param.element_size()
-
-            # If adding this param would exceed bucket size, start a new bucket
-            if current_size + param_size > bucket_size_bytes and current_bucket:
-                buckets.append(current_bucket)
-                current_bucket = []
-                current_size = 0
-
-            current_bucket.append((name, param))
-            current_size += param_size
-
-        # Add remaining params in current bucket
-        if current_bucket:
+        # If adding this param would exceed bucket size, process current bucket first
+        if current_size + param_size > bucket_size_bytes and current_bucket:
             buckets.append(current_bucket)
             current_bucket = []
             current_size = 0
+
+        current_bucket.append((name, param))
+        current_size += param_size
+
+    # Process remaining parameters in the last bucket
+    if current_bucket:
+        buckets.append(current_bucket)
 
     return buckets
 

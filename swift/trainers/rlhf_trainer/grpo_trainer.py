@@ -643,103 +643,79 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.engine.llm_engine.add_lora(lora_reqest)
         del lora_params
 
+    def _load_state_dict_to_vllm(self, state_dict):
+        """Load state_dict to vLLM engine (server or colocate mode)"""
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+            named_params = list(state_dict.items())
+            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
+
+            for bucket in parameter_buckets:
+                _process_bucket_with_flattened_tensor(self, bucket)
+
+            del named_params, parameter_buckets
+        elif self.vllm_mode == 'colocate':
+            llm_model = self.engine.inner_model
+            llm_model.load_weights(state_dict.items())
+        del state_dict
+
     def _move_full_model_to_vllm(self):
         gather_if_zero3 = get_gather_if_zero3_context(self)
-        if is_peft_model(self.model):
-            for i, parameter_group in enumerate(self.parameter_groups):
-                parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
-                    if self.should_merge_adapter:
-                        # if rollout enable lora, we will only execute once before the first rollout
-                        self.model.merge_adapter()
-                    state_dict = self.model.state_dict()
+        is_peft = is_peft_model(self.model)
+
+        for i, parameter_group in enumerate(self.parameter_groups):
+            parameter_group_no_lora = self.parameter_groups_no_lora[i]
+            parameters = [
+                parameter for name, parameter in self.model.named_parameters()
+                if not parameter_group or name in parameter_group
+            ]
+
+            # Use patch_lora_merge for PEFT models, nullcontext otherwise
+            context_manager = patch_lora_merge(self.model, parameter_group) if is_peft else nullcontext()
+
+            with gather_if_zero3(parameters), context_manager:
+                if is_peft and self.should_merge_adapter:
+                    self.model.merge_adapter()
+
+                state_dict = self.model.state_dict()
+
+                # Process state_dict for PEFT models
+                if is_peft:
                     prefix_removed = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
                     state_dict = prefix_removed if self.rollout_enable_lora else {
                         k.replace('.base_layer', ''): v
                         for k, v in prefix_removed.items()
                     }
                     state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
-                    # When module to save, remove its prefix and discard the original module
                     state_dict = {
                         k.replace('modules_to_save.default.', ''): v
                         for k, v in state_dict.items() if 'original_module' not in k
                     }
-                    if parameter_group_no_lora:
+
+                # Filter by parameter_group_no_lora
+                if parameter_group_no_lora:
+                    if is_peft:
                         parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+
+                if is_peft:
                     assert len(state_dict) > 0 and all(
                         [state.shape != torch.Size([0]) for state in state_dict.values()])
 
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        # Create parameter buckets and process them efficiently
-                        named_params = list(state_dict.items())
-                        parameter_buckets = _create_parameter_buckets(named_params)
+                # Load to vLLM
+                self._load_state_dict_to_vllm(state_dict)
 
-                        # Process each bucket using flattened tensor approach
-                        for bucket in parameter_buckets:
-                            _process_bucket_with_flattened_tensor(self, bucket)
+                if is_peft and self.should_merge_adapter:
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
 
-                        del named_params, parameter_buckets
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.engine.inner_model
-                        llm_model.load_weights(state_dict.items())
-                    if self.should_merge_adapter:
-                        with patch_lora_unmerge(self.model):
-                            self.model.unmerge_adapter()
-                    del state_dict
+        if is_peft:
             self.base_sync_done = True
-        else:
-            for i, parameter_group in enumerate(self.parameter_groups):
-                parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-                with gather_if_zero3(parameters):
-                    state_dict = self.model.state_dict()
-                    # Filter by parameter_group_no_lora if specified
-                    if parameter_group_no_lora:
-                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
 
-                    if self.vllm_mode == 'server':
-                        bucket_size_bytes = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512)) * 1024 * 1024
-                        if self.accelerator.is_main_process:
-                            # Get state_dict AFTER gather to get full parameters
-
-                            # Split gathered parameters into buckets
-                            current_bucket = []
-                            current_size = 0
-
-                            for name, param in state_dict.items():
-                                param_size = param.numel() * param.element_size()
-
-                                # If adding this param would exceed bucket size, process current bucket first
-                                if current_size + param_size > bucket_size_bytes and current_bucket:
-                                    _process_bucket_with_flattened_tensor(self, current_bucket)
-                                    current_bucket = []
-                                    current_size = 0
-
-                                current_bucket.append((name, param))
-                                current_size += param_size
-
-                            # Process remaining parameters in the last bucket
-                            if current_bucket:
-                                _process_bucket_with_flattened_tensor(self, current_bucket)
-
-                            del state_dict
-                    else:
-                        if self.vllm_mode == 'colocate':
-                            llm_model = self.engine.inner_model
-                            llm_model.load_weights(state_dict.items())
-
+        # Reset prefix cache
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
         elif self.vllm_mode == 'colocate':
-            # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
