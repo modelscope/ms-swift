@@ -264,6 +264,7 @@ class Qwen2VLTemplate(Template):
     def init_env_args(self):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
+        self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -296,10 +297,16 @@ class Qwen2VLTemplate(Template):
             return tokens
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
+        if self.bbox_format == 'legacy':
+            return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
+        else:
+            return [ref]
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
+        if self.bbox_format == 'legacy':
+            return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
+        else:
+            return [str(bbox)]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
