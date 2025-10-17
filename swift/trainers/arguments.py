@@ -179,7 +179,7 @@ class VllmArguments:
         vllm_enforce_eager (bool): Flag to enforce eager execution. Default is False.
         vllm_limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
-        vllm_enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
+        vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
         vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
         vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
@@ -195,7 +195,7 @@ class VllmArguments:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
-    vllm_enable_prefix_caching: bool = False
+    vllm_enable_prefix_caching: Optional[bool] = None
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
@@ -271,7 +271,7 @@ class GRPOArgumentsMixin(VllmArguments):
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite
-
+    vllm_enable_lora: bool = False
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None

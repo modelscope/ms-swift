@@ -14,6 +14,7 @@ from .utils import AdapterRequest
 try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
+    from vllm.lora.request import LoRARequest
 except Exception:
     raise
 
@@ -48,7 +49,7 @@ class GRPOVllmEngine(VllmEngine):
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
@@ -98,6 +99,16 @@ class GRPOVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
+        if not adapter_request and self.enable_lora:
+            lora_int_ids = list(self.engine.list_loras())
+            if lora_int_ids:
+                # since max_lora = 1, pick the first lora
+                adapter_request = LoRARequest(
+                    lora_name=f'{lora_int_ids[0]}',
+                    lora_int_id=lora_int_ids[0],
+                    lora_path='dummy_lora_path',
+                )
+
         res = super().infer(
             infer_requests,
             request_config,
@@ -189,3 +200,13 @@ class GRPOVllmEngine(VllmEngine):
             id=request_id,
             prompt_token_ids=prompt_token_ids,
             images_size=images_size)
+
+    def _add_adapter(self, adapter_request: Optional[Union[AdapterRequest, LoRARequest]] = None):
+        assert self.enable_lora, f'adapter_request: {adapter_request}, self.enable_lora: {self.enable_lora}'
+        from vllm.lora.request import LoRARequest
+        if isinstance(adapter_request, AdapterRequest):
+            return super()._add_adapter(adapter_request)
+        elif isinstance(adapter_request, LoRARequest):
+            return adapter_request
+        else:
+            raise ValueError(f'Invalid adapter request: {adapter_request}')
