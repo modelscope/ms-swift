@@ -546,14 +546,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_template.padding_free = False
         lora_kwargs = {}
         is_moe = model.model_info.is_moe_model
-        if self.args.train_type == 'lora' and not is_moe:
-            # MoE LoRA is not supported now
+        vllm_enable_lora = self.args.vllm_enable_lora
+        if self.args.train_type == 'lora' and vllm_enable_lora:
             lora_kwargs = {
-                'enable_lora': True,
+                'enable_lora': self.args.vllm_enable_lora,
                 'max_loras': 1,
                 'max_lora_rank': self.args.lora_rank,
             }
             self.rollout_enable_lora = True
+
+            if is_moe:
+                logger.warning(
+                    'vLLM LoRA is enabled for an MoE model. This may cause errors when applying LoRA to expert layers, '
+                    'as vLLM currently does not support LoRA in MoE configurations. If you encounter errors, '
+                    'please set vllm_enable_lora to False.')
+
+            if self.is_multimodal:
+                logger.warning('vLLM LoRA is enabled for a multimodal model. This may lead to unexpected issues '
+                               'when applying LoRA to the ViT component, as vLLM does not yet support this setup. '
+                               'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
+
             patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
@@ -640,7 +652,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 peft_config=asdict(peft_config),
                 lora_tensors=lora_params,
             )
-            self.engine.llm_engine.add_lora(lora_reqest)
+            self.engine.engine.add_lora(lora_reqest)
         del lora_params
 
     def _load_state_dict_to_vllm(self, state_dict):

@@ -535,7 +535,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `server` or `colocate`
 - vllm_mode server parameter
   - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
-  - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
+  - vllm_server_host: The host address of the vLLM server. Default is None.
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - vllm_server_pass_dataset: pass additional dataset information through to the vLLM server for multi-turn training.
@@ -548,6 +548,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
   - vllm_enable_prefix_caching: A pass-through parameter for vLLM, default is True.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
+  - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
   - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
   - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
