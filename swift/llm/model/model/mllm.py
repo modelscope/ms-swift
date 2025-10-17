@@ -193,19 +193,18 @@ def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
     if model is not None and not hasattr(model, '_forward_origin'):
         model._forward_origin = model.forward
 
-        def forward(
-                self,
-                input_ids=None,
-                attention_mask=None,
-                position_ids=None,
-                inputs_embeds=None,
-                pixel_values=None,
-                image_grid_thw=None,
-                video_grid_thw=None,
-                output_attentions=None,
-                output_hidden_states=None,
-                return_dict=None,
-                **kwargs):
+        def forward(self,
+                    input_ids=None,
+                    attention_mask=None,
+                    position_ids=None,
+                    inputs_embeds=None,
+                    pixel_values=None,
+                    image_grid_thw=None,
+                    video_grid_thw=None,
+                    output_attentions=None,
+                    output_hidden_states=None,
+                    return_dict=None,
+                    **kwargs):
             # Remove labels to avoid upstream asserts in ranking models
             kwargs.pop('labels', None)
             if return_dict is None:

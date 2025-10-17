@@ -65,7 +65,7 @@ class TemplateArguments:
         if self.padding_side is None:
             if getattr(self, 'task_type', None) in ('reranker', 'generative_reranker'):
                 self.padding_side = 'left'
-                logger.info(f"Setting args.padding_side to {self.padding_side} for task_type={self.task_type}")
+                logger.info(f'Setting args.padding_side to {self.padding_side} for task_type={self.task_type}')
             else:
                 self.padding_side = 'right'
 
