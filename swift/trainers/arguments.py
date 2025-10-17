@@ -271,7 +271,7 @@ class GRPOArgumentsMixin(VllmArguments):
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite
-
+    vllm_enable_lora: bool = False
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
