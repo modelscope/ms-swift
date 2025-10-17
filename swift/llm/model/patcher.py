@@ -205,7 +205,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
                 # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
                 sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                elif kwargs.get('attention_mask') is not None:
+            elif kwargs.get('attention_mask') is not None:
                 sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
             else:
                 sequence_lengths = -1
