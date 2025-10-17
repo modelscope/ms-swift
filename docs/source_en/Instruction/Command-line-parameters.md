@@ -735,7 +735,7 @@ These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen
 - FPS: Default is 2.0.
 - FPS_MIN_FRAMES: Default is 4. Minimum number of frames extracted from a video clip.
 - 🔥FPS_MAX_FRAMES: Default is 768. Maximum number of frames extracted from a video clip.
-- QWENVL_BBOX_FORMAT : Specifies whether to use `'legacy'` or `'new'` format for grounding. The `'legacy'` format is: `<|object_ref_start|>a dog<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`. The `'new'` format refers to: [Qwen3-VL Cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb). For dataset formatting, see the [Grounding Dataset Format Documentation](../Customization/Custom-dataset.md#grounding). Default: `'legacy'`.
+- 🔥QWENVL_BBOX_FORMAT: (ms-swift>=3.9.1) Specifies whether to use `'legacy'` or `'new'` format for grounding. The `'legacy'` format is: `<|object_ref_start|>a dog<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`. The `'new'` format refers to: [Qwen3-VL Cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb). For dataset formatting, see the [Grounding Dataset Format Documentation](../Customization/Custom-dataset.md#grounding). Default: `'legacy'`.
   - Note: This environment variable applies to Qwen2/2.5/3-VL and Qwen2.5/3-Omni series models.
 
 ### qwen2_audio
