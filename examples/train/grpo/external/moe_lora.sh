@@ -1,5 +1,4 @@
-# 8*80G A100
-# 200s/it
+# 8*80G
 
 # CUDA_VISIBLE_DEVICES=0 \
 # swift rollout \
@@ -17,7 +16,7 @@ swift rlhf \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
-    --train_type full \
+    --train_type lora \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --max_length 12000 \
@@ -37,10 +36,9 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 14 \
     --temperature 1.0 \
-    --deepspeed zero3_offload \
+    --deepspeed zero3 \
     --log_completions true \
     --report_to tensorboard swanlab \
     --num_iterations 1 \
-    --async_generate false \
     --beta 0.001 \
     --move_model_batches 5
