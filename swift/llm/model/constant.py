@@ -21,11 +21,8 @@ class LLMModelType:
     qwen3_next = 'qwen3_next'
     qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
-    qwen3_reranker = 'qwen3_reranker'
 
     qwen2_gte = 'qwen2_gte'
-
-    bge_reranker = 'bge_reranker'
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
@@ -145,7 +142,6 @@ class LLMModelType:
 class BertModelType:
     modern_bert = 'modern_bert'
     modern_bert_gte = 'modern_bert_gte'
-    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bert = 'bert'
 
 
@@ -273,7 +269,14 @@ class MLLMModelType:
     mistral_2503 = 'mistral_2503'
 
 
-class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
+class RERANKERModelType:
+    bge_reranker = 'bge_reranker'
+    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
+    jina_reranker_m0 = 'jina_reranker_m0'
+    qwen3_reranker = 'qwen3_reranker'
+
+
+class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, RERANKERModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:

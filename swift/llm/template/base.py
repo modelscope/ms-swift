@@ -436,6 +436,9 @@ class Template(ProcessorMixin):
                 if instruction is not None and positive.system is None:
                     positive.system = instruction
                 positive.messages = chosen.messages + positive.messages
+                positive.images = chosen.images + positive.images
+                positive.audios = chosen.audios + positive.audios
+                positive.videos = chosen.videos + positive.videos
                 positive_encoded = self._encode_truncated(positive)
                 labels.append(1)
                 for key in positive_encoded:
@@ -445,6 +448,9 @@ class Template(ProcessorMixin):
                 if instruction is not None and negative.system is None:
                     negative.system = instruction
                 negative.messages = chosen.messages + negative.messages
+                negative.images = chosen.images + negative.images
+                negative.audios = chosen.audios + negative.audios
+                negative.videos = chosen.videos + negative.videos
                 negative_encoded = self._encode_truncated(negative)
                 labels.append(0)
                 for key in negative_encoded:
@@ -1545,12 +1551,14 @@ class Template(ProcessorMixin):
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
                 for i in random.sample(range(positive_num), max_positive):
-                    new_batch.append({'input_ids': b['input_ids'][i], 'length': b['length'][i]})
+                    new_batch.append(
+                        {key: b[key][i]
+                         for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
                     labels_list.append(1)
                     for j in random.sample(range(negative_num), max_negative):
                         new_batch.append({
-                            'input_ids': b['input_ids'][j + positive_num],
-                            'length': b['length'][j + positive_num]
+                            key: b[key][j + positive_num]
+                            for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
 
@@ -1560,7 +1568,9 @@ class Template(ProcessorMixin):
         else:
             new_batch = []
             for b in batch:
-                new_batch.append({'input_ids': b['input_ids']})
+                new_batch.append(
+                    {key: b[key][i]
+                     for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
             res = self._data_collator(new_batch, padding_to=padding_to)
         return res
 
@@ -1853,7 +1863,7 @@ class Template(ProcessorMixin):
         Returns:
             A tensor after padding
         """
-        padding_side = self.padding_side if self.is_training and self.task_type != 'generative_reranker' else 'left'
+        padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)

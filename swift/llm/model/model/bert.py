@@ -2,11 +2,11 @@
 from types import MethodType
 
 import torch.nn.functional as F
-from transformers import AutoConfig, AutoModel
+from transformers import AutoConfig, AutoModel, AutoModelForSequenceClassification
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import BertModelType
+from ..constant import BertModelType, RERANKERModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 logger = get_logger()
@@ -57,14 +57,20 @@ register_model(
         requires=['transformers>=4.48'],
         tags=['bert', 'embedding']))
 
+
+def get_model_tokenizer_gte_bert_reranker(*args, **kwargs):
+    kwargs['automodel_class'] = AutoModelForSequenceClassification
+    return get_model_tokenizer_from_local(*args, **kwargs)
+
+
 register_model(
     ModelMeta(
-        BertModelType.modern_bert_gte_reranker,
+        RERANKERModelType.modern_bert_gte_reranker,
         [ModelGroup([
             Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
         ])],
         TemplateType.bert,
-        get_model_tokenizer_from_local,
+        get_model_tokenizer_gte_bert_reranker,
         requires=['transformers>=4.48'],
         tags=['bert', 'reranker']))
 

@@ -164,6 +164,8 @@ class MLLMTemplateType:
     interns1 = 'interns1'
     internvl_hf = 'internvl_hf'
 
+    jina_reranker_m0 = 'jina_reranker_m0'
+
     xcomposer2 = 'ixcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
