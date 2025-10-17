@@ -567,6 +567,22 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.qwen3_guard,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3Guard-Gen-0.6B', 'Qwen/Qwen3Guard-Gen-0.6B'),
+                Model('Qwen/Qwen3Guard-Gen-4B', 'Qwen/Qwen3Guard-Gen-4B'),
+                Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
+            ])
+        ],
+        TemplateType.qwen3_guard,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.qwen3_thinking,
         [
             ModelGroup([
