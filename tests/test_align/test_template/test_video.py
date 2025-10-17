@@ -363,7 +363,7 @@ def _run_qwen3_vl_hf(messages, model, template):
 
 
 def test_qwen3_vl():
-    pt_engine = PtEngine('Qwen/Qwen3-VL')
+    pt_engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct')
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     query = 'describe this video.'
     messages = [{'role': 'user', 'content': query}]
@@ -388,7 +388,7 @@ def test_qwen3_vl():
 
 
 def test_qwen3_moe_vl():
-    pt_engine = PtEngine('Qwen/Qwen3-VL-Moe')
+    pt_engine = PtEngine('Qwen/Qwen3-VL-30B-A3B-Instruct')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)

@@ -472,6 +472,8 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                         **inputs.mm_processor_kwargs)
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
+                    media_inputs.pop('input_ids', None)
+                    media_inputs.pop('attention_mask', None)
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
@@ -536,7 +538,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
+            _video = fetch_video({'video': video})
+            if isinstance(_video, torch.Tensor):
+                _video = _video.to(torch.uint8)
+            inputs.videos[index] = _video
             if self.use_audio_in_video:
                 import librosa
                 if video.startswith('http://') or video.startswith('https://'):

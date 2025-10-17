@@ -923,7 +923,7 @@ def _run_qwen3_vl_hf(messages, model, processor):
 
 
 def test_qwen3_vl():
-    pt_engine = PtEngine('Qwen/Qwen3-VL')
+    pt_engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct')
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     query = 'describe this image.'
     messages = [{'role': 'user', 'content': query}]

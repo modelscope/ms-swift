@@ -80,11 +80,11 @@ def test_kimi_vl():
 
 
 def test_qwen3_vl():
-    _test_model('Qwen/Qwen3-VL')
+    _test_model('Qwen/Qwen3-VL-4B-Instruct')
 
 
 def test_qwen3_vl_moe():
-    _test_model('Qwen/Qwen3-VL-Moe')
+    _test_model('Qwen/Qwen3-VL-30B-A3B-Instruct')
 
 
 def test_qwen3_omni():

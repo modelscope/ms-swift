@@ -362,7 +362,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
   - Note: For ms-swift versions earlier than 3.7, this parameter is named `gpu_memory_utilization`. The same applies to the following `vllm_` parameters. If you encounter parameter mismatch issues, please refer to the [ms-swift 3.6 documentation](https://swift.readthedocs.io/en/v3.6/Instruction/Command-line-parameters.html#vllm-arguments).
 - 🔥vllm_tensor_parallel_size: Tensor parallelism size. Default is `1`.
 - vllm_pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
-- vllm_data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
+- vllm_data_parallel_size: Data parallelism size, default is `1`, effective in the `swift deploy/rollout` command.
   - In `swift infer`, use `NPROC_PER_NODE` to set the data parallelism (DP) degree. See the example [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_ddp.sh).
 - vllm_enable_expert_parallel: Enable expert parallelism. Default is False.
 - vllm_max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
@@ -373,7 +373,8 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument, supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
-- vllm_enable_prefix_caching: Enable vLLM's automatic prefix caching to save processing time for repeated prompt prefixes. Default is `False`. **It is recommended to set this to `True` in real-world scenarios**, as it can significantly improve inference efficiency.
+- 🔥vllm_enable_prefix_caching: Enables vLLM's automatic prefix caching to save processing time for repeated prompt prefixes, improving inference efficiency. Default is `None`, following vLLM's default behavior.
+  - The default value of this parameter is `False` in "ms-swift<3.9.1".
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
 
@@ -420,6 +421,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency (better load balancing across nodes and processes, higher GPU utilization) and stabilize GPU memory usage. Default is False. Currently supported in CPT/SFT/DPO/KTO/GKD.
   - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
+  - Note: **Packing reduces the number of samples in the dataset; please adjust the gradient accumulation steps and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
   - Note: If you want to perform image data augmentation, you need to set `lazy_tokenize` (or `streaming`) to True and modify the `encode` method in the Template class.
@@ -829,4 +831,5 @@ The meanings of the following parameters can be found in the example code [here]
 - LOG_LEVEL: The log level, default is 'INFO'. You can set it to 'WARNING', 'ERROR', etc.
 - SWIFT_DEBUG: When set to `'1'` during `engine.infer(...)`, PtEngine will print the contents of `input_ids` and `generate_ids` to facilitate debugging and alignment.
 - VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.
+- SWIFT_TIMEOUT: (ms-swift >= 3.10) If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
