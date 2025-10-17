@@ -495,7 +495,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return ''
             else:
                 if not self.rollout_enable_lora:
-                    return re.sub(r'\.base_layer\.', '.', name)
+                    return name.replace('.base_layer', '')
                 else:
                     return name
 

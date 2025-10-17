@@ -88,7 +88,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
 
     def update_adapter_flattened_param(self, lora_int_id: int, peft_config: Dict, metadatas: list[Dict]) -> None:
         """
-        Receives updated weights from the client process and updates the named parameter in the model.
+        Receives and applies a flattened LoRA adapter to the model.
         """
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
         if self.pynccl_comm is None:

@@ -4,14 +4,13 @@ import math
 import os
 import time
 from contextlib import contextmanager, nullcontext
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import datasets
-import json
 import torch
 import torch.nn.functional as F
 from msgspec import field
@@ -21,7 +20,6 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
-from transformers import Trainer
 
 from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
 
@@ -401,7 +399,6 @@ def get_gather_if_zero3_context(trainer):
 
 
 def patch_vllm_load_adapter():
-    # from vllm.lora.worker_manager import WorkerLoRAManager
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
