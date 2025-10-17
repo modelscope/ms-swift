@@ -518,6 +518,16 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
+def _patch_build_train_valid_test_datasets():
+    from megatron.training import training
+
+    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
+        train_valid_test_num_samples = training.get_train_valid_test_num_samples()
+        return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
+
+    training.build_train_valid_test_datasets = build_train_valid_test_datasets
+
+
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
@@ -648,6 +658,7 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
+    _patch_build_train_valid_test_datasets()
     _patch_mrope()
     from swift.megatron import tuners  # patch lora
     try:

@@ -13,6 +13,7 @@ class LLMModelType:
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     qwen3 = 'qwen3'
+    qwen3_guard = 'qwen3_guard'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
     qwen3_coder = 'qwen3_coder'

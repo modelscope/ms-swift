@@ -278,6 +278,18 @@ class SequenceParallel:
                             group=self.rp_group)
                         return output
                     else:
+                        if 'cu_seq_lens_q' in kwargs:
+                            position_ids = kwargs.get('position_ids')
+                            if position_ids is None:
+                                position_ids = self.real_position_ids
+                            position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                            max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+                            assert query.shape[2] == cu_seqlens[-1]
+                            kwargs['cu_seq_lens_q'] = cu_seqlens
+                            kwargs['cu_seq_lens_k'] = cu_seqlens
+                            kwargs['max_length_q'] = max_seqlen
+                            kwargs['max_length_k'] = max_seqlen
                         return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key, value, *args,
                                                                                    **kwargs)[0]
 
@@ -354,7 +366,7 @@ class SequenceParallel:
             if isinstance(router_logits, tuple):
                 compute_device = router_logits[0].device
                 router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
-            router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
+            router_logits, _ = GatherLoss.apply(router_logits, None)
             router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
                                                   -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
                                                                               -1)
@@ -494,9 +506,10 @@ class SequenceParallel:
 
             return full_output.unsqueeze(0).contiguous()
         else:
-            gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
-                                      dtype=local_output.dtype,
-                                      device=local_output.device)
+            gathered_sp = torch.empty(
+                [local_output.shape[0] * self.sp_world_size] + list(local_output.shape[1:]),
+                dtype=local_output.dtype,
+                device=local_output.device)
             dist.all_gather_into_tensor(gathered_sp, local_output, group=self.sp_group)
             gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
@@ -514,8 +527,8 @@ class SequenceParallel:
                 raise NotImplementedError()
             local_value = sub_value.chunk(2 * self.rp_world_size, dim=dim)
             local_values.extend([
-                local_value[self.rp_rank].detach().clone(),
-                local_value[2 * self.rp_world_size - 1 - self.rp_rank].detach().clone(),
+                local_value[self.rp_rank],
+                local_value[2 * self.rp_world_size - 1 - self.rp_rank],
             ])
         return torch.cat(local_values, dim=dim).contiguous()
 

@@ -62,6 +62,32 @@ class Qwen3Template(ThinkingTemplate):
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
 
+QWEN3_GUARD_TEMPLATE = (
+    '<|im_start|>user\n'
+    "# Task:\n1) Evaluate whether THE LAST USER's query belongs to safe or unsafe content based on our "
+    'safety policy.\n2) Identify the category of unsafe content found.\n\n<BEGIN SAFETY POLICY>\n'
+    "**Safety: Safe**: The USER's query does not contain any prohibited content or content that could "
+    "lead to prohibited content.\n**Safety: Unsafe**: The USER's query contains prohibited content.\n"
+    "**Safety: Controversial**: The USER's query does not explicitly contain prohibited content, but "
+    'its intent, context, or potential responses could be misinterpreted, misused, or exploited to '
+    'generate unsafe content under certain conditions.\n<END SAFETY POLICY>\n\n<BEGIN UNSAFE CONTENT '
+    'CATEGORIES>\nViolent.\nNon-violent Illegal Acts.\nSexual Content or Sexual Acts.\nPII.\nSuicide '
+    '& Self-Harm.\nUnethical Acts.\nPolitically Sensitive Topics.\nCopyright Violation.\nJailbreak.\n'
+    '<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nUSER: {{QUERY}}\n\n<END CONVERSATION>'
+    "\n\nProvide your safety assessment for ONLY THE LAST **USER's query** in the above conversation:\n"
+    " - The first line must be one of: 'Safety: Safe', 'Safety: Unsafe', 'Safety: Controversial'.\n - "
+    "The second line should start with 'Categories:' followed by a list of any unsafe content "
+    "categories, separated by commas. If the content is safe, use 'Categories: None'."
+    '<|im_end|>\n<|im_start|>assistant\n')
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_guard,
+        default_system=None,
+        template_cls=Qwen3Template,
+        prompt=[QWEN3_GUARD_TEMPLATE],
+        response_prefix='<think>\n\n</think>\n\n'))
+
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
@@ -264,6 +290,7 @@ class Qwen2VLTemplate(Template):
     def init_env_args(self):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
+        self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -296,10 +323,16 @@ class Qwen2VLTemplate(Template):
             return tokens
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
+        if self.bbox_format == 'legacy':
+            return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
+        else:
+            return [ref]
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
+        if self.bbox_format == 'legacy':
+            return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
+        else:
+            return [str(bbox)]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -472,6 +505,8 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                         **inputs.mm_processor_kwargs)
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
+                    media_inputs.pop('input_ids', None)
+                    media_inputs.pop('attention_mask', None)
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
@@ -536,7 +571,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
+            _video = fetch_video({'video': video})
+            if isinstance(_video, torch.Tensor):
+                _video = _video.to(torch.uint8)
+            inputs.videos[index] = _video
             if self.use_audio_in_video:
                 import librosa
                 if video.startswith('http://') or video.startswith('https://'):

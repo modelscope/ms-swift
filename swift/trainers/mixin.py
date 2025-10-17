@@ -75,7 +75,7 @@ class SwiftMixin:
         self.compute_loss_func = None  # Compatible with the older version of transformers
 
         if args.check_model and hasattr(model, 'model_dir'):
-            with ms_logger_context(logging.CRITICAL):
+            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
                 check_local_model_is_latest(
                     model.model_dir, user_agent={
                         'invoked_by': 'local_trainer',
@@ -131,6 +131,24 @@ class SwiftMixin:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    @contextmanager
+    def _patch_timeout(self):
+        from modelscope.hub.api import HubApi
+        __init__ = HubApi.__init__
+
+        def __new_init__(self, *args, **kwargs):
+            timeout = kwargs.get('timeout')
+            if timeout is not None and timeout > 5:
+                kwargs['timeout'] = 5
+            __init__(self, *args, **kwargs)
+
+        HubApi.__init__ = __new_init__
+
+        try:
+            yield
+        finally:
+            HubApi.__init__ = __init__
 
     @property
     def tokenizer(self):

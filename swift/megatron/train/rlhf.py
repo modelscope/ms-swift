@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 from swift.llm.train.kto import prepare_kto_dataset
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
-from ..trainers import MegatronDPOTrainer, MegatronKTOTrainer
+from ..trainers import MegatronDPOTrainer, MegatronKTOTrainer, MegatronRewardTrainer
 from .sft import MegatronSft
 
 logger = get_logger()
@@ -16,11 +16,9 @@ class MegatronRLHF(MegatronSft):
 
     def prepare_trainer(self):
         args = self.args
-        if args.rlhf_type == 'dpo':
-            trainer_cls = MegatronDPOTrainer
-        elif args.rlhf_type == 'kto':
-            trainer_cls = MegatronKTOTrainer
-        else:
+        trainer_mapping = {'dpo': MegatronDPOTrainer, 'kto': MegatronKTOTrainer, 'rm': MegatronRewardTrainer}
+        trainer_cls = trainer_mapping.get(args.rlhf_type)
+        if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
         return trainer_cls(args, self.template)
 

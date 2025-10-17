@@ -7,7 +7,7 @@ import os
 import re
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -25,6 +25,7 @@ import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from packaging import version
+from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
@@ -48,10 +49,11 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
-                    make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids,
-                    set_expandable_segments)
+from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets, _ForwardRedirection,
+                    _process_bucket_with_flattened_tensor, compute_chord_loss, get_gather_if_zero3_context,
+                    identity_data_collator, load_pil_img, make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_save_last_checkpoint,
+                    patch_vllm_load_adapter, replace_assistant_response_with_ids, set_expandable_segments)
 from .vllm_client import VLLMClient
 
 try:
@@ -245,19 +247,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        if is_peft_model(self.model):
-            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False
+        self.rollout_enable_lora = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
+            self.base_sync_done = False  # tag for lora weights sync
+
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
@@ -265,13 +268,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     vllm_use_async_engine = [self.vllm_client.use_async_engine]
                     use_gym_env = [self.vllm_client.use_gym_env]
                     enable_multi_turn = [self.vllm_client.enable_multi_turn]
+                    enable_lora = [self.vllm_client.enable_lora]
                 else:
                     vllm_use_async_engine = [False]
                     use_gym_env = [False]
                     enable_multi_turn = [self.enable_server_multi_turn]
+                    enable_lora = [False]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
                 if self.use_gym_env:
                     self.reward_func_names = ['gym_reward']
 
@@ -301,6 +307,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
+
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -486,7 +494,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'lora_' in name:
                 return ''
             else:
-                return name.replace('base_layer.', '')
+                if not self.rollout_enable_lora:
+                    return name.replace('.base_layer', '')
+                else:
+                    return name
 
         def remove_lora_and_prefix(names):
             names = set([re.sub(r'^_model\.', '', replace_lora(n)) for n in names])
@@ -533,6 +544,29 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        lora_kwargs = {}
+        is_moe = model.model_info.is_moe_model
+        vllm_enable_lora = self.args.vllm_enable_lora
+        if self.args.train_type == 'lora' and vllm_enable_lora:
+            lora_kwargs = {
+                'enable_lora': self.args.vllm_enable_lora,
+                'max_loras': 1,
+                'max_lora_rank': self.args.lora_rank,
+            }
+            self.rollout_enable_lora = True
+
+            if is_moe:
+                logger.warning(
+                    'vLLM LoRA is enabled for an MoE model. This may cause errors when applying LoRA to expert layers, '
+                    'as vLLM currently does not support LoRA in MoE configurations. If you encounter errors, '
+                    'please set vllm_enable_lora to False.')
+
+            if self.is_multimodal:
+                logger.warning('vLLM LoRA is enabled for a multimodal model. This may lead to unexpected issues '
+                               'when applying LoRA to the ViT component, as vLLM does not yet support this setup. '
+                               'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
+
+            patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
             engine = GRPOVllmEngine(
@@ -553,6 +587,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 load_format='dummy',
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
+                **lora_kwargs,
             )
             set_expandable_segments(True)
         return engine
@@ -569,66 +604,130 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @patch_profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
-        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
-        zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
-        if zero_stage_3:
-            import deepspeed
-            gather_if_zero3 = deepspeed.zero.GatheredParameters
-        else:
-            gather_if_zero3 = nullcontext
-
         if self.args.async_generate and not skip_async_check:
             # before sync weight, we should wait async generate finish
             self._wait_queue()
 
-        if is_peft_model(self.model):
-            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
-                parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+        train_type = self.args.train_type
+
+        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done) or not self.rollout_enable_lora:
+            self._move_full_model_to_vllm()
+        else:
+            self._move_adapter_to_vllm()
+
+    def _move_adapter_to_vllm(self):
+        lora_params = OrderedDict()
+        for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+            parameters = [
+                parameter for name, parameter in self.model.named_parameters()
+                if not parameter_group or name in parameter_group
+            ]
+            gather_if_zero3 = get_gather_if_zero3_context(self)
+            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                assert len(parameters) == len(parameter_group)
+                state_dict = {name: p for p, name in zip(parameters, parameter_group)}
+                peft_config = self.model.peft_config.get('default', None)
+                self.model.merge_adapter()
+                cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
+                cur_lora_params = {
+                    name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
+                    for name, param in cur_lora_params.items()
+                }
+                lora_params.update(cur_lora_params)
+                with patch_lora_unmerge(self.model):
+                    self.model.unmerge_adapter()
+                del cur_lora_params
+
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            bucked = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
+            metadatas = bucked.get_metadata()
+            flattened_tensor = bucked.get_flattened_tensor()
+            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+        elif self.vllm_mode == 'colocate':
+            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
+            lora_reqest = TensorLoRARequest(
+                lora_name=f'{lora_int_id}',
+                lora_int_id=lora_int_id,
+                lora_path='dummy_lora_path',
+                peft_config=asdict(peft_config),
+                lora_tensors=lora_params,
+            )
+            self.engine.engine.add_lora(lora_reqest)
+        del lora_params
+
+    def _load_state_dict_to_vllm(self, state_dict):
+        """Load state_dict to vLLM engine (server or colocate mode)"""
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+            named_params = list(state_dict.items())
+            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
+
+            for bucket in parameter_buckets:
+                _process_bucket_with_flattened_tensor(self, bucket)
+
+            del named_params, parameter_buckets
+        elif self.vllm_mode == 'colocate':
+            llm_model = self.engine.inner_model
+            llm_model.load_weights(state_dict.items())
+        del state_dict
+
+    def _move_full_model_to_vllm(self):
+        gather_if_zero3 = get_gather_if_zero3_context(self)
+        is_peft = is_peft_model(self.model)
+
+        for i, parameter_group in enumerate(self.parameter_groups):
+            parameter_group_no_lora = self.parameter_groups_no_lora[i]
+            parameters = [
+                parameter for name, parameter in self.model.named_parameters()
+                if not parameter_group or name in parameter_group
+            ]
+
+            # Use patch_lora_merge for PEFT models, nullcontext otherwise
+            context_manager = patch_lora_merge(self.model, parameter_group) if is_peft else nullcontext()
+
+            with gather_if_zero3(parameters), context_manager:
+                if is_peft and self.should_merge_adapter:
                     self.model.merge_adapter()
-                    state_dict = self.model.state_dict()
-                    state_dict = {
-                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                        for k, v in state_dict.items()
+
+                state_dict = self.model.state_dict()
+
+                # Process state_dict for PEFT models
+                if is_peft:
+                    prefix_removed = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
+                    state_dict = prefix_removed if self.rollout_enable_lora else {
+                        k.replace('.base_layer', ''): v
+                        for k, v in prefix_removed.items()
                     }
                     state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
-                    # When module to save, remove its prefix and discard the original module
                     state_dict = {
                         k.replace('modules_to_save.default.', ''): v
                         for k, v in state_dict.items() if 'original_module' not in k
                     }
-                    if parameter_group_no_lora:
+
+                # Filter by parameter_group_no_lora
+                if parameter_group_no_lora:
+                    if is_peft:
                         parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+
+                if is_peft:
                     assert len(state_dict) > 0 and all(
                         [state.shape != torch.Size([0]) for state in state_dict.values()])
 
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        for name, param in state_dict.items():
-                            self.vllm_client.update_named_param(name, param)
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.engine.inner_model
-                        llm_model.load_weights(state_dict.items())
+                # Load to vLLM
+                self._load_state_dict_to_vllm(state_dict)
+
+                if is_peft and self.should_merge_adapter:
                     with patch_lora_unmerge(self.model):
                         self.model.unmerge_adapter()
-                    del state_dict
-        else:
-            for name, param in self.model.named_parameters():
-                with gather_if_zero3([param]):
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        self.vllm_client.update_named_param(name, param.data)
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.engine.inner_model
-                        llm_model.load_weights([(name, param.data)])
 
+        if is_peft:
+            self.base_sync_done = True
+
+        # Reset prefix cache
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
         elif self.vllm_mode == 'colocate':
-            # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
@@ -2513,7 +2612,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return []
 
         # Define core metadata fields required for all requests
-        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'objects', 'uuid']
+        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
         requests_dicts = []
 
         for data in inputs:
@@ -2938,3 +3037,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
                 chunk_inputs.pop('labels', None)
         return chunk_inputs
+
+    @property
+    def should_merge_adapter(self):
+        """
+        Determine whether the LoRA adapter should be merged into the base model during weight synchronization.
+
+        Note:
+            Merging or unmerging adapters in MoE models is computationally expensive and should be minimized.
+
+        Raises:
+            AssertionError: If full-parameter training is used, as adapter merging is not supported.
+
+        Returns:
+            bool: True if the adapter should be merged; False otherwise.
+                - Returns True when LoRA is not enabled for rollout.
+                - Returns True when loading from a checkpoint or using pre-trained adapters.
+                - Returns False during normal LoRA training (weights are already synchronized).
+        """
+        assert self.args.train_type != 'full', 'Full-parameter training should not merge adapter'
+
+        # Rollout does not support LoRA
+        if not self.rollout_enable_lora:
+            return True
+
+        if self.args.resume_from_checkpoint:
+            # Resuming training: merge into base model
+            return True
+
+        # base model weights are synced before training; no need to merge
+        return False
