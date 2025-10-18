@@ -943,7 +943,7 @@ def _patch_deepstack_process(model):
         hidden_states[visual_pos_masks, :] = local_this
         return hidden_states
 
-    model.language_model._deepstack_process = MethodType(_deepstack_process, model.language_model)
+    model._deepstack_process = MethodType(_deepstack_process, model)
 
 
 def _compat_qwen3_vl_mixed_data(model, processor):
@@ -1048,7 +1048,7 @@ def _compat_qwen3_vl_mixed_data(model, processor):
 
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
-    _patch_deepstack_process(model)
+    _patch_deepstack_process(model.language_model)
 
 
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
@@ -1318,7 +1318,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
 
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
-    _patch_deepstack_process(model)
+    _patch_deepstack_process(model.model)
 
 
 def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
@@ -1341,6 +1341,8 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+
+        _compat_qwen3_omni_mixed_data(model.thinker, processor)
     return model, processor
 
 
