@@ -1233,17 +1233,17 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.text_config.output_router_logits)
 
-        nputs_embeds, visual_pos_masks, visual_embeds_multiscale = _forward_qwen3_vl_or_qwen3_omni(
+        inputs_embeds, visual_pos_masks, visual_embeds_multiscale = _forward_qwen3_vl_or_qwen3_omni(
             self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
             video_grid_thw)
 
         if input_features is None:
-            input_features = input_ids.new_zeros([1, 128, 128], dtype=self.thinker.audio_tower.dtype)
+            input_features = input_ids.new_zeros([1, 128, 128], dtype=self.audio_tower.dtype)
             feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-            audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
             audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
@@ -1338,13 +1338,12 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
         kwargs['model_config'].enable_audio_output = enable_audio_output
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
+        _compat_qwen3_omni_mixed_data(model.thinker, processor)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
-
-        _compat_qwen3_omni_mixed_data(model.thinker, processor)
     return model, processor
 
 
