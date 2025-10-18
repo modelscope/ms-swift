@@ -946,11 +946,13 @@ def _patch_deepstack_process(model):
     model._deepstack_process = MethodType(_deepstack_process, model)
 
 
-def _compat_qwen3_vl_mixed_data(model, processor):
+def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
                                                                 check_model_inputs, Cache, is_torchdynamo_compiling)
+    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
+    output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
 
     @check_model_inputs
     def forward(
@@ -966,7 +968,7 @@ def _compat_qwen3_vl_mixed_data(model, processor):
         video_grid_thw: Optional[torch.LongTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
-    ) -> Union[tuple, Qwen3VLModelOutputWithPast]:
+    ) -> Union[tuple, output_cls]:
         if not self.training:
             return self.origin_forward(
                 input_ids=input_ids,
@@ -1040,7 +1042,7 @@ def _compat_qwen3_vl_mixed_data(model, processor):
             **kwargs,
         )
 
-        return Qwen3VLModelOutputWithPast(
+        return output_cls(
             last_hidden_state=outputs.last_hidden_state,
             past_key_values=outputs.past_key_values,
             rope_deltas=self.rope_deltas,
@@ -1092,7 +1094,7 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
     patch_Qwen3VLMoeTextExperts_dtype()
     if model is not None:
-        _compat_qwen3_vl_mixed_data(model.model, processor)
+        _compat_qwen3_vl_mixed_data(model.model, processor, True)
     return model, processor
 
 
