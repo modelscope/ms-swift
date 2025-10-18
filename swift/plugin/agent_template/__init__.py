@@ -8,6 +8,7 @@ from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3CoderAgentTemplate
+from .seed_oss import SeedAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
 
@@ -31,6 +32,7 @@ agent_templates = {
     'llama4': Llama4AgentTemplate,
     # ref: https://huggingface.co/deepseek-ai/DeepSeek-V3.1
     'deepseek_v3_1': DeepSeekV31AgentTemplate,
+    'seed_oss': SeedAgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate
