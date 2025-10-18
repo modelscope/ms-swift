@@ -1344,6 +1344,7 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+        patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
     return model, processor
 
 
