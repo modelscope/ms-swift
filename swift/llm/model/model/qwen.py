@@ -931,6 +931,21 @@ def _forward_qwen3_vl_or_qwen3_omni(
     return inputs_embeds, visual_pos_masks, deepstack_visual_embeds
 
 
+def _patch_deepstack_process(model):
+
+    def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
+                           visual_embeds: torch.Tensor):
+        if visual_pos_masks is None:
+            return hidden_states + visual_embeds.mean() * 0
+        visual_pos_masks = visual_pos_masks.to(hidden_states.device)
+        visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
+        hidden_states[visual_pos_masks, :] = local_this
+        return hidden_states
+
+    model.language_model._deepstack_process = MethodType(_deepstack_process, model.language_model)
+
+
 def _compat_qwen3_vl_mixed_data(model, processor):
     if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
         return
@@ -1039,18 +1054,7 @@ def _compat_qwen3_vl_mixed_data(model, processor):
 
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
-
-    def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
-                           visual_embeds: torch.Tensor):
-        if visual_pos_masks is None:
-            return hidden_states + visual_embeds.mean() * 0
-        visual_pos_masks = visual_pos_masks.to(hidden_states.device)
-        visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
-        local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
-        hidden_states[visual_pos_masks, :] = local_this
-        return hidden_states
-
-    model.language_model._deepstack_process = MethodType(_deepstack_process, model.language_model)
+    _patch_deepstack_process(model)
 
 
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
@@ -1207,6 +1211,29 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         video_second_per_grid=None,
         **kwargs,
     ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
+        if not self.training:
+            return self.origin_forward(
+                input_ids=input_ids,
+                input_features=input_features,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                attention_mask=attention_mask,
+                feature_attention_mask=feature_attention_mask,
+                audio_feature_lengths=audio_feature_lengths,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                rope_deltas=rope_deltas,
+                labels=labels,
+                use_cache=use_cache,
+                output_router_logits=output_router_logits,
+                use_audio_in_video=use_audio_in_video,
+                cache_position=cache_position,
+                video_second_per_grid=video_second_per_grid,
+                **kwargs,
+            )
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.text_config.output_router_logits)
 
@@ -1294,6 +1321,10 @@ def _compat_qwen3_omni_mixed_data(model, processor):
             past_key_values=outputs.past_key_values,
             rope_deltas=self.rope_deltas,
         )
+
+    model.origin_forward = model.forward
+    model.forward = MethodType(forward, model)
+    _patch_deepstack_process(model)
 
 
 def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
