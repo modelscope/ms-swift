@@ -39,7 +39,7 @@ class TemplateArguments:
     use_chat_template: Optional[bool] = None
     # train
     padding_free: bool = False
-    padding_side: Literal['left', 'right'] = 'right'
+    padding_side: Literal['left', 'right', None] = None
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
@@ -62,6 +62,12 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
+        if self.padding_side is None:
+            if getattr(self, 'task_type', None) in ('reranker', 'generative_reranker'):
+                self.padding_side = 'left'
+                logger.info(f'Setting args.padding_side to {self.padding_side} for task_type={self.task_type}')
+            else:
+                self.padding_side = 'right'
 
     def get_template_kwargs(self):
         from ..train_args import TrainArguments
