@@ -969,7 +969,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, output_cls]:
-        if not self.training:
+        if not self.training and not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -1207,7 +1207,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         video_second_per_grid=None,
         **kwargs,
     ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
-        if not self.training:
+        if not self.training and not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 input_features=input_features,

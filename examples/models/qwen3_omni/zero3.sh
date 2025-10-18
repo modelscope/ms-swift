@@ -1,4 +1,4 @@
-# 2 * 55GiB
+# 2 * 60GiB
 # mcore shell: https://github.com/modelscope/ms-swift/blob/main/examples/megatron/multimodal/omni/moe.sh
 MAX_PIXELS=1003520 \
 NPROC_PER_NODE=2 \
