@@ -1,8 +1,9 @@
 import functools
 import os
-from typing import Callable, TypeVar, List, Dict, Literal
+from typing import Callable, TypeVar, List, Dict, Literal, Union
 import ray
 from ray.runtime_env import RuntimeEnv
+from functools import wraps
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from swift.llm.argument.base_args.ray_args import RayArguments
@@ -11,71 +12,104 @@ from swift.ray.resource_manager import ResourceManager
 T = TypeVar('T')
 
 
-class RayUtil:
+class RayHelper:
 
     resource_manager: ResourceManager = None
 
-    def __init__(self, args: RayArguments):
-        self.role = ''
-        self.args = args
-        self.group = ''
-        self.workers = []
+    worker_cls: Dict = {}
 
-    def initialize(self, args: RayArguments):
-        if RayUtil.resource_manager is None:
-            RayUtil.resource_manager = ResourceManager(args.device_groups)
+    args: RayArguments = None
 
-    @classmethod
-    def worker(cls, group: str, dispatch: Literal['slice', 'all'], execute: Literal['first', 'all']):
+    worker_instance: Dict = {}
+
+    initialized = False
+
+    @staticmethod
+    def initialize(args: RayArguments):
+        RayHelper.args = args
+        if RayHelper.resource_manager is None:
+            RayHelper.resource_manager = ResourceManager(args.device_groups)
+        RayHelper.initialized = True
+
+    @staticmethod
+    def worker(cls, group: Union[str, List[str]]):
+        cls.decorated = True
+        original_init = cls.__init__
+
+        @wraps(original_init)
+        def new_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+
+        if isinstance(group, str):
+            group = [group]
+        _cls = ray.remote(cls)
+        for g in group:
+            RayHelper.worker_cls[g] = _cls
+        _cls.__init__ = new_init
+        _cls.group = group
+
+        return _cls
+
+    @staticmethod
+    def function(group: str, dispatch: Literal['slice', 'all'], execute: Literal['first', 'all']):
 
         def decorator(func: Callable[..., T]) -> Callable[..., T]:
 
             @functools.wraps(func)
             def wrapper(self, *args, **kwargs) -> T:
-                if ray:
-
-                if self.group == 'worker':
-                    if group != self.group:
-                        return None
+                if not RayHelper.initialized:
+                    return func(*args, **kwargs)
+                if RayHelper.resource_manager is None:
+                    if group not in  self.group:
+                        if func.__name__ == '__init__':
+                            return None
+                        else:
+                            raise ValueError()
                     else:
                         return func(*args, **kwargs)
                 else:
-                    return self.execute_all_sync(func.__name__, *args, **kwargs)
+                    return RayHelper.execute_all_sync(group, func.__name__, *args, **kwargs)
 
             return wrapper
 
         return decorator
 
-    def execute_all_sync(self, method_name: str, *args, **kwargs):
-        return ray.get(self.execute_all_async(method_name, *args, **kwargs))
+    @staticmethod
+    def execute_all_sync(group, method_name: str, *args, **kwargs):
+        return ray.get(RayHelper.execute_all_async(group, method_name, *args, **kwargs))
 
-    def execute_all_async(self, method_name: str, *args, **kwargs):
-        length = len(self.workers)
+    @staticmethod
+    def execute_all_async(group, method_name: str, *args, **kwargs):
+        workers = RayHelper.worker_instance[group]
+        length = len(workers)
         if all(isinstance(arg, list) for arg in args) and all(isinstance(kwarg, list) for kwarg in kwargs.values()):
             if all(len(arg) == length for arg in args) and all(len(kwarg) == length for kwarg in kwargs.values()):
                 result = []
                 for i in range(length):
                     sliced_args = tuple(arg[i] for arg in args)
                     sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
-                    remote_call = getattr(self.workers[i], method_name)
+                    remote_call = getattr(workers[i], method_name)
                     result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
                 return result
 
-        return [getattr(worker, method_name).remote(*args, **kwargs) for worker in self.workers]
+        return [getattr(worker, method_name).remote(*args, **kwargs) for worker in workers]
 
-    def _create_workers(self):
-        nproc_per_node = int(self.args.device_groups['groups']['nproc_per_node'])
-        ip, port = self.args.device_groups['master_addr']
-        for group_name, group in self.args.device_groups['groups'].items():
+    @staticmethod
+    def _create_workers():
+        nproc_per_node = int(RayHelper.args.device_groups['groups']['nproc_per_node'])
+        ip, port = RayHelper.args.device_groups['master_addr']
+        for group_name, group in RayHelper.args.device_groups['groups'].items():
             if group_name == 'nproc_per_node':
                 continue
 
+            worker_cls = RayHelper.worker_cls[group_name]
+
             worker = group['worker'][0]
             world_size = len(group['ranks']) // nproc_per_node
-            placement_groups: List[List[Dict]] = self.resource_manager.resource(worker)
+            placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(worker)
+            workers = []
             for rank, pgs in enumerate(placement_groups):
                 deploy_pg = pgs[0]
-                pg_zero_gpu_ranks = sorted([pg["gpu_rank"] for pg in pgs if pg["node_rank"] == deploy_pg["node_rank"]])
                 worker_name = '-'.join(group['worker'])
                 env_vars = {
                     "WORLD_SIZE": str(world_size),
@@ -85,12 +119,9 @@ class RayUtil:
                     "WORKER_NAME": worker_name,
                 }
 
-                envs = {}
                 if rank != 0:
                     env_vars["MASTER_ADDR"] = ip
                     env_vars["MASTER_PORT"] = port
-                # if deploy_pg["gpu_rank"] is not None:
-                #     current_platform.update_env_vars_for_visible_devices(env_vars=env_vars, gpu_ranks=pg_zero_gpu_ranks)
                 if "ROLL_LOG_DIR" in os.environ:
                     env_vars["ROLL_LOG_DIR"] = os.environ["ROLL_LOG_DIR"]
 
@@ -105,19 +136,6 @@ class RayUtil:
                     "num_gpus": 0.01,
                 }
 
-                worker = self.__class__.options(**worker_options).remote(args=self.args)
-                self.workers.append(worker)
-
-    @classmethod
-    def func_generator(cls, method_name, dispatch_fn, collect_fn, execute_fn):
-        def func(*args, blocking=True, **kwargs):
-
-            args, kwargs = dispatch_fn(cls, *args, **kwargs)
-            output = execute_fn(method_name, *args, **kwargs)
-            if blocking:
-                timeout = None
-                output = ray.get(output, timeout=timeout)
-            output = collect_fn(cls, output)
-            return output
-
-        return func
+                worker = worker_cls.options(**worker_options).remote(args=worker_cls.args)
+                workers.append(worker)
+            RayHelper.worker_instance[group_name] = workers

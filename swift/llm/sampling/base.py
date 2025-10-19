@@ -2,13 +2,13 @@ from typing import Any, Dict, List
 
 from swift.llm import SamplingArguments
 from swift.plugin import orms, prms
-from swift.ray.base import RayMixin
+from swift.ray.base import RayHelper
 from swift.utils import get_logger
 
 logger = get_logger()
 
 
-class Sampler(RayMixin):
+class Sampler:
 
     def __init__(self, input_args: SamplingArguments):
         self.args = input_args
@@ -25,7 +25,7 @@ class Sampler(RayMixin):
         args = self.args
         _, self.processor = args.get_model_processor(load_model=False)
 
-    @RayMixin.worker(group='prm')
+    @RayHelper.function(group='prm')
     def _prepare_prm(self):
         if self.args.prm_model is None:
             self.prm_model = None
@@ -36,7 +36,7 @@ class Sampler(RayMixin):
             from swift.llm import PtEngine
             self.prm_model = PtEngine(self.args.prm_model, max_batch_size=64)
 
-    @RayMixin.worker(group='orm')
+    @RayHelper.function(group='orm')
     def _prepare_orm(self):
         if self.args.orm_model is None:
             self.orm_model = None

@@ -7,13 +7,14 @@ import numpy as np
 
 from swift.llm import RequestConfig
 from swift.llm.sampling.base import Sampler
-from swift.ray.base import RayMixin
+from swift.ray.base import RayHelper
 from swift.utils import get_logger
 from .utils import get_messages_md5, get_reward
 
 logger = get_logger()
 
 
+@RayHelper.worker(group=['sampler', 'prm', 'orm'])
 class VanillaSampler(Sampler):
 
     def __init__(self, *args, **kwargs):
@@ -21,7 +22,7 @@ class VanillaSampler(Sampler):
         self.prepare_sampler()
         self.caches = self.read_cache()
 
-    @RayMixin.worker(group='sampler')
+    @RayHelper.function(group='sampler')
     def prepare_sampler(self):
         if self.args.sampler_engine == 'pt':
             from swift.llm import PtEngine
@@ -42,7 +43,7 @@ class VanillaSampler(Sampler):
                 self.args.model, model_type=self.args.model_type, template=self.template, **self.args.engine_kwargs)
             self.infer_engine.strict = False
 
-    @RayMixin.worker(group='sampler')
+    @RayHelper.function(group='sampler')
     def read_cache(self):
         cache_files = self.args.cache_files
         caches = {}
@@ -85,7 +86,7 @@ class VanillaSampler(Sampler):
             assert not row.get('videos') or all([isinstance(video, str) and video for video in row['videos']])
             assert not row.get('audios') or all([isinstance(audio, str) and audio for audio in row['audios']])
 
-    @RayMixin.worker(group='sampler')
+    @RayHelper.function(group='sampler')
     def generate(self, data):
         resp_all = []
         infer_requests = []
@@ -145,13 +146,13 @@ class VanillaSampler(Sampler):
             _cur += 1
         return resp_all
 
-    @RayMixin.worker(group='orm')
+    @RayHelper.function(group='orm')
     def get_orm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
             threshold=0.0)
 
-    @RayMixin.worker(group='prm', distributed_type='broadcast')
+    @RayHelper.function(group='prm', distributed_type='broadcast')
     def get_prm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.prm_model,
@@ -159,7 +160,6 @@ class VanillaSampler(Sampler):
             ground_truths=[ground_truth] * len(infer_requests),
             threshold=self.args.prm_threshold)
 
-    @RayMixin.controller()
     def do_sample(self, data):
         generated = []
         resp_all = self.generate(data)
