@@ -19,6 +19,7 @@ pip install "ms-swift>=3.9.1"
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from modelscope import snapshot_download
+from qwen_vl_utils import process_vision_info
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
 model_dir = snapshot_download('Qwen/Qwen3-VL-4B-Instruct')
