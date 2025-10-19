@@ -40,7 +40,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --moe_expert_capacity_factor 1 \
+    --moe_expert_capacity_factor 2 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
     --optimizer_offload_fraction 0.2 \
