@@ -1569,9 +1569,7 @@ class Template(ProcessorMixin):
         else:
             new_batch = []
             for b in batch:
-                new_batch.append(
-                    {key: b[key][i]
-                     for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
+                new_batch.append({key: val for key, val in b.items() if isinstance(val, list)})
             res = self._data_collator(new_batch, padding_to=padding_to)
         return res
 

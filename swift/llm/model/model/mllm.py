@@ -192,6 +192,7 @@ def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
     # Use the model's own head (already present in jina-reranker-m0), just wrap outputs.
     if model is not None and not hasattr(model, '_forward_origin'):
         model._forward_origin = model.forward
+        model.logit_bias = 2.65
 
         def forward(self,
                     input_ids=None,
@@ -223,65 +224,26 @@ def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
                 return_dict=return_dict,
                 **kwargs)
 
-            # Derive logits from various possible return types
-            if isinstance(out, torch.Tensor):
-                logits = out
-                past_kv = None
-                hidden_states = None
-                attentions = None
-            elif hasattr(out, 'logits'):
-                logits = out.logits
-                past_kv = getattr(out, 'past_key_values', None)
-                hidden_states = getattr(out, 'hidden_states', None)
-                attentions = getattr(out, 'attentions', None)
-            else:
-                logits = out
-                past_kv = None
-                hidden_states = None
-                attentions = None
-
-            # Ensure logits shape is [batch, 1] for BCEWithLogitsLoss downstream
-            if isinstance(logits, torch.Tensor) and logits.ndim == 1:
-                logits = logits.unsqueeze(-1)
-
-            # Subtract bias (no sigmoid) to align with jina-reranker-m0 normalization behavior
-            if isinstance(logits, torch.Tensor):
-                bias = getattr(self, 'logit_bias', 2.65)
-                logits = logits - bias
+            logits = out.unsqueeze(-1) - self.logit_bias
 
             if not return_dict:
                 return (logits, )
 
-            return SequenceClassifierOutputWithPast(
-                loss=None,
-                logits=logits,
-                past_key_values=past_kv,
-                hidden_states=hidden_states,
-                attentions=attentions,
-            )
+            return SequenceClassifierOutputWithPast(logits=logits)
 
         model.forward = MethodType(forward, model)
-        if not hasattr(model, 'logit_bias'):
-            model.logit_bias = 2.65
 
         def padding_free_fn(self, output, kwargs, padding_side):
             return_dict = kwargs.get('return_dict', None)
 
             output.logits = output['last_hidden_state'][:, -1]
             logits = self.score(output.logits)
-            bias = getattr(self, 'logit_bias', 2.65)
-            logits = logits - bias
+            logits = logits - self.logit_bias
 
             if not return_dict:
                 return (logits, )
 
-            return SequenceClassifierOutputWithPast(
-                loss=None,
-                logits=logits,
-                past_key_values=None,
-                hidden_states=None,
-                attentions=None,
-            )
+            return SequenceClassifierOutputWithPast(logits=logits)
 
         model.padding_free_fn = MethodType(padding_free_fn, model)
     return model, processor
