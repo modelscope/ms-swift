@@ -9,12 +9,13 @@
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
 pip install "ms-swift>=3.9.1"
+# pip install vllm>="0.11.0"  # 若使用vllm推理后端进行推理
 ```
 
 
 ## 推理
 
-使用transformers推理：
+使用 transformers 推理：
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -69,7 +70,7 @@ print(output_text[0])
 # 'A baby wearing glasses sits on a bed, engrossed in reading a book. The baby turns the pages with both hands, occasionally looking up and smiling. The room is cozy, with a crib in the background and clothes scattered around. The baby’s focus and curiosity are evident as they explore the book, creating a heartwarming scene of early learning and discovery.'
 ```
 
-使用ms-swift的PtEngine进行推理：
+使用 ms-swift 的 `PtEngine` 进行推理：
 ```python
 import os
 os.environ['SWIFT_DEBUG'] = '1'
@@ -101,7 +102,7 @@ print()
 
 使用命令行推理：
 ```shell
-CUDA_VISIBLE_DEVICES=4 \
+CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
@@ -151,12 +152,12 @@ Here’s a breakdown of what unfolds:
 Overall, this is a sweet, lighthearted video that showcases the innocence and imagination of early childhood. The child’s engagement with the book, combined with their glasses and playful demeanor, creates a delightful and memorable scene.
 ```
 
-- 其中特定模型参数，例如`VIDEO_MAX_TOKEN_NUM`等环境变量的含义参考[命令行参数文档](../Instruction/命令行参数.md#qwen3_vl)。
+- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/命令行参数.md#qwen3_vl)。
 
 
 ## 训练
 
-本文档将介绍如何使用ms-swift与Megatron-SWIFT训练Qwen3-VL。推荐Dense模型使用ms-swift（即transformers后端，更加方便简单），而Moe模型使用Megatron-SWIFT（即megatron后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/快速开始.md#benchmark)）。
+本文档将介绍如何使用 ms-swift 与 Megatron-SWIFT 训练 Qwen3-VL。推荐 Dense 模型使用 ms-swift（即 transformers 后端，更加方便简单），而 Moe 模型使用 Megatron-SWIFT（即 megatron 后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/快速开始.md#benchmark)）。
 
 如果您需要自定义数据集微调模型，你可以将数据准备成以下格式，并在命令行中设置`--dataset train.jsonl --val_dataset val.jsonl`，其中验证集为可选。更多介绍请参考[多模态数据集文档](../Customization/自定义数据集.md#多模态)。
 ```jsonl
@@ -165,7 +166,7 @@ Overall, this is a sweet, lighthearted video that showcases the innocence and im
 {"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "<image>图片中是什么，<video>视频中是什么"}, {"role": "assistant", "content": "图片中是一个大象，视频中是一只小狗在草地上奔跑"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
-Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用ms-swift提供的grounding数据集格式，其中"bbox"中的坐标为绝对坐标，ms-swift会自动将绝对坐标转为归一化1000的相对坐标。更多信息请参考[grounding数据集格式文档](../Customization/自定义数据集.md#grounding)。
+Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swift 提供的 grounding 数据集格式，其中"bbox"中的坐标为绝对坐标，ms-swift 会自动将绝对坐标转为归一化1000的相对坐标。更多信息请参考[grounding数据集格式文档](../Customization/自定义数据集.md#grounding)。
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>找到图像中的<ref-object>"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["羊", "羊", "羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```
@@ -248,9 +249,9 @@ swift infer \
 ### Moe模型
 
 
-以下提供对`Qwen3-VL-30B-A3B-Instruct`模型的微调脚本，我们使用Megatron-SWIFT进行单机全参数训练。我们同样采用混合数据进行训练，该示例脚本仅作为演示用途。训练所需显存资源为8 * 80GiB，训练时间为20分钟。
+以下提供对`Qwen3-VL-30B-A3B-Instruct`模型的微调脚本，我们使用 Megatron-SWIFT 进行单机全参数训练。我们同样采用混合数据进行训练，该示例脚本仅作为演示用途。训练所需显存资源为8 * 80GiB，训练时间为20分钟。
 
-关于Megatron-SWIFT的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/快速开始.md)。Megatron-SWIFT与ms-swift共用template和dataset模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
+关于 Megatron-SWIFT 的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/快速开始.md)。Megatron-SWIFT 与 ms-swift 共用 template 和 dataset 模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
 
 HF格式权重转为Megatron格式：
 ```shell
@@ -339,7 +340,7 @@ swift infer \
 ```
 
 
-使用以下命令将训练权重推送到Modelscope：
+使用以下命令将训练权重推送到 Modelscope：
 ```shell
 swift export \
     --model output/vx-xxx/checkpoint-xxx \
