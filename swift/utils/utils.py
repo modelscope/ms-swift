@@ -241,6 +241,12 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     return value
 
 
+def find_node_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    return s.getsockname()[0]
+
+
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     if start_port is None:
         start_port = 0

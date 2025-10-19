@@ -14,16 +14,4 @@ device_groups:
     workers:
       - sampler
       - prm
-  orm_group:
-    device: CPU
-    workers:
       - orm
-
-num_gpus_per_node: 2
-# Training processes now map to GPUs 0-3
-actor_train.device_mapping: list(range(0,4))
-# Inference processes now map to GPUs 0-3
-actor_infer.device_mapping: list(range(0,4))
-# Reference model processes now map to GPUs 0-3
-reference.device_mapping: list(range(0,4))
-
