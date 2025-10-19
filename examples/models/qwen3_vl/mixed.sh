@@ -1,3 +1,4 @@
+# 2 * 21GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
@@ -22,7 +23,6 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
     --freeze_aligner true \
     --packing true \

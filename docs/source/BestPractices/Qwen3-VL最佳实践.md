@@ -3,7 +3,7 @@
 
 ## 环境准备
 
-在开始推理和训练之前，请确保您的环境已准备妥当。
+在开始推理和训练之前，请确保您的环境已准备就绪。
 
 ```shell
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
@@ -156,7 +156,7 @@ Overall, this is a sweet, lighthearted video that showcases the innocence and im
 
 ## 训练
 
-这里将介绍如何使用ms-swift与Megatron-SWIFT对Qwen3-VL进行训练。推荐Dense模型使用ms-swift（即transformers后端，更加方便简单），而Moe模型使用Megatron-SWIFT（即megatron后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/快速开始.md#benchmark)）。
+本文档将介绍如何使用ms-swift与Megatron-SWIFT训练Qwen3-VL。推荐Dense模型使用ms-swift（即transformers后端，更加方便简单），而Moe模型使用Megatron-SWIFT（即megatron后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/快速开始.md#benchmark)）。
 
 如果您需要自定义数据集微调模型，你可以将数据准备成以下格式，并在命令行中设置`--dataset train.jsonl --val_dataset val.jsonl`，其中验证集为可选。更多介绍请参考[多模态数据集文档](../Customization/自定义数据集.md#多模态)。
 ```jsonl
@@ -172,7 +172,7 @@ Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用ms-swif
 
 ### Dense模型
 
-以下提供对`Qwen3-VL-4B-Instruct`模型的微调脚本，我们使用混合模态数据作为Demo数据集，该示例脚本没有实用价值。训练显存为2 * 21GiB，训练时间为12分钟。
+以下提供对`Qwen3-VL-4B-Instruct`模型的微调脚本，我们使用混合模态数据作为Demo数据集，该示例脚本仅作为演示用途。训练显存为2 * 21GiB，训练时间为12分钟。
 
 ```shell
 # 2 * 21GiB
@@ -248,7 +248,7 @@ swift infer \
 ### Moe模型
 
 
-以下提供对`Qwen3-VL-30B-A3B-Instruct`模型的微调脚本，我们使用Megatron-SWIFT进行单机全参数训练。我们依旧采用混合数据进行训练，该示例脚本没有实用价值。训练所需显存资源为8 * 80GiB，训练时间为20分钟。
+以下提供对`Qwen3-VL-30B-A3B-Instruct`模型的微调脚本，我们使用Megatron-SWIFT进行单机全参数训练。我们同样采用混合数据进行训练，该示例脚本仅作为演示用途。训练所需显存资源为8 * 80GiB，训练时间为20分钟。
 
 关于Megatron-SWIFT的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/快速开始.md)。Megatron-SWIFT与ms-swift共用template和dataset模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
 
@@ -322,7 +322,7 @@ swift export \
     --torch_dtype bfloat16 \
     --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf
 ```
-- 若要调整使用对应iter的权重，请修改`megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx`目录下的`latest_checkpointed_iteration.txt`文件。
+- 若要调整使用对应迭代次数（iter）的权重，请修改`megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx`目录下的`latest_checkpointed_iteration.txt`文件。
 
 
 训练结束后，我们使用以下脚本对验证集进行推理：
