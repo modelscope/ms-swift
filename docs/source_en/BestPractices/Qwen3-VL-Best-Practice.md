@@ -6,7 +6,7 @@ Before starting inference and training, please ensure your environment is proper
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
 pip install "ms-swift>=3.9.1"
-# pip install vllm>="0.11.0"  # If using the vLLM inference backend for inference
+# pip install "vllm>=0.11.0"  # If using the vLLM inference backend for inference
 ```
 
 ## Inference

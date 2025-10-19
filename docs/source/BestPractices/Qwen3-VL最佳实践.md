@@ -9,7 +9,7 @@
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
 pip install "ms-swift>=3.9.1"
-# pip install vllm>="0.11.0"  # 若使用vllm推理后端进行推理
+# pip install "vllm>=0.11.0"  # 若使用vllm推理后端进行推理
 ```
 
 
