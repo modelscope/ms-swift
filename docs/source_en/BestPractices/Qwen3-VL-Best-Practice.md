@@ -313,7 +313,7 @@ Convert Megatron format weights to HF format:
 ```shell
 CUDA_VISIBLE_DEVICES=0,1 \
 swift export \
-    --mcore_adapters megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx \
+    --mcore_model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
     --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf
