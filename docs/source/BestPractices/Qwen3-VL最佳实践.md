@@ -329,11 +329,12 @@ swift export \
 训练结束后，我们使用以下脚本对验证集进行推理：
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 swift infer \
-    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf
+    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf \
     --stream true \
     --max_new_tokens 2048 \
     --load_data_args true

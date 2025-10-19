@@ -324,6 +324,7 @@ After training, we use the following script to perform inference on the validati
 
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
