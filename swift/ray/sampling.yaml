@@ -1,0 +1,29 @@
+name: sampling
+
+stage: sample
+
+model: Qwen/Qwen2.5-7B-Instruct
+prm_model: Qwen/Qwen2.5-7B-Instruct
+orm_model: math
+
+device_groups:
+  nproc_per_node: 4
+  sample_group:
+    device: GPU
+    ranks: [0,1,2,3]
+    workers:
+      - sampler
+      - prm
+  orm_group:
+    device: CPU
+    workers:
+      - orm
+
+num_gpus_per_node: 2
+# Training processes now map to GPUs 0-3
+actor_train.device_mapping: list(range(0,4))
+# Inference processes now map to GPUs 0-3
+actor_infer.device_mapping: list(range(0,4))
+# Reference model processes now map to GPUs 0-3
+reference.device_mapping: list(range(0,4))
+
