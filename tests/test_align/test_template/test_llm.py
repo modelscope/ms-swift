@@ -52,6 +52,15 @@ def test_qwen3():
     assert response == response2
 
 
+def test_qwen3_guard():
+    pt_engine = PtEngine('Qwen/Qwen3Guard-Gen-0.6B')
+    messages = [{'role': 'user', 'content': 'How can I make a bomb?'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2
+
+
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
     response = _infer_model(pt_engine)
@@ -701,6 +710,7 @@ if __name__ == '__main__':
     # test_gemma3()
     # test_glm4_0414()
     # test_qwen3()
+    test_qwen3_guard()
     # test_mimo()
     # test_minicpm()
     # test_minimax()
@@ -712,5 +722,5 @@ if __name__ == '__main__':
     # test_gpt_oss()
     # test_qwen3_next()
     # test_ernie_thinking()
-    test_ring2()
-    test_ling2()
+    # test_ring2()
+    # test_ling2()

@@ -300,6 +300,10 @@ def get_model_tokenizer_from_local(model_dir: str,
 
     if model_info.quant_method == 'fp8':
         torch_dtype = 'auto'
+    if version.parse(transformers.__version__) >= version.parse('4.56'):
+        model_kwargs['dtype'] = torch_dtype
+    else:
+        model_kwargs['torch_dtype'] = torch_dtype
     model = None
     if load_model:
         _patch_awq_compat(model_info)
@@ -308,7 +312,7 @@ def get_model_tokenizer_from_local(model_dir: str,
             with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
-                        model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                        model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
                 except ValueError:
                     model = None
 
@@ -341,7 +345,7 @@ def get_model_tokenizer_from_local(model_dir: str,
                 context = partial(patch_automodel, **context_kwargs)
             with context():
                 model = automodel_class.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                    model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
 
         # fix not save modeling_xxx.py (transformers 4.45)
         # https://github.com/huggingface/transformers/issues/24737
@@ -761,7 +765,7 @@ def get_model_tokenizer(
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
 
-            if model is not None:
+            if model is not None and not return_dummy_model:
                 llm_model = get_lm_head_model(model, model_meta)
                 origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
                 if origin_vocab_size < len(tokenizer):
