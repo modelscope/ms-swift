@@ -201,6 +201,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # checkpoint
     save: Optional[str] = None
     save_interval: int = 500
+    save_retain_interval: Optional[int] = None
     no_save_optim: bool = False
     no_save_rng: bool = False
     load: Optional[str] = None
@@ -211,6 +212,10 @@ class MegatronArguments(ExtraMegatronArguments):
     no_initialization: bool = True
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
+    async_save: bool = False
+    use_persistent_ckpt_worker: bool = False
+    ckpt_fully_parallel_load: bool = False
+    ckpt_assume_constant_structure: bool = False
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'

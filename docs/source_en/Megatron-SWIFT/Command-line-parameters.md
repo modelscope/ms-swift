@@ -80,6 +80,7 @@
   - Note: **When training on multiple machines, ensure that the save paths on each node point to the same location**. Otherwise, you will need to manually consolidate these weights after training.
 - 🔥save_interval: Checkpoint saving interval (steps), default is 500.
   - Note: Weights will always be saved at the end of training.
+- 🔥save_retain_interval: Interval (in iterations) for retaining checkpoints. Checkpoints not at a multiple of this interval are deleted, except for the final one.
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: Directory of the checkpoint to load, default is None.
@@ -95,6 +96,11 @@
 - no_initialization: Do not initialize weights, default is True.
 - auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
 - exit_on_missing_checkpoint: If `--load` is set but **no checkpoint is found, exit directly** instead of initializing. Default is True.
+- 🔥async_save: Use asynchronous checkpoint saving. Currently only applicable to the `torch_dist` distributed checkpoint format. Defaults to False.
+- use_persistent_ckpt_worker: Use a persistent checkpoint worker process for async saving, i.e., create a dedicated background process to handle asynchronous saving. Defaults to False.
+- ckpt_fully_parallel_load: Apply full load parallelization across DP for distributed checkpoints to accelerate weight loading speed. Defaults to False.
+- ckpt_assume_constant_structure: If the model and optimizer state dict structure remains constant throughout a single training job, allows Megatron to perform additional checkpoint performance optimizations. Defaults to False.
+
 
 **Distributed Parameters**:
 For guidance on selecting parallelization strategies, please refer to the [Training Tips documentation](./Quick-start.md#training-tips).
