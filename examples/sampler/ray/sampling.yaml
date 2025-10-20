@@ -1,10 +1,19 @@
 ray_exp_name: sampling
 
-use_ray: true
+use_ray: false
 
 model: Qwen/Qwen2.5-7B-Instruct
-prm_model: Qwen/Qwen2.5-7B-Instruct
-orm_model: math
+dataset: tastelikefeet/competition_math
+num_return_sequences: 64
+max_length: 2048
+system: "You are a math model, you should **think step by step** carefully, and always consider the basic math principles to avoid making calculating mistakes. Give the final answer wrapped with \\boxed{{}}"
+load_args: false
+sampler_engine: vllm
+max_new_tokens: 768
+override_exist_file: true
+num_sampling_per_gpu_batch_size: 1
+top_p: 1.0
+temperature: 1.0
 
 device_groups:
   nproc_per_node: 4

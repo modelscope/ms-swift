@@ -1,6 +1,6 @@
 import functools
 import os
-from typing import Callable, TypeVar, List, Dict, Literal, Union, Any
+from typing import Callable, TypeVar, List, Dict, Literal, Union, Any, Type
 import ray
 from ray.runtime_env import RuntimeEnv
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -35,17 +35,25 @@ class RayHelper:
 
     @staticmethod
     def worker(group: Union[str, List[str]]):
-
         def decorator(cls):
+            if not RayHelper.initialized:
+                return cls
             cls.decorated = True
-
-            if isinstance(group, str):
-                group = [group]
+            groups = [group] if isinstance(group, str) else group
             _cls = ray.remote(cls)
-            for g in group:
+            for g in groups:
                 RayHelper.worker_cls[g] = _cls
-            _cls.group = group
-            return _cls
+
+            init_method = cls.__init__
+
+            @functools.wraps(init_method)
+            def new_init(self, *args, **kwargs):
+                RayHelper._create_workers(group, *args, **kwargs)
+                init_method(self, *args, **kwargs)
+
+            cls.__init__ = new_init
+
+            return cls
 
         return decorator
 
@@ -57,7 +65,7 @@ class RayHelper:
             @functools.wraps(func)
             def wrapper(self, *args, **kwargs) -> T:
                 if not RayHelper.initialized:
-                    return func(*args, **kwargs)
+                    return func(self, *args, **kwargs)
                 if RayHelper.resource_manager is None:
                     if group not in self.group:
                         if func.__name__ == '__init__':
@@ -65,7 +73,7 @@ class RayHelper:
                         else:
                             raise ValueError()
                     else:
-                        return func(*args, **kwargs)
+                        return func(self, *args, **kwargs)
                 else:
                     return RayHelper.execute_all_sync(group, func.__name__, *args, **kwargs)
 
@@ -94,47 +102,59 @@ class RayHelper:
         return [getattr(worker, method_name).remote(*args, **kwargs) for worker in workers]
 
     @staticmethod
-    def _create_workers():
-        nproc_per_node = int(RayHelper.device_groups['groups']['nproc_per_node'])
+    def _create_workers(group: Union[str, List[str]], *args, **kwargs):
+        nproc_per_node = int(RayHelper.device_groups['nproc_per_node'])
         ip, port = RayHelper.device_groups['master_addr']
-        for group_name, group in RayHelper.device_groups['groups'].items():
-            if group_name == 'nproc_per_node':
+
+        if isinstance(group, str):
+            group = [group]
+
+        worker_cls = RayHelper.worker_cls[group[0]]
+
+        _config = None
+        for name, config in RayHelper.device_groups.items():
+            if name in RayHelper.resource_manager.possible_keys:
                 continue
 
-            worker_cls = RayHelper.worker_cls[group_name]
+            if group[0] in config['workers']:
+                _config = config
+                break
 
-            worker = group['worker'][0]
-            world_size = len(group['ranks']) // nproc_per_node
-            placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(worker)
-            workers = []
-            for rank, pgs in enumerate(placement_groups):
-                deploy_pg = pgs[0]
-                worker_name = '-'.join(group['worker'])
-                env_vars = {
-                    "WORLD_SIZE": str(world_size),
-                    "RANK": str(rank),
-                    "LOCAL_RANK": str(0),
-                    "CLUSTER_NAME": worker_name,
-                    "WORKER_NAME": worker_name,
-                }
+        assert _config is not None
 
-                if rank != 0:
-                    env_vars["MASTER_ADDR"] = ip
-                    env_vars["MASTER_PORT"] = port
-                if "ROLL_LOG_DIR" in os.environ:
-                    env_vars["ROLL_LOG_DIR"] = os.environ["ROLL_LOG_DIR"]
+        world_size = len(_config['ranks']) // nproc_per_node
+        placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(group[0])
+        workers = []
+        for rank, pgs in enumerate(placement_groups):
+            deploy_pg = pgs
+            worker_name = '-'.join(_config['workers']) + '-' + str(rank)
+            env_vars = {
+                "WORLD_SIZE": str(world_size),
+                "RANK": str(rank),
+                "LOCAL_RANK": str(0),
+                "CLUSTER_NAME": '-'.join(_config['workers']),
+                "WORKER_NAME": worker_name,
+            }
 
-                runtime_env = RuntimeEnv(env_vars=env_vars)
+            if rank != 0:
+                env_vars["MASTER_ADDR"] = ip
+                env_vars["MASTER_PORT"] = str(port)
+            if "ROLL_LOG_DIR" in os.environ:
+                env_vars["ROLL_LOG_DIR"] = os.environ["ROLL_LOG_DIR"]
 
-                worker_options = {
-                    "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=deploy_pg["placement_group"]),
-                    "name": worker_name,
-                    "namespace": '',
-                    "runtime_env": runtime_env,
-                    "num_cpus": 0.01,
-                    "num_gpus": 0.01,
-                }
+            runtime_env = RuntimeEnv(env_vars=env_vars)
 
-                worker = worker_cls.options(**worker_options).remote(args=worker_cls.args)
-                workers.append(worker)
-            RayHelper.worker_instance[group_name] = workers
+            worker_options = {
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=deploy_pg["placement_group"]),
+                "name": worker_name,
+                "namespace": 'default',
+                "runtime_env": runtime_env,
+                "num_cpus": 0.01,
+                "num_gpus": 0.01,
+            }
+
+            worker = worker_cls.options(**worker_options).remote(*args, **kwargs)
+            workers.append(worker)
+
+        for _group in group:
+            RayHelper.worker_instance[_group] = workers
