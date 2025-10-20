@@ -4,12 +4,11 @@ from typing import Any, Dict, Optional
 
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import TemplateType
 from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
-from ..constant import MLLMModelType, RERANKERModelType
+from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_normalizer
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
@@ -186,6 +185,7 @@ def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
     # Use AutoModel to respect the model repo's dynamic class mapping
     # and load the custom Jina reranker head via trust_remote_code.
     from transformers import AutoModel
+    from transformers.modeling_outputs import SequenceClassifierOutputWithPast
     kwargs['automodel_class'] = kwargs.get('automodel_class') or AutoModel
     model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     # Patch forward to return a sequence-classification-style output with `.logits`
@@ -251,7 +251,7 @@ def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        RERANKERModelType.jina_reranker_m0,
+        RerankerModelType.jina_reranker_m0,
         [ModelGroup([Model('JinaAI/jina-reranker-m0', 'JinaAI/jina-reranker-m0')])],
         TemplateType.jina_reranker_m0,
         get_model_tokenizer_jina_reranker_m0,

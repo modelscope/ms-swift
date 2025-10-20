@@ -124,12 +124,12 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType, RMModelType, RERANKERModelType
+    from .constant import MLLMModelType, RMModelType, RerankerModelType
     if model_type in MLLMModelType.__dict__:
         model_meta.is_multimodal = True
     if model_type in RMModelType.__dict__:
         model_meta.is_reward = True
-    if model_type in RERANKERModelType.__dict__:
+    if model_type in RerankerModelType.__dict__:
         model_meta.is_reranker = True
     if model_meta.model_arch:
         model_meta.model_arch = get_model_arch(model_meta.model_arch)

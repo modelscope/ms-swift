@@ -7,7 +7,7 @@ from transformers import AutoModel, AutoModelForSequenceClassification
 
 from swift.llm import TemplateType
 from swift.utils import get_device
-from ..constant import MLLMModelType, RERANKERModelType
+from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
@@ -103,7 +103,7 @@ def get_model_tokenizer_bge_reranker(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        RERANKERModelType.bge_reranker,
+        RerankerModelType.bge_reranker,
         [
             ModelGroup([
                 Model('BAAI/bge-reranker-base', 'BAAI/bge-reranker-base'),

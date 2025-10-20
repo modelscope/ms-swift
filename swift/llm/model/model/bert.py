@@ -6,7 +6,7 @@ from transformers import AutoConfig, AutoModel, AutoModelForSequenceClassificati
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import BertModelType, RERANKERModelType
+from ..constant import BertModelType, RerankerModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 logger = get_logger()
@@ -65,7 +65,7 @@ def get_model_tokenizer_gte_bert_reranker(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        RERANKERModelType.modern_bert_gte_reranker,
+        RerankerModelType.modern_bert_gte_reranker,
         [ModelGroup([
             Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
         ])],

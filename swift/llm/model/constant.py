@@ -270,14 +270,14 @@ class MLLMModelType:
     mistral_2503 = 'mistral_2503'
 
 
-class RERANKERModelType:
+class RerankerModelType:
     bge_reranker = 'bge_reranker'
     modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     jina_reranker_m0 = 'jina_reranker_m0'
     qwen3_reranker = 'qwen3_reranker'
 
 
-class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, RERANKERModelType):
+class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
