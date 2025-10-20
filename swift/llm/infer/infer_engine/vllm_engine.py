@@ -69,6 +69,7 @@ class VllmEngine(InferEngine):
         task_type: Optional[str] = None,  # embedding
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
+        mm_processor_cache_gb: Optional[float] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -129,6 +130,7 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             task=task_type,
             disable_cascade_attn=disable_cascade_attn,
+            mm_processor_cache_gb=mm_processor_cache_gb,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -169,6 +171,7 @@ class VllmEngine(InferEngine):
         task: Optional[str] = None,
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
+        mm_processor_cache_gb: Optional[float] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -197,7 +200,10 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
-        for key in ['enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format']:
+        for key in [
+                'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
+                'mm_processor_cache_gb'
+        ]:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
             else:
