@@ -10,7 +10,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
+from .arguments import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin, SwiftArgumentsMixin
 
 
 @dataclass
@@ -44,14 +44,12 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 
 @dataclass
-class GKDConfig(SwiftArgumentsMixin, HfGKDConfig):
+class GKDConfig(RolloutTrainerArgumentsMixin, SwiftArgumentsMixin, HfGKDConfig):
     pass
 
 
 @dataclass
 class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
-    stop_words: List[str] = field(default_factory=list)
-    lora_rank: int = 8  # for vllm lora adapter
 
     def __post_init__(self):
         GRPOArgumentsMixin.__post_init__(self)

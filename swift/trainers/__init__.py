@@ -15,7 +15,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, RLHFArgumentsMixin, VllmArguments,
-                            GRPOArgumentsMixin)
+                            GRPOArgumentsMixin, RolloutTrainerArgumentsMixin)
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
                                RewardTrainer, GRPOTrainer, GKDTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GKDConfig
@@ -27,8 +27,10 @@ if TYPE_CHECKING:
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'arguments':
-        ['Seq2SeqTrainingArguments', 'TrainingArguments', 'RLHFArgumentsMixin', 'VllmArguments', 'GRPOArgumentsMixin'],
+        'arguments': [
+            'Seq2SeqTrainingArguments', 'TrainingArguments', 'RLHFArgumentsMixin', 'VllmArguments',
+            'GRPOArgumentsMixin', 'RolloutTrainerArgumentsMixin'
+        ],
         'rlhf_arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig'],
         'rlhf_trainer': [

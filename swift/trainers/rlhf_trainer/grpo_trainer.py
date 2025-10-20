@@ -94,7 +94,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         reward_funcs = kwargs.pop('reward_funcs', None)
         reward_model = kwargs.pop('reward_model', None)
+        self.vllm_client = kwargs.pop('vllm_client', None)
         super().__init__(model, ref_model, *_args, **kwargs)
+        self.prepare_rollout()
         self._prepare_rewards(reward_funcs, reward_model, **kwargs)
 
         if not self.reward_funcs and not self.use_gym_env:

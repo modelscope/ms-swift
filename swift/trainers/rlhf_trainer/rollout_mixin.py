@@ -2,9 +2,9 @@
 import base64
 import concurrent.futures
 import inspect
-import json
 import os
 import re
+import time
 import uuid
 from collections import OrderedDict
 from concurrent.futures import Future
@@ -13,32 +13,30 @@ from copy import copy, deepcopy
 from dataclasses import asdict, dataclass
 from math import ceil
 from queue import Queue
-import time
 from types import MethodType
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        to_device)
-from swift.llm.argument import RLHFArguments
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.plugin import multi_turns, MultiTurnScheduler
+from swift.plugin import MultiTurnScheduler, multi_turns
+from swift.trainers import RolloutTrainerArgumentsMixin
 from swift.utils import empty_cache, get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
-from .rlhf_mixin import RLHFTrainerMixin, DataType
+from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
-                    _process_bucket_with_flattened_tensor, get_gather_if_zero3_context,
-                    get_even_process_data, patch_lora_merge, patch_lora_unmerge,
-                    patch_profiling_context, patch_profiling_decorator,
+                    _process_bucket_with_flattened_tensor, get_even_process_data, get_gather_if_zero3_context,
+                    patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
                     patch_vllm_load_adapter, set_expandable_segments)
 from .vllm_client import VLLMClient
 
@@ -67,14 +65,14 @@ class AsyncGenerateCallback(TrainerCallback):
 class RolloutTrainerMixin(RLHFTrainerMixin):
     """
     Mixin for RLHF trainers that use rollout-based methods (e.g., GRPO, GKD).
-    
+
     This mixin provides vLLM integration and rollout infrastructure.
     It should be used for trainers that require:
     - Policy rollout with vLLM engine (server or colocate mode)
     - Multi-turn dialogue support (GRPO only)
     - Async generation capabilities (GRPO only)
     """
-    
+
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     def __init__(self,
@@ -82,26 +80,26 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  *_args,
                  **kwargs):
-        vllm_client = kwargs.pop('vllm_client', None)
         super().__init__(model, ref_model, *_args, **kwargs)
-        
-        # Initialize rollout-specific components for GRPO and GKD
-        if self.args.rlhf_type in ['grpo', 'gkd']:
-            self._prepare_rollout_params()
-            self._prepare_scheduler()
-            self._prepare_vllm(model, vllm_client)
-            self._prepare_async_generate()
+
+    def prepare_rollout(self):
+        self._prepare_rollout_params()
+        self._prepare_scheduler()
+        self._prepare_vllm()
+        self._prepare_async_generate()
 
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""
-        args: RLHFArguments = self.args
+        args = self.args
         self.num_generations = args.num_generations
         self.temperature = args.temperature
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size
         self.max_completion_length = args.max_completion_length
-        self.completion_length_limit_scope = args.completion_length_limit_scope
+        self.completion_length_limit_scope = None
+        if hasattr(args, 'completion_length_limit_scope'):  # GRPO colocate
+            self.completion_length_limit_scope = args.completion_length_limit_scope
         self.async_generate = args.async_generate
 
         self.request_config = RequestConfig(
@@ -114,14 +112,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             stop=args.stop_words,
             return_details=True)
 
-    def _prepare_vllm(self, model, vllm_client=None):
+    def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
 
         # Initialize default values
-        args: RLHFArguments = self.args
+        args = self.args
+        vllm_client = self.vllm_client
 
         self.use_fast_infer = args.use_vllm
         self.enable_offload = False
@@ -132,8 +131,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if not args.use_vllm:
             return
-
-        assert args.rlhf_type in ['grpo', 'gkd']
 
         if self.vllm_mode == 'server':
             assert vllm_client is not None
@@ -170,18 +167,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             context = self.offload_context if self.enable_offload else nullcontext
 
             with context():
-                self.engine = self._prepare_vllm_engine(model)
+                self.engine = self._prepare_vllm_engine()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
 
         self.base_sync_done = False
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
 
-    def _prepare_vllm_engine(self, model):
+    def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
-        args: RLHFArguments = self.args
+        args = self.args
+        model = self.model
 
         max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * args.steps_per_generation)
         vllm_template = copy(self.template)
@@ -189,8 +187,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         lora_kwargs = {}
         is_moe = model.model_info.is_moe_model
         vllm_enable_lora = args.vllm_enable_lora
-        
-        if self.args.train_type == 'lora' and vllm_enable_lora:
+
+        if args.train_type == 'lora' and vllm_enable_lora:
             lora_kwargs = {
                 'enable_lora': args.vllm_enable_lora,
                 'max_loras': 1,
@@ -210,7 +208,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
-            
+
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
             engine = GRPOVllmEngine(
@@ -267,7 +265,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             AssertionError: If no ModuleList is found in the model to determine layer count
         """
         model = self.accelerator.unwrap_model(self.model)
-        args: RLHFArguments = self.args
+        args = self.args
 
         if args.move_model_batches is None:
             return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
@@ -350,7 +348,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     @patch_profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
         """Synchronize model weights to vLLM engine"""
-        args: RLHFArguments = self.args
+        args = self.args
 
         if args.async_generate and not skip_async_check:
             self._wait_queue()
@@ -490,11 +488,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _get_request_config(self) -> RequestConfig:
         """Get request config with proper seed for distributed TP groups"""
         request_config = copy(self.request_config)
-        args: RLHFArguments = self.args
+        args = self.args
 
         if args.vllm_mode == 'colocate' and self.vllm_tensor_parallel_size > 1:
             mode = 'train' if self.model.training else 'eval'
-            batch_size = (args.per_device_train_batch_size
+            batch_size = (
+                args.per_device_train_batch_size
                 * args.gradient_accumulation_steps if mode == 'train' else args.per_device_eval_batch_size)
             batch_size *= self.vllm_tensor_parallel_size
             request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
@@ -534,7 +533,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         This method iteratively rolls out turns until all dialogues are finished
         according to the multi_turn_scheduler.
         """
-        args: RLHFArguments = self.args
+        args = self.args
         orig_size = len(inputs)
         # Preallocate to preserve order
         rollout_outputs: List[RolloutOutput] = [None] * orig_size
@@ -633,7 +632,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _fast_infer(self, inputs: DataType) -> DataType:
         """Efficient inference with vLLM colocate mode support"""
-        args: RLHFArguments = self.args
+        args = self.args
+        assert isinstance(args, RolloutTrainerArgumentsMixin)
 
         if self.vllm_mode == 'colocate' and args.sleep_level > 0:
             if self.engine.inner_model_executor.is_sleeping:
@@ -729,7 +729,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 all_outputs = self._sort_by_request_id(all_outputs)
         else:
             all_outputs = [None] * len(all_requests)
-            
+
         if self.enable_server_multi_turn:
             self.dynamic_num_samples = False
             outputs_count = [len(all_outputs)] if self.accelerator.is_main_process else [0]
@@ -804,7 +804,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     @property
     def should_merge_adapter(self):
         """Determine whether the LoRA adapter should be merged"""
-        args: RLHFArguments = self.args
+        args = self.args
 
         assert args.train_type != 'full', 'Full-parameter training should not merge adapter'
 
@@ -818,6 +818,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _postprocess_rollout_outputs(self, inputs: DataType, outputs: List[RolloutOutput]) -> DataType:
         """Postprocess rollout outputs by merging them back into inputs"""
+
         def merge_output_input_data(input_data: Dict[str, Union[torch.Tensor, Any]], output: RolloutOutput):
             response = output.response
             choice = response.choices[0]
@@ -879,21 +880,22 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def offload_context(self):
         """
         Context manager for model/optimizer offloading.
-        
-        This is a placeholder implementation. Subclasses (like GRPOTrainer) 
+
+        This is a placeholder implementation. Subclasses (like GRPOTrainer)
         should override this method to provide actual offload/reload logic.
         """
         yield
 
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
-        args: RLHFArguments = self.args
+        args = self.args
 
         self.multi_turn_scheduler = None
+        if not hasattr(args, 'multi_turn_scheduler'):
+            # only GRPO support it now
+            return
+
         if args.multi_turn_scheduler:
-            if args.rlhf_type != 'grpo':
-                logger.warning('Multi-turn scheduler is only supported for GRPO. Skip preparing multi-turn scheduler')
-                return
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
                 multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
@@ -940,6 +942,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
+
         def _process_image_data(image_data: Union[dict, str]) -> str:
             if isinstance(image_data, dict):
                 if image_data.get('bytes'):
@@ -950,7 +953,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if not inputs:
             return []
-        args: RLHFArguments = self.args
+        args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
         requests_dicts = []
@@ -959,7 +962,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
             if 'uuid' not in request_data:
                 request_data['uuid'] = data['request_id']
-            if args.vllm_server_pass_dataset:
+            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
                 extra_fields = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS}
                 if extra_fields:
                     request_data['data_dict'] = extra_fields
@@ -1010,12 +1013,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         """Initialize async generation queues and callback"""
         self.train_queue = Queue()
         self.eval_queue = Queue()
-        args: RLHFArguments = self.args
+        args = self.args
 
         if args.async_generate:
-            if args.rlhf_type != 'grpo':
-                logger.warning('Async generation is only supported for GRPO. Skip preparing async generation')
-                return
             self.add_callback(AsyncGenerateCallback(self))
 
     @property
@@ -1041,7 +1041,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        if self.template.truncation_strategy == 'raise' and self.rlhf_type == 'grpo':
+        if self.template.truncation_strategy == 'raise':
             inputs = self.resample_encode_failed_inputs(inputs)
         inputs = self._preprocess_inputs(inputs)
         all_inputs = gather_object(inputs)
