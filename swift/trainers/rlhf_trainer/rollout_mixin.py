@@ -876,6 +876,40 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         return results
 
+    @torch.no_grad()
+    def offload_model(self, model):
+        for param in model.parameters():
+            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+
+    @torch.no_grad()
+    def load_model(self, model):
+        device = get_current_device()
+        for param in model.parameters():
+            param.data = param.data.to(device, non_blocking=True)
+
+    @torch.no_grad()
+    def offload_optimizer(self):
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        state[key] = value.to('cpu', non_blocking=True)
+
+    @torch.no_grad()
+    def load_optimizer(self):
+        device = get_current_device()
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        state[key] = value.to(device, non_blocking=True)
+
     @contextmanager
     def offload_context(self):
         """

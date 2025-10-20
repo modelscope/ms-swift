@@ -2,7 +2,7 @@
 import inspect
 import random
 from collections import defaultdict
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from copy import copy
 from typing import Any, Dict, Optional, Union
 
@@ -14,7 +14,7 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import get_logger, unwrap_model_for_generation
+from swift.utils import empty_cache, get_current_device, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import RolloutTrainerMixin
 
@@ -44,6 +44,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         else:
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()
+        if self.args.offload_teacher_model:
+            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
 
         # Initialize rollout infrastructure for vLLM support
         if args.use_vllm:
@@ -114,7 +116,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         outputs_student = model(**model_inputs)
 
         model_inputs.pop('labels', None)
-        with torch.no_grad():
+        with torch.no_grad(), self.teacher_model_load_context():
             outputs_teacher = self.teacher_model(**model_inputs)
 
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
@@ -241,7 +243,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         elif self.seq_kd:
             # Sequential KD: teacher model generates responses
             # Note: Teacher generation currently uses PyTorch (vLLM support can be added if needed)
-            with unwrap_model_for_generation(
+            with self.teacher_model_load_context(), unwrap_model_for_generation(
                     self.teacher_model, self.accelerator,
                     gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
                 new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
@@ -257,3 +259,40 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def prediction_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
+
+    @contextmanager
+    def offload_context(self):
+        """Context manager for offloading model and optimizer during vLLM inference
+
+        This offloads:
+        - Student model (self.model)
+        - Teacher model (self.teacher_model)
+        - Optimizer states
+
+        to CPU to free up GPU memory for vLLM engine.
+        """
+        if self.args.offload_model:
+            self.offload_model(self.accelerator.unwrap_model(self.model))
+        if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+            self.offload_optimizer()
+        empty_cache()
+
+        try:
+            yield
+        finally:
+            # reload (load back) model when exiting context
+            if self.args.offload_model:
+                self.load_model(self.accelerator.unwrap_model(self.model))
+            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+                self.load_optimizer()
+            empty_cache()
+
+    @contextmanager
+    def load_teacher_model_context(self):
+        if self.args.offload_teacher_model:
+            empty_cache()
+            self.load_model(self.accelerator.unwrap_model(self.teacher_model))
+        yield
+        if self.args.offload_teacher_model:
+            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+            empty_cache()
