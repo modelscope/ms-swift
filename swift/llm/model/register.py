@@ -761,7 +761,7 @@ def get_model_tokenizer(
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
 
-            if model is not None:
+            if model is not None and not return_dummy_model:
                 llm_model = get_lm_head_model(model, model_meta)
                 origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
                 if origin_vocab_size < len(tokenizer):
