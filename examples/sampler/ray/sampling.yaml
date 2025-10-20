@@ -1,4 +1,4 @@
-name: sampling
+ray_exp_name: sampling
 
 use_ray: true
 
@@ -10,7 +10,7 @@ device_groups:
   nproc_per_node: 4
   sample_group:
     device: GPU
-    ranks: [0,1,2,3]
+    ranks: list(range(0, 4))
     workers:
       - sampler
       - prm

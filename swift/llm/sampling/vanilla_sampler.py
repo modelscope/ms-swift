@@ -152,7 +152,7 @@ class VanillaSampler(Sampler):
             self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
             threshold=0.0)
 
-    @RayHelper.function(group='prm', distributed_type='broadcast')
+    @RayHelper.function(group='prm')
     def get_prm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.prm_model,

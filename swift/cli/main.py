@@ -3,6 +3,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import json
 from typing import Dict, List, Optional, Any
 
 from swift.utils import get_logger
@@ -53,30 +54,34 @@ def prepare_config_args(argv):
             from omegaconf import OmegaConf, DictConfig
             from swift.ray import RayHelper
             config = OmegaConf.load(arg_value)
-            if getattr(config, 'use_ray', False):
-                RayHelper.initialize(config.device_groups)
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
                 result = {}
                 def _traverse(config: Any, parent_key: str = ""):
                     if isinstance(config, DictConfig):
                         for key, value in config.items():
-                            current_path = f"{parent_key}.{key}" if parent_key else key
-                            _traverse(value, current_path)
+                            if key == 'device_groups':
+                                result[key] = json.dumps(OmegaConf.to_container(value))
+                            else:
+                                current_path = f"{parent_key}.{key}" if parent_key else key
+                                _traverse(value, current_path)
                     else:
                         last_key = parent_key.split('.')[-1] if parent_key else ""
                         result[last_key] = config
 
                 _traverse(cfg)
                 return result
-
-            delattr(config, 'device_groups')
-            delattr(config, 'name')
-            delattr(config, 'use_ray')
+                
             cfg = parse_dict_config(config)
             for key, value in cfg.items():
                 argv.append(f'--{key}')
+                if not isinstance(value, str):
+                    value = str(value)
                 argv.append(value)
+            
+            argv.pop(i)
+            argv.pop(i)
+            break
 
 
 def _compat_web_ui(argv):
@@ -90,6 +95,8 @@ def _compat_web_ui(argv):
 def cli_main(route_mapping: Optional[Dict[str, str]] = None) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
+    if 'local-rank' in argv[0]:
+        argv = argv[1:]
     _compat_web_ui(argv)
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]

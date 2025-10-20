@@ -8,7 +8,7 @@ import swift
 from swift.utils import get_logger, parse_args, seed_everything
 from .argument import BaseArguments
 from .utils import ProcessorMixin
-from swift.ray.base import RayMixin
+from swift.ray.base import RayHelper
 
 logger = get_logger()
 
@@ -19,6 +19,9 @@ class SwiftPipeline(ABC, ProcessorMixin):
     def __init__(self, args: Optional[Union[List[str], args_class]] = None):
         self.args = self._parse_args(args)
         args = self.args
+        if self.args.use_ray:
+            from swift.ray import RayHelper
+            RayHelper.initialize(self.args.device_groups)
         if hasattr(args, 'seed'):
             seed = args.seed + max(getattr(args, 'rank', -1), 0)
             seed_everything(seed)

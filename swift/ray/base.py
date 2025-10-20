@@ -28,25 +28,29 @@ class RayHelper:
     @staticmethod
     def initialize(device_groups: Dict[str, Any]):
         RayHelper.device_groups = device_groups
+        ray.init()
         if RayHelper.resource_manager is None:
             RayHelper.resource_manager = ResourceManager(device_groups)
         RayHelper.initialized = True
 
     @staticmethod
-    def worker(cls, group: Union[str, List[str]]):
-        cls.decorated = True
+    def worker(group: Union[str, List[str]]):
 
-        if isinstance(group, str):
-            group = [group]
-        _cls = ray.remote(cls)
-        for g in group:
-            RayHelper.worker_cls[g] = _cls
-        _cls.group = group
+        def decorator(cls):
+            cls.decorated = True
 
-        return _cls
+            if isinstance(group, str):
+                group = [group]
+            _cls = ray.remote(cls)
+            for g in group:
+                RayHelper.worker_cls[g] = _cls
+            _cls.group = group
+            return _cls
+
+        return decorator
 
     @staticmethod
-    def function(group: str, dispatch: Literal['slice', 'all'], execute: Literal['first', 'all']):
+    def function(group: str, dispatch: Literal['slice', 'all'] = 'all', execute: Literal['first', 'all'] = 'all'):
 
         def decorator(func: Callable[..., T]) -> Callable[..., T]:
 

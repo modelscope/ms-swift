@@ -28,14 +28,18 @@ def get_node_address():
 
 class ResourceManager:
 
+    possible_keys = ['nproc_per_node', 'nnodes', 'master_addr']
+
     def __init__(self, groups: Dict[str, Any]):
         nproc_per_node = int(groups['nproc_per_node'])
-        device_types = set([group['device'] for group in groups.values()]) - {'CPU'}
+        device_types = set([group['device'] for group in groups.values() if hasattr(group, '__getitem__')]) - {'CPU'}
         assert len(device_types) == 1
         device_type = next(iter(device_types))
         all_ranks = []
         last_rank = -1
-        for group in groups.values():
+        for group_name, group in groups.items():
+            if group_name in self.possible_keys:
+                continue
             ranks = group['ranks']
             device = group['device']
             if device == 'CPU':
@@ -43,8 +47,9 @@ class ResourceManager:
             try:
                 ranks = int(ranks)
                 ranks = list(range(last_rank+1, last_rank+1+ranks))
-            except ValueError:
-                ranks = eval(ranks)
+            except Exception:
+                if isinstance(ranks, str):
+                    ranks = eval(ranks)
             finally:
                 all_ranks.extend(ranks)
                 group['ranks'] = ranks
@@ -78,14 +83,14 @@ class ResourceManager:
         ip, port = None, None
         for node_rank, placement_group in zip(self.node_ranks, self.placement_groups):
             if node_rank == 0:
-                ip, port = get_node_address.options(placement_group=placement_group).remote()
+                ip, port = ray.get(get_node_address.options(placement_group=placement_group).remote())
             self.node2pg[node_rank] = placement_group
 
         groups['master_addr'] = (ip, port)
         self.device_groups = {}
         ray_address = str(ray.get_runtime_context().gcs_address)
         for group_name, group in groups.items():
-            if group_name == 'nproc_per_node':
+            if group_name in self.possible_keys:
                 continue
             ranks = group['ranks']
             local_device_groups = []
