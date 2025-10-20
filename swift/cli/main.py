@@ -3,7 +3,7 @@ import importlib.util
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from swift.utils import get_logger
 
@@ -45,6 +45,40 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def prepare_config_args(argv):
+    for i in range(0, len(argv[1:]), 2):
+        arg_name = argv[i]
+        arg_value = argv[i + 1]
+        if arg_name == '--config':
+            from omegaconf import OmegaConf, DictConfig
+            from swift.ray import RayHelper
+            config = OmegaConf.load(arg_value)
+            if getattr(config, 'use_ray', False):
+                RayHelper.initialize(config.device_groups)
+
+            def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
+                result = {}
+                def _traverse(config: Any, parent_key: str = ""):
+                    if isinstance(config, DictConfig):
+                        for key, value in config.items():
+                            current_path = f"{parent_key}.{key}" if parent_key else key
+                            _traverse(value, current_path)
+                    else:
+                        last_key = parent_key.split('.')[-1] if parent_key else ""
+                        result[last_key] = config
+
+                _traverse(cfg)
+                return result
+
+            delattr(config, 'device_groups')
+            delattr(config, 'name')
+            delattr(config, 'use_ray')
+            cfg = parse_dict_config(config)
+            for key, value in cfg.items():
+                argv.append(f'--{key}')
+                argv.append(value)
+
+
 def _compat_web_ui(argv):
     # [compat]
     method_name = argv[0]
@@ -61,6 +95,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None) -> None:
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
+    prepare_config_args(argv)
     python_cmd = sys.executable
     if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}:
         args = [python_cmd, file_path, *argv]

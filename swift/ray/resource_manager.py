@@ -81,7 +81,7 @@ class ResourceManager:
                 ip, port = get_node_address.options(placement_group=placement_group).remote()
             self.node2pg[node_rank] = placement_group
 
-        self.groups['master_addr'] = (ip, port)
+        groups['master_addr'] = (ip, port)
         self.device_groups = {}
         ray_address = str(ray.get_runtime_context().gcs_address)
         for group_name, group in groups.items():
@@ -98,6 +98,8 @@ class ResourceManager:
                 )
             for worker in group['workers']:
                 self.device_groups[worker] = local_device_groups
+
+        self.groups = groups
 
     def resource(self, worker):
         return self.device_groups[worker]

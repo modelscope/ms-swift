@@ -1,9 +1,8 @@
 import functools
 import os
-from typing import Callable, TypeVar, List, Dict, Literal, Union
+from typing import Callable, TypeVar, List, Dict, Literal, Union, Any
 import ray
 from ray.runtime_env import RuntimeEnv
-from functools import wraps
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from swift.llm.argument.base_args.ray_args import RayArguments
@@ -24,28 +23,24 @@ class RayHelper:
 
     initialized = False
 
+    device_groups: Dict[str, Any] = None
+
     @staticmethod
-    def initialize(args: RayArguments):
-        RayHelper.args = args
+    def initialize(device_groups: Dict[str, Any]):
+        RayHelper.device_groups = device_groups
         if RayHelper.resource_manager is None:
-            RayHelper.resource_manager = ResourceManager(args.device_groups)
+            RayHelper.resource_manager = ResourceManager(device_groups)
         RayHelper.initialized = True
 
     @staticmethod
     def worker(cls, group: Union[str, List[str]]):
         cls.decorated = True
-        original_init = cls.__init__
-
-        @wraps(original_init)
-        def new_init(self, *args, **kwargs):
-            original_init(self, *args, **kwargs)
 
         if isinstance(group, str):
             group = [group]
         _cls = ray.remote(cls)
         for g in group:
             RayHelper.worker_cls[g] = _cls
-        _cls.__init__ = new_init
         _cls.group = group
 
         return _cls
@@ -60,7 +55,7 @@ class RayHelper:
                 if not RayHelper.initialized:
                     return func(*args, **kwargs)
                 if RayHelper.resource_manager is None:
-                    if group not in  self.group:
+                    if group not in self.group:
                         if func.__name__ == '__init__':
                             return None
                         else:
@@ -96,9 +91,9 @@ class RayHelper:
 
     @staticmethod
     def _create_workers():
-        nproc_per_node = int(RayHelper.args.device_groups['groups']['nproc_per_node'])
-        ip, port = RayHelper.args.device_groups['master_addr']
-        for group_name, group in RayHelper.args.device_groups['groups'].items():
+        nproc_per_node = int(RayHelper.device_groups['groups']['nproc_per_node'])
+        ip, port = RayHelper.device_groups['master_addr']
+        for group_name, group in RayHelper.device_groups['groups'].items():
             if group_name == 'nproc_per_node':
                 continue
 

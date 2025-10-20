@@ -1,6 +1,6 @@
 name: sampling
 
-stage: sample
+use_ray: true
 
 model: Qwen/Qwen2.5-7B-Instruct
 prm_model: Qwen/Qwen2.5-7B-Instruct
