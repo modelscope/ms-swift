@@ -8,7 +8,7 @@ from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
@@ -30,6 +30,7 @@ if is_swanlab_available():
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
+T = TypeVar('T')
 
 TensorLoRARequest = None
 if is_vllm_available():
@@ -866,3 +867,41 @@ def _process_bucket_with_flattened_tensor(trainer, bucket_params):
 
     # Clean up
     del bucket, metadatas, flattened_tensor
+
+
+def get_even_process_data(trainer, global_data: List[T]) -> List[T]:
+    """
+    Evenly splits `global_data` among all processes.
+
+    Each process receives a contiguous chunk of data. If `len(global_data)` is not
+    perfectly divisible by the number of processes, the first `remainder` processes
+    will receive one additional item.
+
+    Args:
+        global_data (List[T]): The full list of data to be distributed.
+
+    Returns:
+        List[T]: The subset of `global_data` assigned to this process.
+    """
+    num_procs = trainer.accelerator.num_processes
+    proc_idx = trainer.accelerator.process_index
+    total = len(global_data)
+
+    base_size = total // num_procs
+    remainder = total % num_procs
+
+    # Calculate the number of samples that need to be padded
+    # This ensures all processes have the same number of samples for gather operations
+    trainer.rollout_pad_count = 0
+    if remainder > 0 and proc_idx >= remainder:
+        # Processes with extra samples need padding
+        trainer.rollout_pad_count = 1
+
+    if proc_idx < remainder:
+        start = proc_idx * (base_size + 1)
+        end = start + base_size + 1
+    else:
+        start = remainder * (base_size + 1) + (proc_idx - remainder) * base_size
+        end = start + base_size
+
+    return global_data[start:end]
