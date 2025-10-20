@@ -325,7 +325,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
                 mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
 
-    if args.to_hf and not args.merge_lora:
+    if args.to_hf and args.merge_lora:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:
