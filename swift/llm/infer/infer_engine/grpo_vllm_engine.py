@@ -45,6 +45,7 @@ class GRPOVllmEngine(VllmEngine):
         task_type: Optional[str] = None,
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
+        mm_processor_cache_gb: Optional[float] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -78,6 +79,7 @@ class GRPOVllmEngine(VllmEngine):
             task_type=task_type,
             disable_cascade_attn=disable_cascade_attn,
             load_format=load_format,
+            mm_processor_cache_gb=mm_processor_cache_gb,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
