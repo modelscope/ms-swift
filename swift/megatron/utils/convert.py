@@ -2,7 +2,7 @@
 
 import math
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import fields, asdict
 from typing import Any, Dict
 
 import torch
@@ -307,10 +307,25 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
-        logger.info('Merge LoRA...')
-        mg_model = peft_model.merge_and_unload()
+            if args.to_hf and not args.merge_lora:
+                logger.info(f"Saving LoRA adapter to `{args.output_dir}` ...")
+                assert args.multi_latent_attention is False, "Multi-latent attention is not supported for LoRA conversion."
+                
+                peft_model.config = asdict(peft_model.config) # for PEFT <= 0.17.1
+                # Megatron Core LoRA를 HuggingFace PEFT 형식으로 변환
+                megatron_model_meta.convert_mcore_lora_to_hf_peft(
+                    peft_model=peft_model,
+                    mg_model=mg_model,
+                    dst_dir=args.output_dir,
+                    num_groups=args.num_query_groups if args.group_query_attention else args.num_attention_heads 
+                )
+                logger.info("LoRA adapter saved successfully.")
+            else:
+                logger.info('Merge LoRA...')
+                mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
-    if args.to_hf:
+
+    if args.to_hf and not args.merge_lora:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:

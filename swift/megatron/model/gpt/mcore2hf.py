@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+
 from typing import Optional
 
 from megatron.training import get_args
@@ -125,3 +126,9 @@ def convert_mcore2hf(hf_model, mg_model):
     hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state(args, mg_model, hf_model.model, layer_idx)
+
+
+def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups: int) -> None:
+    """Megatron Core LoRA 어댑터를 HuggingFace PEFT 형식으로 변환합니다."""
+    from .mcore2hf_lora import convert_mcore_lora_to_hf_peft as _convert_mcore_lora_to_hf_peft
+    _convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir, num_groups)
