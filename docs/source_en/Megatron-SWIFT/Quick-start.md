@@ -47,7 +47,7 @@ git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
-# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.7.4.post1
+# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
 # Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
 ```
 
@@ -68,11 +68,11 @@ Recommended Operating Environment:
 | transformer_engine    | >=2.3       |         |                  |
 | apex |   |  0.1 | |
 | megatron_core    | >=0.12       | 0.13      |                  |
-| flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
+| flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.56.2      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.18 |             |      LoRA          |
-| trl          | >=0.15,<0.21 |       |      RLHF        |
+| trl          | >=0.15,<0.24 |       |      RLHF        |
 
 
 ## Quick Start Example
