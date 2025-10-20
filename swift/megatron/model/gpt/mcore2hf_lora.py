@@ -33,7 +33,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     # Megatron Core의 attention 모듈에서 shape 추론
     # 첫 번째 레이어의 attention 모듈 사용
-    first_layer = mg_language_model.layers[0]
+    first_layer = mg_language_model.decoder.layers[0]
     if hasattr(first_layer, 'self_attention'):
         attn_module = first_layer.self_attention
     else:
@@ -302,5 +302,5 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         cfg["target_modules"] = sorted(set(new_tm))
     
     with open(dst_cfg, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+        json.dump(cfg, f, ensure_ascii=False, indent=2, default=str)
     logger.info(f"Saved converted adapter config to {dst_cfg}")
