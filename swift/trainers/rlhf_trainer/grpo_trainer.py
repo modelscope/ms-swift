@@ -551,6 +551,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=self.args.vllm_disable_cascade_attn,
                 load_format='dummy',
+                mm_processor_cache_gb=self.args.vllm_mm_processor_cache_gb,
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
             )

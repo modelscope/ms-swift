@@ -172,7 +172,8 @@ class VllmArguments:
     Args:
         vllm_gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
         vllm_tensor_parallel_size (int): Tensor parallelism size. Default is 1.
-        vllm_pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
+        vllm_pipeline_parallel_size (int): Pipeline parallelism size. Default is 1.
+        vllm_enable_expert_parallel (bool): Flag to enable expert parallelism for MoE models. Default is False.
         vllm_max_num_seqs (int): Maximum number of sequences. Default is 256.
         vllm_max_model_len (Optional[int]): Maximum model length. Default is None.
         vllm_disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
@@ -182,6 +183,9 @@ class VllmArguments:
         vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
         vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
+        vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
+        vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
+        vllm_mm_processor_cache_gb (Optional[float]): MM processor cache size in GB. Default is None.
         vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
     """
     # vllm
@@ -200,6 +204,7 @@ class VllmArguments:
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
+    vllm_mm_processor_cache_gb: Optional[float] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
@@ -251,6 +256,7 @@ class VllmArguments:
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
+            'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
             'num_labels': self.num_labels,
         }
         if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
