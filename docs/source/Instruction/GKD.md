@@ -161,83 +161,13 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 **要求**：swift >= 3.10.dev
 
-使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式（Colocate 和 Server），与 GRPO 一致。
-
-#### Colocate 模式（推荐）
-
-vLLM 引擎与训练进程运行在同一环境中，适合单机训练场景。
-
-**基本用法**：
-```bash
-NPROC_PER_NODE=4 \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift rlhf \
-    --rlhf_type gkd \
-    --model Qwen/Qwen2.5-7B \
-    --teacher_model Qwen/Qwen2.5-14B-Instruct \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
-    --use_vllm true \
-    --vllm_mode colocate \
-    --lmbda 0.5 \
-    --seq_kd true \
-    --max_completion_length 512 \
-    --num_train_epochs 1 \
-    --learning_rate 1e-5
-```
-
-**显存优化**：
-```bash
-# 降低 vLLM 显存占用
---vllm_gpu_memory_utilization 0.7 \
-
-# 训练时释放 vLLM 显存
---sleep_level 1 \
-
-# 推理时 offload 优化器和模型
---offload_optimizer true \
---offload_model true
-```
-
-详细参数说明请参考 [GRPO 文档 - Colocate 模式](./GRPO/GetStarted/GRPO.md#1-colocateinternal-mode)
-
-#### Server 模式
-
-使用独立的 vLLM 服务器进行采样，适合分布式训练场景。
-
-**步骤 1：启动 vLLM 服务器**
-```bash
-CUDA_VISIBLE_DEVICES=0 \
-swift rollout \
-    --model Qwen/Qwen2.5-7B \
-    --infer_backend vllm \
-    --port 8000
-```
-
-**步骤 2：训练时连接服务器**
-```bash
-swift rlhf \
-    --rlhf_type gkd \
-    --model Qwen/Qwen2.5-7B \
-    --teacher_model Qwen/Qwen2.5-14B-Instruct \
-    --use_vllm true \
-    --vllm_mode server \
-    --vllm_server_host localhost \
-    --vllm_server_port 8000 \
-    --lmbda 0.5
-```
-
-详细参数说明请参考 [GRPO 文档 - Server 模式](./GRPO/GetStarted/GRPO.md#2-server-external-mode)
+使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式，与 GRPO 一致，参考[GRPO文档](./GRPO/GetStarted/GRPO.md#集群支持)
 
 > **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 PyTorch，建议使用预采样方案。
 
 ### 方案 2：教师模型预采样
 
 对于教师模型采样（`seq_kd=True`），推荐使用 **预采样** 方式：先用教师模型离线生成高质量数据，再进行训练。
-
-**优势**：
-- 训练速度最快（无需在线采样）
-- 可以复用生成的数据
-- 降低训练时的显存占用
 
 **步骤 1：使用教师模型生成数据**
 ```bash
@@ -263,36 +193,8 @@ swift rlhf \
     --model OpenGVLab/InternVL3-2B-Pretrained \
     --teacher_model $teacher_model \
     --dataset 'teacher_generated_data.jsonl' \
-    --lmbda 0.0 \
     --seq_kd false \
-    --num_train_epochs 1 \
-    --learning_rate 1e-5
+    ...
 ```
 
-完整训练脚本参考：[examples/train/multimodal/rlhf/gkd/fast.sh](../../../examples/train/multimodal/rlhf/gkd/fast.sh)
-
-### 加速方案对比
-
-| 方案 | 训练速度 | 显存占用 | 实现难度 | 适用场景 |
-|------|---------|---------|---------|---------|
-| **无加速（PyTorch）** | 慢 | 中等 | 简单 | 小规模实验、快速验证 |
-| **vLLM Colocate** | 快 (2-3x) | 高 | 中等 | 单机训练、on-policy 为主 |
-| **vLLM Server** | 快 (2-3x) | 训练/推理分离 | 较复杂 | 分布式训练、多任务 |
-| **教师预采样** | 最快 | 低 | 简单 | 生产环境、off-policy 训练 |
-
-### 推荐配置策略
-
-**场景 1：训练初期/资源受限**
-- 使用教师预采样（`lmbda=0.0, seq_kd=false`）
-- 速度最快，显存占用最低
-- 适合快速迭代和实验
-
-**场景 2：训练中期/平衡质量**
-- 使用 vLLM Colocate + 预采样数据（`lmbda=0.3-0.5, use_vllm=true`）
-- 部分 on-policy，提升模型鲁棒性
-- 平衡训练速度和效果
-
-**场景 3：训练后期/追求极致**
-- 使用 vLLM Colocate 纯 on-policy（`lmbda=0.7-1.0, use_vllm=true`）
-- 最大化推理分布对齐
-- 提升实际应用表现
+训练脚本参考[这里](../../../examples/train/multimodal/rlhf/gkd/fast.sh)

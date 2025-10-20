@@ -274,6 +274,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     stop_words: List[str] = field(default_factory=list)
 
     # vllm
+    use_vllm: bool = False
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite

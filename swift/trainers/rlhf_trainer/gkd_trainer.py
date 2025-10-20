@@ -37,14 +37,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.generation_config = model.generation_config
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
-        
+
         # Initialize teacher model
         if self.is_deepspeed_enabled:
             self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
         else:
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()
-        
+
         # Initialize rollout infrastructure for vLLM support
         if args.use_vllm:
             self.prepare_rollout()
@@ -55,7 +55,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)
-        
+
         # Initialize activation offloading context
         args.activation_offloading = False  # TODO: remove
         if args.activation_offloading:
@@ -146,24 +146,24 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _generate_with_vllm(self, inputs: Dict[str, Any]) -> tuple:
         """Generate responses using vLLM engine
-        
+
         Args:
             inputs: Training batch inputs containing 'messages', 'prompts', etc.
-            
+
         Returns:
             Tuple of (new_input_ids, new_attention_mask, new_labels)
         """
         # Preprocess inputs for vLLM rollout
         processed_inputs = self._preprocess_inputs([inputs])
-        
+
         # Generate using vLLM
         outputs = self._fast_infer(processed_inputs)
-        
+
         if not outputs:
             raise RuntimeError('vLLM generation failed: empty outputs')
-        
+
         output = outputs[0]
-        
+
         # Extract generated response tokens
         response_token_ids = output.get('response_token_ids', [])
         if not response_token_ids:
@@ -172,36 +172,35 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             assert messages and messages[-1]['role'] == 'assistant'
             response_text = messages[-1]['content']
             # Tokenize the response
-            response_token_ids = self.processing_class.encode(
-                response_text, add_special_tokens=False)
-    
+            response_token_ids = self.processing_class.encode(response_text, add_special_tokens=False)
+
         # Reconstruct input_ids: prompt + response
         prompt_input_ids = inputs['prompts']
         device = prompt_input_ids.device
-        
+
         if isinstance(response_token_ids, list):
             response_tensor = torch.tensor(response_token_ids, device=device, dtype=torch.long)
         else:
             response_tensor = response_token_ids.to(device)
-        
+
         # Ensure response_tensor has correct shape
         if response_tensor.dim() == 1:
             response_tensor = response_tensor.unsqueeze(0)
-        
+
         # Concatenate prompt and response
         new_input_ids = torch.cat([prompt_input_ids, response_tensor], dim=1)
-        
+
         # Create attention mask and labels
         new_attention_mask = torch.ones_like(new_input_ids)
         new_labels = new_input_ids.clone()
         new_labels[:, :prompt_input_ids.shape[1]] = -100  # Mask prompt tokens
-        
+
         # Handle padding
         pad_token_id = self.processing_class.pad_token_id
         if pad_token_id is not None:
             new_labels[new_labels == pad_token_id] = -100
             new_attention_mask[new_input_ids == pad_token_id] = 0
-        
+
         return new_input_ids, new_attention_mask, new_labels
 
     # Code borrowed from huggingface/trl
@@ -215,7 +214,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         This method implements the on-policy learning approach described in the GKD paper.
         With probability `self.lmbda`, it generates new responses using the student model,
         which are then used for training instead of the original inputs.
-        
+
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
@@ -234,11 +233,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                         unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
                     unwrapped_model.train()
-            
+
             inputs['input_ids'] = new_input_ids
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
-            
+
         elif self.seq_kd:
             # Sequential KD: teacher model generates responses
             # Note: Teacher generation currently uses PyTorch (vLLM support can be added if needed)
