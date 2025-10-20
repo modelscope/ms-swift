@@ -56,6 +56,7 @@ Swift DOCUMENTATION
    BestPractices/GRPO多模态训练.md
    BestPractices/GRPO代码训练.md
    BestPractices/Qwen3最佳实践.md
+   BestPractices/Qwen3-VL最佳实践.md
    BestPractices/Embedding训练.md
    BestPractices/Reranker训练.md
    BestPractices/快速训练VL模型.md
