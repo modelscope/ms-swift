@@ -294,6 +294,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     offload_model: bool = False
 
 
+@dataclass
 class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None

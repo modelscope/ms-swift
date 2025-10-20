@@ -223,6 +223,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                     if self.vllm_mode != 'colocate':
                         self.vllm_mode = 'colocate'
                         logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+                self.overlong_filter
 
     def _init_padding_side(self):
         if self.rlhf_type in {'ppo', 'gkd'}:
