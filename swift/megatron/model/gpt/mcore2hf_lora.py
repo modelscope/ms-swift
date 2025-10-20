@@ -4,6 +4,7 @@
 import json
 import os
 from collections import OrderedDict
+from dataclasses import asdict
 
 from safetensors.torch import save_file
 from swift.utils import get_logger
@@ -273,7 +274,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     # adapter_config.json 갱신
     logger.info("Converting adapter config...")
-    cfg = peft_model.config if isinstance(peft_model.config, dict) else peft_model.config.__dict__.copy()
+    cfg = peft_model.peft_config['default'] if isinstance(peft_model.peft_config['default'], dict) else asdict(peft_model.peft_config['default'])
     
     tm = cfg.get("target_modules", None)
     if tm is not None:
@@ -303,4 +304,6 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     with open(dst_cfg, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2, default=str)
+
+    logger.info(f"cfg: {cfg}")
     logger.info(f"Saved converted adapter config to {dst_cfg}")
