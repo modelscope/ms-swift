@@ -270,6 +270,7 @@ class SwiftInfer(SwiftPipeline):
             data_parallel_size = args.global_world_size // args.vllm_tensor_parallel_size
         else:
             rank, data_parallel_size = args.rank, args.global_world_size
+        # The dataset is insufficient for DP partitioning
         if len(val_dataset) < data_parallel_size:
             data_parallel_size = len(val_dataset)
             if rank >= len(val_dataset):
