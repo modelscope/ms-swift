@@ -271,9 +271,9 @@ class SwiftInfer(SwiftPipeline):
         else:
             rank, data_parallel_size = args.rank, args.global_world_size
         if len(val_dataset) < data_parallel_size:
-            data_parallel_size = len(val_dataset)
             if rank >= len(val_dataset):
                 return []
+            data_parallel_size = len(val_dataset)
         if rank >= 0 and data_parallel_size > 1:
             val_dataset = val_dataset.shard(data_parallel_size, rank, contiguous=True)
         val_dataset = list(val_dataset)
