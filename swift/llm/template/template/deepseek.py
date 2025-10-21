@@ -254,10 +254,7 @@ class DeepseekOCR(Template):
         patch_size = 16
         downsample_ratio = 4
         valid_img_tokens = 0
-
-        image_draw = images[0].copy()
-
-        w, h = image_draw.size
+        w, h = images[0].size
         ratio = 1 - ((max(w, h) - min(w, h)) / (max(w, h)))
 
         image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
@@ -333,7 +330,7 @@ class DeepseekOCR(Template):
 
                 tokenized_image = ([image_token_id] * num_queries + [image_token_id]) * num_queries
                 tokenized_image += [image_token_id]
-                tokenized_str += tokenized_image
+                tokenized_str.append(tokenized_image)
         if len(images_list) == 0:
             images_ori = torch.zeros((1, 3, self.image_size, self.image_size))
             images_spatial_crop = torch.zeros((1, 2), dtype=torch.long)
