@@ -296,4 +296,4 @@ class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, Reranke
         return list(
             chain.from_iterable(
                 _get_model_name_list(model_type_cls)
-                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))
+                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType]))
