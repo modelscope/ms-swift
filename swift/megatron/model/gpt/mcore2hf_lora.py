@@ -12,15 +12,16 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
-def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups: int) -> None:
+def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, num_query_groups: int) -> None:
     """
     Convert Megatron Core LoRA adapter to HuggingFace PEFT format.
     
     Args:
         peft_model:  Megatron Core PEFTModel
         mg_model: loaded Megatron Core Model (for shape)
+        hf_model: HuggingFace model (required for shape extraction)
         dst_dir: Dir path to saving HuggingFace PEFT
-        num_groups: number of Attention group 
+        num_query_groups: number of Attention group 
     """
     os.makedirs(dst_dir, exist_ok=True)
     dst_model = os.path.join(dst_dir, "adapter_model.safetensors")
@@ -28,38 +29,19 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     logger.info(f"Converting Megatron Core LoRA to HF PEFT format at {dst_dir}")
     
-    # Extract shape information from Megatron Core model
-    logger.info("Extracting shape information from Megatron Core model...")
-    mg_language_model = mg_model.language_model if hasattr(mg_model, 'language_model') else mg_model
-    # Extract shape information from Megatron Core attention module
-    # Use attention module from the first layer
-    first_layer = mg_language_model.decoder.layers[0]
-    if hasattr(first_layer, 'self_attention'):
-        attn_module = first_layer.self_attention
-    else:
-        attn_module = first_layer.attention
+    # Extract shape information from HuggingFace model
+    logger.info("Extracting shape information from HuggingFace model...")
+    attn0 = hf_model.model.layers[0].self_attn
     
-    # Extract attention shape from Megatron Core
-    if hasattr(attn_module, 'linear_qkv'):
-        # For fused qkv case
-        qkv_weight = attn_module.linear_qkv.weight
-        out_features, in_features = qkv_weight.shape
-        q_dim = out_features // (num_groups * 3)  # q, k, v 각각
-        kv_dim = q_dim
-    else:
-        # For separated q, k, v case
-        q_weight = attn_module.linear_q.weight
-        k_weight = attn_module.linear_k.weight
-        v_weight = attn_module.linear_v.weight
-        q_out, in_features = q_weight.shape
-        k_out, _ = k_weight.shape
-        v_out, _ = v_weight.shape
-        
-        q_dim = q_out // num_groups
-        kv_dim = k_out // num_groups
-        assert v_out // num_groups == kv_dim, "k/v group out dim mismatch"
+    q_out, in_features = attn0.q_proj.weight.shape  # [out, in]
+    k_out, _ = attn0.k_proj.weight.shape
+    v_out, _ = attn0.v_proj.weight.shape
+            
+    q_dim = q_out // num_query_groups
+    kv_dim = k_out // num_query_groups
+    assert v_out // num_query_groups == kv_dim, "k/v group out dim mismatch"
     
-    logger.info(f"Shape inference: num_groups={num_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}")
+    logger.info(f"Shape extraction: num_query_groups={num_query_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}")
     
     # Bucketize modules from peft_model state_dict
     logger.info("Extracting LoRA weights from loaded PEFTModel...")
@@ -120,11 +102,11 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         
         mcore:
           A: [r, in_features]  (shared)
-          B: [num_groups*(q_dim+kv_dim+kv_dim), r]
+          B: [num_query_groups*(q_dim+kv_dim+kv_dim), r]
         -> HF:
-          q_proj: A=[r,in], B=[num_groups*q_dim, r]
-          k_proj: A=[r,in], B=[num_groups*kv_dim, r]
-          v_proj: A=[r,in], B=[num_groups*kv_dim, r]
+          q_proj: A=[r,in], B=[num_query_groups*q_dim, r]
+          k_proj: A=[r,in], B=[num_query_groups*kv_dim, r]
+          v_proj: A=[r,in], B=[num_query_groups*kv_dim, r]
         """
         A = tensors.get("lora_A.weight", None)
         B = tensors.get("lora_B.weight", None)
@@ -139,14 +121,14 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         assert rB == r, f"LoRA rank mismatch: A={r}, B={rB}"
         assert in_A == in_features, f"in_features mismatch: A={in_A}, base={in_features}"
         
-        expected_out = num_groups * (q_dim + kv_dim + kv_dim)
+        expected_out = num_query_groups * (q_dim + kv_dim + kv_dim)
         assert out_B == expected_out, f"Fused B out({out_B}) != expected({expected_out})"
         
-        # Reshape to [num_groups, (q_dim+kv_dim+kv_dim), r] then slice
-        Bg = B.reshape(num_groups, q_dim + kv_dim + kv_dim, r)
-        Bq = Bg[:, :q_dim, :].reshape(num_groups * q_dim, r)
-        Bk = Bg[:, q_dim:q_dim+kv_dim, :].reshape(num_groups * kv_dim, r)
-        Bv = Bg[:, q_dim+kv_dim:, :].reshape(num_groups * kv_dim, r)
+        # Reshape to [num_query_groups, (q_dim+kv_dim+kv_dim), r] then slice
+        Bg = B.reshape(num_query_groups, q_dim + kv_dim + kv_dim, r)
+        Bq = Bg[:, :q_dim, :].reshape(num_query_groups * q_dim, r)
+        Bk = Bg[:, q_dim:q_dim+kv_dim, :].reshape(num_query_groups * kv_dim, r)
+        Bv = Bg[:, q_dim+kv_dim:, :].reshape(num_query_groups * kv_dim, r)
         
         misc = {k: v for k, v in tensors.items() if k not in ("lora_A.weight", "lora_B.weight")}
         

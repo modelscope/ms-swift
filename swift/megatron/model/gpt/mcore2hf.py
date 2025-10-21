@@ -128,7 +128,7 @@ def convert_mcore2hf(hf_model, mg_model):
         set_layer_state(args, mg_model, hf_model.model, layer_idx)
 
 
-def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups: int) -> None:
+def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, num_groups: int) -> None:
     """Convert Megatron Core LoRA adapter to HuggingFace PEFT format."""
     from .mcore2hf_lora import convert_mcore_lora_to_hf_peft as _convert_mcore_lora_to_hf_peft
-    _convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir, num_groups)
+    _convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir, num_groups)
