@@ -1,4 +1,4 @@
-# pip install "transformers==4.46.3"
+# pip install "transformers==4.46.3" easydict
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
