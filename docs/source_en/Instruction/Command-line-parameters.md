@@ -379,7 +379,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
   - The default value of this parameter is `False` in "ms-swift<3.9.1".
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
-- vllm_extra_kwargs: Extra arguments for vllm, formatted as a JSON string.
+- vllm_extra_kwargs: Extra arguments for vllm, formatted as a JSON string. Default is `None`.
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).
