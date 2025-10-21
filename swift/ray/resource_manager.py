@@ -28,7 +28,7 @@ def get_node_address():
 
 class ResourceManager:
 
-    possible_keys = ['nproc_per_node', 'nnodes', 'master_addr']
+    possible_keys = ['nproc_per_node', 'nnodes']
 
     def __init__(self, groups: Dict[str, Any]):
         nproc_per_node = int(groups['nproc_per_node'])
@@ -82,11 +82,8 @@ class ResourceManager:
         self.node2pg: Dict[int, PlacementGroup] = {}
         ip, port = None, None
         for node_rank, placement_group in zip(self.node_ranks, self.placement_groups):
-            if node_rank == 0:
-                ip, port = ray.get(get_node_address.options(placement_group=placement_group).remote())
             self.node2pg[node_rank] = placement_group
 
-        groups['master_addr'] = (ip, port)
         self.device_groups = {}
         ray_address = str(ray.get_runtime_context().gcs_address)
         for group_name, group in groups.items():
