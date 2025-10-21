@@ -235,8 +235,9 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 
 
 class DeepseekOCR(Template):
-    pass
-
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        print()
 
 register_template(TemplateMeta(MLLMTemplateType.deepseek_ocr, template_cls=DeepseekOCR))
 
