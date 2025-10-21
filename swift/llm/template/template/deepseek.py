@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
@@ -247,10 +247,10 @@ class DeepseekOCR(Template):
         self.base_size = get_env_args('base_size', int, 1024)
         self.image_size = get_env_args('image_size', int, 640)
 
-    def _preprocess_image(self, images):
+    def _preprocess_image(self, images, image_token_id):
         # Code borrowed from
         # https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR/file/view/master/modeling_deepseekocr.py?status=1
-        crop_mode = True
+        crop_mode = self.crop_mode
         patch_size = 16
         downsample_ratio = 4
         valid_img_tokens = 0
@@ -261,7 +261,6 @@ class DeepseekOCR(Template):
         ratio = 1 - ((max(w, h) - min(w, h)) / (max(w, h)))
 
         image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
-        image_token_id = 128815
         images_list, images_crop_list = [], []
         tokenized_str = []
         images_spatial_crop = []
@@ -357,7 +356,8 @@ class DeepseekOCR(Template):
         image_token = self._tokenize('<image>')
         idx_list = findall(input_ids, image_token)
         if idx_list:
-            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(inputs.images)
+            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(inputs.images,
+                                                                                                 image_token[0])
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 lambda i: tokenized_str[i])
             encoded['input_ids'] = input_ids
