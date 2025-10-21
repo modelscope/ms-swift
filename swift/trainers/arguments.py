@@ -205,13 +205,13 @@ class VllmArguments:
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
     vllm_mm_processor_cache_gb: Optional[float] = None
-    vllm_extra_kwargs: Optional[Union[dict, str]] = None
+    vllm_engine_kwargs: Optional[Union[dict, str]] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
     def __post_init__(self):
         self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
-        self.vllm_extra_kwargs = json_parse_to_dict(self.vllm_extra_kwargs)
+        self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
         adapters = self.adapters
@@ -237,7 +237,7 @@ class VllmArguments:
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
             'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
             'num_labels': self.num_labels,
-            'engine_kwargs': self.vllm_extra_kwargs,
+            'engine_kwargs': self.vllm_engine_kwargs,
         }
         if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
             kwargs['task_type'] = self.task_type
