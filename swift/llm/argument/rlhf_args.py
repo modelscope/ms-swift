@@ -122,7 +122,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
     def __post_init__(self):
         self._process_loss_type()
-        self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
         self._init_simpo()

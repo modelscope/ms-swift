@@ -320,10 +320,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
 
-    gc_collect_after_offload: bool = False  # deprecated
-
     # multi turn
-    multi_turn_func: Optional[str] = None  # deprecated
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
