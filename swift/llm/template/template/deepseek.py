@@ -234,6 +234,13 @@ class DeepseekJanus(DeepseekVLTemplate):
 register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, template_cls=DeepseekJanus))
 
 
+class DeepseekOCR(Template):
+    pass
+
+
+register_template(TemplateMeta(MLLMTemplateType.deepseek_ocr, template_cls=DeepseekOCR))
+
+
 @dataclass
 class DeepseekV2_5TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<｜begin▁of▁sentence｜>{{SYSTEM}}'])
