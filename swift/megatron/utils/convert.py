@@ -312,7 +312,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
                 assert megatron_args.multi_latent_attention is False, "Multi-latent attention is not supported for LoRA conversion."
                 
                 peft_model.config = asdict(peft_model.config) # for PEFT <= 0.17.1
-                # Megatron Core LoRA를 HuggingFace PEFT 형식으로 변환
+                # Convert Megatron Core LoRA to HuggingFace PEFT format
                 megatron_model_meta.convert_mcore_lora_to_hf_peft(
                     peft_model=peft_model,
                     mg_model=mg_model,

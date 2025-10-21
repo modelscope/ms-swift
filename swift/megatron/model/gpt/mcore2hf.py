@@ -129,6 +129,6 @@ def convert_mcore2hf(hf_model, mg_model):
 
 
 def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups: int) -> None:
-    """Megatron Core LoRA 어댑터를 HuggingFace PEFT 형식으로 변환합니다."""
+    """Convert Megatron Core LoRA adapter to HuggingFace PEFT format."""
     from .mcore2hf_lora import convert_mcore_lora_to_hf_peft as _convert_mcore_lora_to_hf_peft
     _convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir, num_groups)

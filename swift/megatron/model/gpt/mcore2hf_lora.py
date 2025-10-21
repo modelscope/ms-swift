@@ -14,7 +14,7 @@ logger = get_logger()
 
 def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups: int) -> None:
     """
-    Megatron Core LoRA 어댑터를 HuggingFace PEFT 형식으로 변환합니다.
+    Convert Megatron Core LoRA adapter to HuggingFace PEFT format.
     
     Args:
         peft_model:  Megatron Core PEFTModel
@@ -28,27 +28,26 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     logger.info(f"Converting Megatron Core LoRA to HF PEFT format at {dst_dir}")
     
-    # Megatron Core 모델에서 shape 추론
+    # Extract shape information from Megatron Core model
     logger.info("Extracting shape information from Megatron Core model...")
     mg_language_model = mg_model.language_model if hasattr(mg_model, 'language_model') else mg_model
-    
-    # Megatron Core의 attention 모듈에서 shape 추론
-    # 첫 번째 레이어의 attention 모듈 사용
+    # Extract shape information from Megatron Core attention module
+    # Use attention module from the first layer
     first_layer = mg_language_model.decoder.layers[0]
     if hasattr(first_layer, 'self_attention'):
         attn_module = first_layer.self_attention
     else:
         attn_module = first_layer.attention
     
-    # Megatron Core의 attention shape 추론
+    # Extract attention shape from Megatron Core
     if hasattr(attn_module, 'linear_qkv'):
-        # fused qkv의 경우
+        # For fused qkv case
         qkv_weight = attn_module.linear_qkv.weight
         out_features, in_features = qkv_weight.shape
         q_dim = out_features // (num_groups * 3)  # q, k, v 각각
         kv_dim = q_dim
     else:
-        # 분리된 q, k, v의 경우
+        # For separated q, k, v case
         q_weight = attn_module.linear_q.weight
         k_weight = attn_module.linear_k.weight
         v_weight = attn_module.linear_v.weight
@@ -62,24 +61,33 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     logger.info(f"Shape inference: num_groups={num_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}")
     
-    # peft_model의 state_dict에서 모듈 단위 버킷화
+    # Bucketize modules from peft_model state_dict
     logger.info("Extracting LoRA weights from loaded PEFTModel...")
     bucket = {}  # prefix -> {local_name: tensor}
     state_dict = peft_model.state_dict()
     
     for fullkey, tensor in state_dict.items():
-        # adapter 관련 키만 처리
+        # Process only adapter-related keys
         if "lora_A" not in fullkey and "lora_B" not in fullkey:
             continue
         parts = fullkey.split(".")
-        local = ".".join(parts[-2:])     # e.g., lora_A.weight
-        prefix = ".".join(parts[:-2])    # e.g., ...linear_qkv
+        
+        # Parse key considering .default.weight format
+        if len(parts) >= 2 and parts[-2] == "default":
+            # e.g., lora_A.default.weight -> lora_A.weight
+            local = f"{parts[-3]}.{parts[-1]}"  # default.weight
+            prefix = ".".join(parts[:-3])       # e.g., ...linear_qkv
+        else:
+            # Original logic: e.g., lora_A.weight
+            local = ".".join(parts[-2:])        # e.g., lora_A.weight
+            prefix = ".".join(parts[:-2])       # e.g., ...linear_qkv
+        
         bucket.setdefault(prefix, {})[local] = tensor.cpu()
     
     dst_tensors = OrderedDict()
     
     def push(dst, key, tensor):
-        """텐서를 저장용으로 독립 복사 + 연속 메모리 보장"""
+        """Create independent copy of tensor for saving + ensure contiguous memory"""
         t = tensor.detach().clone().contiguous()
         if key in dst:
             raise ValueError(f"Duplicate key: {key}")
@@ -90,7 +98,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         dst[key] = t
     
     def remap_key_for_peft(key: str) -> str:
-        """키를 HuggingFace PEFT 형식으로 변환"""
+        """Convert key to HuggingFace PEFT format"""
         # 1) decoder → model
         key = key.replace(".decoder.layers.", ".model.layers.")
         # 2) self_attention → self_attn
@@ -108,10 +116,10 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     def convert_linear_qkv(prefix, tensors):
         """
-        Megatron Core fused qkv LoRA를 HF q_proj, k_proj, v_proj로 분리
+        Split Megatron Core fused qkv LoRA into HF q_proj, k_proj, v_proj
         
         mcore:
-          A: [r, in_features]  (공유)
+          A: [r, in_features]  (shared)
           B: [num_groups*(q_dim+kv_dim+kv_dim), r]
         -> HF:
           q_proj: A=[r,in], B=[num_groups*q_dim, r]
@@ -121,7 +129,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         A = tensors.get("lora_A.weight", None)
         B = tensors.get("lora_B.weight", None)
         if A is None or B is None:
-            # 핵심 가중치 없으면 원키로 pass
+            # If core weights are missing, pass through with original key
             for local, T in tensors.items():
                 push(dst_tensors, f"{prefix}.{local}", T)
             return
@@ -134,7 +142,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         expected_out = num_groups * (q_dim + kv_dim + kv_dim)
         assert out_B == expected_out, f"Fused B out({out_B}) != expected({expected_out})"
         
-        # [num_groups, (q_dim+kv_dim+kv_dim), r]로 reshape한 뒤 슬라이스
+        # Reshape to [num_groups, (q_dim+kv_dim+kv_dim), r] then slice
         Bg = B.reshape(num_groups, q_dim + kv_dim + kv_dim, r)
         Bq = Bg[:, :q_dim, :].reshape(num_groups * q_dim, r)
         Bk = Bg[:, q_dim:q_dim+kv_dim, :].reshape(num_groups * kv_dim, r)
@@ -163,7 +171,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     def convert_mla_attention(prefix, tensors):
         """
-        Multi-Latent Attention (MLA) LoRA 변환
+        Multi-Latent Attention (MLA) LoRA conversion
         
         mcore -> HF:
           linear_q_down_proj -> q_a_proj
@@ -191,7 +199,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
     
     def convert_mlp_linear_fc1(prefix, tensors):
         """
-        MLP linear_fc1 LoRA를 HF gate_proj, up_proj로 분리
+        Split MLP linear_fc1 LoRA into HF gate_proj, up_proj
         
         mcore: linear_fc1 [gate_up_dim, in_features]
         -> HF: gate_proj [gate_dim, in_features], up_proj [up_dim, in_features]
@@ -203,12 +211,12 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
                 push(dst_tensors, f"{prefix}.{local}", T)
             return
         
-        # gate_up_dim을 gate_dim과 up_dim으로 분리 (보통 1:1 비율)
+        # Split gate_up_dim into gate_dim and up_dim (usually 1:1 ratio)
         gate_up_dim = B.shape[0]
         gate_dim = gate_up_dim // 2
         up_dim = gate_up_dim - gate_dim
         
-        # B를 gate와 up으로 분리
+        # Split B into gate and up
         B_gate = B[:gate_dim, :]
         B_up = B[gate_dim:, :]
         
@@ -229,13 +237,13 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
             push(dst_tensors, f"{up_prefix}.{k}", v)
     
     def convert_mlp_linear_fc2(prefix, tensors):
-        """MLP linear_fc2 LoRA를 HF down_proj로 변환"""
+        """Convert MLP linear_fc2 LoRA to HF down_proj"""
         new_prefix = prefix.replace(".mlp.linear_fc2", ".mlp.down_proj")
         for local, T in tensors.items():
             push(dst_tensors, f"{new_prefix}.{local}", T)
     
     def convert_moe_experts(prefix, tensors):
-        """MoE experts LoRA 변환"""
+        """MoE experts LoRA conversion"""
         # experts[expert_idx].linear_fc1 -> experts[expert_idx].gate_proj, up_proj
         if ".linear_fc1" in prefix:
             convert_mlp_linear_fc1(prefix, tensors)
@@ -243,36 +251,36 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, dst_dir: str, num_groups
         elif ".linear_fc2" in prefix:
             convert_mlp_linear_fc2(prefix, tensors)
     
-    # 모듈별 변환 실행
+    # Execute conversion by module
     for prefix, tensors in bucket.items():
-        # Attention 변환
+        # Attention conversion
         if ".self_attention.linear_proj" in prefix:
             convert_linear_proj(prefix, tensors)
         elif ".self_attention.linear_qkv" in prefix:
             convert_linear_qkv(prefix, tensors)
-        # Multi-Latent Attention 변환
+        # Multi-Latent Attention conversion
         elif any(x in prefix for x in [".linear_q_down_proj", ".linear_q_up_proj", 
                                       ".linear_kv_down_proj", ".linear_kv_up_proj"]):
             convert_mla_attention(prefix, tensors)
-        # MLP 변환
+        # MLP conversion
         elif ".mlp.linear_fc1" in prefix:
             convert_mlp_linear_fc1(prefix, tensors)
         elif ".mlp.linear_fc2" in prefix:
             convert_mlp_linear_fc2(prefix, tensors)
-        # MoE experts 변환 (router는 제외)
+        # MoE experts conversion (excluding router)
         elif ".experts" in prefix and (".linear_fc1" in prefix or ".linear_fc2" in prefix):
             convert_moe_experts(prefix, tensors)
         else:
-            # 알 수 없는 모듈은 그대로 복사
+            # Copy unknown modules as-is
             logger.warning(f"Unknown module pattern: {prefix}")
             for local, T in tensors.items():
                 push(dst_tensors, f"{prefix}.{local}", T)
     
-    # 변환된 텐서 저장
+    # Save converted tensors
     save_file(dst_tensors, dst_model, metadata={"format": "pt"})
     logger.info(f"Saved converted LoRA tensors to {dst_model}")
     
-    # adapter_config.json 갱신
+    # Update adapter_config.json
     logger.info("Converting adapter config...")
     cfg = peft_model.peft_config['default'] if isinstance(peft_model.peft_config['default'], dict) else asdict(peft_model.peft_config['default'])
     
