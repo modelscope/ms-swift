@@ -72,6 +72,7 @@ class ModelMeta:
 
     is_multimodal: bool = False
     is_reward: bool = False
+    is_reranker: bool = False
     task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
@@ -123,11 +124,13 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType, RMModelType
+    from .constant import MLLMModelType, RMModelType, RerankerModelType
     if model_type in MLLMModelType.__dict__:
         model_meta.is_multimodal = True
     if model_type in RMModelType.__dict__:
         model_meta.is_reward = True
+    if model_type in RerankerModelType.__dict__:
+        model_meta.is_reranker = True
     if model_meta.model_arch:
         model_meta.model_arch = get_model_arch(model_meta.model_arch)
     MODEL_MAPPING[model_type] = model_meta
@@ -317,6 +320,7 @@ def get_model_tokenizer_from_local(model_dir: str,
                     model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
+        model_meta = kwargs['model_meta']
         context_kwargs = {
             'model_info': model_info,
             'model_meta': model_meta,
@@ -333,14 +337,10 @@ def get_model_tokenizer_from_local(model_dir: str,
                                'ignore_mismatched_sizes will be set to True')
                 model_kwargs['ignore_mismatched_sizes'] = True
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            elif model_info.task_type == 'reranker':
+            elif model_info.task_type == 'reranker' and not model_meta.is_reranker:
                 # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
                 logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            elif model_info.task_type == 'generative_reranker':
-                # For generative reranker, keep CausalLM structure unchanged
-                logger.info('Loading model as CausalLM for generative_reranker task')
-                context = partial(patch_automodel, **context_kwargs)
             else:
                 context = partial(patch_automodel, **context_kwargs)
             with context():
