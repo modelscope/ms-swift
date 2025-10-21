@@ -238,7 +238,12 @@ class DeepseekOCR(Template):
     image_placeholder = ['<image>\n']
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        print()
+        input_ids = encoded['input_ids']
+        image_token = self._tokenize('<image>')
+        idx_list = findall(input_ids, image_token)
+        if idx_list:
+            pass
+
 
 
 register_template(
