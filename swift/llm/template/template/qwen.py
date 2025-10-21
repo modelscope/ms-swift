@@ -588,7 +588,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 if self.version == 'omni_v2_5':
                     return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
                 elif self.version == 'omni_v3':
-                    return ['<|vision_start|><|audio_start|><|video_pad|><|audio_end|><|vision_end|>']
+                    if self.mode == 'vllm':
+                        return ['<|vision_start|><|video_pad|><|vision_end|>']
+                    else:
+                        return ['<|vision_start|><|audio_start|><|video_pad|><|audio_end|><|vision_end|>']
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
             elif self.version == 'omni_v3':
