@@ -54,7 +54,7 @@
 - seq_length: Defaults to `None`, which means it will be set to `max_length`. To limit the sequence length of the dataset, it is recommended to use the `--max_length` argument under "Basic Parameters" instead; this parameter does not need to be set explicitly.
 - use_cpu_initialization: Initialize weights on the CPU. Defaults to `False`. This option is used during weight conversion between Hugging Face (HF) and MCore formats. The value typically does not need to be modified.
 - 🔥megatron_extra_kwargs: Additional arguments to be passed through directly to Megatron, provided as a JSON string. Defaults to `None`.
-  - In ms-swift < 3.10, this parameter was `--extra_megatron_kwargs`.
+  - In "ms-swift<3.10", this parameter was `--extra_megatron_kwargs`.
 
 **Learning Rate Parameters**:
 
