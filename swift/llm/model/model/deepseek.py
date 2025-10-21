@@ -318,10 +318,12 @@ register_model(
         model_arch=ModelArch.llama,
     ))
 
+
 def get_model_tokenizer_deepseek_ocr(*args, **kwargs):
     from transformers import AutoModel
     kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModel
     return get_model_tokenizer_with_flash_attn(*args, **kwargs)
+
 
 register_model(
     ModelMeta(
