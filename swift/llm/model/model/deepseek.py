@@ -317,3 +317,17 @@ register_model(
         architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM', 'Qwen3ForCausalLM'],
         model_arch=ModelArch.llama,
     ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_ocr,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-OCR', 'deepseek-ai/DeepSeek-OCR'),
+            ]),
+        ],
+        TemplateType.deepseek_ocr,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.deepseek_ocr,
+        tags=['vision'],
+    ))
