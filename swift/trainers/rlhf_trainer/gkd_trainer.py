@@ -17,6 +17,7 @@ from trl.models.utils import prepare_deepspeed
 from swift.utils import empty_cache, get_current_device, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import RolloutTrainerMixin
+from .utils import identity_data_collator
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -29,6 +30,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         teacher_model = kwargs.pop('teacher_model')
         self.vllm_client = kwargs.pop('vllm_client', None)
+        kwargs['data_collator'] = identity_data_collator
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
@@ -116,7 +118,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         outputs_student = model(**model_inputs)
 
         model_inputs.pop('labels', None)
-        with torch.no_grad(), self.teacher_model_load_context():
+        with torch.no_grad(), self.load_teacher_model_context():
             outputs_teacher = self.teacher_model(**model_inputs)
 
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
@@ -145,6 +147,23 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Return loss
         return (loss, outputs_student) if return_outputs else loss
+
+    def _prepare_batch_inputs(self, inputs: list) -> Dict[str, torch.Tensor]:
+        template = self.template
+        batch_encoded_inputs = []
+
+        for data in inputs:
+            if 'response_token_ids' in data and data['response_token_ids']:
+                from .utils import replace_assistant_response_with_ids
+                data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
+
+            encoded = template.encode(data, return_length=True)
+            batch_encoded_inputs.append(encoded)
+
+        from swift.llm import to_device
+        batch_encoded = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+
+        return batch_encoded
 
     def _generate_with_vllm(self, inputs: Dict[str, Any]) -> tuple:
         """Generate responses using vLLM engine
@@ -208,7 +227,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     # Code borrowed from huggingface/trl
     def training_step(self,
                       model: nn.Module,
-                      inputs: Dict[str, Union[torch.Tensor, Any]],
+                      inputs: Union[list, Dict[str, Union[torch.Tensor, Any]]],
                       num_items_in_batch: Optional[int] = None) -> torch.Tensor:
         """
         Perform a training step for the Generalized Knowledge Distillation (GKD) model.
@@ -224,10 +243,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if random.random() <= self.lmbda:
             # On-policy: student model generates responses
             if args.use_vllm:
-                # Use vLLM for fast generation
-                new_input_ids, new_attention_mask, new_labels = self._generate_with_vllm(inputs)
+                processed_inputs = self._preprocess_inputs(inputs)
+                inputs = self._fast_infer(processed_inputs)
+                inputs = self._prepare_batch_inputs(inputs)
             else:
-                # Use PyTorch for generation
+                inputs = self._prepare_batch_inputs(inputs)
                 with unwrap_model_for_generation(
                         model, self.accelerator,
                         gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
@@ -235,15 +255,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                         unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
                     unwrapped_model.train()
-
-            inputs['input_ids'] = new_input_ids
-            inputs['attention_mask'] = new_attention_mask
-            inputs['labels'] = new_labels
+                inputs['input_ids'] = new_input_ids
+                inputs['attention_mask'] = new_attention_mask
+                inputs['labels'] = new_labels
 
         elif self.seq_kd:
-            # Sequential KD: teacher model generates responses
-            # Note: Teacher generation currently uses PyTorch (vLLM support can be added if needed)
-            with self.teacher_model_load_context(), unwrap_model_for_generation(
+            inputs = self._prepare_batch_inputs(inputs)
+            with self.load_teacher_model_context(), unwrap_model_for_generation(
                     self.teacher_model, self.accelerator,
                     gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
                 new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
@@ -252,11 +270,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
 
+        else:
+            inputs = self._prepare_batch_inputs(inputs)
+        assert isinstance(inputs, list)
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
 
     def prediction_step(self, model, inputs, *args, **kwargs):
+        inputs = self._prepare_batch_inputs(inputs)
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
 
