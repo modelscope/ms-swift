@@ -312,7 +312,7 @@ class Qwen2VLTemplate(Template):
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
             elif self.version == 'v3':
-                if video is not None:
+                if video is not None and self.mode != 'vllm':
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
