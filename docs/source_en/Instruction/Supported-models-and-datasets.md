@@ -929,7 +929,7 @@ The table below introduces the models integrated with ms-swift:
 |[deepseek-ai/Janus-1.3B](https://modelscope.cn/models/deepseek-ai/Janus-1.3B)|deepseek_janus|deepseek_janus|-|&#x2718;|vision|[deepseek-ai/Janus-1.3B](https://huggingface.co/deepseek-ai/Janus-1.3B)|
 |[deepseek-ai/Janus-Pro-1B](https://modelscope.cn/models/deepseek-ai/Janus-Pro-1B)|deepseek_janus_pro|deepseek_janus_pro|-|&#x2718;|vision|[deepseek-ai/Janus-Pro-1B](https://huggingface.co/deepseek-ai/Janus-Pro-1B)|
 |[deepseek-ai/Janus-Pro-7B](https://modelscope.cn/models/deepseek-ai/Janus-Pro-7B)|deepseek_janus_pro|deepseek_janus_pro|-|&#x2718;|vision|[deepseek-ai/Janus-Pro-7B](https://huggingface.co/deepseek-ai/Janus-Pro-7B)|
-|[deepseek-ai/DeepSeek-OCR](https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR)|deepseek_ocr|deepseek_ocr|-|&#x2718;|vision|[deepseek-ai/DeepSeek-OCR](https://huggingface.co/deepseek-ai/DeepSeek-OCR)|
+|[deepseek-ai/DeepSeek-OCR](https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR)|deepseek_ocr|deepseek_ocr|transformers==4.46.3, easydict|&#x2718;|vision|[deepseek-ai/DeepSeek-OCR](https://huggingface.co/deepseek-ai/DeepSeek-OCR)|
 |[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V)|minicpmv|minicpmv|timm, transformers<4.42|&#x2718;|vision|[openbmb/MiniCPM-V](https://huggingface.co/openbmb/MiniCPM-V)|
 |[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2)|minicpmv|minicpmv|timm, transformers<4.42|&#x2718;|vision|[openbmb/MiniCPM-V-2](https://huggingface.co/openbmb/MiniCPM-V-2)|
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|&#x2718;|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
