@@ -45,7 +45,7 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 @dataclass
 class GKDConfig(RolloutTrainerArgumentsMixin, SwiftArgumentsMixin, HfGKDConfig):
-
+    offload_teacher_model: bool = False
     def __post_init__(self):
         RolloutTrainerArgumentsMixin.__post_init__(self)
         SwiftArgumentsMixin.__post_init__(self)
