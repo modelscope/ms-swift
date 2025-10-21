@@ -322,7 +322,12 @@ register_model(
 def get_model_tokenizer_deepseek_ocr(*args, **kwargs):
     from transformers import AutoModel
     kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModel
-    return get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        patch_output_to_input_device(model.model.sam_model)
+        patch_output_to_input_device(model.model.vision_model)
+        patch_output_to_input_device(model.model.projector)
+    return model, tokenizer
 
 
 register_model(

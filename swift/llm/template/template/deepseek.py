@@ -247,7 +247,7 @@ class DeepseekOCR(Template):
         self.base_size = get_env_args('base_size', int, 1024)
         self.image_size = get_env_args('image_size', int, 640)
 
-    def _load_image(self, images):
+    def _preprocess_image(self, images):
         # Code borrowed from
         # https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR/file/view/master/modeling_deepseekocr.py?status=1
         crop_mode = True
@@ -307,7 +307,7 @@ class DeepseekOCR(Template):
                 if width_crop_num > 1 or height_crop_num > 1:
                     tokenized_image += ([image_token_id] * (num_queries * width_crop_num) + [image_token_id]) * (
                         num_queries * height_crop_num)
-                tokenized_str += tokenized_image
+                tokenized_str.append(tokenized_image)
             else:
                 """process the global view"""
                 if self.image_size <= 640:
@@ -352,11 +352,34 @@ class DeepseekOCR(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         image_token = self._tokenize('<image>')
         idx_list = findall(input_ids, image_token)
         if idx_list:
-            pass
+            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(inputs.images)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda i: tokenized_str[i])
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
+            encoded['images'] = [(images_crop, images_ori)]
+            encoded['images_seq_mask'] = (torch.tensor(input_ids) == image_token[0])[None]
+            encoded['images_spatial_crop'] = images_spatial_crop
+        return encoded
 
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        images = self.gather_list(batch, 'images')
+        if images:
+            res['images'] = images
+        images_seq_mask = self.concat_tensor(batch, 'images_seq_mask', 0)
+        images_spatial_crop = self.concat_tensor(batch, 'images_spatial_crop', 0)
+        if images_seq_mask is not None:
+            res['images_seq_mask'] = images_seq_mask
+        if images_spatial_crop is not None:
+            res['images_spatial_crop'] = images_spatial_crop
+        return res
 
 
 register_template(
