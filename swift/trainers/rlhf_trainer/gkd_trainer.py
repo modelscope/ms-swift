@@ -239,8 +239,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
-
-        if random.random() <= self.lmbda:
+        if self._get_random_num() <= self.lmbda:
             # On-policy: student model generates responses
             if args.use_vllm:
                 processed_inputs = self._preprocess_inputs(inputs)
@@ -272,7 +271,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         else:
             inputs = self._prepare_batch_inputs(inputs)
-        assert isinstance(inputs, list)
+        assert not isinstance(inputs, list)
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
@@ -293,12 +292,22 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         to CPU to free up GPU memory for vLLM engine.
         """
+        # debug
+        logger.info('--------------------------------before offload--------------------------------')
+        used_memory = torch.cuda.memory_allocated() / 1024 / 1024 / 1024  # GiB
+        logger.info(f'Used memory: {used_memory} GiB')
+        reserved_memory = torch.cuda.memory_reserved() / 1024 / 1024 / 1024  # GiB
+        logger.info(f'Reserved memory: {reserved_memory} GiB')
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
         empty_cache()
-
+        logger.info('--------------------------------after offload--------------------------------')
+        used_memory = torch.cuda.memory_allocated() / 1024 / 1024 / 1024  # GiB
+        logger.info(f'Used memory: {used_memory} GiB')
+        reserved_memory = torch.cuda.memory_reserved() / 1024 / 1024 / 1024  # GiB
+        logger.info(f'Reserved memory: {reserved_memory} GiB')
         try:
             yield
         finally:
@@ -308,6 +317,20 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
             empty_cache()
+
+    def _get_random_num(self) -> float:
+        """
+        Generate a deterministic random number using the seed from arguments.
+
+        Uses an isolated Random instance to avoid interfering with the global
+        random state, ensuring thread-safety and consistent behavior across processes.
+
+        Returns:
+            float: A random number in the range [0.0, 1.0).
+        """
+        arg_seed = int(getattr(self.args, 'seed', 0))
+        rng = random.Random(arg_seed)
+        return rng.random()
 
     @contextmanager
     def load_teacher_model_context(self):

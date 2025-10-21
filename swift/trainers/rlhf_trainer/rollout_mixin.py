@@ -91,7 +91,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""
         args = self.args
-        self.num_generations = args.num_generations
+        self.num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
         self.temperature = args.temperature
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization
@@ -180,8 +180,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
         model = self.model
-
-        max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * args.steps_per_generation)
+        steps_per_generation = args.steps_per_generation if hasattr(args, 'steps_per_generation') else 1
+        max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         lora_kwargs = {}
