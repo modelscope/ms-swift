@@ -227,6 +227,7 @@ class MLLMModelType:
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
+    deepseek_ocr = 'deepseek_ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
@@ -295,4 +296,4 @@ class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, Reranke
         return list(
             chain.from_iterable(
                 _get_model_name_list(model_type_cls)
-                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))
+                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType]))
