@@ -312,11 +312,13 @@ class Qwen2VLTemplate(Template):
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
             elif self.version == 'v3':
-                if video is not None and self.mode != 'vllm':
+                if self.mode == 'vllm':
+                    tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
+                else:
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
+                    tokens = ['<|video_pad|>']
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
-                tokens = ['<|video_pad|>']
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
