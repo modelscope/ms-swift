@@ -963,13 +963,22 @@ def test_sailvl2():
     assert ans in response
 
 
+def test_deepseek_ocr():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-OCR')
+    query = 'describe the image'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert ans in response
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
 
     logger = get_logger()
     # test_qwen2_vl()
-    test_qwen2_5_vl_batch_infer()
+    # test_qwen2_5_vl_batch_infer()
     # test_qwen2_5_omni()
     # test_qwen3_omni()
     # test_qwen3_omni_audio()
@@ -1034,3 +1043,4 @@ if __name__ == '__main__':
     # test_internvl3_5_hf()
     # test_internvl_gpt_hf()
     # test_sailvl2()
+    test_deepseek_ocr()

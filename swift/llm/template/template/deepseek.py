@@ -235,11 +235,19 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 
 
 class DeepseekOCR(Template):
+    image_placeholder = ['<image>\n']
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         print()
 
-register_template(TemplateMeta(MLLMTemplateType.deepseek_ocr, template_cls=DeepseekOCR))
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.deepseek_ocr,
+        prefix=['<｜begin▁of▁sentence｜>'],
+        prompt=['{{QUERY}}'],
+        chat_sep=None,
+        template_cls=DeepseekOCR))
 
 
 @dataclass
