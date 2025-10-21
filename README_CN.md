@@ -127,8 +127,8 @@ pip install -e .
 | transformers | >=4.33       | 4.56.2              |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.18 |                     |                    |
-| flash_attn   |              | 2.7.4.post1/3.0.0b1 |                    |
-| trl          | >=0.15,<0.21 | 0.20.0              | RLHF               |
+| flash_attn   |              | 2.8.1/3.0.0b1 |                    |
+| trl          | >=0.15,<0.24 | 0.20.0              | RLHF               |
 | deepspeed    | >=0.14       | 0.17.5              | 训练                 |
 | vllm         | >=0.5.1      | 0.10.1.1                | 推理/部署              |
 | sglang       | >=0.4.6      | 0.4.10.post2         | 推理/部署              |
