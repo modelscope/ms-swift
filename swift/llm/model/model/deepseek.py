@@ -324,6 +324,7 @@ def get_model_tokenizer_deepseek_ocr(*args, **kwargs):
     kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModel
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
+        patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.sam_model)
         patch_output_to_input_device(model.model.vision_model)
         patch_output_to_input_device(model.model.projector)

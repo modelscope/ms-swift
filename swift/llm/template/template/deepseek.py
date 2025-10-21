@@ -356,8 +356,8 @@ class DeepseekOCR(Template):
         image_token = self._tokenize('<image>')
         idx_list = findall(input_ids, image_token)
         if idx_list:
-            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(inputs.images,
-                                                                                                 image_token[0])
+            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(
+                inputs.images, image_token[0])
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 lambda i: tokenized_str[i])
             encoded['input_ids'] = input_ids
