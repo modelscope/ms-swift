@@ -188,8 +188,6 @@ class RayHelper:
                 env_vars["MASTER_ADDR"] = ip
                 env_vars["MASTER_PORT"] = str(port)
                 env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
-                if "ROLL_LOG_DIR" in os.environ:
-                    env_vars["ROLL_LOG_DIR"] = os.environ["ROLL_LOG_DIR"]
 
                 runtime_env = RuntimeEnv(env_vars=env_vars)
 
