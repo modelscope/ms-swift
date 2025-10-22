@@ -1,8 +1,7 @@
 # 4 * 66GiB, 46s/it
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=4,5,6,7 \
-MASTER_PORT=29900 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen2.5-7B \
