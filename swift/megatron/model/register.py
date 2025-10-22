@@ -33,7 +33,7 @@ class MegatronModelMeta:
         # only for gpt model type
         if self.megatron_model_type != 'gpt':
             raise ValueError(
-                f"convert_mcore_lora_to_hf_peft is only supported for gpt model type, but got {self.megatron_model_type}"
+                f'convert_mcore_lora_to_hf_peft is only supported for gpt model type, but got {self.megatron_model_type}'
             )
 
         from .gpt.mcore2hf import convert_mcore_lora_to_hf_peft

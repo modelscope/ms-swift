@@ -1,12 +1,12 @@
-import os
 import math
+import os
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # ------------------------------
 # Configuration
@@ -51,7 +51,7 @@ def attach_peft_on_gpu(base_model_name: str, adapter_dir: str, gpu_index: int, d
 
 
 def make_inputs(tokenizer: AutoTokenizer, seq_len: int = 32, batch_size: int = 2):
-    texts = [f"Verification sample #{i}." for i in range(batch_size)]
+    texts = [f'Verification sample #{i}.' for i in range(batch_size)]
     enc = tokenizer(texts, return_tensors='pt', padding=True, truncation=True, max_length=seq_len)
     return enc
 
@@ -86,8 +86,8 @@ def report(stat: DiffStat, tag: str):
 @torch.inference_mode()
 def compare_e2e(merged, peft_model, tokenizer):
     batch_cpu = make_inputs(tokenizer)
-    batch_m = {k: v.to(f"cuda:{GPU_MERGED}") for k, v in batch_cpu.items()}
-    batch_p = {k: v.to(f"cuda:{GPU_PEFT}") for k, v in batch_cpu.items()}
+    batch_m = {k: v.to(f'cuda:{GPU_MERGED}') for k, v in batch_cpu.items()}
+    batch_p = {k: v.to(f'cuda:{GPU_PEFT}') for k, v in batch_cpu.items()}
 
     out_m = merged(**batch_m, output_hidden_states=True)
     out_p = peft_model(**batch_p, output_hidden_states=True)
@@ -104,7 +104,7 @@ def compare_e2e(merged, peft_model, tokenizer):
 def find_linear_modules(model: nn.Module, suffixes=('q_proj', 'k_proj', 'v_proj', 'o_proj')) -> Dict[str, nn.Linear]:
     out = {}
     for name, mod in model.named_modules():
-        if isinstance(mod, nn.Linear) and any(name.endswith(f".self_attn.{suf}") for suf in suffixes):
+        if isinstance(mod, nn.Linear) and any(name.endswith(f'.self_attn.{suf}') for suf in suffixes):
             out[name] = mod
     return out
 
@@ -150,9 +150,9 @@ def _resolve_in_peft(peft_model: nn.Module, merged_name: str) -> Optional[nn.Mod
     """
     candidates = [
         merged_name,
-        f"base_model.{merged_name}",
-        f"base_model.model.{merged_name}",
-        f"base_model.model.model.{merged_name}",
+        f'base_model.{merged_name}',
+        f'base_model.model.{merged_name}',
+        f'base_model.model.model.{merged_name}',
     ]
     peft_named = dict(peft_model.named_modules())
     for cand in candidates:
@@ -169,14 +169,14 @@ def compare_weights(merged, peft_model):
     for name, m_lin in merged_lin.items():
         p_lin = _resolve_in_peft(peft_model, name)
         if p_lin is None:
-            print(f"[SKIP] Cannot resolve in PEFT: {name}")
+            print(f'[SKIP] Cannot resolve in PEFT: {name}')
             ok_all = False
             continue
 
         W_merged = m_lin.weight.detach().float().cpu()
         W_peft_eff = peft_effective_weight(p_lin)
 
-        ok = report(tensor_diff(W_merged, W_peft_eff), f"Weights::{name}")
+        ok = report(tensor_diff(W_merged, W_peft_eff), f'Weights::{name}')
         ok_all = ok_all and ok
 
     return ok_all
@@ -204,7 +204,7 @@ def load_models():
 @torch.inference_mode()
 def run_generate(model, tok, prompts, device, **gen_kwargs):
     enc = tok(prompts, return_tensors='pt', padding=True)
-    enc = {k: v.to(f"cuda:{device}") for k, v in enc.items()}
+    enc = {k: v.to(f'cuda:{device}') for k, v in enc.items()}
     out = model.generate(**enc, **gen_kwargs, return_dict_in_generate=True, output_scores=True)
     texts = tok.batch_decode(out.sequences, skip_special_tokens=True)
     return out, texts
@@ -216,7 +216,7 @@ def compare_texts(a_list, b_list):
         same = (a == b)
         ok &= same
         tag = 'SAME ' if same else 'DIFF*'
-        print(f"[{tag}] sample#{i}\n--- merged ---\n{a}\n--- base+peft ---\n{b}\n")
+        print(f'[{tag}] sample#{i}\n--- merged ---\n{a}\n--- base+peft ---\n{b}\n')
     return ok
 
 

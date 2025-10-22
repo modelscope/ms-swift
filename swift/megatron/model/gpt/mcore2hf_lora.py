@@ -1,12 +1,13 @@
 # Copyright (c) Kakao Corp. (AI Alignment Team).
 # Contact: kevin.us@kakaocorp.com
 
-import json
 import os
 from collections import OrderedDict
 from dataclasses import asdict
 
+import json
 from safetensors.torch import save_file
+
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -27,7 +28,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
     dst_model = os.path.join(dst_dir, 'adapter_model.safetensors')
     dst_cfg = os.path.join(dst_dir, 'adapter_config.json')
 
-    logger.info(f"Converting Megatron Core LoRA to HF PEFT format at {dst_dir}")
+    logger.info(f'Converting Megatron Core LoRA to HF PEFT format at {dst_dir}')
 
     # Extract shape information from HuggingFace model
     logger.info('Extracting shape information from HuggingFace model...')
@@ -42,7 +43,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
     assert v_out // num_query_groups == kv_dim, 'k/v group out dim mismatch'
 
     logger.info(
-        f"Shape extraction: num_query_groups={num_query_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}"
+        f'Shape extraction: num_query_groups={num_query_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}'
     )
 
     # Bucketize modules from peft_model state_dict
@@ -59,7 +60,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         # Parse key considering .default.weight format
         if len(parts) >= 2 and parts[-2] == 'default':
             # e.g., lora_A.default.weight -> lora_A.weight
-            local = f"{parts[-3]}.{parts[-1]}"  # default.weight
+            local = f'{parts[-3]}.{parts[-1]}'  # default.weight
             prefix = '.'.join(parts[:-3])  # e.g., ...linear_qkv
         else:
             # Original logic: e.g., lora_A.weight
@@ -74,9 +75,9 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         """Create independent copy of tensor for saving + ensure contiguous memory"""
         t = tensor.detach().clone().contiguous()
         if key in dst:
-            raise ValueError(f"Duplicate key: {key}")
+            raise ValueError(f'Duplicate key: {key}')
         if 'weight' not in key:
-            logger.debug(f"Skipping non-weight key: {key}")
+            logger.debug(f'Skipping non-weight key: {key}')
             return
         key = remap_key_for_peft(key)
         dst[key] = t
@@ -96,7 +97,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         """mcore: ...self_attention.linear_proj -> HF: ...self_attn.o_proj"""
         new_prefix = prefix.replace('.self_attention.linear_proj', '.self_attn.o_proj')
         for local, T in tensors.items():
-            push(dst_tensors, f"{new_prefix}.{local}", T)
+            push(dst_tensors, f'{new_prefix}.{local}', T)
 
     def convert_linear_qkv(prefix, tensors):
         """
@@ -115,16 +116,16 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         if A is None or B is None:
             # If core weights are missing, pass through with original key
             for local, T in tensors.items():
-                push(dst_tensors, f"{prefix}.{local}", T)
+                push(dst_tensors, f'{prefix}.{local}', T)
             return
 
         r, in_A = A.shape
         out_B, rB = B.shape
-        assert rB == r, f"LoRA rank mismatch: A={r}, B={rB}"
-        assert in_A == in_features, f"in_features mismatch: A={in_A}, base={in_features}"
+        assert rB == r, f'LoRA rank mismatch: A={r}, B={rB}'
+        assert in_A == in_features, f'in_features mismatch: A={in_A}, base={in_features}'
 
         expected_out = num_query_groups * (q_dim + kv_dim + kv_dim)
-        assert out_B == expected_out, f"Fused B out({out_B}) != expected({expected_out})"
+        assert out_B == expected_out, f'Fused B out({out_B}) != expected({expected_out})'
 
         # Reshape to [num_query_groups, (q_dim+kv_dim+kv_dim), r] then slice
         Bg = B.reshape(num_query_groups, q_dim + kv_dim + kv_dim, r)
@@ -136,22 +137,22 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
 
         # q_proj
         q_prefix = prefix.replace('.self_attention.linear_qkv', '.self_attn.q_proj')
-        push(dst_tensors, f"{q_prefix}.lora_A.weight", A)
-        push(dst_tensors, f"{q_prefix}.lora_B.weight", Bq)
+        push(dst_tensors, f'{q_prefix}.lora_A.weight', A)
+        push(dst_tensors, f'{q_prefix}.lora_B.weight', Bq)
 
         # k_proj
         k_prefix = prefix.replace('.self_attention.linear_qkv', '.self_attn.k_proj')
-        push(dst_tensors, f"{k_prefix}.lora_A.weight", A)
-        push(dst_tensors, f"{k_prefix}.lora_B.weight", Bk)
+        push(dst_tensors, f'{k_prefix}.lora_A.weight', A)
+        push(dst_tensors, f'{k_prefix}.lora_B.weight', Bk)
         for k, v in misc.items():
-            push(dst_tensors, f"{k_prefix}.{k}", v)
+            push(dst_tensors, f'{k_prefix}.{k}', v)
 
         # v_proj
         v_prefix = prefix.replace('.self_attention.linear_qkv', '.self_attn.v_proj')
-        push(dst_tensors, f"{v_prefix}.lora_A.weight", A)
-        push(dst_tensors, f"{v_prefix}.lora_B.weight", Bv)
+        push(dst_tensors, f'{v_prefix}.lora_A.weight', A)
+        push(dst_tensors, f'{v_prefix}.lora_B.weight', Bv)
         for k, v in misc.items():
-            push(dst_tensors, f"{v_prefix}.{k}", v)
+            push(dst_tensors, f'{v_prefix}.{k}', v)
 
     def convert_mla_attention(prefix, tensors):
         """
@@ -167,19 +168,19 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         if '.linear_q_down_proj' in prefix:
             new_prefix = prefix.replace('.linear_q_down_proj', '.q_a_proj')
             for local, T in tensors.items():
-                push(dst_tensors, f"{new_prefix}.{local}", T)
+                push(dst_tensors, f'{new_prefix}.{local}', T)
         elif '.linear_q_up_proj' in prefix:
             new_prefix = prefix.replace('.linear_q_up_proj', '.q_b_proj')
             for local, T in tensors.items():
-                push(dst_tensors, f"{new_prefix}.{local}", T)
+                push(dst_tensors, f'{new_prefix}.{local}', T)
         elif '.linear_kv_down_proj' in prefix:
             new_prefix = prefix.replace('.linear_kv_down_proj', '.kv_a_proj_with_mqa')
             for local, T in tensors.items():
-                push(dst_tensors, f"{new_prefix}.{local}", T)
+                push(dst_tensors, f'{new_prefix}.{local}', T)
         elif '.linear_kv_up_proj' in prefix:
             new_prefix = prefix.replace('.linear_kv_up_proj', '.kv_b_proj')
             for local, T in tensors.items():
-                push(dst_tensors, f"{new_prefix}.{local}", T)
+                push(dst_tensors, f'{new_prefix}.{local}', T)
 
     def convert_mlp_linear_fc1(prefix, tensors):
         """
@@ -192,7 +193,7 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         B = tensors.get('lora_B.weight', None)
         if A is None or B is None:
             for local, T in tensors.items():
-                push(dst_tensors, f"{prefix}.{local}", T)
+                push(dst_tensors, f'{prefix}.{local}', T)
             return
 
         # Split gate_up_dim into gate_dim and up_dim (usually 1:1 ratio)
@@ -208,23 +209,23 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
 
         # gate_proj
         gate_prefix = prefix.replace('.mlp.linear_fc1', '.mlp.gate_proj')
-        push(dst_tensors, f"{gate_prefix}.lora_A.weight", A)
-        push(dst_tensors, f"{gate_prefix}.lora_B.weight", B_gate)
+        push(dst_tensors, f'{gate_prefix}.lora_A.weight', A)
+        push(dst_tensors, f'{gate_prefix}.lora_B.weight', B_gate)
         for k, v in misc.items():
-            push(dst_tensors, f"{gate_prefix}.{k}", v)
+            push(dst_tensors, f'{gate_prefix}.{k}', v)
 
         # up_proj
         up_prefix = prefix.replace('.mlp.linear_fc1', '.mlp.up_proj')
-        push(dst_tensors, f"{up_prefix}.lora_A.weight", A)
-        push(dst_tensors, f"{up_prefix}.lora_B.weight", B_up)
+        push(dst_tensors, f'{up_prefix}.lora_A.weight', A)
+        push(dst_tensors, f'{up_prefix}.lora_B.weight', B_up)
         for k, v in misc.items():
-            push(dst_tensors, f"{up_prefix}.{k}", v)
+            push(dst_tensors, f'{up_prefix}.{k}', v)
 
     def convert_mlp_linear_fc2(prefix, tensors):
         """Convert MLP linear_fc2 LoRA to HF down_proj"""
         new_prefix = prefix.replace('.mlp.linear_fc2', '.mlp.down_proj')
         for local, T in tensors.items():
-            push(dst_tensors, f"{new_prefix}.{local}", T)
+            push(dst_tensors, f'{new_prefix}.{local}', T)
 
     def convert_moe_experts(prefix, tensors):
         """MoE experts LoRA conversion"""
@@ -256,13 +257,13 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
             convert_moe_experts(prefix, tensors)
         else:
             # Copy unknown modules as-is
-            logger.warning(f"Unknown module pattern: {prefix}")
+            logger.warning(f'Unknown module pattern: {prefix}')
             for local, T in tensors.items():
-                push(dst_tensors, f"{prefix}.{local}", T)
+                push(dst_tensors, f'{prefix}.{local}', T)
 
     # Save converted tensors
     save_file(dst_tensors, dst_model, metadata={'format': 'pt'})
-    logger.info(f"Saved converted LoRA tensors to {dst_model}")
+    logger.info(f'Saved converted LoRA tensors to {dst_model}')
 
     # Update adapter_config.json
     logger.info('Converting adapter config...')
@@ -298,5 +299,5 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
     with open(dst_cfg, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2, default=str)
 
-    logger.info(f"cfg: {cfg}")
-    logger.info(f"Saved converted adapter config to {dst_cfg}")
+    logger.info(f'cfg: {cfg}')
+    logger.info(f'Saved converted adapter config to {dst_cfg}')

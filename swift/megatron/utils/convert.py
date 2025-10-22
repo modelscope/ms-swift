@@ -2,7 +2,7 @@
 
 import math
 from contextlib import contextmanager
-from dataclasses import fields, asdict
+from dataclasses import asdict, fields
 from typing import Any, Dict
 
 import torch
@@ -311,7 +311,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         with adapter_state_dict_context():
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
             if args.to_hf and not args.merge_lora:
-                logger.info(f"Saving LoRA adapter to `{args.output_dir}` ...")
+                logger.info(f'Saving LoRA adapter to `{args.output_dir}` ...')
                 assert megatron_args.multi_latent_attention is False, 'Multi-latent attention is not supported for LoRA conversion.'
 
                 peft_model.config = asdict(peft_model.config)  # for PEFT <= 0.17.1
