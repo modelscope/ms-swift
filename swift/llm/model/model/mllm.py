@@ -8,7 +8,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm import TemplateType
 from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
-from ..constant import MLLMModelType
+from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_normalizer
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
@@ -179,6 +179,87 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         tags=['vision']))
+
+
+def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
+    # Use AutoModel to respect the model repo's dynamic class mapping
+    # and load the custom Jina reranker head via trust_remote_code.
+    from transformers import AutoModel
+    from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+    kwargs['automodel_class'] = kwargs.get('automodel_class') or AutoModel
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    # Patch forward to return a sequence-classification-style output with `.logits`
+    # Use the model's own head (already present in jina-reranker-m0), just wrap outputs.
+    if model is not None and not hasattr(model, '_forward_origin'):
+        model._forward_origin = model.forward
+        model.logit_bias = 2.65
+
+        def forward(self,
+                    input_ids=None,
+                    attention_mask=None,
+                    position_ids=None,
+                    inputs_embeds=None,
+                    pixel_values=None,
+                    image_grid_thw=None,
+                    video_grid_thw=None,
+                    output_attentions=None,
+                    output_hidden_states=None,
+                    return_dict=None,
+                    **kwargs):
+            # Remove labels to avoid upstream asserts in ranking models
+            kwargs.pop('labels', None)
+            if return_dict is None:
+                return_dict = True
+
+            out = self._forward_origin(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+                **kwargs)
+
+            logits = out.unsqueeze(-1) - self.logit_bias
+
+            if not return_dict:
+                return (logits, )
+
+            return SequenceClassifierOutputWithPast(logits=logits)
+
+        model.forward = MethodType(forward, model)
+
+        def padding_free_fn(self, output, kwargs, padding_side):
+            return_dict = kwargs.get('return_dict', None)
+
+            output.logits = output['last_hidden_state'][:, -1]
+            logits = self.score(output.logits)
+            logits = logits - self.logit_bias
+
+            if not return_dict:
+                return (logits, )
+
+            return SequenceClassifierOutputWithPast(logits=logits)
+
+        model.padding_free_fn = MethodType(padding_free_fn, model)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        RerankerModelType.jina_reranker_m0,
+        [ModelGroup([Model('JinaAI/jina-reranker-m0', 'JinaAI/jina-reranker-m0')])],
+        TemplateType.jina_reranker_m0,
+        get_model_tokenizer_jina_reranker_m0,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['JinaRerankerM0ForConditionalGeneration'],
+        is_multimodal=True,
+        tags=['reranker', 'vision'],
+    ))
 
 
 def get_model_tokenizer_keye_vl(model_dir: str, *args, **kwargs):

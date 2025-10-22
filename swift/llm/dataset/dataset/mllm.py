@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from datasets import Dataset as HfDataset
@@ -776,6 +776,68 @@ class TextCapsEmbPreprocessor(RowPreprocessor):
         }
 
 
+class TextCapsReRankPreprocessor(RowPreprocessor):
+
+    def __init__(self,
+                 *,
+                 columns: Optional[Dict[str, str]] = None,
+                 negatives_per_sample: Optional[int] = None,
+                 **kwargs):
+        super().__init__(columns=columns, **kwargs)
+        self._responses_pool: Optional[List[str]] = None
+        # Keep default aligned with MAX_NEGATIVE_SAMPLES used in collator if not provided
+        self.negatives_per_sample: int = int(os.environ.get(
+            'MAX_NEGATIVE_SAMPLES', 7)) if negatives_per_sample is None else negatives_per_sample
+
+    def prepare_dataset(self, dataset):
+        # Build a pool of responses from the dataset for negative sampling
+        try:
+            # Access full column; works for map-style datasets
+            responses = dataset['response'] if 'response' in dataset.features else None
+        except Exception:
+            responses = None
+
+        pool: List[str] = []
+        if responses is not None:
+            for resp in responses:
+                if isinstance(resp, (list, tuple)):
+                    for s in resp:
+                        if isinstance(s, str):
+                            pool.append(s)
+                elif isinstance(resp, str):
+                    pool.append(resp)
+        self._responses_pool = pool if pool else None
+        return dataset
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not os.path.exists(row['images']['path']):
+            return None
+        positive = row['response'][0]
+        negatives: List[str] = []
+        if self._responses_pool:
+            candidates = [s for s in self._responses_pool if isinstance(s, str) and s not in row['response']]
+            if candidates:
+                k = min(self.negatives_per_sample, len(candidates))
+                # Use numpy RandomState from base class for deterministic sampling
+                idxs = self.random_state.choice(len(candidates), size=k, replace=False).tolist()
+                negatives = [candidates[i] for i in idxs]
+        return {
+            'messages': [{
+                'role': 'user',
+                'content': '<image>'
+            }],
+            'positive_messages': [[{
+                'role': 'user',
+                'content': positive
+            }]],
+            'negative_messages': [[{
+                'role': 'user',
+                'content': n
+            }] for n in negatives],
+            'images': row['images']
+        }
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/TextCaps',
@@ -789,6 +851,11 @@ register_dataset(
             SubsetDataset(
                 name='emb',
                 preprocess_func=TextCapsEmbPreprocessor(columns={'reference_strs': 'response'}),
+                split=['train', 'validation'],
+            ),
+            SubsetDataset(
+                name='rerank',
+                preprocess_func=TextCapsReRankPreprocessor(columns={'reference_strs': 'response'}),
                 split=['train', 'validation'],
             ),
         ],

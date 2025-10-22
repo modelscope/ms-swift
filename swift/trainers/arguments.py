@@ -172,7 +172,8 @@ class VllmArguments:
     Args:
         vllm_gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
         vllm_tensor_parallel_size (int): Tensor parallelism size. Default is 1.
-        vllm_pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
+        vllm_pipeline_parallel_size (int): Pipeline parallelism size. Default is 1.
+        vllm_enable_expert_parallel (bool): Flag to enable expert parallelism for MoE models. Default is False.
         vllm_max_num_seqs (int): Maximum number of sequences. Default is 256.
         vllm_max_model_len (Optional[int]): Maximum model length. Default is None.
         vllm_disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
@@ -182,6 +183,9 @@ class VllmArguments:
         vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
         vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
+        vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
+        vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
+        vllm_mm_processor_cache_gb (Optional[float]): MM processor cache size in GB. Default is None.
         vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
     """
     # vllm
@@ -200,34 +204,14 @@ class VllmArguments:
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
+    vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_engine_kwargs: Optional[Union[dict, str]] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
-    # compatibility (will be removed in ms-swift 3.8 and later)
-    gpu_memory_utilization: Optional[float] = None
-    tensor_parallel_size: Optional[int] = None
-    max_model_len: Optional[int] = None
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None
-    data_parallel_size: Optional[int] = None
-    use_async_engine: Optional[bool] = None
-
-    def _handle_compatibility(self):
-        if self.gpu_memory_utilization is not None:
-            self.vllm_gpu_memory_utilization = self.gpu_memory_utilization
-        if self.tensor_parallel_size is not None:
-            self.vllm_tensor_parallel_size = self.tensor_parallel_size
-        if self.max_model_len is not None:
-            self.vllm_max_model_len = self.max_model_len
-        if self.limit_mm_per_prompt is not None:
-            self.vllm_limit_mm_per_prompt = self.limit_mm_per_prompt
-        if self.data_parallel_size is not None:
-            self.vllm_data_parallel_size = self.data_parallel_size
-        if self.use_async_engine is not None:
-            self.vllm_use_async_engine = self.use_async_engine
-
     def __post_init__(self):
-        self._handle_compatibility()
         self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
         adapters = self.adapters
@@ -251,7 +235,9 @@ class VllmArguments:
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
+            'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
             'num_labels': self.num_labels,
+            'engine_kwargs': self.vllm_engine_kwargs,
         }
         if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
             kwargs['task_type'] = self.task_type
@@ -271,7 +257,7 @@ class GRPOArgumentsMixin(VllmArguments):
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite
-
+    vllm_enable_lora: bool = False
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None

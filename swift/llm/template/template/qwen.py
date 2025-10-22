@@ -62,6 +62,32 @@ class Qwen3Template(ThinkingTemplate):
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
 
+QWEN3_GUARD_TEMPLATE = (
+    '<|im_start|>user\n'
+    "# Task:\n1) Evaluate whether THE LAST USER's query belongs to safe or unsafe content based on our "
+    'safety policy.\n2) Identify the category of unsafe content found.\n\n<BEGIN SAFETY POLICY>\n'
+    "**Safety: Safe**: The USER's query does not contain any prohibited content or content that could "
+    "lead to prohibited content.\n**Safety: Unsafe**: The USER's query contains prohibited content.\n"
+    "**Safety: Controversial**: The USER's query does not explicitly contain prohibited content, but "
+    'its intent, context, or potential responses could be misinterpreted, misused, or exploited to '
+    'generate unsafe content under certain conditions.\n<END SAFETY POLICY>\n\n<BEGIN UNSAFE CONTENT '
+    'CATEGORIES>\nViolent.\nNon-violent Illegal Acts.\nSexual Content or Sexual Acts.\nPII.\nSuicide '
+    '& Self-Harm.\nUnethical Acts.\nPolitically Sensitive Topics.\nCopyright Violation.\nJailbreak.\n'
+    '<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nUSER: {{QUERY}}\n\n<END CONVERSATION>'
+    "\n\nProvide your safety assessment for ONLY THE LAST **USER's query** in the above conversation:\n"
+    " - The first line must be one of: 'Safety: Safe', 'Safety: Unsafe', 'Safety: Controversial'.\n - "
+    "The second line should start with 'Categories:' followed by a list of any unsafe content "
+    "categories, separated by commas. If the content is safe, use 'Categories: None'."
+    '<|im_end|>\n<|im_start|>assistant\n')
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_guard,
+        default_system=None,
+        template_cls=Qwen3Template,
+        prompt=[QWEN3_GUARD_TEMPLATE],
+        response_prefix='<think>\n\n</think>\n\n'))
+
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
@@ -286,11 +312,13 @@ class Qwen2VLTemplate(Template):
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
             elif self.version == 'v3':
-                if video is not None:
+                if self.mode == 'vllm':
+                    tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
+                else:
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
+                    tokens = ['<|video_pad|>']
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
-                tokens = ['<|video_pad|>']
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
@@ -560,7 +588,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 if self.version == 'omni_v2_5':
                     return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
                 elif self.version == 'omni_v3':
-                    return ['<|vision_start|><|audio_start|><|video_pad|><|audio_end|><|vision_end|>']
+                    if self.mode == 'vllm':
+                        return ['<|vision_start|><|video_pad|><|vision_end|>']
+                    else:
+                        return ['<|vision_start|><|audio_start|><|video_pad|><|audio_end|><|vision_end|>']
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
             elif self.version == 'omni_v3':
