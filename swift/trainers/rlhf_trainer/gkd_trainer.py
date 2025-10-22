@@ -12,12 +12,11 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
-from trl.models.utils import prepare_deepspeed
 
 from swift.utils import empty_cache, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import RolloutTrainerMixin
-from .utils import identity_data_collator
+from .utils import identity_data_collator, memory_time_profiling_context, prepare_deepspeed
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -29,6 +28,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         teacher_model = kwargs.pop('teacher_model')
+        teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         kwargs['data_collator'] = identity_data_collator
         super().__init__(model, None, *_args, **kwargs)
@@ -42,7 +42,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Initialize teacher model
         if self.is_deepspeed_enabled:
-            self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+            if teacher_deepspeed_config is not None:
+                self.teacher_model = prepare_deepspeed(
+                    teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
+            else:
+                self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
         else:
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()

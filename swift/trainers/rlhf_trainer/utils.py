@@ -8,7 +8,7 @@ from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
@@ -22,8 +22,6 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
 from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
-
-logger = get_logger()
 
 if is_wandb_available():
     import wandb
@@ -52,6 +50,102 @@ if is_vllm_available():
             return self.lora_embeddings
 
 
+def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugin=None, training_args=None):
+    """
+    Prepares the model for DeepSpeed inference or evaluation by initializing it with the appropriate configuration.
+
+    Args:
+        model: The model to prepare
+        accelerator: The accelerator instance
+        deepspeed_config: Optional deepspeed config. If provided, use this instead of accelerator's plugin.
+        deepspeed_plugin: Optional DeepSpeedPlugin. If provided, use this instead of accelerator's plugin.
+        training_args: Optional training arguments for resolving "auto" values in config
+
+    Returns:
+        The prepared DeepSpeed model
+    """
+    try:
+        import deepspeed
+        import os
+        from copy import deepcopy
+        from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
+        from accelerate.utils import DeepSpeedPlugin
+    except ImportError:
+        pass
+
+    # Determine which config to use and create HfTrainerDeepSpeedConfig
+    if deepspeed_config is not None:
+        # Use provided config - need to wrap it with HfTrainerDeepSpeedConfig to handle "auto" values
+        if isinstance(deepspeed_config, dict):
+            # Create HfTrainerDeepSpeedConfig which will handle "auto" values
+            hf_ds_config = HfTrainerDeepSpeedConfig(deepspeed_config)
+
+            # Process the config with training args to resolve "auto" values
+            if training_args is not None:
+                hf_ds_config.trainer_config_process(training_args)
+
+            # Create a DeepSpeedPlugin with the processed config
+            temp_plugin = DeepSpeedPlugin(hf_ds_config=hf_ds_config)
+            config_kwargs = deepcopy(temp_plugin.deepspeed_config)
+        else:
+            raise ValueError(f'deepspeed_config should be a dict, got {type(deepspeed_config)}')
+    elif deepspeed_plugin is not None:
+        # Use provided plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+    else:
+        # Use accelerator's plugin (default behavior)
+        deepspeed_plugin = accelerator.state.deepspeed_plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+
+    stage = config_kwargs['zero_optimization']['stage']
+
+    if model is not None:
+        hidden_size = (
+            max(model.config.hidden_sizes) if getattr(model.config, 'hidden_sizes', None) else getattr(
+                model.config, 'hidden_size', None))
+        if hidden_size is not None and stage == 3:
+            # Note that `stage3_prefetch_bucket_size` can produce DeepSpeed messages like: `Invalidate trace cache
+            # @ step 0: expected module 1, but got module 0`
+            # This is expected and is not an error, see: https://github.com/microsoft/DeepSpeed/discussions/4081
+            config_kwargs.update({
+                'zero_optimization.reduce_bucket_size': hidden_size * hidden_size,
+                'zero_optimization.stage3_param_persistence_threshold': 10 * hidden_size,
+                'zero_optimization.stage3_prefetch_bucket_size': 0.9 * hidden_size * hidden_size,
+            })
+
+    # If ZeRO-3 is used, we shard both the active and reference model.
+    # Otherwise, we assume the reference model fits in memory and is initialized on each device with ZeRO
+    # disabled (stage 0)
+    if stage != 3:
+        config_kwargs['zero_optimization']['stage'] = 0
+
+    # CRITICAL: Save and clear DeepSpeed-related environment variables before initialization
+    # These environment variables (set during student model's DeepSpeed init) can override our config!
+    # Reference: https://github.com/microsoft/DeepSpeed/issues/xxxx
+    env_vars_to_clear = [
+        'DEEPSPEED_ZERO_STAGE',
+        'DEEPSPEED_CONFIG',
+        'DEEPSPEED_CONFIG_FILE',
+    ]
+    saved_env = {}
+    for env_var in env_vars_to_clear:
+        if env_var in os.environ:
+            saved_env[env_var] = os.environ[env_var]
+            del os.environ[env_var]
+
+    try:
+        # Explicitly pass args=None to ensure no args.deepspeed_config interference
+        model, *_ = deepspeed.initialize(args=None, model=model, config=config_kwargs)
+        model.eval()
+
+    finally:
+        # Restore environment variables
+        for env_var, value in saved_env.items():
+            os.environ[env_var] = value
+
+    return model
+
+
 @contextmanager
 def memory_time_profiling_context(
     name: str = 'Operation',
@@ -74,6 +168,8 @@ def memory_time_profiling_context(
     if not enable_profiling:
         yield
         return
+
+    logger = get_logger()
 
     # ===== Entry phase: Record initial state =====
     if sync_cuda and torch.cuda.is_available():

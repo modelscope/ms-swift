@@ -498,6 +498,8 @@ The reward model parameters will be used in PPO and GRPO.
 - teacher_adapters: Default is `[]`.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
+- teacher_deepspeed: Same as the deepspeed parameter, controls the DeepSpeed configuration for the teacher model. By default, uses the DeepSpeed configuration of the training model.
+
 
 #### PPO Arguments
 
@@ -553,8 +555,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
-  - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
-  - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
+  - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`. This parameter is ineffective under zero2/zero3.
+  - offload_model: Whether to offload the model during inference with vLLM. The default is `False`. This parameter is ineffective under zero3.
   - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
   When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
   When set to `per_round`, each individual turn's output length is limited separately.

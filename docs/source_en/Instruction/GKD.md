@@ -165,7 +165,8 @@ Use vLLM as the inference backend to accelerate student model sampling. Supports
 
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses PyTorch. Pre-sampling scheme is recommended.
 
-Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/vllm_server.sh)
+Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
+
 
 ### Solution 2: Teacher Model Pre-sampling
 

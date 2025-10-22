@@ -1,4 +1,4 @@
-# 4 * 66GiB, 46s/it
+# 4 * 73GiB, 11s/it
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -28,12 +28,10 @@ swift rlhf \
     --save_only_model true \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --deepspeed zero3_offload \
+    --deepspeed zero3 \
     --attn_impl flash_attn \
+    --teacher_deepspeed zero3_offload \
     --use_vllm true \
     --vllm_mode colocate \
-    --vllm_gpu_memory_utilization 0.4 \
-    --offload_model true \
-    --offload_optimizer true \
-    --offload_teacher_model true \
+    --vllm_gpu_memory_utilization 0.3 \
     --sleep_level 1

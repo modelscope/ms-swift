@@ -875,61 +875,14 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     @torch.no_grad()
     def offload_model(self, model):
-        """
-        Offload model parameters to CPU.
-        Note: This method should only be used with models NOT wrapped by DeepSpeed Zero3.
-        """
-        from swift.utils import get_logger
-        logger = get_logger()
-
-        # Count parameters and estimate memory
-        param_count = 0
-        memory_before = 0
         for param in model.parameters():
-            param_count += 1
-            if param.data.is_cuda:
-                memory_before += param.data.numel() * param.data.element_size()
-
-        logger.info(f'Offloading {param_count} parameters, estimated GPU memory: {memory_before / 1024**3:.2f} GiB')
-
-        # Offload parameters to CPU
-        for param in model.parameters():
-            if param.data.is_cuda:
-                param.data = param.data.cpu()
-
-        # Verify offload
-        on_cpu = sum(1 for param in model.parameters() if param.data.device.type == 'cpu')
-        logger.info(f'After offload: {on_cpu}/{param_count} parameters on CPU')
+            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
 
     @torch.no_grad()
     def load_model(self, model):
-        """
-        Load model parameters from CPU to GPU.
-        Note: This method should only be used with models NOT wrapped by DeepSpeed Zero3.
-        """
-        from swift.utils import get_logger
-        logger = get_logger()
-
         device = get_current_device()
-
-        # Count parameters and estimate memory
-        param_count = 0
-        memory_to_load = 0
         for param in model.parameters():
-            param_count += 1
-            if param.data.device.type == 'cpu':
-                memory_to_load += param.data.numel() * param.data.element_size()
-
-        logger.info(f'Loading {param_count} parameters, estimated memory: {memory_to_load / 1024**3:.2f} GiB')
-
-        # Load parameters to GPU
-        for param in model.parameters():
-            if param.data.device.type == 'cpu':
-                param.data = param.data.to(device, non_blocking=False)
-
-        # Verify load
-        on_gpu = sum(1 for param in model.parameters() if param.data.is_cuda)
-        logger.info(f'After load: {on_gpu}/{param_count} parameters on GPU')
+            param.data = param.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):
@@ -940,7 +893,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to('cpu', non_blocking=False)
+                        state[key] = value.to('cpu', non_blocking=True)
 
     @torch.no_grad()
     def load_optimizer(self):
@@ -952,7 +905,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to(device, non_blocking=False)
+                        state[key] = value.to(device, non_blocking=True)
 
     @contextmanager
     def offload_context(self):

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_current_device, get_logger, is_master, is_mp, set_default_ddp_config
+from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -28,6 +28,13 @@ class TeacherModelArguments:
     teacher_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     teacher_model_revision: Optional[List[str]] = None
+    teacher_deepspeed: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'DeepSpeed configuration for teacher model. '
+            'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+        })
 
 
 @dataclass
@@ -129,6 +136,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_padding_side()
         self._set_default()
         self._init_rollout()
+        self._init_teacher_deepspeed()
         GRPOArguments.__post_init__(self)
         TrainArguments.__post_init__(self)
         self._check_sequence_parallel()
@@ -372,6 +380,28 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise NotImplementedError(
                     f"The current rlhf_type '{self.rlhf_type}' does not support sequence_parallel. "
                     'Please set --sequence_parallel_size to 1.')
+
+    def _init_teacher_deepspeed(self):
+        """Initialize teacher_deepspeed configuration similar to _init_deepspeed in TrainArguments"""
+        if not self.teacher_deepspeed:
+            return
+
+        # Get the same ds_config_folder as main model
+        ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
+        deepspeed_mapping = {
+            name: f'{name}.json'
+            for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
+        }
+
+        # Check if teacher_deepspeed is a predefined name
+        for ds_name, ds_config in deepspeed_mapping.items():
+            if self.teacher_deepspeed == ds_name:
+                self.teacher_deepspeed = os.path.join(ds_config_folder, ds_config)
+                break
+
+        # Parse the config file to dict
+        self.teacher_deepspeed = json_parse_to_dict(self.teacher_deepspeed)
+        logger.info(f'Using teacher_deepspeed config: {self.teacher_deepspeed}')
 
     def _check_gkd(self):
         if self.rlhf_type != 'gkd':
