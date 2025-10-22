@@ -40,7 +40,6 @@ swift rlhf \
   --top_p 1.0 \
   --top_k 80 \
   --log_completions true \
-  --async_generate false \
   --offload_optimizer true \
   --offload_model true \
   --move_model_batches 40 \

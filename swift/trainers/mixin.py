@@ -680,7 +680,8 @@ class SwiftMixin:
                         output = llm_model.forward(*args, **kwargs)
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
-                    return transformers_seq_cls_forward(model, *args, origin_forward=inner_forward, **kwargs)
+                    return transformers_seq_cls_forward(
+                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
@@ -693,7 +694,13 @@ class SwiftMixin:
                         output = llm_model.forward(*args, **kwargs)
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
-                    return transformers_seq_cls_forward(model, *args, origin_forward=inner_forward, **kwargs)
+                    padding_free_fn = getattr(model, 'padding_free_fn', None)
+                    if callable(padding_free_fn):
+                        output = inner_forward(*args, **kwargs)
+                        return padding_free_fn(output, kwargs, self.args.padding_side)
+
+                    return transformers_seq_cls_forward(
+                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
 
                 model.forward = MethodType(reranker_forward, model)
             elif self.args.task_type == 'generative_reranker':
@@ -761,8 +768,8 @@ class SwiftMixin:
                         else:
                             vision_tower.gradient_checkpointing_disable()
                             vision_tower.disable_input_require_grads()
-                    except (NotImplementedError, AttributeError):
-                        pass
+                    except (NotImplementedError, AttributeError) as e:
+                        logger.warning(f'prepare gradient_checkpointing failed: {e}')
         # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
         self.args.gradient_checkpointing = False
 

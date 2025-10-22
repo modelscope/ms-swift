@@ -140,11 +140,11 @@ def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
                               [vit_parameters, aligner_parameters, llm_parameters]):
         if lr is None:
             lr = args.learning_rate
-        for wd in [0., args.weight_decay]:
-            if wd == 0:
-                params = [p for n, p in parameters if n not in decay_parameters]
-            else:
+        for use_wd, wd in zip([False, True], [0., args.weight_decay]):
+            if use_wd:
                 params = [p for n, p in parameters if n in decay_parameters]
+            else:
+                params = [p for n, p in parameters if n not in decay_parameters]
             if not params:
                 continue
             optimizer_grouped_parameters.append({
