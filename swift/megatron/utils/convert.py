@@ -312,7 +312,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
             if args.to_hf and not args.merge_lora:
                 logger.info(f'Saving LoRA adapter to `{args.output_dir}` ...')
-                assert megatron_args.multi_latent_attention is False, 'Multi-latent attention is not supported for LoRA conversion.'
+                assert megatron_args.multi_latent_attention is False, (
+                    'Multi-latent attention is not supported for LoRA conversion.')
 
                 peft_model.config = asdict(peft_model.config)  # for PEFT <= 0.17.1
                 # Convert Megatron Core LoRA to HuggingFace PEFT format

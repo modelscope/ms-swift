@@ -74,9 +74,8 @@ def tensor_diff(a: torch.Tensor, b: torch.Tensor) -> DiffStat:
 
 def report(stat: DiffStat, tag: str):
     ok = stat.max_abs <= ATOL + RTOL * max(1.0, stat.mean_abs)
-    print(
-        f"[{tag}] max|Δ|={stat.max_abs:.3e}  mean|Δ|={stat.mean_abs:.3e}  cos={stat.cos_sim:.6f}  -> {'OK' if ok else 'MISMATCH'}"
-    )
+    print(f'[{tag}] max|Δ|={stat.max_abs:.3e}  mean|Δ|={stat.mean_abs:.3e}  '
+          f"cos={stat.cos_sim:.6f}  -> {'OK' if ok else 'MISMATCH'}")
     return ok
 
 
@@ -248,7 +247,7 @@ def main():
 
     # ===== 2) Module-wise effective weight comparison =====
     print('\n=== (2) Module-wise effective weights ===')
-    ok_w = compare_weights(merged, peft_model)
+    compare_weights(merged, peft_model)
 
     # Summary
     print('\n=== SUMMARY ===')

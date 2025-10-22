@@ -42,9 +42,8 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
     kv_dim = k_out // num_query_groups
     assert v_out // num_query_groups == kv_dim, 'k/v group out dim mismatch'
 
-    logger.info(
-        f'Shape extraction: num_query_groups={num_query_groups}, q_dim={q_dim}, kv_dim={kv_dim}, in_features={in_features}'
-    )
+    logger.info(f'Shape extraction: num_query_groups={num_query_groups}, q_dim={q_dim}, '
+                f'kv_dim={kv_dim}, in_features={in_features}')
 
     # Bucketize modules from peft_model state_dict
     logger.info('Extracting LoRA weights from loaded PEFTModel...')
@@ -199,7 +198,6 @@ def convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir: str, 
         # Split gate_up_dim into gate_dim and up_dim (usually 1:1 ratio)
         gate_up_dim = B.shape[0]
         gate_dim = gate_up_dim // 2
-        up_dim = gate_up_dim - gate_dim
 
         # Split B into gate and up
         B_gate = B[:gate_dim, :]
