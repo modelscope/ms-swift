@@ -218,10 +218,7 @@ When using this type of data, please note:
 - Different models have different special characters and data format for the grounding task.
 - The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2/3-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
   - Note: Qwen2.5-VL uses absolute coordinates, so you need to be careful with image resizing each time. If you use the dataset format from Option 1, you need to resize the images in advance (height and width must be multiples of 28) and scale the coordinates accordingly. If you use the dataset format from Option 2, ms-swift will handle image resizing for you. You can still use `MAX_PIXELS` or `--max_pixels` for image resizing (training only; for inference, you still need to handle image resizing yourself).
-  - For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`, requires "ms-swift>=3.9.1") to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
-  ```jsonl
-  {"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
-  ```
+
 
 2. Use ms-swift's grounding data format:
 
@@ -237,7 +234,12 @@ The format will automatically convert the dataset format to the corresponding mo
 - bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points. The length of `bbox` should match the number of `<bbox>` instances.
   - Note: `<ref-object>` and `<bbox>` do not have a corresponding relationship; references and bounding boxes replace their own placeholders separately.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
-- image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
+- image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all. The length of `image_id` must match the length of `bbox`.
+
+For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`, requires "ms-swift>=3.9.1") to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
+```jsonl
+{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+```
 
 Testing the final format of the grounding data in ms-swift format:
 ```python
