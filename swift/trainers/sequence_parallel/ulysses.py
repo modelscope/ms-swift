@@ -150,6 +150,7 @@ class DistributedAttention(torch.nn.Module):
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
+
         if self.sequence_parallel.sp_world_size > 1:
             output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx,
                                         self.scatter_idx)
@@ -160,6 +161,7 @@ class DistributedAttention(torch.nn.Module):
 
 
 class SequenceParallel:
+
     _global_inited: bool = False
 
     def __init__(self):

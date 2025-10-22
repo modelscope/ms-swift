@@ -1706,6 +1706,7 @@ class Template(ProcessorMixin):
         res.update(self._data_collator_mm_data(batch))
         if not self.use_megatron and self.sequence_parallel_size > 1:
             res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
+
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
