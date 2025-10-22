@@ -14,10 +14,10 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import empty_cache, gc_collect, get_current_device, get_logger, unwrap_model_for_generation
+from swift.utils import empty_cache, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import RolloutTrainerMixin
-from .utils import identity_data_collator, memory_time_profiling_context
+from .utils import identity_data_collator
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -47,8 +47,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()
         if self.args.offload_teacher_model:
-            with memory_time_profiling_context(name='Teacher Model Offload'):
-                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
 
         # Initialize rollout infrastructure for vLLM support
         if args.use_vllm:
@@ -181,9 +180,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Generate using vLLM
         outputs = self._fast_infer(processed_inputs)
 
-        if not outputs:
-            raise RuntimeError('vLLM generation failed: empty outputs')
-
         output = outputs[0]
 
         # Extract generated response tokens
@@ -293,13 +289,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         to CPU to free up GPU memory for vLLM engine.
         """
-        # debug
-        logger.info('--------------------------------before offload--------------------------------')
-        used_memory = torch.cuda.memory_allocated() / 1024 / 1024 / 1024  # GiB
-        logger.info(f'Used memory: {used_memory} GiB')
-        reserved_memory = torch.cuda.memory_reserved() / 1024 / 1024 / 1024  # GiB
-        logger.info(f'Reserved memory: {reserved_memory} GiB')
-
         # Clear gradients first to free GPU memory
         if self.args.offload_model:
             model = self.accelerator.unwrap_model(self.model)
@@ -315,12 +304,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
         torch.cuda.synchronize()
-        gc_collect()
-        logger.info('--------------------------------after offload--------------------------------')
-        used_memory = torch.cuda.memory_allocated() / 1024 / 1024 / 1024  # GiB
-        logger.info(f'Used memory: {used_memory} GiB')
-        reserved_memory = torch.cuda.memory_reserved() / 1024 / 1024 / 1024  # GiB
-        logger.info(f'Reserved memory: {reserved_memory} GiB')
+        empty_cache()
         try:
             yield
         finally:
@@ -329,12 +313,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 self.load_model(self.accelerator.unwrap_model(self.model))
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
-            torch.cuda.synchronize()
-            gc_collect()
+            empty_cache()
 
     def _get_random_num(self) -> float:
         """
-        Generate a deterministic random number using the seed from arguments.
+        Generate a deterministic random number counting the global step.
 
         Uses an isolated Random instance to avoid interfering with the global
         random state, ensuring thread-safety and consistent behavior across processes.
@@ -342,8 +325,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         Returns:
             float: A random number in the range [0.0, 1.0).
         """
-        arg_seed = int(getattr(self.args, 'seed', 0))
-        rng = random.Random(arg_seed)
+        rng = random.Random(int(self.state.global_step))
         return rng.random()
 
     @contextmanager
@@ -355,12 +337,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             yield
             return
 
-        # Load teacher model with performance monitoring
-        with memory_time_profiling_context(name='Teacher Model Load'):
-            self.load_model(self.accelerator.unwrap_model(self.teacher_model))
-
+        self.load_model(self.accelerator.unwrap_model(self.teacher_model))
         yield
-
-        # Offload teacher model with performance monitoring
-        with memory_time_profiling_context(name='Teacher Model Offload'):
-            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+        self.offload_model(self.accelerator.unwrap_model(self.teacher_model))

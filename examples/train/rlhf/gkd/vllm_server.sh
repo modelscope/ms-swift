@@ -1,11 +1,11 @@
-# 4 * 66GiB, 46s/it
-
 # CUDA_VISIBLE_DEVICES=5 \
 # nohup swift rollout \
 #     --model Qwen/Qwen2.5-7B \
 #     --vllm_max_model_len 2560 > rl.log 2>&1 &
 
-
+# 4 * 54GiB
+# 46s/it (with vLLM)
+# 30s/it (without vLLM)
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -17,7 +17,7 @@ swift rlhf \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-en#2000' 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
     --split_dataset_ratio 0.01 \
     --seq_kd false \
-    --lmbda 1 \
+    --lmbda 0.5 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \

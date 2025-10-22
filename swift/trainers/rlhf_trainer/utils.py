@@ -70,13 +70,6 @@ def memory_time_profiling_context(
         enable_profiling: Whether to enable profiling records
         sync_cuda: Whether to synchronize CUDA before recording (ensures accuracy with slight overhead)
         reset_peak_stats: Whether to reset peak memory statistics on exit
-
-    Example:
-        with memory_time_profiling_context(name="Teacher Model Load"):
-            self.load_model(teacher_model)
-
-        with memory_time_profiling_context(name="Forward Pass"):
-            output = model(input)
     """
     if not enable_profiling:
         yield

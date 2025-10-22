@@ -205,9 +205,10 @@ class SwiftRLHF(SwiftSft):
                 trainer_kwargs[key] = model
         if hasattr(self, 'reward_template'):
             trainer_kwargs['reward_template'] = self.reward_template
+        if self.args.rlhf_type in ['grpo', 'gkd']:
+            trainer_kwargs['vllm_client'] = self.args.vllm_client
         if self.args.rlhf_type == 'grpo':
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
-            trainer_kwargs['vllm_client'] = self.args.vllm_client
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
         return trainer_kwargs

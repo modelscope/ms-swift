@@ -14,20 +14,19 @@ from dataclasses import asdict, dataclass
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import broadcast_object_list, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
-                       to_device)
+from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
@@ -38,7 +37,6 @@ from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_
                     _process_bucket_with_flattened_tensor, get_even_process_data, get_gather_if_zero3_context,
                     patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
                     patch_vllm_load_adapter, set_expandable_segments)
-from .vllm_client import VLLMClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -120,7 +118,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         # Initialize default values
         args = self.args
-        vllm_client = self.vllm_client
 
         self.use_fast_infer = args.use_vllm
         self.enable_offload = False
@@ -132,8 +129,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if not args.use_vllm:
             return
 
+        # split model parameters into batches for synchronized weight transfer
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+
         if self.vllm_mode == 'server':
-            self.vllm_client: VLLMClient = vllm_client
             if self.accelerator.is_main_process:
                 self.vllm_client.get_engine_type()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
@@ -233,7 +232,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             )
             set_expandable_segments(True)
 
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         return engine
 
     def split_batches(self):

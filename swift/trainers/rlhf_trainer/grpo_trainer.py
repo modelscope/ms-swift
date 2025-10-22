@@ -1,33 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
-import base64
 import concurrent.futures
 import inspect
 import os
-import re
 import time
-import uuid
-from collections import OrderedDict, defaultdict, deque
-from concurrent.futures import Future
+from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
-from dataclasses import asdict, dataclass
-from math import ceil
-from queue import Queue
-from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import json
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
-from dacite import from_dict
+from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from packaging import version
-from peft.utils.save_and_load import get_peft_model_state_dict
-from torch.nn import ModuleList
-from transformers import PreTrainedModel, TrainerCallback
+from transformers import PreTrainedModel
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
@@ -37,21 +25,15 @@ from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import RowPreprocessor, Template, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
-                         is_vllm_available, is_wandb_available, remove_response, seed_worker,
-                         unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, empty_cache, get_logger, is_swanlab_available, is_wandb_available,
+                         remove_response, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets, _ForwardRedirection,
-                    _process_bucket_with_flattened_tensor, compute_chord_loss, get_even_process_data,
-                    get_gather_if_zero3_context, identity_data_collator, load_pil_img, make_chord_sft_dataset,
-                    patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
-                    patch_save_last_checkpoint, patch_vllm_load_adapter, replace_assistant_response_with_ids,
-                    set_expandable_segments)
+from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
+                    load_pil_img, make_chord_sft_dataset, patch_profiling_context, patch_profiling_decorator,
+                    patch_save_last_checkpoint, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -75,6 +57,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
+                 reward_model: Optional[List[Union[PreTrainedModel, nn.Module]]] = None,
+                 reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
         patch_save_last_checkpoint()
@@ -92,8 +76,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
 
-        reward_funcs = kwargs.pop('reward_funcs', None)
-        reward_model = kwargs.pop('reward_model', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
