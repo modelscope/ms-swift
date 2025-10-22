@@ -17,7 +17,6 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
-# Recommended PyTorch version: 2.5 / 2.6
 pip install pybind11
 
 # transformer_engine
@@ -29,8 +28,6 @@ pip install --no-build-isolation transformer_engine[pytorch]
 # apex
 git clone https://github.com/NVIDIA/apex
 cd apex
-# https://github.com/modelscope/ms-swift/issues/4176
-git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
@@ -49,6 +46,7 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 # flash_attn
 # Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
 # Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
+MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
 ```
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
