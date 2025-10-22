@@ -68,7 +68,7 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
         res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
-        res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
+        res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res['num_layers'] - first_k_dense_replace}'
     if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
         res['moe_router_enable_expert_bias'] = True
     if n_shared_experts is not None and 'moe_shared_expert_intermediate_size' not in res:

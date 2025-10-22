@@ -305,25 +305,25 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     load_checkpoint([mg_model], None, None, strict=True)
     if args.to_hf:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
-   
+
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
             if args.to_hf and not args.merge_lora:
                 logger.info(f"Saving LoRA adapter to `{args.output_dir}` ...")
-                assert megatron_args.multi_latent_attention is False, "Multi-latent attention is not supported for LoRA conversion."
-                
-                peft_model.config = asdict(peft_model.config) # for PEFT <= 0.17.1
+                assert megatron_args.multi_latent_attention is False, 'Multi-latent attention is not supported for LoRA conversion.'
+
+                peft_model.config = asdict(peft_model.config)  # for PEFT <= 0.17.1
                 # Convert Megatron Core LoRA to HuggingFace PEFT format
                 megatron_model_meta.convert_mcore_lora_to_hf_peft(
                     peft_model=peft_model,
                     mg_model=mg_model,
                     hf_model=hf_model,
                     dst_dir=args.output_dir,
-                    num_groups=megatron_args.num_query_groups if megatron_args.group_query_attention else megatron_args.num_attention_heads 
-                )
-                logger.info("LoRA adapter saved successfully.")
+                    num_groups=megatron_args.num_query_groups
+                    if megatron_args.group_query_attention else megatron_args.num_attention_heads)
+                logger.info('LoRA adapter saved successfully.')
                 return
             else:
                 logger.info('Merge LoRA...')
