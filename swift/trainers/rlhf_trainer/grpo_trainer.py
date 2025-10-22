@@ -1886,7 +1886,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logits = output.logits
         # split input_ids to labels
         position_ids = sequence_parallel.real_position_ids
-        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(
+        _, _, labels, _, _, _, _ = sequence_parallel.pad_and_split_inputs(
             None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
