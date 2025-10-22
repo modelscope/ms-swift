@@ -588,6 +588,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 mm_processor_cache_gb=self.args.vllm_mm_processor_cache_gb,
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
+                engine_kwargs=self.args.vllm_engine_kwargs,
                 **lora_kwargs,
             )
             set_expandable_segments(True)

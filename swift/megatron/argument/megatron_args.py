@@ -334,7 +334,7 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
 
     # extra_args for megatron
-    extra_megatron_kwargs: Optional[Union[dict, str]] = None
+    megatron_extra_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
         if self.mlp_padding_free and self.sequence_parallel:
@@ -458,7 +458,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        self.extra_megatron_kwargs = json_parse_to_dict(self.extra_megatron_kwargs)
+        self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         self._init_no_rope_fusion()
 
     def _init_no_rope_fusion(self):
@@ -475,10 +475,10 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
-        extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
-        args_dict.update(extra_megatron_kwargs)
+        megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')
+        args_dict.update(megatron_extra_kwargs)
         for k, value in args_dict.items():
-            if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
+            if k not in MegatronArguments.__annotations__ and k not in megatron_extra_kwargs:
                 extra_args[k] = value
                 continue
             if value is None or value is False:
