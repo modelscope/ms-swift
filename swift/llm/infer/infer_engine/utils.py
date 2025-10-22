@@ -280,9 +280,10 @@ class StreamerMixin:
             return value  # 返回该值
 
 
-class TokensIteratorStreamer(StreamerMixin, BaseStreamer):  # 定义 token 迭代器流式输出器，继承 StreamerMixin 和 BaseStreamer
+class TokensIteratorStreamer(StreamerMixin, BaseStreamer):
     """类功能：
-    `TokensIteratorStreamer` 用于流式输出生成的 token 张量。
+    定义 token 迭代器流式输出器，继承 StreamerMixin 和 BaseStreamer。
+    用于流式输出生成的 token 张量。
     
     核心功能：
         - 实现 Transformers 的 BaseStreamer 接口；
@@ -297,7 +298,7 @@ class TokensIteratorStreamer(StreamerMixin, BaseStreamer):  # 定义 token 迭�
         在流式推理中逐步获取生成的 token，供后续处理使用。
     """
 
-    def put(self, value: torch.Tensor) -> None:  # 定义 put 方法：将 token 放入队列
+    def put(self, value: torch.Tensor) -> None:
         """将生成的 token 张量放入队列。
         
         参数：
@@ -305,14 +306,15 @@ class TokensIteratorStreamer(StreamerMixin, BaseStreamer):  # 定义 token 迭�
         """
         self.queue.put(value)  # 将 token 张量放入队列
 
-    def end(self) -> None:  # 定义 end 方法：发送终止信号
+    def end(self) -> None:
         """发送终止信号（None），结束迭代。"""
         self.queue.put(None)  # 将 None 放入队列，作为终止信号
 
 
-class LogitsStreamer(LogitsProcessor):  # 定义 logits 流式输出器，继承 LogitsProcessor
+class LogitsStreamer(LogitsProcessor):
     """类功能：
-    `LogitsStreamer` 用于在生成过程中捕获每一步的 logits（未归一化的分数）。
+    定义 logits 流式输出器，继承 LogitsProcessor。
+    用于在生成过程中捕获每一个时间步的 logits（未归一化的分数）。
     
     核心功能：
         - 实现 LogitsProcessor 接口，可插入到生成流程中；
@@ -326,11 +328,11 @@ class LogitsStreamer(LogitsProcessor):  # 定义 logits 流式输出器，继承
         在推理过程中记录 logits，用于调试、分析或计算 logprobs。
     """
 
-    def __init__(self):  # 定义初始化方法
+    def __init__(self):
         """初始化 logits 流式输出器，创建队列。"""
         self.queue = Queue()  # 创建线程安全的队列，用于存储 logits
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:  # 定义 __call__ 方法：处理 logits
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         """在生成每一步时被调用，捕获当前步的 logits。
         
         参数：
@@ -340,6 +342,9 @@ class LogitsStreamer(LogitsProcessor):  # 定义 logits 流式输出器，继承
         返回：
             torch.FloatTensor: 未修改的 logits，形状为 [batch_size, vocab_size]
         
+        注意：scores 的 shape 是 [batch_size, vocab_size] 而不是 [batch_size, seq_len, vocab_size] 的原因是，
+            LogitsProcessor 是在每一步生成时被调用的，只处理当前步的 logits。
+
         实现逻辑：
             1. 将 logits 放入队列；
             2. 返回未修改的 logits（不影响生成过程）。
@@ -348,7 +353,7 @@ class LogitsStreamer(LogitsProcessor):  # 定义 logits 流式输出器，继承
         return scores  # 返回未修改的 logits
 
 
-def _set_generation_config_default_value(model_generation_config: GenerationConfig,  # 定义设置生成配置默认值的内部函数
+def _set_generation_config_default_value(model_generation_config: GenerationConfig,
                                          generation_config: GenerationConfig) -> GenerationConfig:
     """从模型的默认生成配置中复制缺失的参数到新的生成配置。
     
@@ -374,9 +379,9 @@ def _set_generation_config_default_value(model_generation_config: GenerationConf
     return generation_config  # 返回补全后的生成配置
 
 
-def prepare_generation_config(model_generation_config: Optional[GenerationConfig], request_config: RequestConfig,  # 定义准备生成配置的函数
+def prepare_generation_config(model_generation_config: Optional[GenerationConfig], request_config: RequestConfig,
                               tokenizer) -> Optional[GenerationConfig]:
-    """从请求配置创建生成配置，并处理温度、采样等参数。
+    """定义准备生成配置的函数：从请求配置创建生成配置，并处理温度、采样等参数。
     
     参数：
         model_generation_config (Optional[GenerationConfig]): 模型的默认生成配置（可为 None）
@@ -394,7 +399,7 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
         5. 设置 eos_token_id 和 pad_token_id。
     """
     if model_generation_config is None or request_config is None:  # 如果模型配置或请求配置为 None
-        return model_generation_config  # 直接返回模型配置
+        return model_generation_config  # 直接返回模型的默认生成配置
     kwargs = {'max_new_tokens': request_config.max_tokens}  # 设置最大生成 token 数
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'  # 注释：这些参数暂不使用
     for key in ['length_penalty']:  # 遍历必须设置的参数
@@ -425,7 +430,7 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
     return generation_config  # 返回准备好的生成配置
 
 
-def patch_lmdeploy(load_weights=False):  # 定义 LMDeploy 补丁函数
+def patch_lmdeploy(load_weights=False):
     """函数功能：
     对 LMDeploy 库进行猴子补丁（Monkey Patch），扩展其功能。
     
@@ -451,8 +456,8 @@ def patch_lmdeploy(load_weights=False):  # 定义 LMDeploy 补丁函数
     from lmdeploy.turbomind.deploy.loader import create_loader  # 导入原始的 create_loader 函数
     from lmdeploy.turbomind.deploy.source_model import llama  # 导入 llama 模型部署模块
 
-    def _create_loader(model_path: str, pattern: str):  # 定义自定义的加载器创建函数
-        """创建模型权重加载器，支持从文件或内存加载。
+    def _create_loader(model_path: str, pattern: str):
+        """定义自定义的加载器创建函数：创建模型权重加载器，支持从文件或内存加载。
         
         参数：
             model_path (str | dict): 模型路径（文件路径或 state_dict 字典）
@@ -717,9 +722,9 @@ def patch_lmdeploy(load_weights=False):  # 定义 LMDeploy 补丁函数
     TurboMindInstance._create_model_instance = _create_model_instance  # 替换 _create_model_instance 方法
 
 
-def patch_npu_vllm(vllm_device: str):  # 定义 NPU 设备的 vLLM 补丁函数
+def patch_npu_vllm(vllm_device: str):
     """函数功能：
-    为 vLLM 在 NPU（华为昇腾 AI 处理器）设备上运行提供补丁。
+    定义 NPU 设备的 vLLM 补丁函数：为 vLLM 在 NPU（华为昇腾 AI 处理器）设备上运行提供补丁。
     
     核心功能：
         1. 修复 vLLM 在 NPU 设备上的分布式通信问题；
@@ -740,7 +745,7 @@ def patch_npu_vllm(vllm_device: str):  # 定义 NPU 设备的 vLLM 补丁函数
     device_type = vllm_device.split(':')[0]  # 提取设备类型（'npu' 或 'cuda'）
 
     @contextmanager  # 上下文管理器装饰器
-    def new_group_context():  # 定义新的分布式通信组上下文管理器
+    def new_group_context():
         """为 NPU 设备创建分布式通信组的补丁上下文管理器。
         
         实现逻辑：
@@ -759,9 +764,9 @@ def patch_npu_vllm(vllm_device: str):  # 定义 NPU 设备的 vLLM 补丁函数
     return new_group_context() if device_type == 'npu' else nullcontext()  # 如果是 NPU 设备，返回补丁上下文；否则返回空上下文
 
 
-def patch_vllm_memory_leak():  # 定义 vLLM 内存泄漏修复补丁函数
+def patch_vllm_memory_leak():
     """函数功能：
-    修复 vLLM 0.7.3 版本的内存泄漏问题。
+    定义 vLLM 内存泄漏修复补丁函数：修复 vLLM 0.7.3 版本的内存泄漏问题。
     
     核心问题：
         vLLM 0.7.3 在处理 n>1（并行采样）时，seq_id_to_seq_group 字典没有正确清理，

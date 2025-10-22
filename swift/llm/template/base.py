@@ -1,260 +1,682 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-import hashlib
-import inspect
-import math
-import os
-import re
-from contextlib import contextmanager, nullcontext
-from copy import deepcopy
-from dataclasses import asdict
-from functools import partial, wraps
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+"""模块功能概述：
+该模块实现 ms-swift 框架的核心模板系统 `Template` 类，负责将各种格式的输入数据转换为
+大语言模型可接受的标准化输入格式。该模板系统是整个框架中连接用户数据与模型推理的核心桥梁。
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from modelscope.hub.utils.utils import get_cache_dir
-from peft import PeftModel
-from PIL import Image
-from torch.nn.utils.rnn import pad_sequence
-from transformers import StoppingCriteriaList
-from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import strtobool
+核心功能：
+1. **多任务支持**：
+   - Causal LM（因果语言模型）：标准的自回归语言模型训练和推理
+   - Sequence Classification（序列分类）：文本分类、情感分析等任务
+   - PRM（Process Reward Model）：过程奖励模型，用于强化学习
+   - Embedding：文本向量化，支持anchor-positive-negative三元组
+   - Reranker/Generative Reranker：文档排序任务
 
-from swift.utils import get_env_args, get_logger
-from ..utils import Processor, ProcessorMixin
-from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+2. **多模态处理**：
+   - 图像输入：支持PIL.Image、路径、bytes等多种格式，自动加载和预处理
+   - 视频输入：支持视频文件加载和帧提取
+   - 音频输入：支持音频文件加载和预处理
+   - 特殊标签替换：<image>、<video>、<audio>等标签的智能处理
+   - Grounding任务：支持bbox和ref-object标签的归一化和替换
 
-logger = get_logger()
-if TYPE_CHECKING:
-    from .template_meta import TemplateMeta
+3. **多种训练模式**：
+   - 标准训练（train/pt）：普通的监督学习
+   - RLHF（Reinforcement Learning from Human Feedback）：基于人类反馈的强化学习
+   - KTO（Kahneman-Tversky Optimization）：KT优化算法
+   - GKD（Generalized Knowledge Distillation）：广义知识蒸馏
+
+4. **编码与解码**：
+   - encode方法：将用户输入转换为input_ids、labels、loss_scale等模型输入
+   - decode方法：将模型生成的token序列解码为可读文本
+   - 支持流式和非流式两种模式
+   - 特殊token和占位符的安全处理
+
+5. **模板后端支持**：
+   - Swift后端：自定义的模板系统，支持复杂的对话格式和多轮对话
+   - Jinja后端：使用tokenizer.apply_chat_template，兼容HuggingFace标准
+
+6. **高级特性**：
+   - Loss Scale：支持对不同token段设置不同的loss权重
+   - Truncation：多种截断策略（左截断、右截断、抛异常）
+   - Padding：支持左右padding，适配不同的训练和推理场景
+   - Packing：将多个短序列拼接为长序列，提高GPU利用率
+   - Sequence Parallel：序列并行支持，适配大规模训练
+   - Agent Template：支持function calling和tool使用
+
+7. **推理框架集成**：
+   - vLLM：高性能推理框架集成
+   - LMDeploy：支持PyTorch和TurboMind两种后端
+   - SGLang：高效的语言模型推理框架
+   - 标准transformers推理
+
+8. **Data Collator**：
+   - 批量数据整理和padding
+   - 多模态数据（pixel_values、image_sizes等）的拼接
+   - 支持各种任务的专用collator（RLHF、KTO、Embedding、Reranker等）
+   - Attention mask生成（支持Megatron的4D causal mask）
+
+主要类：
+- Template：核心模板类，实现所有编码、解码和数据处理逻辑
+- MaxLengthError：序列长度超限异常
+
+适用场景：
+- LLM模型的微调训练（SFT、RLHF等）
+- 多模态模型的训练和推理
+- 各类下游任务的适配（分类、排序、embedding等）
+- 高性能推理部署（vLLM、LMDeploy等）
+
+使用示例：
+>>> # 初始化模板
+>>> template = Template(['<|system|>'], ['<|user|>'], ['<|assistant|>'], ['<|end|>'])
+>>> template.init_processor(processor)
+>>> 
+>>> # 编码输入
+>>> inputs = StdTemplateInputs(messages=[
+...     {"role": "user", "content": "Hello"},
+...     {"role": "assistant", "content": "Hi there!"}
+... ])
+>>> encoded = template.encode(inputs)
+>>> # encoded包含：input_ids, labels, loss_scale等
+>>> 
+>>> # 解码输出
+>>> response = template.decode(generate_ids)
+"""
+# Copyright (c) Alibaba, Inc. and its affiliates.  # 版权声明，标注代码版权所有者
+
+# ===== 标准库导入 =====
+import hashlib  # 引入hashlib：用于计算文件哈希值（如保存PIL图像时生成唯一文件名）
+import inspect  # 引入inspect：用于获取函数签名信息，检查参数和返回类型
+import math  # 引入math：用于数学计算（如序列长度的对数计算、向上取整等）
+import os  # 引入os：用于文件路径操作、环境变量读取等
+import re  # 引入re：用于正则表达式匹配（如特殊标签替换、工具调用解析等）
+from contextlib import contextmanager, nullcontext  # 引入上下文管理器：contextmanager用于创建临时patch（如flash_attention_forward），nullcontext用于条件性上下文
+from copy import deepcopy  # 引入deepcopy：用于深拷贝复杂数据结构（如inputs字典），避免修改原始数据
+from dataclasses import asdict  # 引入asdict：将数据类实例转换为字典，便于序列化和传递
+from functools import partial, wraps  # 引入functools工具：partial用于函数参数固定，wraps用于装饰器保持原函数元信息
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union  # 引入类型注解：TYPE_CHECKING用于避免循环导入，其他用于明确参数和返回值类型
+
+# ===== PyTorch核心库 =====
+import torch  # 引入torch：PyTorch核心库，用于张量操作和深度学习
+import torch.nn as nn  # 引入nn：神经网络模块，用于模型定义和层操作
+import torch.nn.functional as F  # 引入F：函数式API，用于padding、激活函数等无状态操作
+from modelscope.hub.utils.utils import get_cache_dir  # 从ModelScope获取缓存目录路径，用于下载和存储模型文件
+from peft import PeftModel  # 引入PEFT模型类：用于识别和提取PEFT（参数高效微调）模型的base_model
+from PIL import Image  # 引入PIL图像库：用于图像加载、格式转换和保存操作
+from torch.nn.utils.rnn import pad_sequence  # 引入pad_sequence：用于批量序列的右padding操作（变长序列对齐）
+from transformers import StoppingCriteriaList  # 引入停止条件列表：用于生成时的自定义停止逻辑（如遇到特定stop words）
+from transformers.integrations import is_deepspeed_zero3_enabled  # 引入DeepSpeed Zero-3检测函数：判断是否启用了Zero-3并注册hook
+from transformers.utils import strtobool  # 引入字符串转布尔函数：将"true"/"false"等字符串转换为布尔值
+
+# ===== swift框架内部导入 =====
+from swift.utils import get_env_args, get_logger  # 引入swift工具：get_env_args读取环境变量配置，get_logger创建日志记录器
+from ..utils import Processor, ProcessorMixin  # 引入处理器类：Processor用于多模态数据预处理，ProcessorMixin提供处理器混入能力
+from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs  # 引入模板输入数据类：InferRequest用于推理请求，StdTemplateInputs/TemplateInputs定义标准输入格式
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by  # 引入模板工具函数：Context上下文对象，StopWordsCriteria停止词判断，fetch_one获取单个元素，findall查找所有匹配，split_str_parts_by字符串分割
+from .vision_utils import load_audio, load_batch, load_image, rescale_image  # 引入视觉/音频工具函数：load_image加载图像，load_audio加载音频，load_batch批量加载，rescale_image缩放图像
+
+# ===== 日志和类型检查 =====
+logger = get_logger()  # 创建模块级日志记录器，用于输出调试信息、警告和错误
+if TYPE_CHECKING:  # 类型检查模式（仅在静态类型检查时执行，运行时跳过，避免循环导入）
+    from .template_meta import TemplateMeta  # 导入TemplateMeta类型：用于类型注解，不在运行时导入以避免循环依赖
 
 
 class MaxLengthError(ValueError):
-    pass
+    """类功能：
+    `MaxLengthError` 是一个自定义异常类，用于在输入序列长度超过模板设定的最大长度限制时抛出异常。
+    当模板的截断策略（`truncation_strategy`）设置为 'raise' 时，编码过程会主动检查序列长度，
+    若超过 `max_length` 则抛出此异常，提醒调用者当前数据行的长度超限，需要调整配置或数据。
+
+    继承关系说明：
+    - 继承自 `ValueError`：因为序列长度超限本质上是一个输入值错误问题
+    - 作为 `ValueError` 的子类，可以被标准的异常处理机制捕获
+    - 通过自定义异常类型，调用者可以精确识别并处理"长度超限"这一特定错误场景
+
+    应用场景：
+    1. **数据验证**：在训练或推理前验证输入序列是否符合长度要求
+    2. **严格模式**：当 `truncation_strategy='raise'` 时，拒绝处理超长序列，避免自动截断导致信息丢失
+    3. **调试辅助**：帮助开发者快速定位数据集中存在的超长样本问题
+    4. **配置检查**：提示用户需要调整 `max_length` 参数或修改截断策略（如改为 'left' 或 'right'）
+
+    使用示例：
+    >>> # 场景1：捕获并处理长度超限异常
+    >>> template = Template(processor, template_meta, max_length=512, truncation_strategy='raise')
+    >>> try:
+    ...     inputs = StdTemplateInputs(messages=[{"role": "user", "content": "很长的文本..." * 1000}])
+    ...     encoded = template.encode(inputs)
+    ... except MaxLengthError as e:
+    ...     print(f"序列长度超限: {e}")
+    ...     # 可以选择：1) 跳过该样本；2) 调整max_length；3) 改用'left'/'right'截断策略
+    >>> 
+    >>> # 场景2：使用自动截断避免异常
+    >>> template = Template(processor, template_meta, max_length=512, truncation_strategy='left')
+    >>> encoded = template.encode(inputs)  # 自动左截断，不抛出异常
+    >>> 
+    >>> # 场景3：批量处理时过滤超长样本
+    >>> valid_samples = []
+    >>> for sample in dataset:
+    ...     try:
+    ...         encoded = template.encode(sample)
+    ...         valid_samples.append(encoded)
+    ...     except MaxLengthError:
+    ...         print(f"跳过超长样本: {sample['id']}")
+    ...         continue
+    """
+    pass  # 异常类仅作为标记，不需要额外实现
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
-    special_keys = ['images', 'videos', 'audios', 'objects']
+    """类功能：
+    Template 是 ms-swift 框架的核心模板类，负责将用户输入的对话数据、多模态数据转换为
+    大语言模型可接受的标准化输入格式（input_ids, labels等），并提供解码、数据整理等功能。
+    该类是连接原始数据与模型训练/推理的关键桥梁。
 
-    image_placeholder = ['<image>']
-    video_placeholder = ['<video>']
-    audio_placeholder = ['<audio>']
-    cot_process_placeholder = ['ки']
-    placeholder_tokens = []  # For clearer printing
-    load_images = True
-    skip_prompt = True
-    use_model = False
-    norm_bbox = 'norm1000'
+    核心职责：
+    1. 输入编码（encode）：将对话消息、图像、视频、音频等多模态输入转换为token序列
+    2. 输出解码（decode）：将模型生成的token ID序列转换为可读文本
+    3. 数据整理（data_collator）：批量数据的padding、拼接和attention mask生成
+    4. 多模态处理：加载、预处理图像/视频/音频，替换特殊标签（<image>等）
+    5. 模板应用：支持Swift和Jinja两种模板后端，处理系统提示、用户/助手轮次
+    6. 截断策略：支持左截断、右截断或抛出异常三种方式处理超长序列
+    7. Loss权重：为不同token段设置不同的loss_scale权重
+    8. 多任务支持：适配因果语言模型、分类、embedding、reranker等多种任务类型
+    9. 多训练模式：支持标准训练、RLHF、KTO、GKD等训练模式
+    10. 推理框架集成：适配vLLM、LMDeploy、SGLang等高性能推理框架
 
-    is_encoder_decoder = False
+    继承关系说明：
+    - 继承自 `ProcessorMixin`：提供processor（tokenizer + image_processor等）的混入能力
+    - 通过ProcessorMixin获得tokenizer、image_processor等属性的访问能力
+    - 作为混入类的子类，可以灵活地与不同的processor实现配合
+
+    应用场景：
+    1. 模型微调训练：
+    - SFT（Supervised Fine-Tuning）：监督微调
+    - RLHF：基于人类反馈的强化学习
+    - KTO/GKD：高级训练算法
+    2. 多模态模型训练：处理包含图像、视频、音频的多模态输入
+    3. 推理部署：
+    - vLLM高性能推理
+    - LMDeploy（PyTorch/TurboMind后端）
+    - SGLang推理框架
+    - 标准transformers推理
+    4. 下游任务适配：
+    - 文本分类（Sequence Classification）
+    - 文本向量化（Embedding）
+    - 文档排序（Reranker）
+    - 过程奖励模型（PRM）
+    5. Agent/工具调用：支持function calling和tool使用的格式化
+
+    使用示例：
+    >>> # 示例1：基础训练场景 - 初始化模板并编码对话数据
+    >>> from swift.llm.template import get_template
+    >>> from transformers import AutoTokenizer
+    >>> 
+    >>> # 加载tokenizer和模板
+    >>> tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
+    >>> template = get_template('qwen', tokenizer)
+    >>> template.mode = 'train'  # 设置为训练模式
+    >>> 
+    >>> # 编码对话数据
+    >>> inputs = StdTemplateInputs(messages=[
+    ...     {"role": "user", "content": "你好，请介绍一下自己"},
+    ...     {"role": "assistant", "content": "我是一个AI助手，很高兴为您服务"}
+    ... ])
+    >>> encoded = template.encode(inputs)
+    >>> # encoded包含: input_ids, labels, loss_scale等训练所需字段
+    >>> 
+    >>> # 示例2：多模态场景 - 处理包含图像的输入
+    >>> inputs = StdTemplateInputs(
+    ...     messages=[
+    ...         {"role": "user", "content": "<image>这张图片里有什么？"},
+    ...         {"role": "assistant", "content": "图片中是一只可爱的猫咪"}
+    ...     ],
+    ...     images=["path/to/image.jpg"]  # 支持路径、PIL.Image、bytes等多种格式
+    ... )
+    >>> encoded = template.encode(inputs)
+    >>> 
+    >>> # 示例3：推理场景 - 解码生成的token序列
+    >>> template.mode = 'pt'  # 设置为推理模式
+    >>> generate_ids = model.generate(input_ids, max_new_tokens=100)
+    >>> response = template.decode(generate_ids[0], input_ids[0])
+    >>> print(response)  # 输出：模型生成的回复文本
+    >>> 
+    >>> # 示例4：RLHF训练 - 编码chosen/rejected对
+    >>> template.mode = 'rlhf'
+    >>> inputs = StdTemplateInputs(
+    ...     messages=[{"role": "user", "content": "写一首诗"}],
+    ...     chosen={"role": "assistant", "content": "春眠不觉晓，处处闻啼鸟"},
+    ...     rejected={"role": "assistant", "content": "这是一首糟糕的诗"}
+    ... )
+    >>> encoded = template.encode(inputs)
+    >>> # encoded包含: chosen_input_ids, rejected_input_ids等RLHF所需字段
+    >>> 
+    >>> # 示例5：批量数据整理（Data Collator）
+    >>> batch_encoded = [template.encode(inp) for inp in inputs_list]
+    >>> batch = template.data_collator(batch_encoded)
+    >>> # batch包含: input_ids (padded), attention_mask, labels等，可直接送入模型
+    """
+    # ===== 类属性：特殊标签和占位符配置 =====
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']  # 特殊标签列表：用于标识多模态内容和特殊功能区域
+    special_keys = ['images', 'videos', 'audios', 'objects']  # 特殊输入键：对应多模态数据的键名
+
+    image_placeholder = ['<image>']  # 图像占位符：在文本中表示图像位置的标签
+    video_placeholder = ['<video>']  # 视频占位符：在文本中表示视频位置的标签
+    audio_placeholder = ['<audio>']  # 音频占位符：在文本中表示音频位置的标签
+    cot_process_placeholder = ['ки']  # CoT过程占位符：用于思维链（Chain-of-Thought）过程标记
+    placeholder_tokens = []  # 占位符token列表：用于更清晰地打印，存储特殊占位符的token ID（For clearer printing）
+    load_images = True  # 是否加载图像：控制是否实际加载和处理图像数据
+    skip_prompt = True  # 是否跳过prompt：在计算loss时是否跳过用户输入部分（仅对assistant回复计算loss）
+    use_model = False  # 是否使用模型：某些模板需要模型参与编码过程（如视觉编码器）
+    norm_bbox = 'norm1000'  # bbox归一化方式：'norm1000'表示归一化到0-1000范围，'none'表示不归一化
+
+    is_encoder_decoder = False  # 是否为编码器-解码器架构：如T5、BART等模型为True，GPT等为False
 
     def __init__(
         self,
-        processor: Optional[Processor],
-        template_meta: 'TemplateMeta',
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        *,
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-        max_pixels: Optional[int] = None,
-        agent_template: Optional[str] = None,
-        norm_bbox: Literal['norm1000', 'none', None] = None,
-        use_chat_template: bool = True,
-        remove_unused_columns: bool = True,
-        # only for train
-        padding_free: bool = False,
-        padding_side: Literal['left', 'right'] = 'right',
-        loss_scale: str = 'default',
-        sequence_parallel_size: int = 1,
-        # infer/deploy
-        response_prefix: Optional[str] = None,
-        template_backend: Literal['swift', 'jinja'] = 'swift',
+        processor: Optional[Processor],  # 处理器对象：包含tokenizer、image_processor等，用于数据预处理
+        template_meta: 'TemplateMeta',  # 模板元数据：定义对话格式、系统提示、特殊token等模板配置
+        default_system: Optional[str] = None,  # 默认系统提示：覆盖template_meta中的默认系统提示
+        max_length: Optional[int] = None,  # 最大序列长度：超过此长度将根据truncation_strategy处理
+        *,  # 以下参数必须使用关键字传递
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',  # 截断策略：'raise'抛异常/'left'左截断/'right'右截断
+        max_pixels: Optional[int] = None,  # 图像最大像素数：用于缩放图像以减少显存占用，None表示不限制（如512*512）
+        agent_template: Optional[str] = None,  # Agent模板名称：用于function calling和tool使用的格式化模板
+        norm_bbox: Literal['norm1000', 'none', None] = None,  # bbox归一化方式：'norm1000'归一化到0-1000/'none'不归一化/None使用类默认值
+        use_chat_template: bool = True,  # 是否使用对话模板：False时转换为生成模板（不使用角色标签）
+        remove_unused_columns: bool = True,  # 是否移除未使用的列：数据预处理时移除不需要的字段
+        # 以下参数仅用于训练（only for train）
+        padding_free: bool = False,  # 是否启用padding-free模式：通过packing减少padding，提高训练效率
+        padding_side: Literal['left', 'right'] = 'right',  # padding方向：训练batch_size>=2时的padding方向，'right'右padding/'left'左padding
+        loss_scale: str = 'default',  # loss权重函数：为不同token段设置不同的loss权重，'default'为默认策略
+        sequence_parallel_size: int = 1,  # 序列并行大小：用于长序列训练的并行策略，1表示不使用序列并行
+        # 以下参数用于推理/部署（infer/deploy）
+        response_prefix: Optional[str] = None,  # 响应前缀：覆盖template_meta中的响应前缀，用于生成时的引导
+        template_backend: Literal['swift', 'jinja'] = 'swift',  # 模板后端：'swift'使用自定义模板系统/'jinja'使用tokenizer.apply_chat_template
     ) -> None:
-        """
-        default_system: Override the default_system in the template.
-        max_length: Max length of the sequence
-        truncation_strategy: The truncation strategy
-        max_pixels: Rescale image to reduce memory usage, default `None` means no limitation.
-            e.g. 512 * 512 (H*W)
-        padding_side: The padding_side when the training batch_size >= 2
-        loss_scale: The loss scale function to use
-        """
-        from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates, loss_scale_map
-        self._processor_inited = False
-        self._version = 'v2'  # Avoid compatibility issues caused by load_from_cache_file caching.
-        self.max_length = max_length
-        self.model = None
+        """函数功能：
+        初始化Template实例，配置模板的各项参数，包括处理器、模板元数据、截断策略、
+        多模态配置、训练参数、推理参数等。这是Template类的核心初始化方法。
 
-        if not use_chat_template:
-            template_meta = template_meta.to_generate_template_meta()
-        else:
-            template_meta = deepcopy(template_meta)
-        # if default_system is None. not change self.default_system
-        template_meta.check_system(default_system)
-        if default_system is not None:
-            template_meta.default_system = default_system
-        if response_prefix is not None:
-            template_meta.response_prefix = response_prefix
+        参数：
+        - processor (Optional[Processor]): 处理器对象，包含tokenizer和image_processor等，
+            用于文本和多模态数据的预处理。可以为None，稍后通过init_processor设置。
+        - template_meta (TemplateMeta): 模板元数据对象，定义了对话格式、系统提示、
+            特殊token、前缀后缀等模板的核心配置信息。
+        - default_system (Optional[str]): 默认系统提示文本，如果提供则覆盖template_meta
+            中定义的默认系统提示。用于自定义模型的system角色内容。
+        - max_length (Optional[int]): 序列的最大长度限制。超过此长度的序列将根据
+            truncation_strategy进行处理。None表示不限制长度。
+        - truncation_strategy (Literal['raise', 'left', 'right']): 截断策略。
+            'raise'：抛出MaxLengthError异常；
+            'left'：从左侧（序列开头）截断；
+            'right'：从右侧（序列末尾）截断。
+        - max_pixels (Optional[int]): 图像的最大像素数限制（高×宽），用于自动缩放图像
+            以减少显存占用。例如512*512=262144。None表示不限制图像尺寸。
+        - agent_template (Optional[str]): Agent模板的名称，用于function calling和
+            tool使用场景的消息格式化。None则使用template_meta中的agent_template。
+        - norm_bbox (Literal['norm1000', 'none', None]): bbox坐标的归一化方式。
+            'norm1000'：归一化到0-1000整数范围；
+            'none'：不进行归一化；
+            None：使用类属性的默认值。
+        - use_chat_template (bool): 是否使用对话模板。True时使用完整的角色标签
+            （user/assistant等），False时转换为生成模板（仅保留内容）。
+        - remove_unused_columns (bool): 是否在数据预处理时移除未使用的列，减少内存占用。
+        - padding_free (bool): 是否启用padding-free模式。启用时会通过packing技术
+            将多个短序列拼接为长序列，减少padding浪费，提高训练效率。
+        - padding_side (Literal['left', 'right']): padding的方向。训练时batch_size>=2
+            需要padding对齐，'right'表示在序列右侧padding，'left'表示在左侧padding。
+        - loss_scale (str): loss权重函数的名称。用于为不同的token段设置不同的loss权重，
+            如可以降低prompt部分的权重，增加response部分的权重。
+        - sequence_parallel_size (int): 序列并行的大小。用于超长序列训练，将序列切分
+            到多个设备上并行计算。1表示不使用序列并行。
+        - response_prefix (Optional[str]): 响应的前缀文本。如果提供则覆盖template_meta
+            中的response_prefix，用于在生成时引导模型的输出格式。
+        - template_backend (Literal['swift', 'jinja']): 模板后端的选择。
+            'swift'：使用ms-swift自定义的模板系统，功能更丰富；
+            'jinja'：使用tokenizer.apply_chat_template，兼容HuggingFace标准。
 
-        self.template_meta: TemplateMeta = template_meta
-        self.use_chat_template = use_chat_template
-        self.remove_unused_columns = remove_unused_columns
-        self.template_backend = template_backend
-        self.max_length = max_length
-        self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale_map[loss_scale]()
-        self.max_pixels = max_pixels
-        self.padding_side = padding_side
-        self.sequence_parallel_size = sequence_parallel_size
-        self.padding_free = padding_free
-        agent_template = agent_template or template_meta.agent_template
-        self._agent_template = agent_template
-        self.agent_template = agent_templates[agent_template]()
-        self.norm_bbox = norm_bbox or self.norm_bbox
-        if self.is_encoder_decoder:
-            self.skip_prompt = False
-        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+        返回值：
+        - None
+
+        使用示例：
+        >>> # 示例1：基础初始化
+        >>> from transformers import AutoTokenizer
+        >>> tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
+        >>> processor = Processor(tokenizer=tokenizer)
+        >>> template_meta = TemplateMeta(...)
+        >>> template = Template(processor, template_meta, max_length=2048)
+        >>> 
+        >>> # 示例2：训练场景配置
+        >>> template = Template(
+        ...     processor, template_meta,
+        ...     max_length=2048,
+        ...     truncation_strategy='left',  # 左截断保留最新对话
+        ...     padding_side='right',  # 右padding
+        ...     loss_scale='default',  # 默认loss权重
+        ...     padding_free=True  # 启用packing提高效率
+        ... )
+        >>> 
+        >>> # 示例3：多模态配置
+        >>> template = Template(
+        ...     processor, template_meta,
+        ...     max_pixels=512*512,  # 限制图像为512x512
+        ...     norm_bbox='norm1000'  # bbox归一化到0-1000
+        ... )
+        >>> 
+        >>> # 示例4：Agent/工具调用配置
+        >>> template = Template(
+        ...     processor, template_meta,
+        ...     agent_template='qwen',  # 使用Qwen的工具调用格式
+        ...     default_system='你是一个具有工具调用能力的AI助手'
+        ... )
+        """
+        # ===== 导入依赖模块 =====
+        from .template_meta import TemplateMeta  # 导入TemplateMeta类：用于类型检查和实例化
+        from swift.plugin import agent_templates, loss_scale_map  # 导入agent模板映射和loss权重函数映射
+        
+        # ===== 初始化内部状态标志 =====
+        self._processor_inited = False  # Processor初始化标志：标记processor是否已完成初始化
+        self._version = 'v2'  # 模板版本号：用于避免load_from_cache_file缓存导致的兼容性问题（Avoid compatibility issues caused by load_from_cache_file caching.）
+        self.max_length = max_length  # 保存最大长度配置
+        self.model = None  # 模型引用：某些模板需要模型参与编码（如视觉编码器），初始化为None
+
+        # ===== 处理模板元数据 =====
+        if not use_chat_template:  # 若不使用对话模板
+            template_meta = template_meta.to_generate_template_meta()  # 转换为生成模板：移除角色标签，仅保留内容
+        else:  # 若使用对话模板
+            template_meta = deepcopy(template_meta)  # 深拷贝模板元数据：避免修改原始对象
+        
+        # ===== 配置系统提示和响应前缀 =====
+        template_meta.check_system(default_system)  # 检查系统提示的有效性：验证default_system是否合法（if default_system is None. not change self.default_system）
+        if default_system is not None:  # 若提供了自定义系统提示
+            template_meta.default_system = default_system  # 覆盖模板元数据中的默认系统提示
+        if response_prefix is not None:  # 若提供了自定义响应前缀
+            template_meta.response_prefix = response_prefix  # 覆盖模板元数据中的响应前缀
+
+        # ===== 保存核心配置属性 =====
+        self.template_meta: TemplateMeta = template_meta  # 保存模板元数据对象
+        self.use_chat_template = use_chat_template  # 保存是否使用对话模板的标志
+        self.remove_unused_columns = remove_unused_columns  # 保存是否移除未使用列的标志
+        self.template_backend = template_backend  # 保存模板后端选择（swift或jinja）
+        self.max_length = max_length  # 再次保存最大长度（确保覆盖）
+        self.truncation_strategy = truncation_strategy  # 保存截断策略
+        self.loss_scale = loss_scale_map[loss_scale]()  # 从映射中获取loss权重函数实例并保存
+        self.max_pixels = max_pixels  # 保存图像最大像素数限制
+        self.padding_side = padding_side  # 保存padding方向
+        self.sequence_parallel_size = sequence_parallel_size  # 保存序列并行大小
+        self.padding_free = padding_free  # 保存是否启用padding-free模式
+        
+        # ===== 配置Agent模板 =====
+        agent_template = agent_template or template_meta.agent_template  # 使用传入的agent_template，若无则使用template_meta中的默认值
+        self._agent_template = agent_template  # 保存agent模板名称（用于内部引用）
+        self.agent_template = agent_templates[agent_template]()  # 从映射中获取agent模板实例并保存
+
+        # ===== 配置bbox归一化方式 =====
+        self.norm_bbox = norm_bbox or self.norm_bbox  # 使用传入的norm_bbox，若无则使用类属性的默认值
+        
+        # ===== 特殊处理：编码器-解码器架构 =====
+        if self.is_encoder_decoder:  # 若为编码器-解码器架构（如T5、BART）
+            self.skip_prompt = False  # 不跳过prompt：编码器-解码器模型需要完整的输入序列
+        
+        # ===== 初始化运行模式和任务类型 =====
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # 推理模式（infer）
+                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # 训练模式（train），默认为'pt'（PyTorch推理）
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
-                                'generative_reranker'] = 'causal_lm'
-        self._packing = self.padding_free
-        self.use_megatron = False
-        self._handles = []
-        self._deepspeed_initialize = None
+                                'generative_reranker'] = 'causal_lm'  # 任务类型：默认为因果语言模型
+        
+        # ===== 初始化其他内部状态 =====
+        self._packing = self.padding_free  # Packing标志：与padding_free保持一致
+        self.use_megatron = False  # 是否使用Megatron格式：用于生成4D causal attention mask
+        self._handles = []  # Hook句柄列表：用于存储注册的forward hook，便于后续移除
+        self._deepspeed_initialize = None  # DeepSpeed初始化函数：用于DeepSpeed Zero-3场景
 
-        if processor is not None:
-            self.init_processor(processor)
+        # ===== 初始化Processor（如果提供） =====
+        if processor is not None:  # 若在初始化时提供了processor
+            self.init_processor(processor)  # 立即初始化processor，完成tokenizer等的设置
 
     def init_processor(self, processor: Processor) -> None:
-        if processor is None or self._processor_inited:
-            return
-        self._processor_inited = True
-        self.processor = processor
-        self.model_info = processor.model_info
-        self.config = self.model_info.config
-        self.task_type = self.model_info.task_type
+        """函数功能：
+        初始化Processor对象，将tokenizer、image_processor、model_info等信息绑定到
+        Template实例。这个方法会从processor中提取模型配置、任务类型等关键信息，
+        并完成占位符token的ID转换和模板元数据的初始化。
 
-        self.model_meta = processor.model_meta
-        if self.max_length is None:
-            self.max_length = self.model_info.max_model_len
-        logger.info(f'default_system: {repr(self.template_meta.default_system)}')
-        logger.info(f'max_length: {self.max_length}')
-        logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')
-        logger.info(f'agent_template: {self._agent_template}')
-        if self.model_meta.is_multimodal:
-            logger.info(f'norm_bbox: {self.norm_bbox}')
-        tokenizer = self.tokenizer
+        参数：
+        - processor (Processor): 处理器对象，包含tokenizer、image_processor、
+            model_info、model_meta等信息
 
-        for i, token in enumerate(self.placeholder_tokens):
-            if isinstance(token, str):
-                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
-        self.template_meta.init(tokenizer)
+        返回值：
+        - None
 
-    @staticmethod
+        使用示例：
+        >>> # 示例1：在__init__后初始化processor
+        >>> template = Template(None, template_meta)  # processor暂时为None
+        >>> processor = Processor(tokenizer=tokenizer, model_info=model_info)
+        >>> template.init_processor(processor)  # 后续初始化processor
+        >>> 
+        >>> # 示例2：重复调用会被忽略
+        >>> template.init_processor(processor)  # 第一次初始化
+        >>> template.init_processor(processor)  # 第二次调用会直接返回，不重复初始化
+        """
+        if processor is None or self._processor_inited:  # 若processor为None或已经初始化过
+            return  # 直接返回，避免重复初始化
+        self._processor_inited = True  # 标记processor已初始化，防止后续重复调用
+        
+        # ===== 保存processor及相关信息 =====
+        self.processor = processor  # 保存processor对象，提供tokenizer等访问入口
+        self.model_info = processor.model_info  # 保存模型信息对象：包含max_model_len、模型架构等
+        self.config = self.model_info.config  # 保存模型配置对象：Transformers的PretrainedConfig
+        self.task_type = self.model_info.task_type  # 保存任务类型：从model_info提取任务类型（可能覆盖__init__中的默认值）
+
+        # ===== 处理模型元数据和最大长度 =====
+        self.model_meta = processor.model_meta  # 保存模型元数据：包含is_multimodal等模型特性信息
+        if self.max_length is None:  # 若在__init__时未指定max_length
+            self.max_length = self.model_info.max_model_len  # 使用模型的默认最大长度（从config或model_info获取）
+        
+        # ===== 打印配置信息日志 =====
+        # NOTE: repr(obj) 是 Python 的内置函数，用于获取对象的“官方字符串表示形式”，生成一个尽可能准确、可用于调试的字符串
+        logger.info(f'default_system: {repr(self.template_meta.default_system)}')  # 记录默认系统提示
+        logger.info(f'max_length: {self.max_length}')  # 记录最大序列长度
+        logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')  # 记录响应前缀
+        logger.info(f'agent_template: {self._agent_template}')  # 记录agent模板名称
+        if self.model_meta.is_multimodal:  # 若为多模态模型
+            logger.info(f'norm_bbox: {self.norm_bbox}')  # 记录bbox归一化方式
+
+        # ===== 获取tokenizer并转换占位符token =====
+        tokenizer = self.tokenizer  # 获取tokenizer对象（通过ProcessorMixin的属性访问）
+
+        # ===== 转换占位符token为ID =====
+        for i, token in enumerate(self.placeholder_tokens):  # 遍历所有占位符token
+            if isinstance(token, str):  # 若token是字符串形式（尚未转换为ID）
+                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)  # 将字符串token转换为对应的token ID
+        
+        # ===== 初始化模板元数据 =====
+        self.template_meta.init(tokenizer)  # 调用template_meta的init方法，完成特殊token ID的设置等初始化工作
+
+    @staticmethod  # 静态方法：不依赖实例状态
     def _load_image(image, load_images: bool):
-        if load_images:
-            if isinstance(image, dict) and 'bytes' in image:
-                image = image['bytes'] or image['path']
-            image = load_image(image)
-        else:
-            if isinstance(image, dict):
-                path = image['path']
-                if path and (path.startswith('http') or os.path.exists(path)):
-                    image = path
-                else:
-                    image = load_image(image['bytes'])
-            elif not isinstance(image, str):
-                image = load_image(image)
-        return image
+        """函数功能：
+        加载图像数据，支持多种输入格式（路径、bytes、PIL.Image等）。
+        根据load_images参数决定是否立即加载图像为PIL.Image对象，或仅保留路径。
+
+        参数：
+        - image: 图像输入，支持多种格式：
+            * str: 文件路径或URL
+            * dict: {'path': str, 'bytes': bytes} 字典
+            * PIL.Image: 已加载的图像对象
+            * bytes: 图像二进制数据
+        - load_images (bool): 是否立即加载图像为PIL.Image对象。
+            True: 将所有格式转换为PIL.Image；
+            False: 尽可能保留路径字符串（用于vLLM等框架的延迟加载）
+
+        返回值：
+        - 加载后的图像（PIL.Image或str路径）
+        """
+        if load_images:  # 若需要立即加载图像
+            if isinstance(image, dict) and 'bytes' in image:  # 若为字典格式且包含bytes字段
+                image = image['bytes'] or image['path']  # 优先使用bytes，若无则使用path
+            image = load_image(image)  # 调用load_image工具函数：将各种格式转换为PIL.Image对象
+        else:  # 若不需要立即加载（延迟加载模式，用于vLLM等）
+            if isinstance(image, dict):  # 若为字典格式
+                path = image['path']  # 提取path字段
+                if path and (path.startswith('http') or os.path.exists(path)):  # 若path有效（URL或本地文件存在）
+                    image = path  # 保留路径字符串，不加载图像（延迟加载）
+                else:  # 若path无效或不存在
+                    image = load_image(image['bytes'])  # 从bytes加载图像
+            elif not isinstance(image, str):  # 若不是字符串（可能是PIL.Image或bytes）
+                image = load_image(image)  # 加载为PIL.Image对象
+        return image  # 返回处理后的图像
 
     @staticmethod
     def _get_height_width(inputs: StdTemplateInputs) -> None:
-        width = []
-        height = []
-        for image in inputs.images:
-            width.append(image.width)
-            height.append(image.height)
-        inputs.objects['width'] = width
-        inputs.objects['height'] = height
+        """函数功能：
+        从inputs.images中提取所有图像的宽度和高度，并保存到inputs.objects字典中。
+        这些尺寸信息用于后续的bbox归一化等操作。
+
+        参数：
+        - inputs (StdTemplateInputs): 标准输入对象，必须包含已加载的images列表
+
+        返回值：
+        - None（原地修改inputs.objects，添加'width'和'height'字段）
+        """
+        width = []  # 初始化宽度列表
+        height = []  # 初始化高度列表
+        for image in inputs.images:  # 遍历所有图像（PIL.Image对象）
+            width.append(image.width)  # 提取图像宽度并添加到列表
+            height.append(image.height)  # 提取图像高度并添加到列表
+        inputs.objects['width'] = width  # 将宽度列表保存到objects字典
+        inputs.objects['height'] = height  # 将高度列表保存到objects字典
+
 
     def normalize_bbox(self, inputs: StdTemplateInputs) -> None:
-        objects = inputs.objects
-        bbox_list = objects['bbox']
-        width_list = objects['width']
-        height_list = objects['height']
-        bbox_type = objects.pop('bbox_type', None) or 'real'
-        image_id_list = objects.pop('image_id', None) or []
-        image_id_list += [0] * (len(bbox_list) - len(image_id_list))
-        for bbox, image_id in zip(bbox_list, image_id_list):
-            if bbox_type == 'norm1':
-                width, height = 1, 1
-            else:
-                width, height = width_list[image_id], height_list[image_id]
-            for i, (x, y) in enumerate(zip(bbox[::2], bbox[1::2])):
-                if self.norm_bbox == 'norm1000':
-                    norm_width, norm_height = 1000, 1000
-                elif self.norm_bbox == 'none':
-                    image = inputs.images[image_id]
-                    norm_width, norm_height = image.width, image.height
-                bbox[2 * i] = int(round(x / width * norm_width))
-                bbox[2 * i + 1] = int(round(y / height * norm_height))
+        """函数功能：
+        归一化bbox坐标到指定的格式。支持将真实像素坐标或norm1坐标转换为：
+        - 'norm1000': 归一化到[0, 1000]整数范围
+        - 'none': 保持原始图像像素坐标
+
+        参数：
+        - inputs (StdTemplateInputs): 标准输入对象，必须包含：
+            * objects['bbox']: bbox列表，每个bbox为[x1, y1, x2, y2, ...]格式
+            * objects['width']: 图像宽度列表
+            * objects['height']: 图像高度列表
+            * objects['bbox_type']: 可选，bbox类型（'real'真实像素/'norm1'归一化到0-1）
+            * objects['image_id']: 可选，每个bbox对应的图像索引
+
+        返回值：
+        - None（原地修改inputs.objects['bbox']中的坐标值）
+        """
+        objects = inputs.objects  # 获取objects字典引用
+        bbox_list = objects['bbox']  # 获取bbox列表
+        width_list = objects['width']  # 获取图像宽度列表
+        height_list = objects['height']  # 获取图像高度列表
+        bbox_type = objects.pop('bbox_type', None) or 'real'  # 获取并移除bbox_type，默认为'real'（真实像素坐标）
+        image_id_list = objects.pop('image_id', None) or []  # 获取并移除image_id列表，默认为空列表
+        image_id_list += [0] * (len(bbox_list) - len(image_id_list))  # 若image_id不足，用0填充（默认关联第一张图像）
+        
+        for bbox, image_id in zip(bbox_list, image_id_list):  # 遍历每个bbox及其对应的图像ID
+            if bbox_type == 'norm1':  # 若bbox已归一化到[0, 1]范围
+                width, height = 1, 1  # 原始尺寸设为1（归一化坐标）
+            else:  # 若bbox为真实像素坐标
+                width, height = width_list[image_id], height_list[image_id]  # 获取对应图像的真实宽高
+            
+            for i, (x, y) in enumerate(zip(bbox[::2], bbox[1::2])):  # 遍历bbox中的每个坐标点（x, y对）
+                # bbox格式为[x1, y1, x2, y2, ...]，bbox[::2]提取所有x坐标，bbox[1::2]提取所有y坐标
+                if self.norm_bbox == 'norm1000':  # 若目标归一化方式为'norm1000'
+                    norm_width, norm_height = 1000, 1000  # 目标归一化范围为[0, 1000]
+                elif self.norm_bbox == 'none':  # 若目标归一化方式为'none'（保持像素坐标）
+                    image = inputs.images[image_id]  # 获取对应的图像对象
+                    norm_width, norm_height = image.width, image.height  # 目标范围为图像的真实宽高
+                bbox[2 * i] = int(round(x / width * norm_width))  # 归一化x坐标：从原始范围转换到目标范围
+                bbox[2 * i + 1] = int(round(y / height * norm_height))  # 归一化y坐标：从原始范围转换到目标范围
 
     def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
-        agent_template = self.agent_template
-        agent_template.template_meta = self.template_meta  # for hermes
-        if inputs.tools:
-            if isinstance(inputs.tools, str):
-                inputs.tools = agent_template._parse_json(inputs.tools)
-                if not isinstance(inputs.tools, (list, tuple)):
-                    inputs.tools = [inputs.tools]
-            elif isinstance(inputs.tools, (list, tuple)):
-                inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
-            else:
-                raise ValueError(f'inputs.tools: {inputs.tools}')
-            for i, tool in enumerate(inputs.tools):
-                inputs.tools[i] = agent_template.wrap_tool(tool)
-        i = 0
-        messages = inputs.messages
-        while i < len(messages):
-            if messages[i]['role'] == 'tool_call':
-                i_start = i
-                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
-                    i += 1
-                tool_content = self.agent_template._format_tool_calls(messages[i_start:i + 1])
-                messages[i_start:i + 1] = [{'role': 'assistant', 'content': tool_content}]
-                i = i_start + 1
-            else:
-                i += 1
+        """函数功能：
+        预处理工具调用（function calling）相关的输入数据。主要完成两个任务：
+        1. 解析和格式化tools定义（将JSON字符串转换为字典，并用agent模板包装）
+        2. 将连续的tool_call消息合并为单个assistant消息（格式化工具调用内容）
+
+        参数：
+        - inputs (StdTemplateInputs): 标准输入对象，可能包含tools和tool_call消息
+
+        返回值：
+        - None（原地修改inputs.tools和inputs.messages）
+        """
+        agent_template = self.agent_template  # 获取agent模板实例
+        agent_template.template_meta = self.template_meta  # 设置agent模板的template_meta（for hermes等特定模型）
+        
+        # ===== 步骤1：处理tools定义 =====
+        if inputs.tools:  # 若提供了tools定义
+            if isinstance(inputs.tools, str):  # 若tools为JSON字符串
+                inputs.tools = agent_template._parse_json(inputs.tools)  # 解析JSON字符串为Python对象
+                if not isinstance(inputs.tools, (list, tuple)):  # 若解析结果不是列表或元组（单个工具）
+                    inputs.tools = [inputs.tools]  # 转换为列表格式
+            elif isinstance(inputs.tools, (list, tuple)):  # 若tools已经是列表或元组
+                inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]  # 解析列表中的每个tool（可能是JSON字符串）
+            else:  # 若tools格式不支持
+                raise ValueError(f'inputs.tools: {inputs.tools}')  # 抛出异常
+            for i, tool in enumerate(inputs.tools):  # 遍历所有工具定义
+                inputs.tools[i] = agent_template.wrap_tool(tool)  # 使用agent模板包装工具定义（添加特定格式）
+        
+        # ===== 步骤2：合并连续的tool_call消息 =====
+        i = 0  # 初始化消息索引
+        messages = inputs.messages  # 获取消息列表引用
+        while i < len(messages):  # 遍历所有消息
+            if messages[i]['role'] == 'tool_call':  # 若当前消息为tool_call角色
+                i_start = i  # 记录tool_call序列的起始位置
+                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':  # 查找连续的tool_call消息
+                    i += 1  # 移动到下一个tool_call
+                tool_content = self.agent_template._format_tool_calls(messages[i_start:i + 1])  # 格式化所有连续的tool_call为单个内容字符串
+                messages[i_start:i + 1] = [{'role': 'assistant', 'content': tool_content}]  # 用单个assistant消息替换所有tool_call消息
+                i = i_start + 1  # 移动到合并后消息的下一个位置
+            else:  # 若当前消息不是tool_call
+                i += 1  # 移动到下一个消息
 
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
     ) -> None:
-        self._preprocess_function_call(inputs)
-        if self.model_meta.is_multimodal:
-            self._replace_image_tags(inputs)
-            self._replace_start_image_tags(inputs)
+        """函数功能：
+        预处理输入数据，这是encode之前的核心准备步骤。主要完成：
+        1. 处理工具调用（function calling）
+        2. 替换多模态标签（<image>、<start-image>等）
+        3. 加载和预处理图像数据（支持images和rejected_images）
+        4. 提取图像尺寸信息（用于bbox归一化）
+        5. 缩放图像（根据max_pixels限制）
 
-        for img_field in ['images', 'rejected_images']:
-            images = getattr(inputs, img_field, None)
-            if not images:
-                continue
-            load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
-            load_images_origin = load_images
-            if self.max_pixels is not None or inputs.objects:
-                load_images = True
-            if images:
-                for i, image in enumerate(images):
-                    images[i] = self._load_image(image, load_images)
-            if inputs.objects:
-                self._get_height_width(inputs)
-            if self.max_pixels is not None and images:
-                images = [rescale_image(img, self.max_pixels) for img in images]
+        参数：
+        - inputs (StdTemplateInputs): 标准输入对象，包含messages、images、tools等字段
+
+        返回值：
+        - None（原地修改inputs对象）
+        """
+        # ===== 步骤1：预处理工具调用 =====
+        self._preprocess_function_call(inputs)  # 处理tools定义和tool_call消息
+        
+        # ===== 步骤2：替换多模态标签（仅限多模态模型） =====
+        if self.model_meta.is_multimodal:  # 若为多模态模型
+            self._replace_image_tags(inputs)  # 替换<image>标签为模型特定的图像占位符
+            self._replace_start_image_tags(inputs)  # 替换<start-image>标签（某些模型需要）
+
+        # ===== 步骤3：加载和预处理图像数据 =====
+        for img_field in ['images', 'rejected_images']:  # 遍历图像字段（包括RLHF的rejected_images）
+            images = getattr(inputs, img_field, None)  # 获取图像列表
+            if not images:  # 若该字段为空
+                continue  # 跳过处理
+            
+            # 确定是否需要立即加载图像
+            load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}  # 若配置要求加载或使用vLLM/LMDeploy（需要路径）
+            load_images_origin = load_images  # 保存原始的load_images标志
+            if self.max_pixels is not None or inputs.objects:  # 若需要缩放图像或处理bbox
+                load_images = True  # 必须加载图像（需要访问PIL.Image属性）
+            
+            # 加载所有图像
+            if images:  # 若图像列表非空
+                for i, image in enumerate(images):  # 遍历每个图像
+                    images[i] = self._load_image(image, load_images)  # 加载图像（PIL.Image或保留路径）
+            
+            # 提取图像尺寸信息
+            if inputs.objects:  # 若需要处理objects（bbox等）
+                self._get_height_width(inputs)  # 提取所有图像的宽高并保存到inputs.objects
+            
+            # 缩放图像（减少显存占用）
+            if self.max_pixels is not None and images:  # 若设置了max_pixels限制且有图像
+                images = [rescale_image(img, self.max_pixels) for img in images]  # 缩放所有图像到max_pixels限制
             if images and not load_images_origin:  # fix pt & qwen-vl
                 for i, image in enumerate(images):
                     if isinstance(image, Image.Image):
@@ -471,75 +893,152 @@ class Template(ProcessorMixin):
 
     @torch.inference_mode()
     def encode(self,
-               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
-               return_template_inputs: bool = False,
-               return_length: bool = False) -> Dict[str, Any]:
-        """The entrance method of Template!
+               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],  # 输入数据：支持多种格式
+               return_template_inputs: bool = False,  # 是否在返回结果中包含处理后的template_inputs
+               return_length: bool = False) -> Dict[str, Any]:  # 是否在返回结果中包含序列长度
+        """函数功能：
+        Template类的核心入口方法！将用户输入的对话数据、多模态数据编码为模型可接受的格式。
+        这是整个Template类最重要的方法，根据不同的task_type和mode调用相应的编码子方法。
 
-        Returns:
-            return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
+        主要流程：
+        1. 验证processor已初始化
+        2. 标准化输入格式为StdTemplateInputs
+        3. 预处理输入（加载图像、替换特殊标签等）
+        4. 根据task_type和mode选择编码策略：
+           - causal_lm: 标准训练/_encode_truncated、RLHF、KTO、GKD
+           - seq_cls: 序列分类编码
+           - prm: 过程奖励模型编码
+           - embedding: 文本向量化编码
+           - reranker: 文档排序编码
+        5. 清理None值，处理length字段
+        6. 可选返回template_inputs和extra_kwargs
+
+        参数：
+        - inputs (Union[TemplateInputs, Dict[str, Any], InferRequest]): 输入数据，支持：
+            * TemplateInputs/InferRequest数据类实例
+            * 字典格式（包含messages、images、tools等字段）
+            * StdTemplateInputs标准输入对象
+        - return_template_inputs (bool): 是否在返回字典中包含处理后的template_inputs对象，
+            默认False。用于调试或需要访问标准化后的输入数据。
+        - return_length (bool): 是否在返回字典中包含序列长度信息，默认False。
+            True时会计算所有*length字段的最大值并保存。
+
+        返回值：
+        - Dict[str, Any]: 编码后的字典，通常包含：
+            * input_ids (List[int]): token ID序列
+            * labels (Optional[List[int]]): 标签序列（训练时使用，推理时为None）
+            * loss_scale (Optional[List[float]]): loss权重序列
+            * pixel_values/image_sizes等: 多模态数据（如有）
+            * length (Optional[int]): 序列长度（若return_length=True）
+            * template_inputs (StdTemplateInputs): 标准化输入（若return_template_inputs=True）
+            * 根据不同task_type和mode可能包含额外字段（如RLHF的chosen/rejected）
+
+        使用示例：
+        >>> # 示例1：基础训练场景
+        >>> template.mode = 'train'
+        >>> template.task_type = 'causal_lm'
+        >>> inputs = {"messages": [
+        ...     {"role": "user", "content": "你好"},
+        ...     {"role": "assistant", "content": "你好！有什么可以帮助你的吗？"}
+        ... ]}
+        >>> encoded = template.encode(inputs)
+        >>> # encoded: {'input_ids': [...], 'labels': [...], 'loss_scale': [...]}
+        >>> 
+        >>> # 示例2：多模态输入
+        >>> inputs = {"messages": [{"role": "user", "content": "<image>描述这张图"}],
+        ...           "images": ["path/to/image.jpg"]}
+        >>> encoded = template.encode(inputs)
+        >>> # encoded还会包含: pixel_values, image_sizes等
+        >>> 
+        >>> # 示例3：RLHF模式
+        >>> template.mode = 'rlhf'
+        >>> inputs = {
+        ...     "messages": [{"role": "user", "content": "写一首诗"}],
+        ...     "chosen": {"role": "assistant", "content": "好的诗"},
+        ...     "rejected": {"role": "assistant", "content": "不好的诗"}
+        ... }
+        >>> encoded = template.encode(inputs)
+        >>> # encoded: {'chosen_input_ids': [...], 'rejected_input_ids': [...], ...}
+        >>> 
+        >>> # 示例4：推理场景（不生成labels）
+        >>> template.mode = 'pt'
+        >>> inputs = {"messages": [{"role": "user", "content": "你好"}]}
+        >>> encoded = template.encode(inputs, return_length=True)
+        >>> # encoded: {'input_ids': [...], 'length': 10} (没有labels)
         """
+        # ===== 步骤1：验证processor已初始化 =====
         assert self._processor_inited, ('Please initialize the processor before calling the template.encode method: '
-                                        'template.init_processor(processor).')
-        if isinstance(inputs, (InferRequest, TemplateInputs)):
-            inputs = asdict(inputs)
+                                        'template.init_processor(processor).')  # 确保processor已初始化，否则无法使用tokenizer
+        
+        # ===== 步骤2：标准化输入格式 =====
+        if isinstance(inputs, (InferRequest, TemplateInputs)):  # 若输入为数据类实例
+            inputs = asdict(inputs)  # 转换为字典格式，便于后续处理
 
-        extra_kwargs = {}
-        if isinstance(inputs, dict):
-            inputs = deepcopy(inputs)
-            if self.task_type == 'causal_lm' and not self.is_training:
-                InferRequest.remove_response(inputs['messages'])
-            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
-        elif isinstance(inputs, StdTemplateInputs):
-            inputs = deepcopy(inputs)
-        assert isinstance(inputs, StdTemplateInputs)
-        self._preprocess_inputs(inputs)
+        extra_kwargs = {}  # 初始化额外参数字典：用于存储不在标准字段中的自定义参数
+        if isinstance(inputs, dict):  # 若输入为字典格式
+            inputs = deepcopy(inputs)  # 深拷贝输入，避免修改原始数据
+            if self.task_type == 'causal_lm' and not self.is_training:  # 若为因果语言模型且非训练模式（推理）
+                InferRequest.remove_response(inputs['messages'])  # 移除messages中的assistant响应，仅保留用户输入
+            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)  # 将字典转换为StdTemplateInputs对象，分离标准字段和额外参数
+        elif isinstance(inputs, StdTemplateInputs):  # 若输入已经是StdTemplateInputs对象
+            inputs = deepcopy(inputs)  # 深拷贝输入，避免修改原始对象
+        assert isinstance(inputs, StdTemplateInputs)  # 确保此时inputs已经是StdTemplateInputs类型
+        
+        # ===== 步骤3：预处理输入（加载多模态数据、替换特殊标签、处理工具调用等） =====
+        self._preprocess_inputs(inputs)  # 执行预处理：加载图像/视频/音频、替换<image>等标签、处理tools和bbox等
 
-        if self.task_type == 'causal_lm':
-            if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
-                encoded = self._encode_truncated(inputs)
-            elif self.mode == 'rlhf':
-                encoded = self._rlhf_encode(inputs)
-            elif self.mode == 'kto':
-                encoded = self._kto_encode(inputs)
-            elif self.mode == 'gkd':
-                encoded = self._gkd_encode(inputs)
-        elif self.task_type == 'seq_cls':
-            if self.mode == 'rlhf':
-                encoded = self._rlhf_encode(inputs)
-                for prefix in ['chosen', 'rejected']:
-                    encoded.pop(f'{prefix}_labels', None)
-                    encoded.pop(f'{prefix}_loss_scale', None)
-            else:
-                encoded = self._seq_cls_encode(inputs)
-        elif self.task_type == 'prm':
-            encoded = self._encode_truncated(inputs)
-        elif self.task_type == 'embedding':
-            encoded = self._embedding_encode(inputs)
-        elif self.task_type in {'reranker', 'generative_reranker'}:
-            encoded = self._reranker_encode(inputs)
+        # ===== 步骤4：根据task_type和mode选择编码策略 =====
+        if self.task_type == 'causal_lm':  # 若任务类型为因果语言模型（标准的自回归LM）
+            if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:  # 标准训练或推理模式
+                encoded = self._encode_truncated(inputs)  # 调用标准编码方法：处理消息、tokenize、生成labels、应用截断策略
+            elif self.mode == 'rlhf':  # RLHF模式（强化学习从人类反馈）
+                encoded = self._rlhf_encode(inputs)  # 调用RLHF编码方法：分别编码chosen和rejected响应
+            elif self.mode == 'kto':  # KTO模式（Kahneman-Tversky优化）
+                encoded = self._kto_encode(inputs)  # 调用KTO编码方法：处理KTO训练所需格式
+            elif self.mode == 'gkd':  # GKD模式（广义知识蒸馏）
+                encoded = self._gkd_encode(inputs)  # 调用GKD编码方法：分离prompt和answer用于知识蒸馏
+        elif self.task_type == 'seq_cls':  # 若任务类型为序列分类
+            if self.mode == 'rlhf':  # 序列分类的RLHF模式（用于奖励模型训练）
+                encoded = self._rlhf_encode(inputs)  # 先使用RLHF编码
+                for prefix in ['chosen', 'rejected']:  # 遍历chosen和rejected前缀
+                    encoded.pop(f'{prefix}_labels', None)  # 移除labels字段（分类任务不需要token级别的labels）
+                    encoded.pop(f'{prefix}_loss_scale', None)  # 移除loss_scale字段
+            else:  # 标准序列分类模式
+                encoded = self._seq_cls_encode(inputs)  # 调用序列分类编码方法：编码输入并添加分类标签
+        elif self.task_type == 'prm':  # 若任务类型为过程奖励模型（Process Reward Model）
+            encoded = self._encode_truncated(inputs)  # 使用标准编码方法（PRM与causal_lm编码类似）
+        elif self.task_type == 'embedding':  # 若任务类型为文本向量化
+            encoded = self._embedding_encode(inputs)  # 调用embedding编码方法：处理anchor、positive、negative三元组
+        elif self.task_type in {'reranker', 'generative_reranker'}:  # 若任务类型为文档排序
+            encoded = self._reranker_encode(inputs)  # 调用reranker编码方法：编码positive和negative文档对
 
-        if inputs.channel is not None:
-            encoded['channel'] = inputs.channel
+        # ===== 步骤5：添加channel信息（如有） =====
+        if inputs.channel is not None:  # 若输入包含channel信息（用于多任务或多数据源场景）
+            encoded['channel'] = inputs.channel  # 将channel信息添加到编码结果中
 
-        lengths = [0]
-        for key in list(encoded.keys()):
-            if encoded[key] is None:
-                encoded.pop(key)
-            elif key.endswith('length'):
-                value = encoded[key]
-                if isinstance(value, int):
-                    lengths.append(value)
-                elif isinstance(value, (tuple, list)):
-                    lengths += value
-        if return_length:
-            encoded['length'] = max(lengths)
-        else:
-            encoded.pop('length', None)
-        if return_template_inputs:
-            encoded['template_inputs'] = inputs
-        if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = extra_kwargs
+        # ===== 步骤6：清理None值并处理length字段 =====
+        lengths = [0]  # 初始化长度列表，用于收集所有*length字段的值
+        for key in list(encoded.keys()):  # 遍历编码结果的所有键（使用list()避免迭代时修改字典）
+            if encoded[key] is None:  # 若值为None
+                encoded.pop(key)  # 移除该键值对，减少不必要的数据
+            elif key.endswith('length'):  # 若键名以'length'结尾（如'length', 'chosen_length'等）
+                value = encoded[key]  # 获取length值
+                if isinstance(value, int):  # 若为单个整数
+                    lengths.append(value)  # 添加到lengths列表
+                elif isinstance(value, (tuple, list)):  # 若为列表或元组（多个长度值）
+                    lengths += value  # 扩展lengths列表
+        
+        # ===== 步骤7：根据return_length决定是否保留length字段 =====
+        if return_length:  # 若需要返回length
+            encoded['length'] = max(lengths)  # 保存所有长度的最大值
+        else:  # 若不需要返回length
+            encoded.pop('length', None)  # 移除length字段（如果存在）
+        
+        # ===== 步骤8：根据参数决定是否添加额外信息 =====
+        if return_template_inputs:  # 若需要返回处理后的template_inputs
+            encoded['template_inputs'] = inputs  # 将StdTemplateInputs对象添加到结果中
+        if not self.remove_unused_columns:  # 若不移除未使用的列
+            encoded['_extra_kwargs'] = extra_kwargs  # 保存额外参数（非标准字段）
         return encoded
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -620,20 +1119,63 @@ class Template(ProcessorMixin):
         return preds, logprobs
 
     def decode(self,
-               generate_ids: List[int],
-               *,
-               is_finished: bool = True,
-               tokenizer_kwargs=None,
-               first_token=True,
-               **kwargs) -> Any:
-        tokenizer_kwargs = tokenizer_kwargs or {}
-        if 'spaces_between_special_tokens' not in tokenizer_kwargs:
-            tokenizer_kwargs['spaces_between_special_tokens'] = False
-        generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
-        response = self.tokenizer.decode(generate_ids)
-        if first_token and self.template_meta.response_prefix:
-            response = self.template_meta.response_prefix + response
-        return response
+               generate_ids: List[int],  # 生成的token ID序列：模型生成的完整token列表
+               *,  # 以下参数必须使用关键字传递
+               is_finished: bool = True,  # 生成是否已完成：True表示已结束，会跳过stop tokens
+               tokenizer_kwargs=None,  # tokenizer.decode的额外参数：如skip_special_tokens等
+               first_token=True,  # 是否为第一个token：True时会添加response_prefix
+               **kwargs) -> Any:  # 其他额外参数（预留扩展）
+        """函数功能：
+        将模型生成的token ID序列解码为可读的文本字符串。这是推理时的核心方法，
+        负责将generate_ids转换回自然语言文本，并处理stop tokens和response prefix。
+
+        主要流程：
+        1. 准备tokenizer参数（默认不在特殊token间添加空格）
+        2. 跳过stop tokens（如eos_token、suffix等）
+        3. 使用tokenizer解码token ID序列
+        4. 可选添加response_prefix（对于首token）
+        5. 返回解码后的文本
+
+        参数：
+        - generate_ids (List[int]): 模型生成的token ID列表，通常来自model.generate()的输出
+        - is_finished (bool): 生成是否已完成，默认True。True时会跳过末尾的stop tokens
+            （如eos_token），False时保留所有token（流式生成的中间状态）
+        - tokenizer_kwargs (Optional[Dict]): 传递给tokenizer.decode的额外参数字典，
+            如{'skip_special_tokens': True}。默认None会设置{'spaces_between_special_tokens': False}
+        - first_token (bool): 是否为生成序列的首个token，默认True。True且存在response_prefix
+            时会在解码结果前添加prefix（如某些模型要求的特定前缀）
+        - **kwargs: 其他额外参数，预留用于未来扩展
+
+        返回值：
+        - Any: 通常为str类型的解码文本，某些特殊情况下可能为其他类型
+
+        使用示例：
+        >>> # 示例1：标准解码（生成已完成）
+        >>> generate_ids = [128000, 15339, 1917, 264, 11364, 128001]
+        >>> response = template.decode(generate_ids, is_finished=True)
+        >>> # response: "Hello, this is a test."
+        >>> 
+        >>> # 示例2：流式解码（生成进行中）
+        >>> partial_ids = [128000, 15339, 1917]
+        >>> partial_response = template.decode(partial_ids, is_finished=False)
+        >>> # is_finished=False时不跳过stop tokens，保留所有内容
+        >>> 
+        >>> # 示例3：跳过特殊token
+        >>> response = template.decode(generate_ids, 
+        ...                           tokenizer_kwargs={'skip_special_tokens': True})
+        >>> 
+        >>> # 示例4：禁用response_prefix
+        >>> response = template.decode(generate_ids, first_token=False)
+        >>> # 不添加response_prefix，直接返回解码结果
+        """
+        tokenizer_kwargs = tokenizer_kwargs or {}  # 若未提供tokenizer_kwargs则初始化为空字典
+        if 'spaces_between_special_tokens' not in tokenizer_kwargs:  # 若未指定特殊token间的空格处理
+            tokenizer_kwargs['spaces_between_special_tokens'] = False  # 默认不在特殊token之间添加空格（保持紧凑输出）
+        generate_ids = self.skip_stop_tokens(generate_ids, is_finished)  # 跳过stop tokens：移除末尾的eos_token和模板后缀（仅当is_finished=True时）
+        response = self.tokenizer.decode(generate_ids, **tokenizer_kwargs)  # 使用tokenizer将token ID列表解码为文本字符串
+        if first_token and self.template_meta.response_prefix:  # 若为首token且模板定义了response_prefix
+            response = self.template_meta.response_prefix + response  # 在解码结果前添加response_prefix（某些模型需要特定的响应前缀）
+        return response  # 返回最终的解码文本
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
@@ -1157,70 +1699,93 @@ class Template(ProcessorMixin):
 
     def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
                   truncation_strategy: Literal['left', 'right']):
-        placeholder_tokens = torch.tensor(self.placeholder_tokens)
-        input_ids_tensor = torch.tensor(input_ids)
-        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)
-        n_protected = protected.sum().item()
-        if n_protected < self.max_length:
-            non_protected = (~protected).nonzero(as_tuple=True)[0]
-            if truncation_strategy == 'left':
-                idx = non_protected[-(self.max_length - n_protected):]
-            else:
-                idx = non_protected[:self.max_length - n_protected]
-            protected[idx] = True
-        input_ids = input_ids_tensor[protected].tolist()
-        if labels is not None:
-            labels = torch.tensor(labels)[protected].tolist()
-        if loss_mask is not None:
-            loss_mask = torch.tensor(loss_mask)[protected].tolist()
-        return input_ids, labels, loss_mask
+        """函数功能：截断超长序列，同时保护占位符token不被截断。
+        
+        参数：
+        - input_ids: 输入token ID列表
+        - labels: 标签列表（可选）
+        - loss_mask: loss权重列表（可选）
+        - truncation_strategy: 截断策略（'left'左截断/'right'右截断）
+        
+        返回值：截断后的(input_ids, labels, loss_mask)元组
+        """
+        placeholder_tokens = torch.tensor(self.placeholder_tokens)  # 转换占位符token为tensor
+        input_ids_tensor = torch.tensor(input_ids)  # 转换input_ids为tensor
+        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)  # 标记所有占位符token位置（需要保护）
+        n_protected = protected.sum().item()  # 计算需要保护的token数量
+        if n_protected < self.max_length:  # 若保护的token数量小于max_length（需要保留部分非保护token）
+            non_protected = (~protected).nonzero(as_tuple=True)[0]  # 获取所有非保护token的索引
+            if truncation_strategy == 'left':  # 若左截断（保留序列右侧）
+                idx = non_protected[-(self.max_length - n_protected):]  # 选择右侧的非保护token
+            else:  # 若右截断（保留序列左侧）
+                idx = non_protected[:self.max_length - n_protected]  # 选择左侧的非保护token
+            protected[idx] = True  # 将选中的非保护token也标记为保护（保留）
+        input_ids = input_ids_tensor[protected].tolist()  # 提取所有保护的token（截断后的input_ids）
+        if labels is not None:  # 若有labels
+            labels = torch.tensor(labels)[protected].tolist()  # 同步截断labels
+        if loss_mask is not None:  # 若有loss_mask
+            loss_mask = torch.tensor(loss_mask)[protected].tolist()  # 同步截断loss_mask
+        return input_ids, labels, loss_mask  # 返回截断后的三元组
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
+        """函数功能：带截断策略的编码方法，调用_encode并根据max_length应用截断。
+        
+        主要步骤：1.添加默认多模态标签 2.调用_encode编码 3.计算长度 4.应用截断策略
+        
+        参数：inputs - 标准输入对象
+        返回值：编码后的字典，包含input_ids, labels, loss_scale, length等
+        """
+        if inputs.is_multimodal:  # 若为多模态输入
+            self._add_default_tags(inputs)  # 添加默认的多模态标签
 
-        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-            encoded = Template._encode(self, inputs)
-            for key in ['images', 'audios', 'videos']:
-                value = getattr(inputs, key)
-                if value:
-                    encoded[key] = value
-        else:
-            encoded = self._encode(inputs)
+        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:  # 若为推理框架模式
+            encoded = Template._encode(self, inputs)  # 调用基础_encode方法
+            for key in ['images', 'audios', 'videos']:  # 遍历多模态字段
+                value = getattr(inputs, key)  # 获取多模态数据
+                if value:  # 若有数据
+                    encoded[key] = value  # 添加到编码结果（推理框架需要）
+        else:  # 标准训练或推理模式
+            encoded = self._encode(inputs)  # 调用_encode方法
 
-        input_ids = encoded.get('input_ids')
-        labels = encoded.get('labels')
-        loss_scale = encoded.get('loss_scale')
+        input_ids = encoded.get('input_ids')  # 获取input_ids
+        labels = encoded.get('labels')  # 获取labels
+        loss_scale = encoded.get('loss_scale')  # 获取loss_scale
 
-        # input_ids might be a tensor.
-        lengths = [0]
-        if input_ids is not None:
-            lengths.append(len(input_ids))
-        if labels is not None:
-            lengths.append(len(labels))
-        length = max(lengths)
-        encoded['length'] = length
+        # 计算序列长度（input_ids might be a tensor）
+        lengths = [0]  # 初始化长度列表
+        if input_ids is not None:  # 若有input_ids
+            lengths.append(len(input_ids))  # 添加input_ids长度
+        if labels is not None:  # 若有labels
+            lengths.append(len(labels))  # 添加labels长度
+        length = max(lengths)  # 取最大长度
+        encoded['length'] = length  # 保存长度
 
-        if self.max_length is not None and length > self.max_length:
-            if self.truncation_strategy in {'right', 'left'}:
+        # 应用截断策略
+        if self.max_length is not None and length > self.max_length:  # 若超过max_length
+            if self.truncation_strategy in {'right', 'left'}:  # 若为截断策略
                 input_ids, labels, loss_scale = self._truncate(
-                    input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
-            elif self.truncation_strategy == 'raise':
+                    input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)  # 执行截断
+            elif self.truncation_strategy == 'raise':  # 若为抛异常策略
                 raise MaxLengthError(f'Current length of row({length}) is larger'
-                                     f' than the max_length({self.max_length}).')
-        encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
-        encoded['loss_scale'] = loss_scale
-        return encoded
+                                     f' than the max_length({self.max_length}).')  # 抛出长度超限异常
+        encoded['input_ids'] = input_ids  # 更新input_ids
+        encoded['labels'] = labels  # 更新labels
+        encoded['loss_scale'] = loss_scale  # 更新loss_scale
+        return encoded  # 返回编码结果
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        template_backend = self.template_backend
+        """函数功能：核心编码方法，根据template_backend选择swift或jinja编码。
+        
+        参数：inputs - 标准输入对象
+        返回值：编码后的字典，包含input_ids, labels, loss_scale等
+        """
+        template_backend = self.template_backend  # 获取模板后端
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.task_type != 'seq_cls'):
-            template_backend = 'jinja'
-            logger.info_once(f'Setting template_backend: {template_backend}')
+                and self.task_type != 'seq_cls'):  # 若为dummy模板且推理模式
+            template_backend = 'jinja'  # 使用jinja后端
+            logger.info_once(f'Setting template_backend: {template_backend}')  # 记录日志
         res_context_list, loss_scale_list, answer_len = (
-            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
+            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))  # 调用相应的编码方法
         encoded = {}
         if self.is_encoder_decoder or self.mode == 'gkd':
             # tokenizer_kwargs: use prompt (qwen-audio)
@@ -1384,33 +1949,100 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
         return models
 
-    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        from swift.llm import RowPreprocessor
-        if self.task_type == 'causal_lm':
-            if self.mode in {'pt', 'train'}:
-                res = self._data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'rlhf':
-                res = self._rlhf_data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'kto':
-                res = self._kto_data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'gkd':
-                res = self._gkd_data_collator(batch, padding_to=padding_to)
-        elif self.task_type == 'prm':
-            res = self._data_collator(batch, padding_to=padding_to)
-        elif self.task_type == 'seq_cls':
-            if self.mode == 'rlhf':
-                res = self._rlhf_data_collator(batch, padding_to=padding_to)
-            else:
-                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
-        elif self.task_type == 'embedding':
-            res = self._embedding_data_collator(batch, padding_to=padding_to)
-        elif self.task_type in {'reranker', 'generative_reranker'}:
-            res = self._reranker_data_collator(batch, padding_to=padding_to)
-        if not self.remove_unused_columns:
-            extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
-            extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
-            res.update({k: v for k, v in extra_kwargs.items() if k not in res})
-        return res
+    def data_collator(self, batch: List[Dict[str, Any]],  # 批量编码数据：每个元素是encode()返回的字典
+                       *, padding_to: Optional[int] = None) -> Dict[str, Any]:  # 可选的padding目标长度
+        """函数功能：
+        将批量的编码数据整理（collate）为模型可直接使用的批次张量。这是训练时的核心方法，
+        负责对变长序列进行padding对齐、生成attention mask、拼接多模态数据等操作。
+
+        主要职责：
+        1. 根据task_type和mode选择相应的data collator子方法
+        2. 对batch中的input_ids、labels等序列进行padding对齐
+        3. 生成attention_mask（支持Megatron的4D causal mask）
+        4. 拼接多模态数据（pixel_values、image_sizes等）
+        5. 处理position_ids、loss_scale等辅助字段
+        6. 可选保留extra_kwargs（非标准字段）
+
+        核心流程：
+        - causal_lm: 标准/_data_collator、RLHF、KTO、GKD
+        - seq_cls: 标准/_seq_cls_data_collator、RLHF
+        - prm: 使用标准_data_collator
+        - embedding: _embedding_data_collator（处理anchor/positive/negative）
+        - reranker: _reranker_data_collator（处理positive/negative pairs）
+
+        参数：
+        - batch (List[Dict[str, Any]]): 批量编码数据列表，每个元素是template.encode()返回的字典，
+            通常包含{'input_ids': [...], 'labels': [...], 'loss_scale': [...]}等字段。
+            batch的长度即为batch_size。
+        - padding_to (Optional[int]): 可选的padding目标长度，默认None。
+            None时会padding到batch中最长序列的长度；
+            指定整数时会padding到该长度（用于固定长度训练或推理）。
+
+        返回值：
+        - Dict[str, Any]: 整理后的批次数据字典，通常包含：
+            * input_ids (torch.Tensor): shape=[batch_size, seq_len]，padded token ID序列
+            * attention_mask (torch.Tensor): shape=[batch_size, seq_len]或[batch_size, 1, seq_len, seq_len]，
+              标记有效token位置（1为有效，0为padding）。Megatron模式下为4D causal mask。
+            * labels (Optional[torch.Tensor]): shape=[batch_size, seq_len]，训练标签（推理时为None）
+            * position_ids (Optional[torch.Tensor]): shape=[batch_size, seq_len]，位置ID序列
+            * loss_scale (Optional[torch.Tensor]): shape=[batch_size, seq_len]，loss权重
+            * pixel_values (Optional[torch.Tensor]): 多模态图像数据（如有）
+            * image_sizes (Optional[List]): 图像尺寸列表（如有）
+            * 其他任务特定字段（如RLHF的chosen_*/rejected_*，embedding的anchor_*/positive_*/negative_*）
+
+        使用示例：
+        >>> # 示例1：标准训练场景
+        >>> template.mode = 'train'
+        >>> template.task_type = 'causal_lm'
+        >>> batch_encoded = [template.encode(inp) for inp in inputs_list]
+        >>> batch = template.data_collator(batch_encoded)
+        >>> # batch: {'input_ids': tensor([[...]]), 'attention_mask': tensor([[...]]), 'labels': tensor([[...]])}
+        >>> output = model(**batch)  # 可直接送入模型
+        >>> 
+        >>> # 示例2：固定长度padding
+        >>> batch = template.data_collator(batch_encoded, padding_to=2048)
+        >>> # 所有序列都会padding到长度2048
+        >>> 
+        >>> # 示例3：RLHF场景
+        >>> template.mode = 'rlhf'
+        >>> batch = template.data_collator(batch_encoded)
+        >>> # batch包含: chosen_input_ids, chosen_attention_mask, rejected_input_ids, rejected_attention_mask等
+        >>> 
+        >>> # 示例4：多模态训练
+        >>> batch = template.data_collator(batch_encoded)
+        >>> # batch额外包含: pixel_values, image_sizes等多模态数据
+        """
+        from swift.llm import RowPreprocessor  # 导入行预处理器：用于将行格式数据转换为批次格式
+        
+        # ===== 根据task_type和mode选择相应的data collator子方法 =====
+        if self.task_type == 'causal_lm':  # 若任务类型为因果语言模型
+            if self.mode in {'pt', 'train'}:  # 标准推理或训练模式
+                res = self._data_collator(batch, padding_to=padding_to)  # 调用标准data collator：padding、生成attention_mask等
+            elif self.mode == 'rlhf':  # RLHF模式
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)  # 调用RLHF data collator：分别处理chosen和rejected
+            elif self.mode == 'kto':  # KTO模式
+                res = self._kto_data_collator(batch, padding_to=padding_to)  # 调用KTO data collator：处理KTO特定格式
+            elif self.mode == 'gkd':  # GKD模式
+                res = self._gkd_data_collator(batch, padding_to=padding_to)  # 调用GKD data collator：处理prompt和answer分离
+        elif self.task_type == 'prm':  # 若任务类型为过程奖励模型
+            res = self._data_collator(batch, padding_to=padding_to)  # 使用标准data collator（PRM与causal_lm处理类似）
+        elif self.task_type == 'seq_cls':  # 若任务类型为序列分类
+            if self.mode == 'rlhf':  # 序列分类的RLHF模式（奖励模型）
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)  # 使用RLHF data collator
+            else:  # 标准序列分类模式
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)  # 调用序列分类data collator：处理分类标签
+        elif self.task_type == 'embedding':  # 若任务类型为文本向量化
+            res = self._embedding_data_collator(batch, padding_to=padding_to)  # 调用embedding data collator：处理anchor/positive/negative三元组
+        elif self.task_type in {'reranker', 'generative_reranker'}:  # 若任务类型为文档排序
+            res = self._reranker_data_collator(batch, padding_to=padding_to)  # 调用reranker data collator：处理positive/negative文档对
+        
+        # ===== 处理额外参数（如果不移除未使用列） =====
+        if not self.remove_unused_columns:  # 若配置为保留额外参数
+            extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]  # 收集所有batch元素中的_extra_kwargs
+            extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)  # 将行格式的extra_kwargs转换为批次格式（如将列表合并为单个列表）
+            res.update({k: v for k, v in extra_kwargs.items() if k not in res})  # 将extra_kwargs合并到结果中（不覆盖已有键）
+        
+        return res  # 返回整理后的批次数据
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:

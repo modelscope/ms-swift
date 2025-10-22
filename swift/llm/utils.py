@@ -40,7 +40,7 @@ logger = get_logger()  # 模块级日志器
 
 Tool = Dict[str, Union[str, Dict]]  # 工具定义：名称/描述/参数等
 History = List[Union[Tuple[str, str], List[str]]]  # 历史对话：[(用户, 助手)] 或 [用户, 助手]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]  # 单条消息：{'role': 'user'|'assistant'|'system', 'content': ...}
+Message = Dict[str, Union[str, List[Dict[str, Any]]]]  # 单条消息：{'role': 'user'|'assistant'|'system'|[{'text': 'Hi'}, {'image': 'base64'}], 'content': ...}
 Messages = List[Message]  # 消息序列
 
 

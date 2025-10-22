@@ -101,39 +101,189 @@ _T = TypeVar('_T')
 
 
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
+    """
+    功能：
+        统一处理多种文件输入格式，将文件内容转换为 BytesIO 对象以便后续处理
+        该函数是一个通用的文件加载工具，支持从 HTTP/HTTPS URL、本地文件路径、Base64 编码字符串
+        和原始字节数据中加载文件内容。对于字符串和字节类型的输入，函数会将其转换为 BytesIO 对象；
+        对于其他类型的输入（泛型 _T），函数会直接返回原始对象。
+    
+    参数：
+        path (Union[str, bytes, _T]): 文件输入，支持以下格式：
+            - str: 字符串类型，可以是以下任意一种：
+                * HTTP/HTTPS URL（如 'https://example.com/file.dat'）
+                  会通过网络请求下载文件内容，支持通过环境变量 TIMEOUT 设置超时时间（默认 300 秒）
+                * 本地文件路径（如 '/path/to/file.txt' 或 '~/file.txt'）
+                  支持相对路径和绝对路径，会自动展开用户目录（~）
+                * Base64 编码字符串（可带前缀 'data:image/png;base64,' 或不带前缀）
+                  会自动解码 Base64 字符串为二进制数据
+            - bytes: 文件的原始字节数据，会直接转换为 BytesIO 对象
+            - _T: 其他任意类型的对象，会原样返回（泛型支持）
+    
+    返回值：
+        Union[BytesIO, _T]: 返回值类型取决于输入：
+            - 如果输入是 str 或 bytes，返回包含文件内容的 BytesIO 对象
+            - 如果输入是其他类型（_T），直接返回原始输入对象
+    
+    环境变量：
+        TIMEOUT (str): 网络请求的超时时间（秒），默认为 '300'。
+                       设置为 0 或负数则不设置超时限制
+    
+    使用示例：
+        # 从 URL 加载文件
+        file_io = load_file('https://example.com/data.bin')
+        
+        # 从本地文件加载
+        file_io = load_file('/path/to/local/file.txt')
+        
+        # 从用户目录加载
+        file_io = load_file('~/documents/file.pdf')
+        
+        # 从 Base64 字符串加载（带前缀）
+        file_io = load_file('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA...')
+        
+        # 从 Base64 字符串加载（不带前缀）
+        file_io = load_file('SGVsbG8gV29ybGQh')  # 解码后为 "Hello World!"
+        
+        # 从字节数据加载
+        raw_bytes = b'\\x89PNG\\r\\n\\x1a\\n...'
+        file_io = load_file(raw_bytes)
+        
+        # 传入其他类型对象（原样返回）
+        from PIL import Image
+        img = Image.open('test.png')
+        result = load_file(img)  # 返回 img 本身
+        
+        # 设置网络请求超时（通过环境变量）
+        import os
+        os.environ['TIMEOUT'] = '60'  # 设置 60 秒超时
+        file_io = load_file('https://example.com/large_file.zip')
+    """
+    # 初始化返回结果为输入参数本身
     res = path
+    
+    # 处理字符串类型的输入
     if isinstance(path, str):
+        # 去除字符串首尾的空白字符
         path = path.strip()
+        
+        # 情况1：处理 HTTP/HTTPS URL
         if path.startswith('http'):
+            # 初始化请求参数字典
             request_kwargs = {}
+            
+            # 从环境变量获取超时设置，默认 300 秒
             timeout = float(os.getenv('TIMEOUT', '300'))
+            
+            # 如果超时时间大于 0，则设置到请求参数中
             if timeout > 0:
                 request_kwargs['timeout'] = timeout
+            
+            # 发送 GET 请求下载文件内容
             content = requests.get(path, **request_kwargs).content
+            
+            # 将下载的内容包装为 BytesIO 对象
             res = BytesIO(content)
+        
+        # 情况2：处理本地文件路径
+        # 判断条件：文件路径存在，或者（不是 data: 前缀且长度小于等于 200 字符）
+        # 后者用于处理可能的短路径字符串
         elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
+            # 将路径转换为绝对路径，并展开用户目录符号（~）
             path = os.path.abspath(os.path.expanduser(path))
+            
+            # 以二进制只读模式打开文件
             with open(path, 'rb') as f:
+                # 读取文件全部内容并包装为 BytesIO 对象
                 res = BytesIO(f.read())
+
+        # 情况3：处理 Base64 编码字符串
         else:  # base64_str
+            # 将路径字符串作为 Base64 数据
             data = path
+            
+            # 如果是带前缀的 Data URI 格式（如 'data:image/png;base64,...'）
             if data.startswith('data:'):
+                # 使用正则表达式提取 Base64 数据部分
+                # 格式：data:<MIME类型>;base64,<Base64数据>
                 match_ = re.match(r'data:(.+?);base64,(.+)', data)
+                
+                # 断言匹配成功，否则格式不正确
                 assert match_ is not None
+                
+                # 提取第二个捕获组（Base64 数据部分）
                 data = match_.group(2)
+            
+            # 解码 Base64 字符串为二进制数据
             data = base64.b64decode(data)
+            
+            # 将解码后的二进制数据包装为 BytesIO 对象
             res = BytesIO(data)
+    
+    # 处理字节类型的输入
     elif isinstance(path, bytes):
+        # 直接将字节数据包装为 BytesIO 对象
         res = BytesIO(path)
+    
+    # 返回处理结果（BytesIO 对象或原始输入）
     return res
 
 
 def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
+    """
+    加载图像文件并将其转换为 RGB 模式的 PIL Image 对象。
+    
+    该函数支持多种图像输入格式，包括本地文件路径、HTTP/HTTPS URL、Base64 编码字符串、
+    字节数据以及已有的 PIL Image 对象。无论输入格式如何，最终都会返回一个 RGB 模式的图像对象。
+    
+    功能：
+        从多种来源加载图像数据并统一转换为 RGB 模式的 PIL.Image.Image 对象
+    
+    参数：
+        image (Union[str, bytes, Image.Image]): 图像输入，支持以下格式：
+            - str: 可以是以下任意一种：
+                * HTTP/HTTPS URL（如 'https://example.com/image.jpg'）
+                * 本地文件路径（如 '/path/to/image.png' 或相对路径）
+                * Base64 编码字符串（可带前缀 'data:image/png;base64,' 或不带前缀）
+            - bytes: 图像的原始字节数据
+            - Image.Image: 已经加载的 PIL Image 对象
+    
+    返回值：
+        Image.Image: RGB 模式的 PIL Image 对象。如果输入图像不是 RGB 模式（如 RGBA、L 等），
+                     会自动转换为 RGB 模式
+    
+    使用示例：
+        # 从本地文件加载
+        img = load_image('/path/to/image.png')
+        
+        # 从 URL 加载
+        img = load_image('https://example.com/image.jpg')
+        
+        # 从 Base64 字符串加载
+        img = load_image('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA...')
+        
+        # 从字节数据加载
+        with open('image.jpg', 'rb') as f:
+            img_bytes = f.read()
+        img = load_image(img_bytes)
+        
+        # 传入已有的 PIL Image 对象（会确保转换为 RGB 模式）
+        from PIL import Image
+        pil_img = Image.open('image.png')
+        img = load_image(pil_img)
+    """
+    # 使用 load_file 函数加载图像数据，返回 BytesIO 对象或原始的 Image.Image 对象
     image = load_file(image)
+    
+    # 如果返回的是 BytesIO 对象（即从文件/URL/Base64/字节加载的数据），则打开为 PIL Image
     if isinstance(image, BytesIO):
         image = Image.open(image)
+    
+    # 检查图像的颜色模式，如果不是 RGB 模式，则转换为 RGB 模式
+    # 这确保了所有输出图像都使用统一的 RGB 格式（3 通道），方便后续处理
     if image.mode != 'RGB':
         image = image.convert('RGB')
+    
     return image
 
 
