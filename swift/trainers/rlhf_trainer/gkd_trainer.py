@@ -14,10 +14,10 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import empty_cache, get_current_device, get_logger, unwrap_model_for_generation
+from swift.utils import empty_cache, gc_collect, get_current_device, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import RolloutTrainerMixin
-from .utils import identity_data_collator
+from .utils import identity_data_collator, memory_time_profiling_context
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -47,7 +47,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()
         if self.args.offload_teacher_model:
-            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+            with memory_time_profiling_context(name='Teacher Model Offload'):
+                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
 
         # Initialize rollout infrastructure for vLLM support
         if args.use_vllm:
@@ -298,11 +299,23 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         logger.info(f'Used memory: {used_memory} GiB')
         reserved_memory = torch.cuda.memory_reserved() / 1024 / 1024 / 1024  # GiB
         logger.info(f'Reserved memory: {reserved_memory} GiB')
+
+        # Clear gradients first to free GPU memory
+        if self.args.offload_model:
+            model = self.accelerator.unwrap_model(self.model)
+            model.zero_grad(set_to_none=True)
+            # If using DeepSpeed, need to clear its internal buffers
+            if self.is_deepspeed_enabled:
+                # Clear gradients in DeepSpeed engine
+                if hasattr(self.model, 'optimizer'):
+                    self.model.optimizer.zero_grad(set_to_none=True)
+
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
-        empty_cache()
+        torch.cuda.synchronize()
+        gc_collect()
         logger.info('--------------------------------after offload--------------------------------')
         used_memory = torch.cuda.memory_allocated() / 1024 / 1024 / 1024  # GiB
         logger.info(f'Used memory: {used_memory} GiB')
@@ -316,7 +329,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 self.load_model(self.accelerator.unwrap_model(self.model))
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
-            empty_cache()
+            torch.cuda.synchronize()
+            gc_collect()
 
     def _get_random_num(self) -> float:
         """
@@ -334,10 +348,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @contextmanager
     def load_teacher_model_context(self):
-        if self.args.offload_teacher_model:
-            empty_cache()
+        """
+        Context manager to load and offload the teacher model with memory and timing profiling.
+        """
+        if not self.args.offload_teacher_model:
+            yield
+            return
+
+        # Load teacher model with performance monitoring
+        with memory_time_profiling_context(name='Teacher Model Load'):
             self.load_model(self.accelerator.unwrap_model(self.teacher_model))
+
         yield
-        if self.args.offload_teacher_model:
+
+        # Offload teacher model with performance monitoring
+        with memory_time_profiling_context(name='Teacher Model Offload'):
             self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
-            empty_cache()

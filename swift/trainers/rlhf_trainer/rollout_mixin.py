@@ -133,7 +133,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return
 
         if self.vllm_mode == 'server':
-            assert vllm_client is not None
             self.vllm_client: VLLMClient = vllm_client
             if self.accelerator.is_main_process:
                 self.vllm_client.get_engine_type()
@@ -170,7 +169,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
-
+        self.dynamic_num_samples = False  # grpo multi-turn
         self.base_sync_done = False
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
 
@@ -878,14 +877,61 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     @torch.no_grad()
     def offload_model(self, model):
+        """
+        Offload model parameters to CPU.
+        Note: This method should only be used with models NOT wrapped by DeepSpeed Zero3.
+        """
+        from swift.utils import get_logger
+        logger = get_logger()
+
+        # Count parameters and estimate memory
+        param_count = 0
+        memory_before = 0
         for param in model.parameters():
-            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+            param_count += 1
+            if param.data.is_cuda:
+                memory_before += param.data.numel() * param.data.element_size()
+
+        logger.info(f'Offloading {param_count} parameters, estimated GPU memory: {memory_before / 1024**3:.2f} GiB')
+
+        # Offload parameters to CPU
+        for param in model.parameters():
+            if param.data.is_cuda:
+                param.data = param.data.cpu()
+
+        # Verify offload
+        on_cpu = sum(1 for param in model.parameters() if param.data.device.type == 'cpu')
+        logger.info(f'After offload: {on_cpu}/{param_count} parameters on CPU')
 
     @torch.no_grad()
     def load_model(self, model):
+        """
+        Load model parameters from CPU to GPU.
+        Note: This method should only be used with models NOT wrapped by DeepSpeed Zero3.
+        """
+        from swift.utils import get_logger
+        logger = get_logger()
+
         device = get_current_device()
+
+        # Count parameters and estimate memory
+        param_count = 0
+        memory_to_load = 0
         for param in model.parameters():
-            param.data = param.data.to(device, non_blocking=True)
+            param_count += 1
+            if param.data.device.type == 'cpu':
+                memory_to_load += param.data.numel() * param.data.element_size()
+
+        logger.info(f'Loading {param_count} parameters, estimated memory: {memory_to_load / 1024**3:.2f} GiB')
+
+        # Load parameters to GPU
+        for param in model.parameters():
+            if param.data.device.type == 'cpu':
+                param.data = param.data.to(device, non_blocking=False)
+
+        # Verify load
+        on_gpu = sum(1 for param in model.parameters() if param.data.is_cuda)
+        logger.info(f'After load: {on_gpu}/{param_count} parameters on GPU')
 
     @torch.no_grad()
     def offload_optimizer(self):
@@ -896,7 +942,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to('cpu', non_blocking=True)
+                        state[key] = value.to('cpu', non_blocking=False)
 
     @torch.no_grad()
     def load_optimizer(self):
@@ -908,7 +954,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to(device, non_blocking=True)
+                        state[key] = value.to(device, non_blocking=False)
 
     @contextmanager
     def offload_context(self):

@@ -1,7 +1,8 @@
 # 4 * 66GiB, 46s/it
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+CUDA_VISIBLE_DEVICES=4,5,6,7 \
+MASTER_PORT=29900 \
 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen2.5-7B \
@@ -9,7 +10,8 @@ swift rlhf \
     --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-en#2000' 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
     --split_dataset_ratio 0.01 \
-    --seq_kd true \
+    --seq_kd false \
+    --lmbda 1 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
@@ -27,5 +29,5 @@ swift rlhf \
     --save_only_model true \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --deepspeed zero3 \
+    --deepspeed zero2 \
     --attn_impl flash_attn

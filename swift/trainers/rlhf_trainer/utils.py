@@ -8,7 +8,7 @@ from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
@@ -21,7 +21,9 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
-from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
+from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
+
+logger = get_logger()
 
 if is_wandb_available():
     import wandb
@@ -48,6 +50,84 @@ if is_vllm_available():
         @property
         def embeddings(self):
             return self.lora_embeddings
+
+
+@contextmanager
+def memory_time_profiling_context(
+    name: str = 'Operation',
+    enable_profiling: bool = True,
+    sync_cuda: bool = True,
+    reset_peak_stats: bool = True,
+):
+    """
+    General-purpose memory and time profiling context manager (pure monitoring, no execution).
+
+    Records memory usage and execution time when entering and exiting the context, but does not
+    handle any actual model loading/offloading operations.
+
+    Args:
+        name: Operation name for logging identification
+        enable_profiling: Whether to enable profiling records
+        sync_cuda: Whether to synchronize CUDA before recording (ensures accuracy with slight overhead)
+        reset_peak_stats: Whether to reset peak memory statistics on exit
+
+    Example:
+        with memory_time_profiling_context(name="Teacher Model Load"):
+            self.load_model(teacher_model)
+
+        with memory_time_profiling_context(name="Forward Pass"):
+            output = model(input)
+    """
+    if not enable_profiling:
+        yield
+        return
+
+    # ===== Entry phase: Record initial state =====
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+    gc_collect()
+
+    # Record initial memory state
+    memory_before = torch.cuda.memory_allocated() / 1024**3  # GiB
+    memory_reserved_before = torch.cuda.memory_reserved() / 1024**3
+    max_memory_before = torch.cuda.max_memory_allocated() / 1024**3
+
+    logger.info(f'[{name}] Before: '
+                f'Allocated = {memory_before:.2f} GiB, '
+                f'Reserved = {memory_reserved_before:.2f} GiB, '
+                f'Peak = {max_memory_before:.2f} GiB')
+
+    # Start timing
+    start_time = time.perf_counter()
+
+    yield
+
+    # Synchronize and clean up memory before measuring (important for offload operations)
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    gc_collect()
+
+    # ===== Exit phase: Record final state =====
+    # Calculate elapsed time (before cleanup to measure actual operation time)
+    elapsed_time = time.perf_counter() - start_time
+
+    # Record final memory state
+    memory_after = torch.cuda.memory_allocated() / 1024**3
+    memory_reserved_after = torch.cuda.memory_reserved() / 1024**3
+    peak_memory = torch.cuda.max_memory_allocated() / 1024**3
+    memory_change = memory_after - memory_before
+
+    logger.info(f'[{name}] After: '
+                f'Allocated = {memory_after:.2f} GiB, '
+                f'Reserved = {memory_reserved_after:.2f} GiB, '
+                f'Peak = {peak_memory:.2f} GiB, '
+                f'Change = {memory_change:+.2f} GiB, '
+                f'Time = {elapsed_time:.2f}s')
+
+    # Reset peak memory statistics for next cycle
+    if reset_peak_stats and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
 
 
 def round_robin(num_reqs, num_workers):
