@@ -257,11 +257,6 @@ print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
 print(f'images: {encoded["template_inputs"].images}')
 ```
 
-### Text-to-Image Format
-
-```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Draw me an apple"}, {"role": "assistant", "content": "<image>"}], "images": ["/xxx/x.jpg"]}
-```
 
 ### Agent Format
 Here are example data samples for a text-only Agent and a multimodal Agent:
@@ -278,6 +273,11 @@ Here are example data samples for a text-only Agent and a multimodal Agent:
 - Note: You can also manually process the data into the messages format with roles set to system, user, or assistant. The purpose of agent_template is to automatically map the tools field and the messages with roles tool_call and tool_response into the standard messages format with roles system, user, and assistant.
 - For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
+### Text-to-Image Format
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Draw me an apple"}, {"role": "assistant", "content": "<image>"}], "images": ["/xxx/x.jpg"]}
+```
 
 ## dataset_info.json
 
