@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import math
 from functools import partial
 from types import MethodType
@@ -375,18 +374,11 @@ class SequenceParallel:
                     split_special_mask = extra_values[0]
                     return split_input_embeds[split_special_mask]
 
-                def get_image_features(module, pixel_values, image_grid_thw=None):
-
+                def get_features(module, token_id, pixel_values, image_grid_thw=None):
                     image_embeds, deepstack_image_embeds = module.origin_get_image_features(
                         pixel_values, image_grid_thw)
                     image_embeds = torch.cat(
                         image_embeds, dim=0).to(embed_tokens.weight.device, embed_tokens.weight.dtype)
-                    token_id = module.config.image_token_id
-                    for frame_info in inspect.stack()[1:]:
-                        if frame_info.function == 'get_video_features':
-                            token_id = module.config.video_token_id
-                            break
-
                     if image_embeds is not None:
                         image_embeds = pad_split_mm_tokens(token_id, image_embeds)
                     if len(deepstack_image_embeds) > 0:
@@ -394,9 +386,17 @@ class SequenceParallel:
                             deepstack_image_embeds[i] = pad_split_mm_tokens(token_id, deepstack_image_embeds[i])
                     return (image_embeds, ), deepstack_image_embeds
 
+                def get_video_features(module, pixel_values_videos, video_grid_thw=None):
+                    return get_features(module, module.config.video_token_id, pixel_values_videos, video_grid_thw)
+
+                def get_image_features(module, pixel_values, image_grid_thw=None):
+                    return get_features(module, module.config.image_token_id, pixel_values, image_grid_thw)
+
                 if not hasattr(_self, 'origin_get_image_features'):
                     _self.origin_get_image_features = _self.get_image_features
                     _self.get_image_features = MethodType(get_image_features, _self)
+                    _self.origin_get_video_features = _self.get_video_features
+                    _self.get_video_features = MethodType(get_video_features, _self)
 
             return args, kwargs
 
@@ -406,6 +406,8 @@ class SequenceParallel:
             if hasattr(module, 'origin_get_image_features'):
                 module.get_image_features = module.origin_get_image_features
                 del module.origin_get_image_features
+                module.get_video_features = module.origin_get_video_features
+                del module.origin_get_video_features
 
         base_model.register_forward_hook(post_forward_hook)
 
