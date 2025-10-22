@@ -317,7 +317,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _get_random_num(self) -> float:
         """
-        Generate a deterministic random number counting the global step.
+        Generate a deterministic random number.
 
         Uses an isolated Random instance to avoid interfering with the global
         random state, ensuring thread-safety and consistent behavior across processes.
@@ -325,7 +325,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         Returns:
             float: A random number in the range [0.0, 1.0).
         """
-        rng = random.Random(int(self.state.global_step))
+        seed = int(getattr(self.args, 'seed', 0))
+        seed += int(self.state.global_step)
+        rng = random.Random(seed)
         return rng.random()
 
     @contextmanager
