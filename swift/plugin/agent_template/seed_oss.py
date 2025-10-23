@@ -67,14 +67,17 @@ class SeedAgentTemplate(BaseAgentTemplate):
     def _build_tool_def_string(self, tool: dict) -> str:
         """Helper to build a single tool definition string."""
         func = tool.get('function', {})
-        func_name = func.get('name', {})
+        func_name = func.get('name')
 
-        if func_name == {}:
+        if not func_name:
             return ''
 
         parameters = func.get('parameters', {})
         properties = parameters.get('properties', {})
-        params = [f"{name}: {self._py_type(spec.get('type', 'any'))}" for name, spec in properties.items()]
+        params = [
+            f"{name}: {self._py_type(spec.get('type', 'any'))}" for name, spec in properties.items()
+            if isinstance(spec, dict)
+        ]
         param_str = ','.join(params)
 
         docstring_parts = ['    """', f'    {func.get("description", "").strip()}']
@@ -83,10 +86,11 @@ class SeedAgentTemplate(BaseAgentTemplate):
             docstring_parts.append('\n    Args:')
             required_params = parameters.get('required', [])
             for name, spec in properties.items():
-                req_tag = '[必填]' if name in required_params else '[选填]'
-                desc = spec.get('description', '')
-                type_str = self._py_type(spec.get('type', 'any'))
-                docstring_parts.append(f'    - {name} ({type_str}) {req_tag}: {desc}')
+                if isinstance(spec, dict):
+                    req_tag = '[必填]' if name in required_params else '[选填]'
+                    desc = spec.get('description', '')
+                    type_str = self._py_type(spec.get('type', 'any'))
+                    docstring_parts.append(f'    - {name} ({type_str}) {req_tag}: {desc}')
 
         returns_props = func.get('returns', {}).get('properties', {})
         if returns_props:
@@ -124,13 +128,14 @@ class SeedAgentTemplate(BaseAgentTemplate):
 
         split_token = '<seed:eos><seed:bos>system'
 
-        if split_token in system:
+        if system and split_token in system:
             parts = system.split(split_token, 1)
             return f'{parts[0]}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}{parts[1]}'
         else:
             doubao_prompt = ('You are Doubao, a helpful AI assistant. '
                              'You may call one or more functions to assist with the user query.')
-            return f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}\n{system}'
+            return (f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n'
+                    f'{split_token}\n{system or ""}')
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []
