@@ -991,11 +991,14 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         requests_dicts = []
 
         for data in inputs:
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
+            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
             if 'uuid' not in request_data:
                 request_data['uuid'] = data['request_id']
             if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS}
+                extra_fields = {
+                    k: v
+                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                }
                 if extra_fields:
                     request_data['data_dict'] = extra_fields
             elif self.multi_turn_scheduler:
@@ -1005,7 +1008,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                         base_data_dict = data['data_dict']
                     else:
                         raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and k != 'data_dict'}
+                extra_data = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                }
                 final_data_dict = {**extra_data, **base_data_dict}
                 request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
