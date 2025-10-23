@@ -130,7 +130,8 @@ class SeedAgentTemplate(BaseAgentTemplate):
         else:
             doubao_prompt = ('You are Doubao, a helpful AI assistant. '
                              'You may call one or more functions to assist with the user query.')
-            return f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}\n{system or ""}'
+            return (f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n'
+                    f'{split_token}\n{system or ""}')
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []
