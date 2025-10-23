@@ -4,124 +4,161 @@ from typing import Optional
 import torch
 from megatron.training import get_args
 from torch import nn
+from tqdm import tqdm
 
 
-def set_mla_attn_state(args, mg_attn, hf_attn):
-    mg_attn.linear_proj.weight.data.copy_(hf_attn.o_proj.weight)
+def set_mla_attn_state(args, state_dict, prefix: str):
+    mg_state_dict = {}
+    mg_state_dict['linear_proj.weight'] = state_dict['o_proj.weight']
     if args.q_lora_rank is None:
-        mg_attn.linear_q_proj.weight.data.copy_(hf_attn.q_proj.weight)
+        mg_state_dict['linear_q_proj.weight'] = state_dict['q_proj.weight']
     else:
-        mg_attn.linear_q_down_proj.weight.data.copy_(hf_attn.q_a_proj.weight)
-        mg_attn.linear_q_up_proj.weight.data.copy_(hf_attn.q_b_proj.weight)
-    mg_attn.linear_kv_down_proj.weight.data.copy_(hf_attn.kv_a_proj_with_mqa.weight)
-    mg_attn.linear_kv_up_proj.weight.data.copy_(hf_attn.kv_b_proj.weight)
+        mg_state_dict['linear_q_down_proj.weight'] = state_dict['q_a_proj.weight']
+        mg_state_dict['linear_q_up_proj.weight'] = state_dict['q_b_proj.weight']
+    mg_state_dict['linear_kv_down_proj.weight'] = state_dict['kv_a_proj_with_mqa.weight']
+    mg_state_dict['linear_kv_up_proj.weight'] = state_dict['kv_b_proj.weight']
     if args.qk_layernorm:
-        mg_attn.linear_kv_up_proj.layer_norm_weight.data.copy_(hf_attn.kv_a_layernorm.weight)
+        mg_state_dict['linear_kv_up_proj.layer_norm_weight'] = state_dict['kv_a_layernorm.weight']
+    return _add_prefix(mg_state_dict, prefix)
 
 
-def set_attn_state(args, mg_attn, hf_attn):
+def set_attn_state(args, state_dict, prefix: str):
+    mg_state_dict = {}
     num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
-
-    # Copy weights
-    mg_attn.linear_qkv.weight.data.copy_(
-        torch.cat([
-            hf_attn.q_proj.weight.reshape((num_query_groups, -1, args.hidden_size)),
-            hf_attn.k_proj.weight.reshape((num_query_groups, -1, args.hidden_size)),
-            hf_attn.v_proj.weight.reshape((num_query_groups, -1, args.hidden_size)),
-        ],
-                  dim=1).reshape((-1, args.hidden_size)))
-    mg_attn.linear_proj.weight.data.copy_(hf_attn.o_proj.weight)
+    mg_state_dict['linear_qkv.weight'] = torch.cat([
+        state_dict['q_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
+        state_dict['k_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
+        state_dict['v_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
+    ],
+                                                   dim=1).reshape((-1, args.hidden_size))
+    mg_state_dict['linear_proj.weight'] = state_dict['o_proj.weight']
 
     # Copy bias
     if args.add_qkv_bias:
-        mg_attn.linear_qkv.bias.data.copy_(
-            torch.cat([
-                hf_attn.q_proj.bias.reshape((num_query_groups, -1)),
-                hf_attn.k_proj.bias.reshape((num_query_groups, -1)),
-                hf_attn.v_proj.bias.reshape((num_query_groups, -1)),
-            ],
-                      dim=1).reshape(-1))
+        mg_state_dict['linear_qkv.bias'] = torch.cat([
+            state_dict['q_proj.bias'].reshape((num_query_groups, -1)),
+            state_dict['k_proj.bias'].reshape((num_query_groups, -1)),
+            state_dict['v_proj.bias'].reshape((num_query_groups, -1)),
+        ],
+                                                     dim=1).reshape(-1)
     if args.qk_layernorm:
-        q_norm = hf_attn.query_layernorm if hasattr(hf_attn, 'query_layernorm') else hf_attn.q_norm
-        k_norm = hf_attn.key_layernorm if hasattr(hf_attn, 'key_layernorm') else hf_attn.k_norm
-        mg_attn.q_layernorm.weight.data.copy_(q_norm.weight)
-        mg_attn.k_layernorm.weight.data.copy_(k_norm.weight)
+        mg_state_dict['q_layernorm.weight'] = state_dict['query_layernorm.weight'] if state_dict.get(
+            'q_norm.weight') is None else state_dict['q_norm.weight']
+        mg_state_dict['k_layernorm.weight'] = state_dict['key_layernorm.weight'] if state_dict.get(
+            'k_norm.weight') is None else state_dict['k_norm.weight']
+
+    return _add_prefix(mg_state_dict, prefix)
 
 
-def _set_mlp_state(mg_mlp, hf_mlp, group_idx: Optional[int] = None):
-    hf_grouped = not isinstance(hf_mlp.down_proj, nn.Module)
+def _set_mlp_state(
+    args,
+    state_dict,
+    prefix: str,
+    group_idx: Optional[int] = None,
+):
+    mg_state_dict = {}
+    hf_grouped = False
+    # hf_grouped = not isinstance(hf_mlp.down_proj, nn.Module)
     if group_idx is None:
-        linear_fc1_weight = mg_mlp.linear_fc1.weight
-        linear_fc2_weight = mg_mlp.linear_fc2.weight
+        fc1_key = 'linear_fc1.weight'
+        fc2_key = 'linear_fc2.weight'
     else:
-        linear_fc1_weight = getattr(mg_mlp.linear_fc1, f'weight{group_idx}')
-        linear_fc2_weight = getattr(mg_mlp.linear_fc2, f'weight{group_idx}')
+        fc1_key = f'linear_fc1.weight{group_idx}'
+        fc2_key = f'linear_fc2.weight{group_idx}'
     if hf_grouped:
         linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj[group_idx].t())
         linear_fc2_weight.data.copy_(hf_mlp.down_proj[group_idx].t())
     else:
-        if hasattr(hf_mlp, 'gate_up_proj'):
-            linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj.weight)
+        if 'gate_up_proj.weight' in state_dict:
+            mg_state_dict[fc1_key] = state_dict['gate_up_proj.weight']
         else:
-            linear_fc1_weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
-        linear_fc2_weight.data.copy_(hf_mlp.down_proj.weight)
+            mg_state_dict[fc1_key] = torch.cat([
+                state_dict['gate_proj.weight'],
+                state_dict['up_proj.weight'],
+            ], dim=0)
+        mg_state_dict[fc2_key] = state_dict['down_proj.weight']
+    return _add_prefix(mg_state_dict, prefix)
 
 
-def _set_moe_state(args, mg_mlp, hf_mlp):
-    hf_gate = hf_mlp.gate
-    if hasattr(hf_gate, 'wg'):
-        hf_gate = hf_gate.wg
-    mg_mlp.router.weight.data.copy_(hf_gate.weight)
+def _set_moe_state(args, state_dict, prefix: str):
+    mg_state_dict = {}
+    mg_state_dict['router.weight'] = state_dict['gate.weight'] if state_dict.get(
+        'gate.wg.weight') is None else state_dict['gate.wg.weight']
     if args.moe_router_enable_expert_bias:
-        mg_mlp.router.expert_bias.data.copy_(hf_gate.e_score_correction_bias)
-    if mg_mlp.shared_experts is not None:
-        if hasattr(hf_mlp, 'shared_experts'):
-            hf_shared_expert = hf_mlp.shared_experts
-        elif hasattr(hf_mlp, 'shared_mlp'):
-            hf_shared_expert = hf_mlp.shared_mlp
-        else:
-            hf_shared_expert = hf_mlp.shared_expert
-        _set_mlp_state(mg_mlp.shared_experts, hf_shared_expert)
-        if mg_mlp.shared_experts.gate_weight is not None:
-            mg_mlp.shared_experts.gate_weight.data.copy_(hf_mlp.shared_expert_gate.weight)
+        mg_state_dict['router.expert_bias'] = state_dict['gate.e_score_correction_bias']
+
+    if args.moe_shared_expert_intermediate_size:
+        shared_expert_sd = _remove_prefix(state_dict, 'shared_expert.')
+        if not shared_expert_sd:
+            shared_expert_sd = _remove_prefix(state_dict, 'shared_experts.')
+        if not shared_expert_sd:
+            shared_expert_sd = _remove_prefix(state_dict, 'shared_mlp.')
+        mg_state_dict.update(_set_mlp_state(args, shared_expert_sd, 'shared_experts.'))
+        if 'shared_expert_gate.weight' in state_dict:
+            mg_state_dict['shared_experts.gate_weight'] = state_dict['shared_expert_gate.weight']
     for expert_idx in range(args.num_experts):
-        hf_expert = hf_mlp.experts
-        if hasattr(hf_expert, '__len__'):
-            hf_expert = hf_expert[expert_idx]
-        _set_mlp_state(mg_mlp.experts, hf_expert, group_idx=expert_idx)
+        # hf_expert = hf_mlp.experts
+        # if hasattr(hf_expert, '__len__'):
+        #     hf_expert = hf_expert[expert_idx]
+        mg_state_dict.update(
+            _set_mlp_state(
+                args, _remove_prefix(state_dict, f'experts.{expert_idx}.'), 'experts.', group_idx=expert_idx))
+    return _add_prefix(mg_state_dict, prefix)
 
 
-def set_mlp_state(args, mg_mlp, hf_mlp):
-    if 'moe' in mg_mlp.__class__.__name__.lower():
-        _set_moe_state(args, mg_mlp, hf_mlp)
-    else:
-        _set_mlp_state(mg_mlp, hf_mlp)
+def _is_moe(state_dict):
+    for k, v in state_dict.items():
+        if 'experts.' in k:
+            return True
+    return False
 
 
-def set_layer_state(args, mg_model, hf_model, layer_idx):
-    mg_layer = mg_model.decoder.layers[layer_idx]
-    hf_layer = hf_model.layers[layer_idx]
+def set_layer_state(args, state_dict, layer_idx: int, prefix: str):
+    mg_state_dict = {}
     if args.multi_latent_attention:
-        set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-        mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight)
+        mg_state_dict.update(set_mla_attn_state(args, _remove_prefix(state_dict, 'self_attn.'), 'self_attention.'))
+        # set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
+        mg_state_dict['input_layernorm.weight'] = state_dict['input_layernorm.weight']
+
     else:
-        set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-        mg_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight)
+        mg_state_dict.update(set_attn_state(args, _remove_prefix(state_dict, 'self_attn.'), 'self_attention.'))
+        mg_state_dict['self_attention.linear_qkv.layer_norm_weight'] = state_dict['input_layernorm.weight']
 
-    set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-
-    post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-    if 'moe' in mg_layer.mlp.__class__.__name__.lower():
-        mg_layer.pre_mlp_layernorm.weight.data.copy_(post_attention_layernorm_weight)
+    mlp_state_dict = _remove_prefix(state_dict, 'mlp.')
+    is_moe = _is_moe(mlp_state_dict)
+    if is_moe:
+        mg_state_dict.update(_set_moe_state(args, mlp_state_dict, 'mlp.'))
     else:
-        mg_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_attention_layernorm_weight)
+        mg_state_dict.update(_set_mlp_state(args, mlp_state_dict, 'mlp.'))
+
+    if is_moe:
+        mg_state_dict['pre_mlp_layernorm.weight'] = state_dict['post_attention_layernorm.weight']
+    else:
+        mg_state_dict['mlp.linear_fc1.layer_norm_weight'] = state_dict['post_attention_layernorm.weight']
+    return _add_prefix(mg_state_dict, prefix)
 
 
-def convert_hf2mcore(hf_model, mg_model):
+def _remove_prefix(state_dict, prefix: str):
+    if not prefix:
+        return state_dict
+    return {k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)}
+
+
+def _add_prefix(state_dict, prefix: str):
+    if not prefix:
+        return state_dict
+    return {f'{prefix}{k}': v for k, v in state_dict.items()}
+
+
+def convert_hf2mcore(state_dict, prefix=''):
     args = get_args()
-    mg_model.embedding.word_embeddings.weight.data.copy_(hf_model.model.embed_tokens.weight)
+    mg_state_dict = {}
+    mg_state_dict['embedding.word_embeddings.weight'] = state_dict['model.embed_tokens.weight']
     if args.untie_embeddings_and_output_weights:
-        mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state(args, mg_model, hf_model.model, layer_idx)
+        mg_state_dict['output_layer.weight'] = state_dict['lm_head.weight']
+    mg_state_dict['decoder.final_layernorm.weight'] = state_dict['model.norm.weight']
+    for layer_idx in tqdm(range(args.num_layers), dynamic_ncols=True, desc='Converting: '):
+        mg_state_dict.update(
+            set_layer_state(args, _remove_prefix(state_dict, f'model.layers.{layer_idx}.'), layer_idx,
+                            f'decoder.layers.{layer_idx}.'))
+    return _add_prefix(mg_state_dict, prefix)
