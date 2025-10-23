@@ -67,9 +67,9 @@ class SeedAgentTemplate(BaseAgentTemplate):
     def _build_tool_def_string(self, tool: dict) -> str:
         """Helper to build a single tool definition string."""
         func = tool.get('function', {})
-        func_name = func.get('name', {})
+        func_name = func.get('name')
 
-        if func_name == {}:
+        if not func_name:
             return ''
 
         parameters = func.get('parameters', {})
