@@ -246,24 +246,40 @@ class VllmArguments:
 
 
 @dataclass
-class GRPOArgumentsMixin(VllmArguments):
-    epsilon: float = 0.2
-    epsilon_high: Optional[float] = None
-    delta: Optional[float] = None
+class RolloutTrainerArgumentsMixin(VllmArguments):
+    # generation args
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+    stop_words: List[str] = field(default_factory=list)
+
     # vllm
+    use_vllm: bool = False
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite
     vllm_enable_lora: bool = False
+    lora_rank: int = 8  # for vllm lora adapter
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
+
+    async_generate: bool = False
+
+    sleep_level: int = 0
+    move_model_batches: Optional[int] = None
+    offload_optimizer: bool = False
+    offload_model: bool = False
+
+
+@dataclass
+class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
 
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
@@ -284,16 +300,7 @@ class GRPOArgumentsMixin(VllmArguments):
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
 
-    async_generate: bool = False
-
-    sleep_level: int = 0
-    move_model_batches: Optional[int] = None
-    offload_optimizer: bool = False
-    offload_model: bool = False
-    gc_collect_after_offload: bool = False  # deprecated
-
     # multi turn
-    multi_turn_func: Optional[str] = None  # deprecated
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
