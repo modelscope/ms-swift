@@ -15,7 +15,7 @@ from trl import SFTTrainer as HFSFTTrainer
 
 from swift.utils import empty_cache, get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
-from .rollout_mixin import RolloutTrainerMixin
+from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import identity_data_collator, memory_time_profiling_context, prepare_deepspeed
 
 del HFGKDTrainer.__init__
@@ -57,12 +57,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if args.use_vllm:
             self.prepare_rollout()
             logger.info('vLLM engine initialized for GKD training')
-        else:
-            # Use PyTorch engine for generation
-            from swift.llm import PtEngine
-            infer_template = copy(self.template)
-            infer_template.padding_free = False
-            self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)
 
         # Initialize activation offloading context
         args.activation_offloading = False  # TODO: remove
@@ -122,7 +116,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         outputs_student = model(**model_inputs)
 
         model_inputs.pop('labels', None)
-        with torch.no_grad(), self.load_teacher_model_context():
+        load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+        with torch.no_grad(), load_context:
             outputs_teacher = self.teacher_model(**model_inputs)
 
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
@@ -189,7 +184,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Extract generated response tokens
         response_token_ids = output.get('response_token_ids', [])
         if not response_token_ids:
-            # Fallback: parse from messages
             messages = output.get('messages', [])
             assert messages and messages[-1]['role'] == 'assistant'
             response_text = messages[-1]['content']
@@ -228,7 +222,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     # Code borrowed from huggingface/trl
     def training_step(self,
                       model: nn.Module,
-                      inputs: Union[list, Dict[str, Union[torch.Tensor, Any]]],
+                      inputs: DataType,
                       num_items_in_batch: Optional[int] = None) -> torch.Tensor:
         """
         Perform a training step for the Generalized Knowledge Distillation (GKD) model.
@@ -261,7 +255,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         elif self.seq_kd:
             inputs = self._prepare_batch_inputs(inputs)
-            with self.load_teacher_model_context(), unwrap_model_for_generation(
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            with load_context, unwrap_model_for_generation(
                     self.teacher_model, self.accelerator,
                     gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
                 new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
@@ -288,21 +283,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         This offloads:
         - Student model (self.model)
-        - Teacher model (self.teacher_model)
         - Optimizer states
 
         to CPU to free up GPU memory for vLLM engine.
         """
-        # Clear gradients first to free GPU memory
-        if self.args.offload_model:
-            model = self.accelerator.unwrap_model(self.model)
-            model.zero_grad(set_to_none=True)
-            # If using DeepSpeed, need to clear its internal buffers
-            if self.is_deepspeed_enabled:
-                # Clear gradients in DeepSpeed engine
-                if hasattr(self.model, 'optimizer'):
-                    self.model.optimizer.zero_grad(set_to_none=True)
-
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:

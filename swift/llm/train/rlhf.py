@@ -69,7 +69,8 @@ class SwiftRLHF(SwiftSft):
         task_type, num_labels = self._get_model_task_type(model_dir)
         context = nullcontext()
         if key == 'teacher' and args.teacher_deepspeed:
-            if args.teacher_deepspeed['zero_optimization']['stage'] != 3:
+            if args.teacher_deepspeed.get('zero_optimization', {}).get('stage') != 3:
+
                 context = disable_deepspeed_zero3()
         with context:
             model, processor = args.get_model_processor(
@@ -218,7 +219,7 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
-        if self.args.rlhf_type == 'gkd' and hasattr(self.args, 'teacher_deepspeed') and self.args.teacher_deepspeed:
+        if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
             trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
         return trainer_kwargs
 
