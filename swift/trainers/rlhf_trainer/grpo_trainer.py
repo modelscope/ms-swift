@@ -255,8 +255,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # NOTE: every key you register must appear in ALL rollout outputs
             #       to avoid potential communication / synchronization issues
             metrics_for_logs_to_gather = {}
-            if all('images' in data and data['images'] is not None for data in inputs):
-                metrics_for_logs_to_gather['image'] = [inp['images'] for inp in inputs]
 
             if all('solution' in inp for inp in inputs):
                 metrics_for_logs_to_gather['solution'] = [inp['solution'] for inp in inputs]
