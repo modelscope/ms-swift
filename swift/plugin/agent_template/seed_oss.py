@@ -77,8 +77,8 @@ class SeedAgentTemplate(BaseAgentTemplate):
         params = [
             f"{name}: {self._py_type(spec.get('type', 'any'))}"
             for name, spec in properties.items()
-            if isinstance(spec, dict) 
-        ] 
+            if isinstance(spec, dict)
+        ]
         param_str = ','.join(params)
 
         docstring_parts = ['    """', f'    {func.get("description", "").strip()}']
