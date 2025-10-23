@@ -619,7 +619,11 @@ def _patch_mrope():
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
         args = get_args()
-        if args.position_embedding_type != 'mrope':
+        cp_size = cp_group.size()
+        cu_seqlens = cu_seqlens // cp_size
+        use_fused_mrope = (freqs.shape[0] == cu_seqlens[-1]).item()
+        if args.position_embedding_type != 'mrope' and not use_fused_mrope:
+            logger.warning_once('Using unfused RoPE, which may affect performance.')
             return _origin_apply_rotary_pos_emb_thd(
                 t,
                 cu_seqlens,
@@ -632,19 +636,14 @@ def _patch_mrope():
 
         if cp_group is None:
             raise ValueError('cp_group must be provided for THD format RoPE')
-        cp_size = cp_group.size()
-        cu_seqlens = cu_seqlens // cp_size
-        seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
 
-        return torch.cat([
-            _apply_rotary_pos_emb_bshd(
-                x.unsqueeze(1),
-                f,
-                rotary_interleaved=rotary_interleaved,
-                multi_latent_attention=multi_latent_attention,
-                mscale=mscale,
-            ) for x, f in zip(torch.split(t, seqlens), torch.split(freqs, seqlens))
-        ]).squeeze(1)
+        return _apply_rotary_pos_emb_bshd(
+            t.unsqueeze(1),
+            freqs,
+            rotary_interleaved=rotary_interleaved,
+            multi_latent_attention=multi_latent_attention,
+            mscale=mscale,
+        ).squeeze(1)
 
     rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
