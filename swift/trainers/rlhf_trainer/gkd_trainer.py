@@ -164,61 +164,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         return batch_encoded
 
-    def _generate_with_vllm(self, inputs: Dict[str, Any]) -> tuple:
-        """Generate responses using vLLM engine
-
-        Args:
-            inputs: Training batch inputs containing 'messages', 'prompts', etc.
-
-        Returns:
-            Tuple of (new_input_ids, new_attention_mask, new_labels)
-        """
-        # Preprocess inputs for vLLM rollout
-        processed_inputs = self._preprocess_inputs([inputs])
-
-        # Generate using vLLM
-        outputs = self._fast_infer(processed_inputs)
-
-        output = outputs[0]
-
-        # Extract generated response tokens
-        response_token_ids = output.get('response_token_ids', [])
-        if not response_token_ids:
-            messages = output.get('messages', [])
-            assert messages and messages[-1]['role'] == 'assistant'
-            response_text = messages[-1]['content']
-            # Tokenize the response
-            response_token_ids = self.processing_class.encode(response_text, add_special_tokens=False)
-
-        # Reconstruct input_ids: prompt + response
-        prompt_input_ids = inputs['prompts']
-        device = prompt_input_ids.device
-
-        if isinstance(response_token_ids, list):
-            response_tensor = torch.tensor(response_token_ids, device=device, dtype=torch.long)
-        else:
-            response_tensor = response_token_ids.to(device)
-
-        # Ensure response_tensor has correct shape
-        if response_tensor.dim() == 1:
-            response_tensor = response_tensor.unsqueeze(0)
-
-        # Concatenate prompt and response
-        new_input_ids = torch.cat([prompt_input_ids, response_tensor], dim=1)
-
-        # Create attention mask and labels
-        new_attention_mask = torch.ones_like(new_input_ids)
-        new_labels = new_input_ids.clone()
-        new_labels[:, :prompt_input_ids.shape[1]] = -100  # Mask prompt tokens
-
-        # Handle padding
-        pad_token_id = self.processing_class.pad_token_id
-        if pad_token_id is not None:
-            new_labels[new_labels == pad_token_id] = -100
-            new_attention_mask[new_input_ids == pad_token_id] = 0
-
-        return new_input_ids, new_attention_mask, new_labels
-
     # Code borrowed from huggingface/trl
     def training_step(self,
                       model: nn.Module,

@@ -36,4 +36,8 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --deepspeed zero3 \
-    --attn_impl flash_attn
+    --attn_impl flash_attn \
+    --use_vllm true \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000
