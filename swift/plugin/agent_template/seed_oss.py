@@ -74,7 +74,11 @@ class SeedAgentTemplate(BaseAgentTemplate):
 
         parameters = func.get('parameters', {})
         properties = parameters.get('properties', {})
-        params = [f"{name}: {self._py_type(spec.get('type', 'any'))}" for name, spec in properties.items()]
+        params = [
+            f"{name}: {self._py_type(spec.get('type', 'any'))}"
+            for name, spec in properties.items()
+            if isinstance(spec, dict) 
+        ] 
         param_str = ','.join(params)
 
         docstring_parts = ['    """', f'    {func.get("description", "").strip()}']
@@ -83,10 +87,11 @@ class SeedAgentTemplate(BaseAgentTemplate):
             docstring_parts.append('\n    Args:')
             required_params = parameters.get('required', [])
             for name, spec in properties.items():
-                req_tag = '[必填]' if name in required_params else '[选填]'
-                desc = spec.get('description', '')
-                type_str = self._py_type(spec.get('type', 'any'))
-                docstring_parts.append(f'    - {name} ({type_str}) {req_tag}: {desc}')
+                if isinstance(spec, dict):
+                    req_tag = '[必填]' if name in required_params else '[选填]'
+                    desc = spec.get('description', '')
+                    type_str = self._py_type(spec.get('type', 'any'))
+                    docstring_parts.append(f'    - {name} ({type_str}) {req_tag}: {desc}')
 
         returns_props = func.get('returns', {}).get('properties', {})
         if returns_props:
