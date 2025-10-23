@@ -70,7 +70,6 @@ class SwiftRLHF(SwiftSft):
         context = nullcontext()
         if key == 'teacher' and args.teacher_deepspeed:
             if args.teacher_deepspeed.get('zero_optimization', {}).get('stage') != 3:
-
                 context = disable_deepspeed_zero3()
         with context:
             model, processor = args.get_model_processor(
