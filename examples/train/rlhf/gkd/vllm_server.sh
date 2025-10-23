@@ -1,7 +1,7 @@
 # CUDA_VISIBLE_DEVICES=5 \
-# nohup swift rollout \
+# swift rollout \
 #     --model Qwen/Qwen2.5-7B \
-#     --vllm_max_model_len 2560 > rl.log 2>&1 &
+#     --vllm_max_model_len 2560
 
 # 4 * 54GiB
 # 5s/it (with vLLM)
