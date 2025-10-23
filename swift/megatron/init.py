@@ -621,9 +621,9 @@ def _patch_mrope():
         args = get_args()
         cp_size = cp_group.size()
         cu_seqlens = cu_seqlens // cp_size
-        use_fused_mrope = (freqs.shape[0] == cu_seqlens[-1]).item()
-        if args.position_embedding_type != 'mrope' and not use_fused_mrope:
-            logger.warning_once('Using unfused RoPE, which may affect performance.')
+        use_batched_mrope = (freqs.shape[0] == cu_seqlens[-1]).item()
+        if args.position_embedding_type != 'mrope' and not use_batched_mrope:
+            logger.warning_once('Using non-batched RoPE, which may affect performance.')
             return _origin_apply_rotary_pos_emb_thd(
                 t,
                 cu_seqlens,
