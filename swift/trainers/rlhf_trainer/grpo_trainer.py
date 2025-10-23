@@ -883,8 +883,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # NOTE: every key you register must appear in ALL rollout outputs
             #       to avoid potential communication / synchronization issues
             metrics_for_logs_to_gather = {}
-            if all('images' in data and data['images'] is not None for data in inputs):
-                metrics_for_logs_to_gather['image'] = [inp['images'] for inp in inputs]
 
             if all('solution' in inp for inp in inputs):
                 metrics_for_logs_to_gather['solution'] = [inp['solution'] for inp in inputs]
@@ -2519,13 +2517,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for data in inputs:
             # Extract required metadata fields
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
+            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
             if 'uuid' not in request_data:
                 request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
             # Preserve additional fields for multi-turn async scenarios
             if self.args.vllm_server_pass_dataset:
                 # data_dict is already concatenated inside async engine
-                extra_fields = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS}
+                extra_fields = {
+                    k: v
+                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                }
                 if extra_fields:
                     request_data['data_dict'] = extra_fields
             elif self.multi_turn_scheduler:
@@ -2537,7 +2538,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         raise ValueError('data_dict exists but is not a dictionary')
                 # Add fields that are not in metadata fields and not 'data_dict'
-                extra_data = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and k != 'data_dict'}
+                extra_data = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                }
                 # Merge additional fields and existing data_dict
                 final_data_dict = {**extra_data, **base_data_dict}
                 request_data['data_dict'] = final_data_dict if final_data_dict else {}
