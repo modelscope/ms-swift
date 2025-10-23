@@ -113,7 +113,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_dataset(self):
         args = self.args
-        # defer encode to trainer
+        # Defer encoding to the training phase
         pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
         if args.cached_dataset:
             train_datasets, val_datasets = self._get_cached_dataset()
