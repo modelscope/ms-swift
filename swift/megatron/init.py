@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import logging
 import os
 import subprocess
 import sys
@@ -649,6 +650,7 @@ def _patch_mrope():
 
 
 def _patch_megatron():
+    logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
     _patch_TELinear()
@@ -659,6 +661,7 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
