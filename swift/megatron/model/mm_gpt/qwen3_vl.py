@@ -15,7 +15,7 @@ from PIL import Image
 
 from swift.llm import ModelType, to_device
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
+from ..gpt.hf2mcore import _add_prefix, _remove_prefix, convert_hf2mcore
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
 from ..mm_gpt_model import MultimodalGPTModel
 from ..register import register_megatron_model
@@ -499,19 +499,14 @@ register_megatron_model(
         model_cls=Qwen3VLGPTModel,
         visual_cls=Qwen3Omni_Vit))
 
-
-def convert_hf2mcore_qwen3_vl(hf_model, mg_model):
-    language_model = hf_model.model.language_model
-    mg_language_model = mg_model.language_model
+def convert_hf2mcore_qwen3_vl(state_dict, prefix=''):
     args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
+    mg_state_dict = {}
     if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.visual.load_state_dict(hf_model.model.visual.state_dict())
-
+        mg_state_dict['language_model.output_layer.weight'] = state_dict['lm_head.weight']
+    mg_state_dict.update(convert_hf2mcore(state_dict, 'language_model.'))
+    mg_state_dict.update(_add_prefix(_remove_prefix(state_dict, 'model.visual.'), 'visual.visual.'))
+    return _add_prefix(mg_state_dict, prefix)
 
 def convert_mcore2hf_qwen3_vl(hf_model, mg_model):
     language_model = hf_model.model.language_model

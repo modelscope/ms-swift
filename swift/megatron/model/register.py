@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Type
 
+import torch
 import torch.nn as nn
 from transformers import PretrainedConfig
 
@@ -17,8 +18,8 @@ class MegatronModelMeta:
     megatron_model_type: str
     model_types: List[str]
 
-    convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
-    convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
+    convert_mcore2hf: Callable[[Dict[str, torch.Tensor], str], Dict[str, torch.Tensor]]
+    convert_hf2mcore: Callable[[Dict[str, torch.Tensor], str], Dict[str, torch.Tensor]]
 
     model_cls: Type[nn.Module]
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]

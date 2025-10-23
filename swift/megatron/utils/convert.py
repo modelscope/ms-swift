@@ -256,7 +256,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     incompatible_keys = mg_model.load_state_dict(
-        megatron_model_meta.convert_hf2mcore(hf_model.state_dict()), strict=False)
+        megatron_model_meta.convert_hf2mcore(hf_model.state_dict()), strict=False, assign=True)
     missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
     assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
     assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'

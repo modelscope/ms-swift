@@ -382,7 +382,7 @@ def _patch_megatron_tokenizer():
     from megatron.training import global_vars
 
     def build_tokenizer(args):
-        return
+        return 'dummy_tokenizer'
 
     global_vars.build_tokenizer = build_tokenizer
 

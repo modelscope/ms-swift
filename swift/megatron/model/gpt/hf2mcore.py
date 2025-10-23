@@ -42,10 +42,14 @@ def set_attn_state(args, state_dict, prefix: str):
         ],
                                                      dim=1).reshape(-1)
     if args.qk_layernorm:
-        mg_state_dict['q_layernorm.weight'] = state_dict['query_layernorm.weight'] if state_dict.get(
-            'q_norm.weight') is None else state_dict['q_norm.weight']
-        mg_state_dict['k_layernorm.weight'] = state_dict['key_layernorm.weight'] if state_dict.get(
-            'k_norm.weight') is None else state_dict['k_norm.weight']
+        if 'q_norm.weight' in state_dict:
+            mg_state_dict['q_layernorm.weight'] = state_dict['q_norm.weight']
+        else:
+            mg_state_dict['q_layernorm.weight'] = state_dict['query_layernorm.weight']
+        if 'k_norm.weight' in state_dict:
+            mg_state_dict['k_layernorm.weight'] = state_dict['k_norm.weight']
+        else:
+            mg_state_dict['k_layernorm.weight'] = state_dict['key_layernorm.weight']
 
     return _add_prefix(mg_state_dict, prefix)
 
@@ -55,10 +59,9 @@ def _set_mlp_state(
     state_dict,
     prefix: str,
     group_idx: Optional[int] = None,
+    hf_grouped: bool = False,
 ):
     mg_state_dict = {}
-    hf_grouped = False
-    # hf_grouped = not isinstance(hf_mlp.down_proj, nn.Module)
     if group_idx is None:
         fc1_key = 'linear_fc1.weight'
         fc2_key = 'linear_fc2.weight'
@@ -66,8 +69,8 @@ def _set_mlp_state(
         fc1_key = f'linear_fc1.weight{group_idx}'
         fc2_key = f'linear_fc2.weight{group_idx}'
     if hf_grouped:
-        linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj[group_idx].t())
-        linear_fc2_weight.data.copy_(hf_mlp.down_proj[group_idx].t())
+        mg_state_dict[fc1_key] = state_dict['gate_up_proj'][group_idx].t()
+        mg_state_dict[fc2_key] = state_dict['down_proj'][group_idx].t()
     else:
         if 'gate_up_proj.weight' in state_dict:
             mg_state_dict[fc1_key] = state_dict['gate_up_proj.weight']
@@ -82,8 +85,10 @@ def _set_mlp_state(
 
 def _set_moe_state(args, state_dict, prefix: str):
     mg_state_dict = {}
-    mg_state_dict['router.weight'] = state_dict['gate.weight'] if state_dict.get(
-        'gate.wg.weight') is None else state_dict['gate.wg.weight']
+    if 'gate.wg.weight' in state_dict:
+        mg_state_dict['router.weight'] = state_dict['gate.wg.weight']
+    else:
+        mg_state_dict['router.weight'] = state_dict['gate.weight']
     if args.moe_router_enable_expert_bias:
         mg_state_dict['router.expert_bias'] = state_dict['gate.e_score_correction_bias']
 
@@ -97,12 +102,11 @@ def _set_moe_state(args, state_dict, prefix: str):
         if 'shared_expert_gate.weight' in state_dict:
             mg_state_dict['shared_experts.gate_weight'] = state_dict['shared_expert_gate.weight']
     for expert_idx in range(args.num_experts):
-        # hf_expert = hf_mlp.experts
-        # if hasattr(hf_expert, '__len__'):
-        #     hf_expert = hf_expert[expert_idx]
-        mg_state_dict.update(
-            _set_mlp_state(
-                args, _remove_prefix(state_dict, f'experts.{expert_idx}.'), 'experts.', group_idx=expert_idx))
+        expert_sd = _remove_prefix(state_dict, f'experts.')
+        hf_grouped = expert_sd is not None
+        if expert_sd is None:
+            expert_sd = _remove_prefix(state_dict, f'experts.{expert_idx}.')
+        mg_state_dict.update(_set_mlp_state(args, expert_sd, 'experts.', group_idx=expert_idx, hf_grouped=hf_grouped))
     return _add_prefix(mg_state_dict, prefix)
 
 
@@ -113,7 +117,7 @@ def _is_moe(state_dict):
     return False
 
 
-def set_layer_state(args, state_dict, layer_idx: int, prefix: str):
+def set_layer_state(args, state_dict, prefix: str):
     mg_state_dict = {}
     if args.multi_latent_attention:
         mg_state_dict.update(set_mla_attn_state(args, _remove_prefix(state_dict, 'self_attn.'), 'self_attention.'))
@@ -153,12 +157,14 @@ def _add_prefix(state_dict, prefix: str):
 def convert_hf2mcore(state_dict, prefix=''):
     args = get_args()
     mg_state_dict = {}
-    mg_state_dict['embedding.word_embeddings.weight'] = state_dict['model.embed_tokens.weight']
-    if args.untie_embeddings_and_output_weights:
+    is_language_model = 'model.language_model.embed_tokens.weight' in state_dict
+    hf_prefix = 'model.language_model.' if is_language_model else 'model.'
+    mg_state_dict['embedding.word_embeddings.weight'] = state_dict[f'{hf_prefix}embed_tokens.weight']
+    if args.untie_embeddings_and_output_weights and 'lm_head.weight' in state_dict:
         mg_state_dict['output_layer.weight'] = state_dict['lm_head.weight']
-    mg_state_dict['decoder.final_layernorm.weight'] = state_dict['model.norm.weight']
+    mg_state_dict['decoder.final_layernorm.weight'] = state_dict[f'{hf_prefix}norm.weight']
     for layer_idx in tqdm(range(args.num_layers), dynamic_ncols=True, desc='Converting: '):
         mg_state_dict.update(
-            set_layer_state(args, _remove_prefix(state_dict, f'model.layers.{layer_idx}.'), layer_idx,
+            set_layer_state(args, _remove_prefix(state_dict, f'{hf_prefix}layers.{layer_idx}.'),
                             f'decoder.layers.{layer_idx}.'))
     return _add_prefix(mg_state_dict, prefix)
