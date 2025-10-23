@@ -124,13 +124,13 @@ class SeedAgentTemplate(BaseAgentTemplate):
 
         split_token = '<seed:eos><seed:bos>system'
 
-        if split_token in system:
+        if system and split_token in system:
             parts = system.split(split_token, 1)
             return f'{parts[0]}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}{parts[1]}'
         else:
             doubao_prompt = ('You are Doubao, a helpful AI assistant. '
                              'You may call one or more functions to assist with the user query.')
-            return f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}\n{system}'
+            return f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n{split_token}\n{system or ""}'
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []
