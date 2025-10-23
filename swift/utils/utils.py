@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -398,3 +399,14 @@ def remove_response(messages) -> Optional[str]:
     last_role = messages[-1]['role'] if messages else None
     if last_role == 'assistant':
         return messages.pop()['content']
+
+
+@contextmanager
+def disable_deepspeed_zero3():
+    import transformers.integrations.deepspeed as ds_module
+    orig_weak_ref = ds_module._hf_deepspeed_config_weak_ref
+    ds_module._hf_deepspeed_config_weak_ref = None
+    try:
+        yield
+    finally:
+        ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref

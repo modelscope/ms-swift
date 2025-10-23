@@ -20,6 +20,7 @@ Swift DOCUMENTATION
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/GRPO/index.rst
+   Instruction/GKD.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
    Instruction/Sample.md

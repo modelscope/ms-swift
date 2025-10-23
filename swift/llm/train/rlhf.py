@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from contextlib import nullcontext
 from typing import List, Optional, Union
 
 from swift.llm import safe_snapshot_download
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, get_model_parameter_info
+from swift.utils.utils import disable_deepspeed_zero3
 from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
@@ -65,12 +67,17 @@ class SwiftRLHF(SwiftSft):
             hub_token=args.hub_token,
         )
         task_type, num_labels = self._get_model_task_type(model_dir)
-        model, processor = args.get_model_processor(
-            model=model_id_or_path,
-            model_type=model_type,
-            model_revision=model_revision,
-            task_type=task_type,
-            num_labels=num_labels)
+        context = nullcontext()
+        if key == 'teacher' and args.teacher_deepspeed:
+            if args.teacher_deepspeed.get('zero_optimization', {}).get('stage') != 3:
+                context = disable_deepspeed_zero3()
+        with context:
+            model, processor = args.get_model_processor(
+                model=model_id_or_path,
+                model_type=model_type,
+                model_revision=model_revision,
+                task_type=task_type,
+                num_labels=num_labels)
 
         adapters = args.adapters if key == 'ref' else args.reward_adapters
         model = prepare_adapter(args, model, adapters)
@@ -205,11 +212,14 @@ class SwiftRLHF(SwiftSft):
                 trainer_kwargs[key] = model
         if hasattr(self, 'reward_template'):
             trainer_kwargs['reward_template'] = self.reward_template
+        if self.args.rlhf_type in ['grpo', 'gkd']:
+            trainer_kwargs['vllm_client'] = self.args.vllm_client
         if self.args.rlhf_type == 'grpo':
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
-            trainer_kwargs['vllm_client'] = self.args.vllm_client
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
+        if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
+            trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
         return trainer_kwargs
 
 

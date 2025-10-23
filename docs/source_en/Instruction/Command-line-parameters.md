@@ -500,6 +500,8 @@ The reward model parameters will be used in PPO and GRPO.
 - teacher_adapters: Default is `[]`.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
+- teacher_deepspeed: Same as the deepspeed parameter, controls the DeepSpeed configuration for the teacher model. By default, uses the DeepSpeed configuration of the training model.
+
 
 #### PPO Arguments
 
