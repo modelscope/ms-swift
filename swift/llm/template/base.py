@@ -998,6 +998,8 @@ class Template(ProcessorMixin):
         kwargs = {}
         if inputs.tools:
             kwargs['tools'] = inputs.tools
+        if 'thinking_budget' in inputs.extra_kwargs.keys():
+            kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
