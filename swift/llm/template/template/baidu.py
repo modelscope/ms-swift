@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..base import Template
-from ..constant import LLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
 from .utils import ThinkingTemplate
@@ -64,3 +64,35 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
 
 
 register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate))
+
+@dataclass
+class PaddleOCRTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<|begin_of_sentence|>'])
+    prompt: Prompt = field(default_factory=lambda: ['User: {{QUERY}}\nAssistant: '])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end_of_sentence|>'])
+    suffix: Prompt = field(default_factory=lambda: ['</s>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|begin_of_sentence|>{{SYSTEM}}\n'])
+
+class PaddleOCRTemplate(Template):
+
+    def _replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return self.image_placeholder
+        elif media_type == 'video':
+            return self.video_placeholder
+        elif media_type == 'audio':
+            return self.audio_placeholder
+    
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        
+        images = inputs.images
+        media_token = self.image_token_id
+        media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt', do_resize=False)
+        media_grid_thw = media_inputs['image_grid_thw']
+
+register_template(PaddleOCRTemplateMeta(MLLMTemplateType.paddle_ocr))

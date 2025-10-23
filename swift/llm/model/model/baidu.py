@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..constant import LLMModelType, MLLMModelType
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model, get_model_tokenizer_multimodal
+from ..model_arch import ModelArch
 
 logger = get_logger()
 
@@ -37,4 +38,18 @@ register_model(
         TemplateType.ernie_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.paddle_ocr,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
+            ]),
+        ],
+        TemplateType.paddle_ocr,
+        get_model_tokenizer_multimodal,
+        model_arch=ModelArch.keye_vl,
+        architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
