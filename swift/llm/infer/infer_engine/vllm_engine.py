@@ -341,7 +341,11 @@ class VllmEngine(InferEngine):
                 media_data = inputs.get(key) or []
                 if media_data:
                     if self._version_ge('0.6'):
-                        mm_data[key.rstrip('s')] = media_data[0] if len(media_data) == 1 else media_data
+
+                        mm_data[key.rstrip('s')] = media_data[0] if (
+                            len(media_data) == 1 and
+                            # compat qwen3_vl
+                            not isinstance(media_data[0], tuple)) else media_data
                     else:
                         assert len(media_data) == 1, (
                             f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')

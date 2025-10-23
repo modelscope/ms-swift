@@ -73,7 +73,7 @@ print(output_text[0])
 使用 ms-swift 的 `PtEngine` 进行推理：
 ```python
 import os
-os.environ['SWIFT_DEBUG'] = '1'
+# os.environ['SWIFT_DEBUG'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
 os.environ['FPS_MAX_FRAMES'] = '16'
