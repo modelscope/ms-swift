@@ -128,7 +128,9 @@ class GPTBridge:
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
-        hf_grouped = not hasattr(hf_mlp.experts, '__len__')
+        hf_grouped = False
+        if group_idx is not None and not hasattr(hf_mlp.experts, '__len__'):
+            hf_grouped = True
         res = {}
         # Determines the keys for fc1 and fc2 in megatron
         if group_idx is None:
@@ -145,8 +147,9 @@ class GPTBridge:
                 self._set_state_dict(state_dict, res, 'gate_up_proj.weight', fc1_key, reverse)
             else:
                 if reverse:
-                    res['gate_proj.weight'] = state_dict[fc1_key][:self.args.ffn_hidden_size]
-                    res['up_proj.weight'] = state_dict[fc1_key][self.args.ffn_hidden_size:]
+                    ffn_hidden_size = state_dict[fc1_key].shape[0] // 2
+                    res['gate_proj.weight'] = state_dict[fc1_key][:ffn_hidden_size]
+                    res['up_proj.weight'] = state_dict[fc1_key][ffn_hidden_size:]
                 else:
                     res[fc1_key] = torch.cat([
                         state_dict['gate_proj.weight'],
@@ -177,7 +180,7 @@ class GPTBridge:
         self._set_state_dict(state_dict, res, 'kv_a_proj_with_mqa.weight', 'linear_kv_down_proj.weight', reverse)
         self._set_state_dict(state_dict, res, 'kv_b_proj.weight', 'linear_kv_up_proj.weight', reverse)
         if self.args.qk_layernorm:
-            self._set_state_dict(state_dict, res, 'kv_a_layernorm.weight', 'linear_kv_up_proj.weight', reverse)
+            self._set_state_dict(state_dict, res, 'kv_a_layernorm.weight', 'linear_kv_up_proj.layer_norm_weight', reverse)
         return self._add_prefix(res, tgt_prefix)
 
     def _set_layer_state(self, state_dict, layer_idx: int, hf_prefix: str, mg_prefix: str, reverse: bool):
@@ -191,7 +194,7 @@ class GPTBridge:
         state_dict = self._remove_prefix(state_dict, src_prefix)
         res = {}
         if self.args.multi_latent_attention:
-            res.update(self._set_mla_attn_state(state_dict, 'self_attn.', 'self_attention.', reverse))
+            res.update(self._set_mla_attn_state(state_dict, 'self_attn.', 'self_attention.', hf_mlp, reverse))
             self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
         else:
             res.update(self._set_attn_state(state_dict, 'self_attn.', 'self_attention.', hf_attn, reverse))

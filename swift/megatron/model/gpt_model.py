@@ -272,6 +272,3 @@ class GPTModel(McoreGPTModel):
 
     def get_input_tensor(self):
         return self.decoder.input_tensor
-
-    def save_hf_checkpoint(self):
-        print()

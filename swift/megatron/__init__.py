@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
     from .trainers import MegatronTrainer, MegatronDPOTrainer
     from .tuners import LoraParallelLinear
-    from .bridge import AutoMcoreModel
 else:
     _import_structure = {
         'train': ['megatron_sft_main', 'megatron_pt_main', 'megatron_rlhf_main'],
@@ -29,7 +28,6 @@ else:
         'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
         'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
         'tuners': ['LoraParallelLinear'],
-        'bridge': ['AutoMcoreModel'],
     }
 
     import sys

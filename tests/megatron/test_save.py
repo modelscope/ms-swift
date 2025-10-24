@@ -12,7 +12,7 @@ def get_mg_model_tokenizer():
     _, processor = get_model_tokenizer(model_id, load_model=False)
     megatron_model_meta = get_megatron_model_meta(processor.model_meta.model_type)
     model_info = processor.model_info
-    kwargs = megatron_model_meta.convert_hf_config(model_info.config)
+    kwargs = convert_hf_config(model_info.config)
     megatron_args = MegatronArguments(
         **kwargs,
         seq_length=1,
@@ -22,7 +22,6 @@ def get_mg_model_tokenizer():
         save='mcore-hf-test',
         no_load_optim=True,
         no_load_rng=True)
-    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
     mg_model = megatron_model_meta.model_provider()
@@ -57,5 +56,4 @@ if __name__ == '__main__':
     from swift.utils import set_default_ddp_config
     from swift.megatron.argument import MegatronArguments
     from swift.megatron.model import get_megatron_model_meta
-    from swift.megatron.utils import patch_megatron_tokenizer
     test_save()
