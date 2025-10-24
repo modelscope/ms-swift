@@ -18,13 +18,13 @@ from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
 register_model_arch(
     MultiModelKeys(
         'my_qwen2_5_omni',
-        # `freeze_llm`, `freeze_vit`, `freeze_aligner`将根据下面的值来决定其行为。
-        # 例如：全参数训练，若设置`freeze_vit=True`，将冻结以`thinker.audio_tower`和`thinker.visual`为前缀的模型层的参数。
-        # LoRA训练，若设置`freeze_vit=False`，将额外为以`thinker.audio_tower`和`thinker.visual`为前缀的Linear层添加LoRA。
+        # `freeze_llm`, `freeze_vit`, `freeze_aligner` behavior is determined by the values below.
+        # For example: full parameter training, if `freeze_vit=True`, it will freeze parameters of model layers prefixed with `thinker.audio_tower` and `thinker.visual`.
+        # LoRA training, if `freeze_vit=False`, it will additionally add LoRA to Linear layers prefixed with `thinker.audio_tower` and `thinker.visual`.
         language_model='thinker.model',
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
-        # generator的部分将永远不进行训练或处于冻结状态。
+        # Generator parts will never be trained or remain frozen.
         generator=['talker', 'token2wav'],
     ))
 
@@ -34,27 +34,27 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from qwen_omni_utils import vision_process
     print('Run my_qwen2_5_omni...')
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniForConditionalGeneration
-    # 自定义`get_model_tokenizer_with_flash_attn`中获取tokenizer和config的方式
+    # Customize how to get tokenizer and config in `get_model_tokenizer_with_flash_attn`
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
     enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
     if enable_audio_output is not None:
         kwargs['model_config'].enable_audio_output = enable_audio_output
-    # 可以通过环境变量来控制qwen_omni_utils库中的常量，例如：`MAX_PIXELS`等
+    # Control constants in qwen_omni_utils library via environment variables, e.g., `MAX_PIXELS`, etc.
     patch_qwen_vl_utils(vision_process)
-    # 请尽量使用该函数来获取model和tokenizer。而避免直接使用AutoModelForCausalLM（会产生不兼容问题）。
+    # Recommended: Use this function to get model and tokenizer. Avoid using AutoModelForCausalLM directly (may cause incompatibility).
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
-        # 为了多模态模型的统一性，我们将模型的forward/generate函数替换为其language_model的forward/generate函数。
-        # 自己处理额外的部分。
+        # For multimodal model consistency, we replace the model's forward/generate functions with those of its language_model.
+        # Handle additional parts separately.
         use_submodel_func(model, 'thinker')
-        # 一些对model/config的自定义（通常不需要设置，若训练/推理中出现报错，则根据特定模型进行配置）
+        # Some custom settings for model/config (usually not needed; configure based on specific model if errors occur during training/inference)
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
-        # 避免在训练时对leaf_variable进行inplace操作导致报错（将input_embeds中的部分内容替换为images_embeds的行为）
+        # Avoid inplace operations on leaf_variable during training (replacing parts of input_embeds with images_embeds)
         patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
-    # 最终需要返回model和 processor（多模态）/tokenizer（纯文本）
+    # Must return model and processor (multimodal) / tokenizer (text-only)
     return model, processor
 
 
@@ -68,39 +68,39 @@ register_model(
             ]),
         ],
         'my_qwen2_5_omni',
-        # 用来获取model和processor的函数。
+        # Function to get model and processor.
         get_model_tokenizer_qwen2_5_omni,
-        is_multimodal=True,  # 是否是多模态模型
-        model_arch='my_qwen2_5_omni',  # 通常只为多模态模型设置
-        # 用于model_type的自动匹配
+        is_multimodal=True,  # Whether it's a multimodal model
+        model_arch='my_qwen2_5_omni',  # Usually set only for multimodal models
+        # Used for automatic model_type matching
         architectures=['Qwen2_5OmniModel', 'Qwen2_5OmniForConditionalGeneration'],
-        # 用来提示用户依赖版本（可删除）
+        # Used to prompt users about dependency versions (can be removed)
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
-        # 用来提示用户（可删除）
+        # Used to prompt users (can be removed)
         tags=['vision', 'video', 'audio'],
-        # 全参数训练/merge-lora需要额外保存的文件
+        # Additional files to save during full parameter training/merge-lora
         additional_saved_files=['spk_dict.pt'],
     ))
 
 if __name__ == '__main__':
-    # 测试与debug
+    # Test and debug
     model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
 
 logger = get_logger()
 
 
 class Qwen2_5OmniTemplate(Template):
-    use_model = True  # 是否在预处理的过程中需要model参与
-    # 需要注意是：并不是所有的多模态模型都能支持padding_free/packing。`transformers`库内的模型通常可以支持
-    support_padding_free = True  # 是否支持padding_free和packing（多模态模型）
-    norm_bbox = 'none'  # grounding任务使用绝对坐标还是norm1000坐标
+    use_model = True  # Whether model participation is required during preprocessing
+    # Note: Not all multimodal models support padding_free/packing. Models in `transformers` library usually support it
+    support_padding_free = True  # Whether padding_free and packing are supported (multimodal models)
+    norm_bbox = 'none'  # Whether grounding tasks use absolute or norm1000 coordinates
 
-    # 这里的tokens将不会被裁剪（例如设置`--truncation_strategy left/right`）
-    # 并会使用简略方式打印（调用`template.safe_decode`）
+    # These tokens will not be truncated (e.g., when setting `--truncation_strategy left/right`)
+    # and will be printed in abbreviated form (calling `template.safe_decode`)
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
     def init_processor(self, processor) -> None:
-        """在初始化processor时，额外初始化所需的一些常量"""
+        """Initialize some required constants when initializing the processor"""
         if processor is None:
             return
         super().init_processor(processor)
@@ -110,20 +110,20 @@ class Qwen2_5OmniTemplate(Template):
         self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
-        # `QWENVL_BBOX_FORMAT`的含义参考grounding数据集自定义文档
+        # See grounding dataset customization documentation for `QWENVL_BBOX_FORMAT` meaning
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        """读取多模态数据，并替换通用多模态tag。
-        例如：图像tag从`<image>` -> `<|vision_bos|><|IMAGE|><|vision_eos|>`"""
-        # 读取多模态数据也可以在`_encode`函数中进行，怎么方便怎么来。
+        """Load multimodal data and replace generic multimodal tags.
+        For example: image tag from `<image>` -> `<|vision_bos|><|IMAGE|><|vision_eos|>`"""
+        # Loading multimodal data can also be done in the `_encode` function, whichever is more convenient.
         from qwen_omni_utils import fetch_image, fetch_video
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
         elif media_type == 'audio':
-            if self.mode != 'vllm':  # 'vllm'推理场景下不需要处理
+            if self.mode != 'vllm':  # No processing needed in 'vllm' inference scenario
                 inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
@@ -145,21 +145,21 @@ class Qwen2_5OmniTemplate(Template):
                 return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
-        """替换grounding任务的通用tag: `<ref-object>`"""
+        """Replace generic tag for grounding tasks: `<ref-object>`"""
         if self.bbox_format == 'legacy':
             return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
         else:
             return [ref]
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        """替换grounding任务的通用tag: `<bbox>`"""
+        """Replace generic tag for grounding tasks: `<bbox>`"""
         if self.bbox_format == 'legacy':
             return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
         else:
             return [str(bbox)]
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """支持packing & mrope。通常情况不需要继承该函数，这里为了自定义mrope的position_ids。"""
+        """Support packing & mrope. Usually no need to inherit this function; here for customizing mrope's position_ids."""
         position_ids = []
         for r in row:
             r = r.copy()
@@ -171,7 +171,7 @@ class Qwen2_5OmniTemplate(Template):
 
     def _get_new_tokens_use_audio_in_video(self, i, *, video_grid_thw, video_second_per_grid, audio_lengths,
                                            video_token_id, audio_token_id):
-        """辅助函数，用于支持`use_audio_in_video`为True的情况"""
+        """Helper function to support `use_audio_in_video` being True"""
         merge_size = self.processor.image_processor.merge_size
         grid_thw = video_grid_thw[i]
         height = grid_thw[1] // merge_size
@@ -197,13 +197,13 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        """这里决定如何将text/images/audios/videos -> input_ids、labels、loss_scale以及pixel_values等多模态内容
-        这里的处理逻辑通常可以从对应模型的预处理代码实现中借鉴。
-        推荐：请先做推理对齐再做训练"""
-        encoded = Template._encode(self, inputs)  # 处理纯文本部分，具体请参考自定义模型文档
+        """This determines how to convert text/images/audios/videos -> input_ids, labels, loss_scale, and multimodal content like pixel_values
+        Processing logic can usually be borrowed from the corresponding model's preprocessing code implementation.
+        Recommended: Perform inference alignment first, then training"""
+        encoded = Template._encode(self, inputs)  # Process text-only part; see custom model documentation for details
         logger.info_once('Run qwen2_5_omni template')
         processor = self.processor
-        # 获取多模态内容
+        # Get multimodal content
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
@@ -211,7 +211,7 @@ class Qwen2_5OmniTemplate(Template):
             videos=inputs.videos or None,
             do_resize=False,
             return_tensors='pt')
-        # 我们不使用`processor`产生的input_ids和attention_mask。因为其不产生`labels`。
+        # We don't use input_ids and attention_mask produced by `processor` because it doesn't produce `labels`.
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
@@ -219,9 +219,9 @@ class Qwen2_5OmniTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        # audio模态
+        # audio modality
         audio_token_id = self._tokenize('<|AUDIO|>')
-        idx_list = findall(input_ids, audio_token_id)  # 查找所有的audio_token
+        idx_list = findall(input_ids, audio_token_id)  # Find all audio_tokens
         feature_attention_mask = media_inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
@@ -229,7 +229,7 @@ class Qwen2_5OmniTemplate(Template):
         else:
             audio_lengths = None
         audio_lengths_origin = audio_lengths
-        # video_audios_mask用于处理`use_audio_in_video`，区分是纯audio(0)还是video中的audio(1)
+        # video_audios_mask is used to handle `use_audio_in_video`, distinguishing pure audio(0) from audio in video(1)
         video_audios_mask = []
         for i, audio in enumerate(inputs.audios):
             if isinstance(audio, tuple) and audio[1] == 'video':
@@ -239,18 +239,18 @@ class Qwen2_5OmniTemplate(Template):
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
         if idx_list:
-            # 过滤掉video中的audio的内容（将在video部分处理）
+            # Filter out audio content in videos (will be handled in video section)
             if self.use_audio_in_video:
                 audio_lengths = audio_lengths[~video_audios_mask]
 
             def _get_new_audio_tokens(i):
                 return audio_token_id * audio_lengths[i]
 
-            # 对input_ids的多模态tokens进行展开
+            # Expand multimodal tokens in input_ids
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 _get_new_audio_tokens)
 
-        # image和video模态
+        # image and video modalities
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
             token_id = self._tokenize(token)
@@ -283,15 +283,16 @@ class Qwen2_5OmniTemplate(Template):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        encoded.update(media_inputs)  # 将多模态内容加入其中
+        encoded.update(media_inputs)  # Add multimodal content
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """该函数通常用于解决混合模型训练zero2/zero3卡住的问题，
-        即有的进程为纯文本数据未过vit，有的进程含图片数据过了vit。这里将创建dummy_image来解决。
+        """This function is typically used to solve the zero2/zero3 hanging issue in mixed model training,
+        i.e., some processes have pure text data without passing through vit, while others have image data that passed through vit.
+        Here we create dummy_image to solve this.
 
-        该函数将被注册在`model.forward`前的pre_forward_hook中。
-        该函数需返回 含多模态信息的input_embeds。
+        This function will be registered in the pre_forward_hook before `model.forward`.
+        This function should return input_embeds containing multimodal information.
         """
         if not self.is_training:
             return inputs
@@ -303,14 +304,14 @@ class Qwen2_5OmniTemplate(Template):
         base_model = self.get_base_model(model)
         inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
         thinker_config = model.config.thinker_config
-        # 辅助函数，用于处理text/image/video混合模态数据场景。（内部会创建dummy_image）
+        # Helper function for handling text/image/video mixed modality data scenarios. (internally creates dummy_image)
         inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.thinker.visual, self.processor,
                                                    thinker_config)
-        # 含audio的混合模态数据场景
+        # Mixed modality data scenarios containing audio
         if input_features is None:
             if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
-                # 注意: 由于transformers实现中，经过audio部分模型层的次数与audio数量相关
-                # 因此zero3在不同进程audios数不同场景下会卡住（需修改transformers代码修复）。此场景请使用zero2。
+                # Note: Due to transformers implementation, the number of passes through audio model layers is related to the number of audios
+                # Therefore, zero3 will hang in scenarios where different processes have different numbers of audios (requires modification of transformers code to fix). Use zero2 in this scenario.
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
@@ -324,7 +325,7 @@ class Qwen2_5OmniTemplate(Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
-        """辅助函数，用来获取mrope的position_ids"""
+        """Helper function to get mrope's position_ids"""
         feature_attention_mask = inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
@@ -344,16 +345,16 @@ class Qwen2_5OmniTemplate(Template):
             audio_feature_lengths,
             video_second_per_grid,
         )
-        return self._concat_text_position_ids(position_ids)  # 第一维为text_position_ids
+        return self._concat_text_position_ids(position_ids)  # First dimension is text_position_ids
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        """传入dataloader的`collate_fn`"""
+        """Passed to dataloader's `collate_fn`"""
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free and self.is_training:
-            # 其中padding_free/packing场景将会在packing_row中处理position_ids。
+            # padding_free/packing scenarios will handle position_ids in packing_row.
             res['position_ids'] = self._get_position_ids(res)
         if 'position_ids' in res:
-            # 创建`packed_seq_params`以支持padding_free/packing & flash-attn
+            # Create `packed_seq_params` to support padding_free/packing & flash-attn
             position_ids = res['position_ids']
             res['position_ids'] = position_ids[1:]
             res['text_position_ids'] = text_position_ids = position_ids[0]
@@ -362,7 +363,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """处理`_data_collator`函数中的多模态部分。（该函数兼容padding_free/packing）"""
+        """Handle multimodal part in `_data_collator` function. (This function is compatible with padding_free/packing)"""
         res = super()._data_collator_mm_data(batch)
         video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
         if video_second_per_grid:
@@ -377,7 +378,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def generate(self, model, *args, **kwargs):
-        """`PtEngine`会调用template.generate方法进行文本生成，这里继承进行自定义。"""
+        """`PtEngine` will call template.generate method for text generation; inherit here for customization."""
         if kwargs.get('video_grid_thw') is not None:
             kwargs['use_audio_in_video'] = self.use_audio_in_video
         return super().generate(model, *args, **kwargs)
@@ -397,18 +398,18 @@ register_template(
         template_cls=Qwen2_5OmniTemplate))
 
 if __name__ == '__main__':
-    # 测试与debug
+    # Test and debug
     model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
     template = get_template('my_qwen2_5_omni', processor)
     data = {
         'messages': [
             {
                 'role': 'user',
-                'content': '描述视频<video>与图片<image>内容。'
+                'content': 'Describe the video<video> and image<image> content.'
             },
             {
                 'role': 'assistant',
-                'content': '一个小孩和一只猫咪。'
+                'content': 'A child and a cat.'
             },
         ],
         'videos': ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'],

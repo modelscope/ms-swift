@@ -16,7 +16,7 @@ def infer_hf():
     model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
         model_dir, torch_dtype='auto', device_map='auto', attn_implementation='flash_attention_2')
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir)
-    # 使用decord读取视频（暂不支持url）
+    # Use decord to read video (url not yet supported)
     resp = requests.get('https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4')
     with open('_baby.mp4', 'wb') as f:
         f.write(resp.content)
@@ -36,7 +36,7 @@ def infer_hf():
                 },
                 {
                     'type': 'text',
-                    'text': '描述视频和图像。'
+                    'text': 'Describe the video and image.'
                 },
             ],
         },
@@ -65,7 +65,7 @@ def test_my_qwen2_5_omni():
     infer_request = InferRequest(
         messages=[{
             'role': 'user',
-            'content': '<video><image>描述视频和图像。',
+            'content': '<video><image>Describe the video and image.',
         }],
         videos=['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'],
         images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'],
@@ -78,11 +78,10 @@ def test_my_qwen2_5_omni():
 
 
 if __name__ == '__main__':
-    from model import *  # register
-    # 开启debug模式，会打印`PtEngine.infer`的input_ids和generate_ids
+    # Enable debug mode, will print input_ids and generate_ids from `PtEngine.infer`
     os.environ['SWIFT_DEBUG'] = '1'
     input_ids_hf, response_hf = infer_hf()
     input_ids_swift, response_swift = test_my_qwen2_5_omni()
-    # 测试input_ids和response对齐
+    # Test input_ids and response alignment
     assert input_ids_hf == input_ids_swift
     assert response_hf == response_swift
