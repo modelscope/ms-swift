@@ -79,7 +79,7 @@ def test_my_qwen2_5_omni():
 
 
 if __name__ == '__main__':
-    import model
+    import my_register
     # Enable debug mode, will print input_ids and generate_ids from `PtEngine.infer`
     os.environ['SWIFT_DEBUG'] = '1'
     input_ids_hf, response_hf = infer_hf()

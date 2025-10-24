@@ -6,7 +6,7 @@ from swift.llm import TrainArguments, sft_main
 sys.path.append('examples/custom/my_qwen2_5_omni')
 
 if __name__ == '__main__':
-    import model
+    import my_register
     os.environ['MAX_PIXELS'] = '1003520'
     sft_main(
         TrainArguments(
