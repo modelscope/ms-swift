@@ -620,14 +620,17 @@ def _patch_mrope():
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
         args = get_args()
-        cp_size = cp_group.size()
-        cu_seqlens = cu_seqlens // cp_size
-        use_batched_mrope = (freqs.shape[0] == cu_seqlens[-1]).item()
+        cu_seqlens_for_batched = cu_seqlens
+        use_batched_mrope = False
+        if cp_group is not None:
+            cp_size = cp_group.size()
+            cu_seqlens_for_batched = cu_seqlens // cp_size
+            use_batched_mrope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
         if args.position_embedding_type != 'mrope' and not use_batched_mrope:
             logger.warning_once('Using non-batched RoPE, which may affect performance.')
             return _origin_apply_rotary_pos_emb_thd(
                 t,
-                cu_seqlens,
+                cu_seqlens_for_batched,
                 freqs,
                 rotary_interleaved=rotary_interleaved,
                 multi_latent_attention=multi_latent_attention,
