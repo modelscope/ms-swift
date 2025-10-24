@@ -109,10 +109,6 @@ class PaddleOCRTemplate(Template):
 
         return encoded
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
-        return res
-
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()
         device = embedding.weight.device
