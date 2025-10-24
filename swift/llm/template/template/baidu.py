@@ -1,11 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Dict, List, Literal, Optional
+
+import numpy as np
+import torch
+import torch.nn as nn
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Prompt
+from ..template_inputs import StdTemplateInputs
+from ..utils import Context, Prompt, findall
 from .utils import ThinkingTemplate
 
 
