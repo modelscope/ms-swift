@@ -17,10 +17,9 @@ if TYPE_CHECKING:
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def model_provider(
-        pre_process=True,
-        post_process=True,
-        vp_stage: Optional[int] = None) -> Union['GPTModel', megatron.legacy.model.GPTModel]:
+def model_provider(pre_process=True,
+                   post_process=True,
+                   vp_stage: Optional[int] = None) -> Union['GPTModel', megatron.legacy.model.GPTModel]:
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.

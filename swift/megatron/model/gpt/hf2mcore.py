@@ -102,19 +102,12 @@ def _set_moe_state(args, state_dict, prefix: str):
         if 'shared_expert_gate.weight' in state_dict:
             mg_state_dict['shared_experts.gate_weight'] = state_dict['shared_expert_gate.weight']
     for expert_idx in range(args.num_experts):
-        expert_sd = _remove_prefix(state_dict, f'experts.')
+        expert_sd = _remove_prefix(state_dict, 'experts.')
         hf_grouped = expert_sd is not None
         if expert_sd is None:
             expert_sd = _remove_prefix(state_dict, f'experts.{expert_idx}.')
         mg_state_dict.update(_set_mlp_state(args, expert_sd, 'experts.', group_idx=expert_idx, hf_grouped=hf_grouped))
     return _add_prefix(mg_state_dict, prefix)
-
-
-def _is_moe(state_dict):
-    for k, v in state_dict.items():
-        if 'experts.' in k:
-            return True
-    return False
 
 
 def set_layer_state(args, state_dict, prefix: str):
@@ -139,7 +132,6 @@ def set_layer_state(args, state_dict, prefix: str):
     else:
         mg_state_dict['mlp.linear_fc1.layer_norm_weight'] = state_dict['post_attention_layernorm.weight']
     return _add_prefix(mg_state_dict, prefix)
-
 
 
 def convert_hf2mcore(state_dict, prefix=''):

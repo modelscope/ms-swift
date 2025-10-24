@@ -9,8 +9,8 @@ from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
 from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_master
 from ..model import get_megatron_model_meta
-from .megatron_args import MegatronArguments
 from ..utils import convert_hf_config
+from .megatron_args import MegatronArguments
 
 logger = get_logger()
 

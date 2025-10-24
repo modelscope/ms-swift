@@ -12,12 +12,13 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
+
 from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
                        to_float_dtype)
 from swift.utils import get_logger, get_n_params_grads
-from .utils import convert_hf_config, patch_torch_dist_shard
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
+from .utils import convert_hf_config, patch_torch_dist_shard
 
 logger = get_logger()
 
@@ -255,8 +256,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     bridge = megatron_model_meta.bridge_cls()
-    incompatible_keys = mg_model.load_state_dict(
-        bridge.convert_hf2mcore(hf_model.state_dict()), strict=False)
+    incompatible_keys = mg_model.load_state_dict(bridge.convert_hf2mcore(hf_model.state_dict()), strict=False)
     missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
     assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
     assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'

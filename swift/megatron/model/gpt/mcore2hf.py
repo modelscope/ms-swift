@@ -96,7 +96,7 @@ def _set_moe_state(args, state_dict, prefix: str):
         if 'shared_expert_gate.weight' in state_dict:
             mg_state_dict['shared_experts.gate_weight'] = state_dict['shared_expert_gate.weight']
     for expert_idx in range(args.num_experts):
-        expert_sd = _remove_prefix(state_dict, f'experts.')
+        expert_sd = _remove_prefix(state_dict, 'experts.')
         hf_grouped = expert_sd is not None
         if expert_sd is None:
             expert_sd = _remove_prefix(state_dict, f'experts.{expert_idx}.')
@@ -153,9 +153,9 @@ def convert_mcore2hf(state_dict, prefix=''):
     hf_state_dict['model.embed_tokens.weight'] = state_dict['embedding.word_embeddings.weight']
     if args.untie_embeddings_and_output_weights:
         hf_state_dict['lm_head.weight'] = state_dict['output_layer.weight']
-    hf_state_dict[f'model.norm.weight'] = state_dict['decoder.final_layernorm.weight']
+    hf_state_dict['model.norm.weight'] = state_dict['decoder.final_layernorm.weight']
     for layer_idx in tqdm(range(args.num_layers), dynamic_ncols=True, desc='Converting: '):
         hf_state_dict.update(
-            set_layer_state(args, _remove_prefix(state_dict, f'decoder.layers.{layer_idx}.'
-            ), f'model.layers.{layer_idx}.'))
+            set_layer_state(args, _remove_prefix(state_dict, f'decoder.layers.{layer_idx}.'),
+                            f'model.layers.{layer_idx}.'))
     return _add_prefix(hf_state_dict, prefix)

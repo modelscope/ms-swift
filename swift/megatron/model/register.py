@@ -8,8 +8,8 @@ import torch.nn as nn
 from transformers import PretrainedConfig
 
 from swift.llm import MODEL_MAPPING
-from .model_provider import model_provider as model_provider_func
 from .gpt_bridge import GPTBridge
+from .model_provider import model_provider as model_provider_func
 
 MEGATRON_MODEL_MAPPING = {}
 

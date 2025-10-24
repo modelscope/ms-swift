@@ -85,7 +85,6 @@ def _convert_config(config, _internal_call=False) -> Dict[str, Any]:
     return megatron_config
 
 
-
 def convert_hf_config(config) -> Dict[str, Any]:
     res = _convert_config(config)
     architectures = res.get('architectures')

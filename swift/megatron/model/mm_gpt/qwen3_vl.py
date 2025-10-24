@@ -499,6 +499,7 @@ register_megatron_model(
         model_cls=Qwen3VLGPTModel,
         visual_cls=Qwen3Omni_Vit))
 
+
 def convert_hf2mcore_qwen3_vl(state_dict, prefix=''):
     args = get_args()
     mg_state_dict = {}
@@ -507,6 +508,7 @@ def convert_hf2mcore_qwen3_vl(state_dict, prefix=''):
     mg_state_dict.update(convert_hf2mcore(state_dict, 'language_model.'))
     mg_state_dict.update(_add_prefix(_remove_prefix(state_dict, 'model.visual.'), 'visual.visual.'))
     return _add_prefix(mg_state_dict, prefix)
+
 
 def convert_mcore2hf_qwen3_vl(hf_model, mg_model):
     language_model = hf_model.model.language_model
