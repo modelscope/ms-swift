@@ -2,8 +2,9 @@
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model, get_model_tokenizer_multimodal
 from ..model_arch import ModelArch
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 
 logger = get_logger()
 
