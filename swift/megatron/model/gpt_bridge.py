@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 import torch
 from megatron.training import get_args
@@ -180,7 +180,8 @@ class GPTBridge:
         self._set_state_dict(state_dict, res, 'kv_a_proj_with_mqa.weight', 'linear_kv_down_proj.weight', reverse)
         self._set_state_dict(state_dict, res, 'kv_b_proj.weight', 'linear_kv_up_proj.weight', reverse)
         if self.args.qk_layernorm:
-            self._set_state_dict(state_dict, res, 'kv_a_layernorm.weight', 'linear_kv_up_proj.layer_norm_weight', reverse)
+            self._set_state_dict(state_dict, res, 'kv_a_layernorm.weight', 'linear_kv_up_proj.layer_norm_weight',
+                                 reverse)
         return self._add_prefix(res, tgt_prefix)
 
     def _set_layer_state(self, state_dict, layer_idx: int, hf_prefix: str, mg_prefix: str, reverse: bool):
@@ -227,8 +228,8 @@ class GPTBridge:
             res.update(self._set_layer_state(state_dict, layer_idx, 'model.layers.', 'decoder.layers.', reverse))
         return self._add_prefix(res, tgt_prefix)
 
-    def convert_hf2mcore(self, state_dict):
+    def convert_hf2mcore(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         return self._convert(state_dict, '', '', False)
 
-    def convert_mcore2hf(self, state_dict):
+    def convert_mcore2hf(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         return self._convert(state_dict, '', '', True)
