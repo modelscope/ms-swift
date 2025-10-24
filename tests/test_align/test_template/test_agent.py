@@ -442,6 +442,75 @@ def test_deepseek_v3_1():
     assert encoded['input_ids'][-122:] == encoded2['input_ids'][1:]
 
 
+def test_seed_oss():
+    agent_template = agent_templates['seed_oss']()
+
+    engine = PtEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False, download_model=False)
+
+    template = engine.default_template
+    template.agent_template = agent_template
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    # To test multiple tool calls and responses, we duplicate some messages.
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+
+    # Incomplete tool function will cause seed template to throw an error.
+    data['tools'] = [('{\n'
+                      '    "name": "convert_temperature",\n'
+                      '    "description": "Convert temperature from one unit to another",\n'
+                      '    "parameters": {\n'
+                      '        "type": "object",\n'
+                      '        "properties": {\n'
+                      '            "temperature": {\n'
+                      '                "type": "number",\n'
+                      '                "description": "The temperature value"\n'
+                      '            },\n'
+                      '            "from_unit": {\n'
+                      '                "type": "string",\n'
+                      '                "description": "The unit to convert from"\n'
+                      '            },\n'
+                      '            "to_unit": {\n'
+                      '                "type": "string",\n'
+                      '                "description": "The unit to convert to"\n'
+                      '            }\n'
+                      '        },\n'
+                      '        "required": [\n'
+                      '            "temperature",\n'
+                      '            "from_unit",\n'
+                      '            "to_unit"\n'
+                      '        ]\n'
+                      '    }\n'
+                      '}'),
+                     ('{\n'
+                      '    "name": "get_current_date",\n'
+                      '    "description": "Get the current date",\n'
+                      '    "parameters":  {\n'
+                      '        "type": "object",\n'
+                      '        "properties": {\n'
+                      '         "date": {\n'
+                      '                "type": "number",\n'
+                      '                "description": "The date value"}}}\n'
+                      '}')]
+
+    data['thinking_budget'] = 0
+
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    import re
+    expected_input_ids = re.sub(
+        r'<seed:think>.*?</seed:think>', '', template.safe_decode(encoded['input_ids']), flags=re.DOTALL)
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert template.safe_decode(encoded2['input_ids']) == expected_input_ids
+
+
 if __name__ == '__main__':
     from swift.plugin import agent_templates
     from swift.llm import PtEngine, InferRequest, RequestConfig, load_dataset
@@ -460,4 +529,5 @@ if __name__ == '__main__':
     # test_hunyuan()
     # test_glm4_5()
     # test_qwen3_coder()
-    test_deepseek_v3_1()
+    # test_deepseek_v3_1()
+    test_seed_oss()
