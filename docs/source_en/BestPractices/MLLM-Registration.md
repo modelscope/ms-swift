@@ -196,8 +196,8 @@ class Qwen2_5OmniTemplate(Template):
             return [str(bbox)]
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Support packing & mrope. 
-        
+        """Support packing & mrope.
+
         Usually no need to inherit this function; here for customizing mrope's position_ids."""
         position_ids = []
         for r in row:
