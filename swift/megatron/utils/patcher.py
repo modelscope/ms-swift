@@ -7,14 +7,6 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
-def patch_megatron_tokenizer(tokenizer):
-
-    def build_tokenizer(args):
-        return tokenizer
-
-    global_vars.build_tokenizer = build_tokenizer
-
-
 def patch_torch_dist_shard(thread_count):
     __init__ = TorchDistSaveShardedStrategy.__init__
 

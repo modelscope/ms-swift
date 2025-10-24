@@ -379,6 +379,15 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_megatron_tokenizer():
+    from megatron.training import global_vars
+
+    def build_tokenizer(args):
+        return 'dummy_tokenizer'
+
+    global_vars.build_tokenizer = build_tokenizer
+
+
 def _patch_peft_ModulesToSaveWrapper():
     if version.parse(peft.__version__) >= version.parse('0.16'):
         from peft.utils import other as peft_module
@@ -664,6 +673,7 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    _patch_megatron_tokenizer()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:

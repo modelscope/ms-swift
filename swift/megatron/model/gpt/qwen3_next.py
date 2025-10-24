@@ -22,9 +22,8 @@ from megatron.training import get_args
 from swift.llm import ModelType
 from swift.utils import get_logger
 from ..constant import MegatronModelType
-from ..gpt_model import GPTModel
+from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
-from .config import convert_gpt_hf_config
 
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
@@ -473,6 +472,12 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     return block_spec
 
 
+class Qwen3NextBridge(GPTBridge):
+
+    def _convert(self, state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
+        print()
+
+
 def convert_mcore2hf_qwen3_next(hf_model, mg_model):
     from .mcore2hf import set_mlp_state, set_attn_state
     args = get_args()
@@ -537,9 +542,5 @@ register_megatron_model(
             ModelType.qwen3_next,
             ModelType.qwen3_next_thinking,
         ],
-        model_cls=GPTModel,
-        convert_hf_config=convert_gpt_hf_config,
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
-        convert_mcore2hf=convert_mcore2hf_qwen3_next,
-        convert_hf2mcore=convert_hf2mcore_qwen3_next,
     ))

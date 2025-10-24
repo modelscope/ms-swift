@@ -16,9 +16,9 @@ from megatron.training.utils import get_ltor_masks_and_position_ids
 from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
                        to_float_dtype)
 from swift.utils import get_logger, get_n_params_grads
-from ..argument import MegatronArguments
-from ..model import get_megatron_model_meta
-from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
+from .argument import MegatronArguments
+from .model import get_megatron_model_meta
+from .utils import convert_hf_config, patch_torch_dist_shard
 
 logger = get_logger()
 
@@ -238,7 +238,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -246,7 +246,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args['model_info'] = args.model_info
     extra_args['model_meta'] = args.model_meta
@@ -256,7 +255,11 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
-    megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
+    bridge = megatron_model_meta.bridge_cls()
+    incompatible_keys = mg_model.load_state_dict(bridge.convert_hf2mcore(hf_model.state_dict()), strict=False)
+    missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
+    assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
+    assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
@@ -274,7 +277,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -291,7 +294,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args['model_info'] = args.model_info
     extra_args['model_meta'] = args.model_meta
@@ -312,7 +314,11 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     if args.to_hf:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
-        megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
+        bridge = megatron_model_meta.bridge_cls()
+        incompatible_keys = hf_model.load_state_dict(bridge.convert_mcore2hf(mg_model.state_dict()), strict=False)
+        missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
+        assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
+        assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
         if args.test_convert_precision:
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model

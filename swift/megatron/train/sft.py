@@ -10,7 +10,6 @@ from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
-from ..utils import patch_megatron_tokenizer
 from .utils import build_streaming_dataloader
 
 logger = get_logger()
@@ -35,7 +34,6 @@ class MegatronSft(SwiftSft):
         with torch.device('meta'):
             self.model, self.processor = args.get_model_processor(**kwargs)
         self._prepare_template()
-        patch_megatron_tokenizer(self.processor)
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         args.save_args(args.save)
         self.template.use_megatron = True
