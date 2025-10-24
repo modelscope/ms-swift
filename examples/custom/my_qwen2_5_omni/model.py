@@ -19,8 +19,10 @@ register_model_arch(
     MultiModelKeys(
         'my_qwen2_5_omni',
         # `freeze_llm`, `freeze_vit`, `freeze_aligner` behavior is determined by the values below.
-        # For example: full parameter training, if `freeze_vit=True`, it will freeze parameters of model layers prefixed with `thinker.audio_tower` and `thinker.visual`.
-        # LoRA training, if `freeze_vit=False`, it will additionally add LoRA to Linear layers prefixed with `thinker.audio_tower` and `thinker.visual`.
+        # For example: full parameter training, if `freeze_vit=True`, it will freeze parameters of
+        # model layers prefixed with `thinker.audio_tower` and `thinker.visual`.
+        # LoRA training, if `freeze_vit=False`, it will additionally add LoRA to Linear layers
+        # prefixed with `thinker.audio_tower` and `thinker.visual`.
         language_model='thinker.model',
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
@@ -41,18 +43,23 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
     if enable_audio_output is not None:
         kwargs['model_config'].enable_audio_output = enable_audio_output
-    # Control constants in qwen_omni_utils library via environment variables, e.g., `MAX_PIXELS`, etc.
+    # Control constants in qwen_omni_utils library via environment variables,
+    # e.g., `MAX_PIXELS`, etc.
     patch_qwen_vl_utils(vision_process)
-    # Recommended: Use this function to get model and tokenizer. Avoid using AutoModelForCausalLM directly (may cause incompatibility).
+    # Recommended: Use this function to get model and tokenizer.
+    # Avoid using AutoModelForCausalLM directly (may cause incompatibility).
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
-        # For multimodal model consistency, we replace the model's forward/generate functions with those of its language_model.
+        # For multimodal model consistency, we replace the model's forward/generate functions
+        # with those of its language_model.
         # Handle additional parts separately.
         use_submodel_func(model, 'thinker')
-        # Some custom settings for model/config (usually not needed; configure based on specific model if errors occur during training/inference)
+        # Some custom settings for model/config (usually not needed; configure based on
+        # specific model if errors occur during training/inference)
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
-        # Avoid inplace operations on leaf_variable during training (replacing parts of input_embeds with images_embeds)
+        # Avoid inplace operations on leaf_variable during training
+        # (replacing parts of input_embeds with images_embeds)
         patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
     # Must return model and processor (multimodal) / tokenizer (text-only)
     return model, processor
@@ -159,7 +166,8 @@ class Qwen2_5OmniTemplate(Template):
             return [str(bbox)]
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Support packing & mrope. Usually no need to inherit this function; here for customizing mrope's position_ids."""
+        """Support packing & mrope. Usually no need to inherit this function;
+        here for customizing mrope's position_ids."""
         position_ids = []
         for r in row:
             r = r.copy()
@@ -197,9 +205,11 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        """This determines how to convert text/images/audios/videos -> input_ids, labels, loss_scale, and multimodal content like pixel_values
+        """This determines how to convert text/images/audios/videos ->
+        input_ids, labels, loss_scale, and multimodal content like pixel_values.
+
         Processing logic can usually be borrowed from the corresponding model's preprocessing code implementation.
-        Recommended: Perform inference alignment first, then training"""
+        Recommended: Perform inference alignment first, then training."""
         encoded = Template._encode(self, inputs)  # Process text-only part; see custom model documentation for details
         logger.info_once('Run qwen2_5_omni template')
         processor = self.processor
@@ -288,7 +298,8 @@ class Qwen2_5OmniTemplate(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """This function is typically used to solve the zero2/zero3 hanging issue in mixed model training,
-        i.e., some processes have pure text data without passing through vit, while others have image data that passed through vit.
+        i.e., some processes have pure text data without passing through vit,
+        while others have image data that passed through vit.
         Here we create dummy_image to solve this.
 
         This function will be registered in the pre_forward_hook before `model.forward`.
@@ -310,8 +321,11 @@ class Qwen2_5OmniTemplate(Template):
         # Mixed modality data scenarios containing audio
         if input_features is None:
             if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
-                # Note: Due to transformers implementation, the number of passes through audio model layers is related to the number of audios
-                # Therefore, zero3 will hang in scenarios where different processes have different numbers of audios (requires modification of transformers code to fix). Use zero2 in this scenario.
+                # Note: Due to transformers implementation,
+                # the number of passes through audio model layers is related to the number of audios
+                # Therefore, zero3 will hang in scenarios where different processes have different numbers of audios
+                # (requires modification of transformers code to fix).
+                # Use zero2 in this scenario.
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
@@ -363,7 +377,8 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Handle multimodal part in `_data_collator` function. (This function is compatible with padding_free/packing)"""
+        """Handle multimodal part in `_data_collator` function.
+        (This function is compatible with padding_free/packing)"""
         res = super()._data_collator_mm_data(batch)
         video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
         if video_second_per_grid:
