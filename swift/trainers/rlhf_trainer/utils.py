@@ -8,7 +8,7 @@ from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
@@ -21,7 +21,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
-from swift.utils import is_swanlab_available, is_vllm_available, is_wandb_available
+from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
     import wandb
@@ -30,6 +30,7 @@ if is_swanlab_available():
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
+T = TypeVar('T')
 
 TensorLoRARequest = None
 if is_vllm_available():
@@ -47,6 +48,175 @@ if is_vllm_available():
         @property
         def embeddings(self):
             return self.lora_embeddings
+
+
+def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugin=None, training_args=None):
+    """
+    Prepares the model for DeepSpeed inference or evaluation by initializing it with the appropriate configuration.
+
+    Args:
+        model: The model to prepare
+        accelerator: The accelerator instance
+        deepspeed_config: Optional deepspeed config. If provided, use this instead of accelerator's plugin.
+        deepspeed_plugin: Optional DeepSpeedPlugin. If provided, use this instead of accelerator's plugin.
+        training_args: Optional training arguments for resolving "auto" values in config
+
+    Returns:
+        The prepared DeepSpeed model
+    """
+    try:
+        import deepspeed
+        import os
+        from copy import deepcopy
+        from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
+        from accelerate.utils import DeepSpeedPlugin
+    except ImportError:
+        pass
+
+    # Determine which config to use and create HfTrainerDeepSpeedConfig
+    if deepspeed_config is not None:
+        # Use provided config - need to wrap it with HfTrainerDeepSpeedConfig to handle "auto" values
+        if isinstance(deepspeed_config, dict):
+            # Create HfTrainerDeepSpeedConfig which will handle "auto" values
+            hf_ds_config = HfTrainerDeepSpeedConfig(deepspeed_config)
+
+            # Process the config with training args to resolve "auto" values
+            if training_args is not None:
+                hf_ds_config.trainer_config_process(training_args)
+
+            # Create a DeepSpeedPlugin with the processed config
+            temp_plugin = DeepSpeedPlugin(hf_ds_config=hf_ds_config)
+            config_kwargs = deepcopy(temp_plugin.deepspeed_config)
+        else:
+            raise ValueError(f'deepspeed_config should be a dict, got {type(deepspeed_config)}')
+    elif deepspeed_plugin is not None:
+        # Use provided plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+    else:
+        # Use accelerator's plugin (default behavior)
+        deepspeed_plugin = accelerator.state.deepspeed_plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+
+    stage = config_kwargs['zero_optimization']['stage']
+
+    if model is not None:
+        hidden_size = (
+            max(model.config.hidden_sizes) if getattr(model.config, 'hidden_sizes', None) else getattr(
+                model.config, 'hidden_size', None))
+        if hidden_size is not None and stage == 3:
+            # Note that `stage3_prefetch_bucket_size` can produce DeepSpeed messages like: `Invalidate trace cache
+            # @ step 0: expected module 1, but got module 0`
+            # This is expected and is not an error, see: https://github.com/microsoft/DeepSpeed/discussions/4081
+            config_kwargs.update({
+                'zero_optimization.reduce_bucket_size': hidden_size * hidden_size,
+                'zero_optimization.stage3_param_persistence_threshold': 10 * hidden_size,
+                'zero_optimization.stage3_prefetch_bucket_size': 0.9 * hidden_size * hidden_size,
+            })
+
+    # If ZeRO-3 is used, we shard both the active and reference model.
+    # Otherwise, we assume the reference model fits in memory and is initialized on each device with ZeRO
+    # disabled (stage 0)
+    if stage != 3:
+        config_kwargs['zero_optimization']['stage'] = 0
+
+    # CRITICAL: Save and clear DeepSpeed-related environment variables before initialization
+    # These environment variables (set during student model's DeepSpeed init) can override our config!
+    # Reference: https://github.com/microsoft/DeepSpeed/issues/xxxx
+    env_vars_to_clear = [
+        'DEEPSPEED_ZERO_STAGE',
+        'DEEPSPEED_CONFIG',
+        'DEEPSPEED_CONFIG_FILE',
+    ]
+    saved_env = {}
+    for env_var in env_vars_to_clear:
+        if env_var in os.environ:
+            saved_env[env_var] = os.environ[env_var]
+            del os.environ[env_var]
+
+    try:
+        # Explicitly pass args=None to ensure no args.deepspeed_config interference
+        model, *_ = deepspeed.initialize(args=None, model=model, config=config_kwargs)
+        model.eval()
+
+    finally:
+        # Restore environment variables
+        for env_var, value in saved_env.items():
+            os.environ[env_var] = value
+
+    return model
+
+
+@contextmanager
+def memory_time_profiling_context(
+    name: str = 'Operation',
+    enable_profiling: bool = True,
+    sync_cuda: bool = True,
+    reset_peak_stats: bool = True,
+):
+    """
+    General-purpose memory and time profiling context manager (pure monitoring, no execution).
+
+    Records memory usage and execution time when entering and exiting the context, but does not
+    handle any actual model loading/offloading operations.
+
+    Args:
+        name: Operation name for logging identification
+        enable_profiling: Whether to enable profiling records
+        sync_cuda: Whether to synchronize CUDA before recording (ensures accuracy with slight overhead)
+        reset_peak_stats: Whether to reset peak memory statistics on exit
+    """
+    if not enable_profiling:
+        yield
+        return
+
+    logger = get_logger()
+
+    # ===== Entry phase: Record initial state =====
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+    gc_collect()
+
+    # Record initial memory state
+    memory_before = torch.cuda.memory_allocated() / 1024**3  # GiB
+    memory_reserved_before = torch.cuda.memory_reserved() / 1024**3
+    max_memory_before = torch.cuda.max_memory_allocated() / 1024**3
+
+    logger.info(f'[{name}] Before: '
+                f'Allocated = {memory_before:.2f} GiB, '
+                f'Reserved = {memory_reserved_before:.2f} GiB, '
+                f'Peak = {max_memory_before:.2f} GiB')
+
+    # Start timing
+    start_time = time.perf_counter()
+
+    yield
+
+    # Synchronize and clean up memory before measuring (important for offload operations)
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    gc_collect()
+
+    # ===== Exit phase: Record final state =====
+    # Calculate elapsed time (before cleanup to measure actual operation time)
+    elapsed_time = time.perf_counter() - start_time
+
+    # Record final memory state
+    memory_after = torch.cuda.memory_allocated() / 1024**3
+    memory_reserved_after = torch.cuda.memory_reserved() / 1024**3
+    peak_memory = torch.cuda.max_memory_allocated() / 1024**3
+    memory_change = memory_after - memory_before
+
+    logger.info(f'[{name}] After: '
+                f'Allocated = {memory_after:.2f} GiB, '
+                f'Reserved = {memory_reserved_after:.2f} GiB, '
+                f'Peak = {peak_memory:.2f} GiB, '
+                f'Change = {memory_change:+.2f} GiB, '
+                f'Time = {elapsed_time:.2f}s')
+
+    # Reset peak memory statistics for next cycle
+    if reset_peak_stats and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
 
 
 def round_robin(num_reqs, num_workers):
@@ -866,3 +1036,41 @@ def _process_bucket_with_flattened_tensor(trainer, bucket_params):
 
     # Clean up
     del bucket, metadatas, flattened_tensor
+
+
+def get_even_process_data(trainer, global_data: List[T]) -> List[T]:
+    """
+    Evenly splits `global_data` among all processes.
+
+    Each process receives a contiguous chunk of data. If `len(global_data)` is not
+    perfectly divisible by the number of processes, the first `remainder` processes
+    will receive one additional item.
+
+    Args:
+        global_data (List[T]): The full list of data to be distributed.
+
+    Returns:
+        List[T]: The subset of `global_data` assigned to this process.
+    """
+    num_procs = trainer.accelerator.num_processes
+    proc_idx = trainer.accelerator.process_index
+    total = len(global_data)
+
+    base_size = total // num_procs
+    remainder = total % num_procs
+
+    # Calculate the number of samples that need to be padded
+    # This ensures all processes have the same number of samples for gather operations
+    trainer.rollout_pad_count = 0
+    if remainder > 0 and proc_idx >= remainder:
+        # Processes with extra samples need padding
+        trainer.rollout_pad_count = 1
+
+    if proc_idx < remainder:
+        start = proc_idx * (base_size + 1)
+        end = start + base_size + 1
+    else:
+        start = remainder * (base_size + 1) + (proc_idx - remainder) * base_size
+        end = start + base_size
+
+    return global_data[start:end]
