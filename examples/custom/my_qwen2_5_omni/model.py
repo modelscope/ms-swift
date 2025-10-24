@@ -1,31 +1,19 @@
+from functools import partial
+from typing import Any, Dict, List, Literal, Optional
 
-# 注册多模态模型最佳实践
+import torch
+from transformers.integrations import is_deepspeed_zero3_enabled
 
-本文将介绍如何在ms-swift中注册多模态模型，并成功推理和训练。本文将以Qwen2.5-Omni为例子，注册新的model_type和template `my_qwen2_5_omni`，并支持文本、图片、视频和音频的训练。由于Qwen2.5-Omni已经在ms-swift中注册，我们可以通过显式指定model_type和template来使用我们自定义的部分。
-
-## 环境准备
-```shell
-# 避免未来出现与文档的不兼容情况
-pip install "ms-swift>=3.9,<3.10"
-
-pip "transformers==4.57.*" "qwen_omni_utils==0.0.8"
-```
-
-
-## 注册模型
-
-第一步，我们需要注册模型，来获取模型和processor。
-
-```python
-from swift.llm import (
-    register_model, ModelMeta, ModelGroup, Model, register_model_arch, MultiModelKeys,
-    get_model_tokenizer_with_flash_attn, get_model_tokenizer
-)
+from swift.llm import (Model, ModelGroup, ModelMeta, MultiModelKeys, Template, TemplateMeta, get_model_tokenizer,
+                       get_model_tokenizer_with_flash_attn, get_packed_seq_params, get_template, register_model,
+                       register_model_arch, register_template, to_float_dtype)
 from swift.llm.model.model.qwen import patch_qwen_vl_utils
-from swift.llm.model.utils import use_submodel_func
 from swift.llm.model.patcher import patch_get_input_embeddings
-from swift.utils import get_env_args
-
+from swift.llm.model.utils import use_submodel_func
+from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.llm.template.utils import Context, findall
+from swift.llm.template.vision_utils import load_audio
+from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
 
 register_model_arch(
     MultiModelKeys(
@@ -39,6 +27,7 @@ register_model_arch(
         # generator的部分将永远不进行训练或处于冻结状态。
         generator=['talker', 'token2wav'],
     ))
+
 
 def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
@@ -96,33 +85,9 @@ register_model(
 if __name__ == '__main__':
     # 测试与debug
     model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
-```
-
-## 注册模板
-
-第二步，我们需要注册模版，来自定义如何将文本、图片、视频和音频进行预处理（`_encode`和`_data_collator`方法）。这是ms-swift支持多模态模型训练的关键模块。预处理方式请参考transformers推理实现，并进行对齐。
-
-template的功能如下：
-1. 支持正常推理与训练，预处理文本和多模态信息，并支持grounding任务。
-2. 支持padding_free和packing训练。
-3. 支持混合模态数据训练。
-
-
-```python
-from swift.llm import (
-    register_template, Template, get_packed_seq_params, to_float_dtype, TemplateMeta,
-    get_template, get_model_tokenizer
-)
-from transformers.integrations import is_deepspeed_zero3_enabled
-from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.template.utils import Context, findall
-from swift.llm.template.vision_utils import load_audio
-from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
-from functools import partial
-from typing import Dict, List, Any, Literal, Optional
-import torch
 
 logger = get_logger()
+
 
 class Qwen2_5OmniTemplate(Template):
     use_model = True  # 是否在预处理的过程中需要model参与
@@ -147,7 +112,6 @@ class Qwen2_5OmniTemplate(Template):
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
         # `QWENVL_BBOX_FORMAT`的含义参考grounding数据集自定义文档
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
-
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -179,7 +143,6 @@ class Qwen2_5OmniTemplate(Template):
                 return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
             else:
                 return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
-
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
         """替换grounding任务的通用tag: `<ref-object>`"""
@@ -232,7 +195,6 @@ class Qwen2_5OmniTemplate(Template):
                 audio_seq_length = audio_chunk_indexes[j][1] - audio_chunk_indexes[j][0]
                 res += audio_token_id * audio_seq_length
         return res
-
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         """这里决定如何将text/images/audios/videos -> input_ids、labels、loss_scale以及pixel_values等多模态内容
@@ -422,12 +384,17 @@ class Qwen2_5OmniTemplate(Template):
 
 
 register_template(
-    TemplateMeta('my_qwen2_5_omni', prefix=[], prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-                 chat_sep=['<|im_end|>\n'], suffix=['<|im_end|>'],
-                 system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
-                 default_system='You are a helpful assistant.', stop_words=['<|endoftext|>'],
-                 agent_template='hermes',
-                 template_cls=Qwen2_5OmniTemplate))
+    TemplateMeta(
+        'my_qwen2_5_omni',
+        prefix=[],
+        prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        chat_sep=['<|im_end|>\n'],
+        suffix=['<|im_end|>'],
+        system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+        default_system='You are a helpful assistant.',
+        stop_words=['<|endoftext|>'],
+        agent_template='hermes',
+        template_cls=Qwen2_5OmniTemplate))
 
 if __name__ == '__main__':
     # 测试与debug
@@ -435,8 +402,14 @@ if __name__ == '__main__':
     template = get_template('my_qwen2_5_omni', processor)
     data = {
         'messages': [
-            {'role': 'user', 'content': '描述视频<video>与图片<image>内容。'},
-            {'role': 'assistant', 'content': '一个小孩和一只猫咪。'},
+            {
+                'role': 'user',
+                'content': '描述视频<video>与图片<image>内容。'
+            },
+            {
+                'role': 'assistant',
+                'content': '一个小孩和一只猫咪。'
+            },
         ],
         'videos': ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'],
         'images': ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'],
@@ -446,185 +419,3 @@ if __name__ == '__main__':
     print('input_ids: ' + template.safe_decode(encoded['input_ids']))
     print('labels: ' + template.safe_decode(encoded['labels']))
     print('keys: ' + str(encoded.keys()))
-```
-
-
-## 推理对齐
-接下来，你需要进行PtEngine与transformers的推理对齐。通常你需要对齐`input_ids`以及输出内容。你可以书写以下测试函数：
-
-```python
-import os
-from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
-from qwen_omni_utils import process_mm_info
-from modelscope import snapshot_download
-from swift.llm import PtEngine, InferRequest, RequestConfig
-import requests
-
-def infer_hf():
-    model_dir = snapshot_download('Qwen/Qwen2.5-Omni-7B')
-    model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-        model_dir, torch_dtype="auto", device_map="auto", attn_implementation='flash_attention_2')
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir)
-    # 使用decord读取视频（暂不支持url）
-    resp = requests.get('https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4')
-    with open('_baby.mp4', 'wb') as f:
-        f.write(resp.content)
-
-    conversation = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "video", "video": "_baby.mp4"},
-                {"type": "image", "image": "http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"},
-                {"type": "text", "text": "描述视频和图像。"},
-            ],
-        },
-    ]
-
-    USE_AUDIO_IN_VIDEO = False
-    text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
-    audios, images, videos = process_mm_info(conversation, use_audio_in_video=USE_AUDIO_IN_VIDEO)
-    inputs = processor(text=text, audio=audios, images=images, videos=videos, return_tensors="pt", padding=True,
-                       use_audio_in_video=USE_AUDIO_IN_VIDEO)
-    inputs = inputs.to(model.device).to(model.dtype)
-    text_ids, audio = model.generate(**inputs, use_audio_in_video=USE_AUDIO_IN_VIDEO, thinker_do_sample=False)
-    text = processor.batch_decode(text_ids[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-    return inputs['input_ids'][0].tolist(), text[0]
-
-def test_my_qwen2_5_omni():
-    engine = PtEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
-    infer_request = InferRequest(messages=[{
-        "role": "user",
-        "content": "<video><image>描述视频和图像。",
-    }],
-        videos=["https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4"],
-        images=["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"],
-    )
-    request_config = RequestConfig(temperature=0, max_tokens=512)
-    input_ids = engine.default_template.encode(infer_request)['input_ids']
-    resp_list = engine.infer([infer_request], request_config)
-    resp = resp_list[0].choices[0].message.content
-    return input_ids, resp
-
-
-if __name__ == '__main__':
-    # 开启debug模式，会打印`PtEngine.infer`的input_ids和generate_ids
-    os.environ['SWIFT_DEBUG'] = '1'
-    input_ids_hf, response_hf = infer_hf()
-    input_ids_swift, response_swift = test_my_qwen2_5_omni()
-    # 测试input_ids和response对齐
-    assert input_ids_hf == input_ids_swift
-    assert response_hf == response_swift
-```
-
-
-## 开始训练
-
-使用python代码训练，这通常更容易debug：
-```python
-from swift.llm import sft_main, TrainArguments
-import os
-if __name__ == '__main__':
-    os.environ['MAX_PIXELS'] = '1003520'
-    sft_main(TrainArguments(
-        model='Qwen/Qwen2.5-Omni-7B',
-        dataset='AI-ModelScope/LaTeX_OCR#5000',
-        model_type='my_qwen2_5_omni',
-        template='my_qwen2_5_omni',
-        load_from_cache_file=True,
-        split_dataset_ratio=0.01,
-        train_type='lora',
-        torch_dtype='bfloat16',
-        attn_impl='flash_attn',
-        padding_free=True,
-        num_train_epochs=1,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
-        learning_rate=1e-4,
-        lora_rank=8,
-        lora_alpha=32,
-        target_modules='all-linear',
-        freeze_vit=True,
-        freeze_aligner=True,
-        gradient_accumulation_steps=1,
-        eval_steps=50,
-        save_steps=50,
-        save_total_limit=2,
-        logging_steps=5,
-        max_length=2048,
-        output_dir='output',
-        warmup_ratio=0.05,
-        dataloader_num_workers=4,
-        dataset_num_proc=1,
-    ))
-```
-
-使用命令行训练：
-```shell
-# 4 * 35GiB
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=4 \
-VIDEO_MAX_PIXELS=50176 \
-FPS_MAX_FRAMES=12 \
-MAX_PIXELS=1003520 \
-swift sft \
-    --model Qwen/Qwen2.5-Omni-7B \
-    --model_type my_qwen2_5_omni \
-    --template my_qwen2_5_omni \
-    --custom_register_path 'examples/custom/my_qwen2_5_omni/model.py' \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
-              'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
-              'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
-              'swift/VideoChatGPT:all#2000' \
-    --load_from_cache_file true \
-    --split_dataset_ratio 0.01 \
-    --train_type lora \
-    --torch_dtype bfloat16 \
-    --attn_impl flash_attn \
-    --padding_free true \
-    --packing true \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-4 \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --freeze_vit true \
-    --freeze_aligner true \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 50 \
-    --save_steps 50 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 1 \
-    --deepspeed zero2
-```
-
-训练后对验证集进行推理：（环境变量请与训练时对齐）
-```shell
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0 \
-VIDEO_MAX_PIXELS=50176 \
-FPS_MAX_FRAMES=12 \
-MAX_PIXELS=1003520 \
-swift infer \
-   --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true \
-    --max_new_tokens 2048 \
-    --load_data_args true
-```
-
-使用以下命令将训练权重推送到 Modelscope：
-```shell
-swift export \
-    --adapters output/vx-xxx/checkpoint-xxx \
-    --push_to_hub true \
-    --hub_model_id '<your-model-id>' \
-    --hub_token '<your-sdk-token>'
-```
