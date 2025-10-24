@@ -314,7 +314,11 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     if args.to_hf:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
-        megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
+        bridge = megatron_model_meta.bridge_cls()
+        incompatible_keys = hf_model.load_state_dict(bridge.convert_mcore2hf(mg_model.state_dict()), strict=False)
+        missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
+        assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
+        assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
         if args.test_convert_precision:
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model

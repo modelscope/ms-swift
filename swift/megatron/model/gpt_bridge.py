@@ -53,7 +53,12 @@ class GPTBridge:
         res = {}
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
         if reverse:
-            pass
+            mg_attn_weight = state_dict['linear_qkv.weight'].reshape((num_query_groups, -1, args.hidden_size))
+            q_dim = args.kv_channels * args.num_attention_heads // num_query_groups
+            kv_dim = args.kv_channels
+            res['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
+            res['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1, args.hidden_size)
+            res['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size)
         else:
             res['linear_qkv.weight'] = torch.cat([
                 state_dict['q_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
@@ -66,7 +71,10 @@ class GPTBridge:
         # Copy bias
         if args.add_qkv_bias:
             if reverse:
-                pass
+                mg_attn_bias = state_dict['linear_qkv.bias'].reshape((num_query_groups, -1))
+                res['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
+                res['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
+                res['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1)
             else:
                 res['linear_qkv.bias'] = torch.cat([
                     state_dict['q_proj.bias'].reshape((num_query_groups, -1)),
@@ -75,43 +83,37 @@ class GPTBridge:
                 ],
                                                    dim=1).reshape(-1)
         if args.qk_layernorm:
-            if 'q_norm.weight' in state_dict:
-                res['q_layernorm.weight'] = state_dict['q_norm.weight']
-            else:
-                res['q_layernorm.weight'] = state_dict['query_layernorm.weight']
-            if 'k_norm.weight' in state_dict:
-                res['k_layernorm.weight'] = state_dict['k_norm.weight']
-            else:
-                res['k_layernorm.weight'] = state_dict['key_layernorm.weight']
+            hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
+            hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
+            self._set_state_dict(state_dict, res, hf_q_norm_key, 'q_layernorm.weight', reverse)
+            self._set_state_dict(state_dict, res, hf_k_norm_key, 'k_layernorm.weight', reverse)
 
         return self._add_prefix(res, tgt_prefix)
 
-    def _set_moe_state(self, state_dict, prefix: str):
-        mg_state_dict = {}
-        if 'gate.wg.weight' in state_dict:
-            mg_state_dict['router.weight'] = state_dict['gate.wg.weight']
-        else:
-            mg_state_dict['router.weight'] = state_dict['gate.weight']
-        if args.moe_router_enable_expert_bias:
-            mg_state_dict['router.expert_bias'] = state_dict['gate.e_score_correction_bias']
+    def _set_moe_state(self, state_dict, hf_prefix: str, mg_prefix: str, hf_mlp, reverse: bool):
+        src_prefix, tgt_prefix = hf_prefix, mg_prefix
+        if reverse:
+            src_prefix, tgt_prefix = tgt_prefix, src_prefix
+        state_dict = self._remove_prefix(state_dict, src_prefix)
+        res = {}
+        hf_gate_key = 'gate.wg.weight' if hasattr(hf_mlp.gate, 'wg') else 'gate.weight'
+        self._set_state_dict(state_dict, res, hf_gate_key, 'router.weight', reverse)
+        if self.args.moe_router_enable_expert_bias:
+            self._set_state_dict(state_dict, res, 'gate.e_score_correction_bias', 'router.expert_bias', reverse)
 
-        if args.moe_shared_expert_intermediate_size:
-            shared_expert_sd = _remove_prefix(state_dict, 'shared_expert.')
-            if not shared_expert_sd:
-                shared_expert_sd = _remove_prefix(state_dict, 'shared_experts.')
-            if not shared_expert_sd:
-                shared_expert_sd = _remove_prefix(state_dict, 'shared_mlp.')
-            mg_state_dict.update(_set_mlp_state(args, shared_expert_sd, 'shared_experts.'))
-            if 'shared_expert_gate.weight' in state_dict:
-                mg_state_dict['shared_experts.gate_weight'] = state_dict['shared_expert_gate.weight']
-        for expert_idx in range(args.num_experts):
-            expert_sd = _remove_prefix(state_dict, 'experts.')
-            hf_grouped = expert_sd is not None
-            if expert_sd is None:
-                expert_sd = _remove_prefix(state_dict, f'experts.{expert_idx}.')
-            mg_state_dict.update(
-                _set_mlp_state(args, expert_sd, 'experts.', group_idx=expert_idx, hf_grouped=hf_grouped))
-        return _add_prefix(mg_state_dict, prefix)
+        if self.args.moe_shared_expert_intermediate_size:
+            for key in ['shared_expert', 'shared_experts', 'shared_mlp']:
+                if hasattr(hf_mlp, key):
+                    hf_shared_expert_prefix = f'{key}.'
+            res.update(self._set_mlp_state(state_dict, hf_shared_expert_prefix, 'shared_experts.', hf_mlp, reverse))
+            if hasattr(hf_mlp, 'shared_expert_gate'):
+                self._set_state_dict(state_dict, res, 'shared_expert_gate.weight', 'shared_experts.gate_weight',
+                                     reverse)
+        for expert_idx in range(self.args.num_experts):
+            hf_expert_prefix = f'experts.{expert_idx}.' if hasattr(hf_mlp.experts, '__len__') else 'experts.'
+            res.update(
+                self._set_mlp_state(state_dict, hf_expert_prefix, 'experts.', hf_mlp, reverse, group_idx=expert_idx))
+        return self._add_prefix(res, tgt_prefix)
 
     def _set_mlp_state(
         self,
@@ -121,12 +123,12 @@ class GPTBridge:
         hf_mlp,
         reverse: bool,
         group_idx: Optional[int] = None,
-        hf_grouped: bool = False,
     ):
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
+        hf_grouped = not hasattr(hf_mlp.experts, '__len__')
         res = {}
         # Determines the keys for fc1 and fc2 in megatron
         if group_idx is None:
@@ -143,13 +145,39 @@ class GPTBridge:
                 self._set_state_dict(state_dict, res, 'gate_up_proj.weight', fc1_key, reverse)
             else:
                 if reverse:
-                    pass
+                    res['gate_proj.weight'] = state_dict[fc1_key][:self.args.ffn_hidden_size]
+                    res['up_proj.weight'] = state_dict[fc1_key][self.args.ffn_hidden_size:]
                 else:
                     res[fc1_key] = torch.cat([
                         state_dict['gate_proj.weight'],
                         state_dict['up_proj.weight'],
                     ], dim=0)
             self._set_state_dict(state_dict, res, 'down_proj.weight', fc2_key, reverse)
+        return self._add_prefix(res, tgt_prefix)
+
+    def _set_mla_attn_state(
+        self,
+        state_dict,
+        hf_prefix: str,
+        mg_prefix: str,
+        hf_mlp,
+        reverse: bool,
+    ):
+        src_prefix, tgt_prefix = hf_prefix, mg_prefix
+        if reverse:
+            src_prefix, tgt_prefix = tgt_prefix, src_prefix
+        state_dict = self._remove_prefix(state_dict, src_prefix)
+        res = {}
+        self._set_state_dict(state_dict, res, 'o_proj.weight', 'linear_proj.weight', reverse)
+        if self.args.q_lora_rank is None:
+            self._set_state_dict(state_dict, res, 'q_proj.weight', 'linear_q_proj.weight', reverse)
+        else:
+            self._set_state_dict(state_dict, res, 'q_a_proj.weight', 'linear_q_down_proj.weight', reverse)
+            self._set_state_dict(state_dict, res, 'q_b_proj.weight', 'linear_q_up_proj.weight', reverse)
+        self._set_state_dict(state_dict, res, 'kv_a_proj_with_mqa.weight', 'linear_kv_down_proj.weight', reverse)
+        self._set_state_dict(state_dict, res, 'kv_b_proj.weight', 'linear_kv_up_proj.weight', reverse)
+        if self.args.qk_layernorm:
+            self._set_state_dict(state_dict, res, 'kv_a_layernorm.weight', 'linear_kv_up_proj.weight', reverse)
         return self._add_prefix(res, tgt_prefix)
 
     def _set_layer_state(self, state_dict, layer_idx: int, hf_prefix: str, mg_prefix: str, reverse: bool):
@@ -172,14 +200,14 @@ class GPTBridge:
 
         is_moe = self._is_moe(hf_mlp.state_dict())
         if is_moe:
-            res.update(self._set_moe_state(state_dict, 'mlp.'))
+            res.update(self._set_moe_state(state_dict, 'mlp.', 'mlp.', hf_mlp, reverse))
+            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'pre_mlp_layernorm.weight',
+                                 reverse)
         else:
             res.update(self._set_mlp_state(state_dict, 'mlp.', 'mlp.', hf_mlp, reverse))
+            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'mlp.linear_fc1.layer_norm_weight',
+                                 reverse)
 
-        if is_moe:
-            res['pre_mlp_layernorm.weight'] = state_dict['post_attention_layernorm.weight']
-        else:
-            res['mlp.linear_fc1.layer_norm_weight'] = state_dict['post_attention_layernorm.weight']
         return self._add_prefix(res, tgt_prefix)
 
     def _convert(self, state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
