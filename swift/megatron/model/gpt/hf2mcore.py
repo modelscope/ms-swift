@@ -121,7 +121,6 @@ def set_layer_state(args, state_dict, prefix: str):
     mg_state_dict = {}
     if args.multi_latent_attention:
         mg_state_dict.update(set_mla_attn_state(args, _remove_prefix(state_dict, 'self_attn.'), 'self_attention.'))
-        # set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
         mg_state_dict['input_layernorm.weight'] = state_dict['input_layernorm.weight']
 
     else:
