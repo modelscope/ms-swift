@@ -230,8 +230,8 @@ When using this type of data, please note:
 
 The format will automatically convert the dataset format to the corresponding model's grounding task format and select the appropriate model's bbox normalization method. Compared to the general format, this format includes an additional "objects" field, which contains the following subfields:
 
-- ref: Used to replace `<ref-object>`. The length of `ref` should match the number of `<ref-object>` instances.
-- bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points. The length of `bbox` should match the number of `<bbox>` instances.
+- ref: Used to replace the `<ref-object>` placeholder in messages. The length of `ref` should match the number of `<ref-object>` instances.
+- bbox: Used to replace the `<bbox>` placeholder in messages. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points. The length of `bbox` should match the number of `<bbox>` instances.
   - Note: `<ref-object>` and `<bbox>` do not have a corresponding relationship; references and bounding boxes replace their own placeholders separately.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: Typically used for multi-image grounding tasks. This parameter only takes effect when bbox_type is 'real', representing which image the bbox corresponds to, used for scaling the bbox. The index starts from 0, and defaults to all being the 0th image. The length of image_id needs to be consistent with the length of bbox. For example: if the length of bbox is 10 and the length of images is 2, then the length of image_id needs to be 10, with values within the set `{0, 1}`.
