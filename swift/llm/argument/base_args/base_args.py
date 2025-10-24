@@ -16,6 +16,7 @@ from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
+from .ray_args import RayArguments
 
 logger = get_logger()
 
@@ -52,7 +53,7 @@ class CompatArguments:
 
 @dataclass
 class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
-                    ModelArguments):
+                    ModelArguments, RayArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
@@ -173,6 +174,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
+        RayArguments.__post_init__(self)
         if self.max_length is None and self.model_info is not None:
             self.max_length = self.model_info.max_model_len
         if self.packing and self.packing_length is None:

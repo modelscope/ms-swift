@@ -27,6 +27,7 @@ requests
 rouge
 safetensors
 scipy
+omegaconf
 sentencepiece
 simplejson>=3.3.0
 sortedcontainers>=1.5.9

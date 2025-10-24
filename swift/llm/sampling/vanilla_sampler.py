@@ -1,25 +1,29 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 from copy import deepcopy
-from typing import Any, Dict, List
 
-import json
 import numpy as np
 
 from swift.llm import RequestConfig
 from swift.llm.sampling.base import Sampler
-from swift.llm.template.template_inputs import InferRequest
+from swift.ray.base import RayHelper
 from swift.utils import get_logger
 from .utils import get_messages_md5, get_reward
 
 logger = get_logger()
 
 
+@RayHelper.worker(group=['sampler', 'prm', 'orm'])
 class VanillaSampler(Sampler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.prepare_sampler()
+        self.caches = self.read_cache()
 
+    @RayHelper.function(group='sampler')
+    def prepare_sampler(self):
         if self.args.sampler_engine == 'pt':
             from swift.llm import PtEngine
             _Engine = PtEngine
@@ -38,8 +42,8 @@ class VanillaSampler(Sampler):
             self.infer_engine = _Engine(
                 self.args.model, model_type=self.args.model_type, template=self.template, **self.args.engine_kwargs)
             self.infer_engine.strict = False
-        self.caches = self.read_cache()
 
+    @RayHelper.function(group='sampler')
     def read_cache(self):
         cache_files = self.args.cache_files
         caches = {}
@@ -82,6 +86,7 @@ class VanillaSampler(Sampler):
             assert not row.get('videos') or all([isinstance(video, str) and video for video in row['videos']])
             assert not row.get('audios') or all([isinstance(audio, str) and audio for audio in row['audios']])
 
+    @RayHelper.function(group='sampler', dispatch=lambda n, i, data: ([{'messages': data['messages'][i * len(data['messages']) // n : (i + 1) * len(data['messages']) // n]}], {}), collect='flatten')
     def generate(self, data):
         resp_all = []
         infer_requests = []
@@ -141,6 +146,20 @@ class VanillaSampler(Sampler):
             _cur += 1
         return resp_all
 
+    @RayHelper.function(group='orm', execute='first')
+    def get_orm_score(self, infer_requests, ground_truth):
+        return get_reward(
+            self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
+            threshold=0.0)
+
+    @RayHelper.function(group='prm', execute='first')
+    def get_prm_score(self, infer_requests, ground_truth):
+        return get_reward(
+            self.prm_model,
+            infer_requests,
+            ground_truths=[ground_truth] * len(infer_requests),
+            threshold=self.args.prm_threshold)
+
     def do_sample(self, data):
         generated = []
         resp_all = self.generate(data)
@@ -160,18 +179,13 @@ class VanillaSampler(Sampler):
             _resps = deepcopy(resps)
             _resps['messages'][-1]['content'] = ground_truth
             infer_requests.append(_resps)
-            if self.orm_model is not None:
-                orm_score, _orm_mask = get_reward(
-                    self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests), threshold=0.0)
+            if self.args.orm_model is not None:
+                orm_score, _orm_mask = self.get_orm_score(infer_requests, ground_truth)
             else:
                 orm_score = np.array([1.0] * len(infer_requests))
                 _orm_mask = np.array([True] * len(infer_requests))
-            if self.prm_model is not None:
-                prm_score, _prm_mask = get_reward(
-                    self.prm_model,
-                    infer_requests,
-                    ground_truths=[ground_truth] * len(infer_requests),
-                    threshold=self.args.prm_threshold)
+            if self.args.prm_model is not None:
+                prm_score, _prm_mask = self.get_prm_score(infer_requests, ground_truth)
             else:
                 prm_score = np.array([1.0] * len(infer_requests))
                 _prm_mask = np.array([True] * len(infer_requests))
