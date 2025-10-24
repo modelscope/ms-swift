@@ -214,8 +214,8 @@ class MegatronArguments(ExtraMegatronArguments):
     exit_on_missing_checkpoint: bool = True
     async_save: bool = False
     use_persistent_ckpt_worker: bool = False
-    ckpt_fully_parallel_load: bool = False
-    ckpt_assume_constant_structure: bool = False
+    ckpt_fully_parallel_load: bool = True
+    ckpt_assume_constant_structure: bool = True
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
