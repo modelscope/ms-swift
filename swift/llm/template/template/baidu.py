@@ -72,24 +72,24 @@ register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, temp
 
 
 class PaddleOCRTemplate(Template):
-    image_placeholder = ['<image>\n']
+    image_placeholder = ['<image>']
     image_token = '<|IMAGE_PLACEHOLDER|>'
     image_token_id = 100295
+    skip_prompt = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         if self.mode == 'vllm':
             assert NotImplementedError
-        return self.image_placeholder
+        return ['<|IMAGE_START|>', [-100], '<|IMAGE_END|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        image_token = self._tokenize('<image>')
-        idx_list = findall(input_ids, image_token)
+        idx_list = findall(input_ids, -100)
         processor = self.processor
         images = inputs.images
         if images:
@@ -99,18 +99,22 @@ class PaddleOCRTemplate(Template):
             merge_size = processor.image_processor.merge_size**2
 
             def _get_new_tokens(i):
-                img_tokens: List[int] = processor.encode(
-                    '<|IMAGE_START|>' + (self.image_token * image_grid_thw[i].prod() // merge_size) + '<|IMAGE_END|>',
-                    add_special_tokens=False)
+                img_tokens: List[int] = [self.image_token_id] * (image_grid_thw[i].prod() // merge_size)
                 return img_tokens
 
             encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
                 input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+            encoded['pixel_values'] = image_inputs['pixel_values']
+            encoded['image_grid_thw'] = image_grid_thw
 
         return encoded
 
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        return res
+
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        embedding = model.model.embed_tokens
+        embedding = model.get_input_embeddings()
         device = embedding.weight.device
         input_ids = inputs['input_ids']
         inputs_embeds = embedding(input_ids).to(device=device)
@@ -121,7 +125,7 @@ class PaddleOCRTemplate(Template):
             image_grid_hws = list()
             sample_indices = list()
             cu_seqlens = [0]
-            pixel_values = pixel_values.to(device=device)
+            pixel_values = pixel_values.unsqueeze(0).to(device=device)
             for idx, thw in enumerate(image_grid_thw):
                 thw_tuple = tuple(thw.detach().cpu().numpy().tolist())
                 numel = np.prod(thw_tuple)
@@ -135,7 +139,7 @@ class PaddleOCRTemplate(Template):
             cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int32).to(pixel_values.device)
             sample_indices = torch.concat(sample_indices, dim=0).to(pixel_values.device)
 
-            vision_outputs = self.visual(
+            vision_outputs = model.visual(
                 pixel_values=pixel_values,
                 image_grid_thw=image_grid_hws,
                 position_ids=siglip_position_ids,

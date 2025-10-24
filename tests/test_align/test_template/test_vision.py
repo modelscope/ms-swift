@@ -981,6 +981,7 @@ def test_deepseek_ocr():
 
 
 def test_paddle_ocr():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     pt_engine = PtEngine('PaddlePaddle/PaddleOCR-VL')
     query = 'OCR:'
     messages = [{'role': 'user', 'content': query}]
