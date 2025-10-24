@@ -54,8 +54,8 @@ def infer_hf():
         padding=True,
         use_audio_in_video=USE_AUDIO_IN_VIDEO)
     inputs = inputs.to(model.device).to(model.dtype)
-    text_ids = model.generate(**inputs, use_audio_in_video=USE_AUDIO_IN_VIDEO, thinker_do_sample=False,
-                              return_audio=False)
+    text_ids = model.generate(
+        **inputs, use_audio_in_video=USE_AUDIO_IN_VIDEO, thinker_do_sample=False, return_audio=False)
     text = processor.batch_decode(
         text_ids[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True, clean_up_tokenization_spaces=False)
     return inputs['input_ids'][0].tolist(), text[0]
