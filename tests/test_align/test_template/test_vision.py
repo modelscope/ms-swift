@@ -980,6 +980,17 @@ def test_deepseek_ocr():
                         '创空间 中体验SWIFT web-ui功能了。')
 
 
+def test_llava_onevision1_5():
+    pt_engine = PtEngine('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct')
+    query = 'Describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1051,4 +1062,5 @@ if __name__ == '__main__':
     # test_internvl3_5_hf()
     # test_internvl_gpt_hf()
     # test_sailvl2()
-    test_deepseek_ocr()
+    # test_deepseek_ocr()
+    test_llava_onevision1_5()

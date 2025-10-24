@@ -46,6 +46,7 @@ class MLLMModelArch:
     llava_hf = 'llava_hf'
     llava_hf_legacy = 'llava_hf_legacy'  # transformers<4.52
     llava_next_video_hf = 'llava_next_video_hf'
+    llava_onevision1_5 = 'llava_onevision1_5'
 
     llava_llama = 'llava_llama'
     llava_mistral = 'llava_mistral'
@@ -704,6 +705,14 @@ register_model_arch(MultiModelKeys(
     MLLMModelArch.dots_ocr,
     language_model='model',
 ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.llava_onevision1_5,
+        language_model='model.language_model',
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+    ))
 
 
 def get_model_arch(arch_name: Optional[str]) -> Optional[MultiModelKeys]:
