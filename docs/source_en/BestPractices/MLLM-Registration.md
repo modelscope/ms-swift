@@ -126,7 +126,7 @@ logger = get_logger()
 
 class Qwen2_5OmniTemplate(Template):
     use_model = True  # Whether model participation is required during preprocessing
-    # Note: Not all multimodal models support padding_free/packing. `Models in transformers library usually support it`
+    # Note: Not all multimodal models support padding_free/packing. Models in `transformers` library usually support it
     support_padding_free = True  # Whether padding_free and packing are supported (multimodal models)
     norm_bbox = 'none'  # Whether grounding tasks use absolute or norm1000 coordinates
 

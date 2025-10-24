@@ -91,7 +91,7 @@ logger = get_logger()
 
 class Qwen2_5OmniTemplate(Template):
     use_model = True  # 是否在预处理的过程中需要model参与
-    # 需要注意是：并不是所有的多模态模型都能支持padding_free/packing。`transformers库内的模型通常可以支持`
+    # 需要注意是：并不是所有的多模态模型都能支持padding_free/packing。`transformers`库内的模型通常可以支持
     support_padding_free = True  # 是否支持padding_free和packing（多模态模型）
     norm_bbox = 'none'  # grounding任务使用绝对坐标还是norm1000坐标
 
