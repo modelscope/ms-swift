@@ -1,1 +1,0 @@
-from .auto import AutoMcoreModel

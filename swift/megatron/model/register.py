@@ -9,6 +9,7 @@ from transformers import PretrainedConfig
 
 from swift.llm import MODEL_MAPPING
 from .model_provider import model_provider as model_provider_func
+from .gpt_bridge import GPTBridge
 
 MEGATRON_MODEL_MAPPING = {}
 
@@ -17,12 +18,9 @@ MEGATRON_MODEL_MAPPING = {}
 class MegatronModelMeta:
     megatron_model_type: str
     model_types: List[str]
-
-    convert_mcore2hf: Callable[[Dict[str, torch.Tensor], str], Dict[str, torch.Tensor]]
-    convert_hf2mcore: Callable[[Dict[str, torch.Tensor], str], Dict[str, torch.Tensor]]
-
     model_cls: Type[nn.Module]
-    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
+
+    bridge_cls: Type[GPTBridge] = GPTBridge
     get_transformer_layer_spec: Optional[Callable] = None
     model_provider: Callable[[], nn.Module] = model_provider_func
     visual_cls: Optional[Type[nn.Module]] = None

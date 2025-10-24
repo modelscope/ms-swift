@@ -141,17 +141,6 @@ def set_layer_state(args, state_dict, prefix: str):
     return _add_prefix(mg_state_dict, prefix)
 
 
-def _remove_prefix(state_dict, prefix: str):
-    if not prefix:
-        return state_dict
-    return {k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)}
-
-
-def _add_prefix(state_dict, prefix: str):
-    if not prefix:
-        return state_dict
-    return {f'{prefix}{k}': v for k, v in state_dict.items()}
-
 
 def convert_hf2mcore(state_dict, prefix=''):
     args = get_args()

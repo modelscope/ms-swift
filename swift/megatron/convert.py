@@ -12,13 +12,12 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
-
 from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
                        to_float_dtype)
 from swift.utils import get_logger, get_n_params_grads
-from ..argument import MegatronArguments
-from ..model import get_megatron_model_meta
-from .patcher import patch_torch_dist_shard
+from .utils import convert_hf_config, patch_torch_dist_shard
+from .argument import MegatronArguments
+from .model import get_megatron_model_meta
 
 logger = get_logger()
 
@@ -238,7 +237,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -255,8 +254,9 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
+    bridge = megatron_model_meta.bridge_cls()
     incompatible_keys = mg_model.load_state_dict(
-        megatron_model_meta.convert_hf2mcore(hf_model.state_dict()), strict=False)
+        bridge.convert_hf2mcore(hf_model.state_dict()), strict=False)
     missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
     assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
     assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
@@ -277,7 +277,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()

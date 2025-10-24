@@ -3,7 +3,6 @@ from typing import Optional
 
 import torch
 from megatron.training import get_args
-from .hf2mcore import _add_prefix, _remove_prefix
 from torch import nn
 from tqdm import tqdm
 
