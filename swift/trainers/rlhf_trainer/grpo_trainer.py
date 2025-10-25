@@ -244,11 +244,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     token_ids = completion
                 elif isinstance(completion, dict):
                     token_ids = completion['token_ids']
-                completions[i] = self.processing_class.decode(token_ids)
+                #completions[i] = self.processing_class.decode(token_ids)
+            # TODO(GREG): i changed these lines!
             valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-            valid_completions = self._gather_and_flatten(completions, flatten_level=0)
+            #valid_completions = self._gather_and_flatten(completions, flatten_level=0)
             self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-            self._logs['completion'].extend(valid_completions)
+            #self._logs['completion'].extend(valid_completions)
+
 
             # Example: if you want to log extra data in the wandb / swanlab table,
             #          add them to metrics_to_gather
@@ -662,13 +664,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
                 batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
-                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                max_len = max(len(s['input_ids']) for s in batch_encoded_inputs)
+                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs, padding_to=max_len), self.model.device)
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
 
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
-            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            input_ids = batch_encoded_inputs['input_ids']
+            valid_lengths = (input_ids != self.processing_class.pad_token_id).sum(-1)
+            logits_to_keep = valid_lengths.max().item() - 1 
+            # logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
             extra_kwargs = {
                 'completion_mask':
                 labels[:, -logits_to_keep:] != -100,
@@ -1237,6 +1243,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logits = logits[:, -(logits_to_keep + 1):-1, :]
             logits = logits / self.temperature
             input_ids = input_ids[:, -logits_to_keep:]
+            if logits.size(1) != input_ids.size(1):
+                min_len = min(logits.size(1), input_ids.size(1))
+                logits, input_ids = logits[:, -min_len:, :], input_ids[:, -min_len:]
             logps = selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
             entropies = None
             if compute_entropy:
@@ -1669,7 +1678,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template = self.template
             with self._template_context(template):
                 encoded_data = [template.encode(data) for data in origin_data]
-                chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
+                chunk_inputs.update(to_device(template.data_collator(encoded_data, padding_to=chunk_inputs["logits_to_keep"] + 1), self.model.device))
                 chunk_inputs.pop('labels', None)
         return chunk_inputs
 
