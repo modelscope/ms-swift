@@ -11,9 +11,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # ------------------------------
 # Configuration
 # ------------------------------
-MERGED_MODEL = '/path/to/merged/model'
-BASE_MODEL = '/path/to/base/model'
-ADAPTER_DIR = '/path/to/adapter/directory'
+MERGED_MODEL = os.environ.get('MERGED_MODEL_PATH', '/path/to/merged/model')
+BASE_MODEL = os.environ.get('BASE_MODEL_PATH', '/path/to/base/model')
+ADAPTER_DIR = os.environ.get('ADAPTER_DIR_PATH', '/path/to/adapter/directory')
 TOKENIZER = BASE_MODEL
 
 # GPU assignment (0-based)
