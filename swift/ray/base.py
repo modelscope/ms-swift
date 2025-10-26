@@ -40,7 +40,6 @@ class RayHelper:
         if RayHelper.resource_manager is None:
             # Resource manager initialize only once in the pipeline process.
             RayHelper.resource_manager = ResourceManager(device_groups)
-        RayHelper.initialized = True
 
     @staticmethod
     def teardown():
@@ -62,17 +61,22 @@ class RayHelper:
             if frame_info.function == '__init__':
                 return True
         return False
+    
+    @staticmethod
+    def ray_inited():
+        import ray
+        return ray.is_initialized()
 
     @staticmethod
     def is_worker():
         import ray
-        return ray.is_initialized() and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
+        return RayHelper.ray_inited() and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
 
     @staticmethod
     def worker(group: Union[str, List[str]]):
 
         def decorator(cls):
-            if not RayHelper.initialized:
+            if not RayHelper.ray_inited():
                 return cls
             if RayHelper.is_worker():
                 return cls
@@ -135,7 +139,7 @@ class RayHelper:
 
             @functools.wraps(func)
             def wrapper(self, *args, **kwargs) -> T:
-                if not RayHelper.initialized:
+                if not RayHelper.ray_inited():
                     return func(self, *args, **kwargs)
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
