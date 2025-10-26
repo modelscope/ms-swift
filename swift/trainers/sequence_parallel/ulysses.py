@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 from functools import partial
+from types import MethodType
 from typing import Any, Optional, Tuple
 
 import torch
@@ -329,6 +330,7 @@ class SequenceParallel:
 
         def pre_forward_split_hook(_self, args, kwargs):
             input_ids = kwargs.get('input_ids', None)
+            unsplit_input_ids = input_ids
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
@@ -336,7 +338,7 @@ class SequenceParallel:
                 embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
             else:
                 embed_tokens = getattr(_self, 'embed_tokens', None)
-            input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
+            input_ids, inputs_embeds, _, position_ids, attention_mask, _, _ = self.pad_and_split_inputs(
                 input_ids,
                 inputs_embeds,
                 None,
@@ -349,9 +351,65 @@ class SequenceParallel:
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
+
+            if _self.__class__.__name__ == 'Qwen3VLModel':
+
+                def pad_split_mm_tokens(token_id, mm_embeds):
+                    special_mask = unsplit_input_ids == token_id
+                    unsplit_inputs_embeds = embed_tokens(unsplit_input_ids)
+
+                    unsplit_inputs_embeds = unsplit_inputs_embeds.clone()
+                    unsplit_inputs_embeds[special_mask] = mm_embeds
+
+                    _, split_input_embeds, _, _, _, _, extra_values = self.pad_and_split_inputs(
+                        None,
+                        unsplit_inputs_embeds,
+                        None,
+                        None,
+                        None,
+                        None,
+                        embed_tokens,
+                        self.real_position_ids,
+                        extra_split_values=[(special_mask, 0, -1)])
+                    split_special_mask = extra_values[0]
+                    return split_input_embeds[split_special_mask]
+
+                def get_features(module, token_id, pixel_values, image_grid_thw=None):
+                    image_embeds, deepstack_image_embeds = module.origin_get_image_features(
+                        pixel_values, image_grid_thw)
+                    image_embeds = torch.cat(
+                        image_embeds, dim=0).to(embed_tokens.weight.device, embed_tokens.weight.dtype)
+                    if image_embeds is not None:
+                        image_embeds = pad_split_mm_tokens(token_id, image_embeds)
+                    if len(deepstack_image_embeds) > 0:
+                        for i in range(len(deepstack_image_embeds)):
+                            deepstack_image_embeds[i] = pad_split_mm_tokens(token_id, deepstack_image_embeds[i])
+                    return (image_embeds, ), deepstack_image_embeds
+
+                def get_video_features(module, pixel_values_videos, video_grid_thw=None):
+                    return get_features(module, module.config.video_token_id, pixel_values_videos, video_grid_thw)
+
+                def get_image_features(module, pixel_values, image_grid_thw=None):
+                    return get_features(module, module.config.image_token_id, pixel_values, image_grid_thw)
+
+                if not hasattr(_self, 'origin_get_image_features'):
+                    _self.origin_get_image_features = _self.get_image_features
+                    _self.get_image_features = MethodType(get_image_features, _self)
+                    _self.origin_get_video_features = _self.get_video_features
+                    _self.get_video_features = MethodType(get_video_features, _self)
+
             return args, kwargs
 
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
+
+        def post_forward_hook(module, *args, **kwargs):
+            if hasattr(module, 'origin_get_image_features'):
+                module.get_image_features = module.origin_get_image_features
+                del module.origin_get_image_features
+                module.get_video_features = module.origin_get_video_features
+                del module.origin_get_video_features
+
+        base_model.register_forward_hook(post_forward_hook)
 
     def _prepare_moe_aux_loss(self, base_model: torch.nn.Module):
 
@@ -401,6 +459,7 @@ class SequenceParallel:
             SequenceParallel._global_inited = True
 
         self._prepare_forward_hook(llm_model)
+
         if model.model_info.is_moe_model:
             self._prepare_moe_aux_loss(llm_model)
 
@@ -564,7 +623,8 @@ class SequenceParallel:
                              attention_mask,
                              loss_scale,
                              embed_tokens=None,
-                             real_position_ids=None):
+                             real_position_ids=None,
+                             extra_split_values=None):
         """Common implementation for padding and splitting inputs
 
         When a sequence comes, it will be split into rp_world_size * 2 sub tensors, and group them as the
@@ -583,9 +643,11 @@ class SequenceParallel:
             loss_scale: loss_scale
             embed_tokens: embed_tokens
             real_position_ids: the real position_ids to represent the seq length information
+            extra_split_values: List of Tuples for extra split values, e.g.: (tensor, pad_value, split_dim)
         """
         tokenizer = self.tokenizer
         real_position_ids = real_position_ids if real_position_ids is not None else position_ids
+        extra_values = []
         if real_position_ids is not None and real_position_ids.shape[0] == 1:
             # TODO clone everytime, but the position_ids is a small tensor
             self.extra_kwargs['text_position_ids'] = real_position_ids.clone()
@@ -619,6 +681,10 @@ class SequenceParallel:
             if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
                 attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
                                                        None, None)
+        if extra_split_values is not None:
+            for (tensor, pad_value, split_dim) in extra_split_values:
+                extra_values.append(
+                    self.pad(tensor, padding_value=pad_value, position_ids=real_position_ids, dim=split_dim))
         if input_ids is not None:
             input_ids = self.split(input_ids, dim=1, position_ids=real_position_ids)
         if input_embeds is not None:
@@ -632,8 +698,11 @@ class SequenceParallel:
 
         if position_ids is not None:
             position_ids = self.split(position_ids, dim=-1, position_ids=real_position_ids)
-
-        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
+        if extra_split_values is not None:
+            for i in range(len(extra_values)):
+                extra_values[i] = self.split(
+                    extra_values[i], dim=extra_split_values[i][2], position_ids=real_position_ids)
+        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale, extra_values
 
     def _init_device_mesh(self):
         """Initialize device mesh for sequence and ring parallel.
@@ -712,6 +781,6 @@ class SequenceParallel:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if 'labels' in inputs:
             labels = inputs['labels']
-            _, _, labels, _, _, _ = self.pad_and_split_inputs(
+            _, _, labels, _, _, _, _ = self.pad_and_split_inputs(
                 None, None, labels, None, None, None, real_position_ids=position_ids)
             inputs['labels'] = labels

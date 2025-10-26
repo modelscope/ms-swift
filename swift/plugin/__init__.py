@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
-    from .multi_turn import multi_turns
+    from .multi_turn import multi_turns, MultiTurnScheduler
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
@@ -29,7 +29,7 @@ else:
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM'],
-        'multi_turn': ['multi_turns'],
+        'multi_turn': ['multi_turns', 'MultiTurnScheduler'],
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],

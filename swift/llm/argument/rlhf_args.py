@@ -5,10 +5,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_current_device, get_logger, is_master, is_mp, set_default_ddp_config
+from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
+rlhf_support_vllm_types = ['grpo', 'gkd']
 
 
 @dataclass
@@ -27,6 +28,13 @@ class TeacherModelArguments:
     teacher_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     teacher_model_revision: Optional[List[str]] = None
+    teacher_deepspeed: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'DeepSpeed configuration for teacher model. '
+            'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+        })
 
 
 @dataclass
@@ -53,9 +61,6 @@ class GRPOArguments(GRPOArgumentsMixin):
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
-
-    # vLLM in GRPO
-    use_vllm: bool = False
 
     # multi step
     num_iterations: int = 1
@@ -114,6 +119,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     # GKD
     lmbda: float = 0.5
     seq_kd: bool = False
+    offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
@@ -123,19 +129,20 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
     def __post_init__(self):
         self._process_loss_type()
-        self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
         self._init_max_completion_length()
         self._init_padding_side()
         self._set_default()
-        self._init_external_vllm()
+        self._init_rollout()
+        self._init_teacher_deepspeed()
         GRPOArguments.__post_init__(self)
         TrainArguments.__post_init__(self)
         self._check_sequence_parallel()
         self._check_grpo()
         self._external_vllm_warning()
+        self._check_gkd()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -213,16 +220,35 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 if self.soft_max_length is None:
                     self.soft_max_length = self.max_completion_length
                     logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
-            if self.use_vllm:
-                # set vllm mode
-                if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
-                    if self.vllm_mode != 'server':
-                        self.vllm_mode = 'server'
-                        logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
-                else:
-                    if self.vllm_mode != 'colocate':
-                        self.vllm_mode = 'colocate'
-                        logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+
+    def _init_rollout(self):
+        if self.rlhf_type not in rlhf_support_vllm_types:
+            return
+        if self.use_vllm:
+            # set vllm mode
+            if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
+                if self.vllm_mode != 'server':
+                    self.vllm_mode = 'server'
+                    logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
+            else:
+                if self.vllm_mode != 'colocate':
+                    self.vllm_mode = 'colocate'
+                    logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+        self._init_external_vllm()
+
+        if self.vllm_mode == 'server':
+            assert not self.use_vllm or self.vllm_server_host is not None or self.vllm_server_base_url is not None
+
+        if self.async_generate:
+            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
+            'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
+            'for more infomations, please check '
+            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/GRPO.html'
+
+        if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
+            self.vllm_tensor_parallel_size = 1
+            logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
+        self._external_vllm_warning()
 
     def _init_padding_side(self):
         if self.rlhf_type in {'ppo', 'gkd'}:
@@ -255,7 +281,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.num_labels = 1
 
     def _init_external_vllm(self):
-        if self.rlhf_type != 'grpo' or (self.vllm_server_host is None and self.vllm_server_base_url is None):
+        if self.rlhf_type not in rlhf_support_vllm_types or (self.vllm_server_host is None
+                                                             and self.vllm_server_base_url is None):
             return
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
@@ -265,6 +292,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 hosts=self.vllm_server_host,
                 server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
+            self.vllm_client.close_communicator()
             self.vllm_client.init_communicator(device=get_current_device())
             logger.info('Connected to vLLM server')
 
@@ -316,18 +344,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
-        if self.vllm_mode == 'server':
-            assert not self.use_vllm or self.vllm_server_host is not None or self.vllm_server_base_url is not None
-
-        if self.async_generate:
-            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
-            'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
-            'for more infomations, please check '
-            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/GRPO.html'
-
-        if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
-            self.vllm_tensor_parallel_size = 1
-            logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
 
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
@@ -339,7 +355,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 'please install trl `pip install trl>=0.18')
 
     def _external_vllm_warning(self):
-        if self.rlhf_type != 'grpo' or not self.vllm_server_host:
+        if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:
             return
 
         if self.vllm_max_model_len is not None:
@@ -347,20 +363,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
                 '`swift rollout --vllm_max_model_len <value>`', self.vllm_max_model_len)
-
-    def _deprecated_warning(self):
-        if self.rlhf_type != 'grpo':
-            return
-
-        if self.multi_turn_func:
-            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
-                           "Please use 'multi_turn_scheduler' instead")
-
-            self.multi_turn_scheduler = self.multi_turn_func
-
-        if self.gc_collect_after_offload:
-            logger.warning(
-                "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
 
     def _check_padding_free(self):
         super()._check_padding_free()
@@ -378,3 +380,38 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise NotImplementedError(
                     f"The current rlhf_type '{self.rlhf_type}' does not support sequence_parallel. "
                     'Please set --sequence_parallel_size to 1.')
+
+    def _init_teacher_deepspeed(self):
+        """Initialize teacher_deepspeed configuration similar to _init_deepspeed in TrainArguments"""
+        if not self.teacher_deepspeed:
+            return
+
+        # Get the same ds_config_folder as main model
+        ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
+        deepspeed_mapping = {
+            name: f'{name}.json'
+            for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
+        }
+
+        # Check if teacher_deepspeed is a predefined name
+        for ds_name, ds_config in deepspeed_mapping.items():
+            if self.teacher_deepspeed == ds_name:
+                self.teacher_deepspeed = os.path.join(ds_config_folder, ds_config)
+                break
+
+        # Parse the config file to dict
+        self.teacher_deepspeed = json_parse_to_dict(self.teacher_deepspeed)
+        logger.info(f'Using teacher_deepspeed config: {self.teacher_deepspeed}')
+
+    def _check_gkd(self):
+        if self.rlhf_type != 'gkd':
+            return
+        if is_mp() and self.use_vllm:
+            raise ValueError('GKD with vLLM is not compatible with `device_map`. '
+                             'Please set NPROC_PER_NODE equal to num_processes.')
+
+        if self.multi_turn_scheduler is not None:
+            raise NotImplementedError('Currently, multi_turn_scheduler is not supported for GKD.')
+
+        if self.async_generate:
+            raise NotImplementedError('Currently, async_generate is not supported for GKD.')
