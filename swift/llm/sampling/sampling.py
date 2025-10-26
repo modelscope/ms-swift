@@ -29,9 +29,6 @@ class SwiftSampling(SwiftPipeline):
         if self.args.sampler_type == 'sample':
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
-        elif self.args.sampler_type == 'mcts':
-            from swift.llm.sampling.mcts import MctsSampler
-            self.sampler = MctsSampler(self.args)
         elif self.args.sampler_type == 'distill':
             from swift.llm.sampling.distill_sampler import DistillSampler
             self.sampler = DistillSampler(self.args)

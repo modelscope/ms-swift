@@ -1,11 +1,7 @@
 import functools
 import os
-from typing import Callable, TypeVar, List, Dict, Literal, Union, Any, Type
-import ray
+from typing import Callable, TypeVar, List, Dict, Literal, Union, Any, Optional
 import inspect
-from ray.runtime_env import RuntimeEnv
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 from swift.llm.argument.base_args.ray_args import RayArguments
 from swift.ray.resource_manager import ResourceManager
 from swift.utils import find_free_port
@@ -14,17 +10,9 @@ from swift.utils.utils import find_node_ip
 T = TypeVar('T')
 
 
-def is_called_from_init():
-    stack = inspect.stack()
-    for frame_info in stack[1:]:
-        if frame_info.function == '__init__':
-            return True
-    return False
-
-
 class RayHelper:
 
-    resource_manager: ResourceManager = None
+    resource_manager: Optional[ResourceManager] = None
 
     worker_cls: Dict = {}
 
@@ -38,22 +26,59 @@ class RayHelper:
 
     @staticmethod
     def initialize(device_groups: Dict[str, Any]):
+        """Initialize RayHelper.
+
+        Args:
+            device_groups: The device groups to initialize.
+
+        Returns:
+            None
+        """
+        import ray
         RayHelper.device_groups = device_groups
         ray.init()
         if RayHelper.resource_manager is None:
+            # Resource manager initialize only once in the pipeline process.
             RayHelper.resource_manager = ResourceManager(device_groups)
         RayHelper.initialized = True
 
     @staticmethod
+    def teardown():
+        if RayHelper.resource_manager is not None:
+            RayHelper.resource_manager.destroy_placement_group()
+            RayHelper.resource_manager = None
+
+    @staticmethod
+    def is_called_from_init():
+        """If some function called from __init__.
+
+        Ray functions perform different behaviors depending on whether they are called from __init__.
+
+        Returns:
+            Boolean.
+        """
+        stack = inspect.stack()
+        for frame_info in stack[1:]:
+            if frame_info.function == '__init__':
+                return True
+        return False
+
+    @staticmethod
+    def is_worker():
+        import ray
+        return ray.is_initialized() and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
+
+    @staticmethod
     def worker(group: Union[str, List[str]]):
 
-        is_worker = ray.is_initialized() and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
-
         def decorator(cls):
-            if is_worker:
+            if not RayHelper.initialized:
+                return cls
+            if RayHelper.is_worker():
                 return cls
             cls.decorated = True
             groups = [group] if isinstance(group, str) else group
+            import ray
             _cls = ray.remote(cls)
             for g in groups:
                 RayHelper.worker_cls[g] = _cls
@@ -62,7 +87,7 @@ class RayHelper:
 
             @functools.wraps(init_method)
             def new_init(self, *args, **kwargs):
-                if not is_worker:
+                if not RayHelper.is_worker():
                     RayHelper._create_workers(group, *args, **kwargs)
                 init_method(self, *args, **kwargs)
 
@@ -73,32 +98,59 @@ class RayHelper:
         return decorator
     
     @staticmethod
-    def collect_func(method: Literal['none', 'flatten']):
+    def collect_func(method: Union[Literal['none', 'flatten'], Callable]):
         if method == 'none':
             return lambda x: x
         elif method == 'flatten':
             return lambda x: [item for sublist in x for item in sublist]
+        elif isinstance(method, Callable):
+            # Callable
+            return method
+        else:
+            raise ValueError(f'Unsupported collect method: {method}')
 
     @staticmethod
-    def function(group: str, dispatch: Literal['slice', 'all'] = 'all', execute: Literal['first', 'all'] = 'all', collect: Literal['none', 'flatten'] = 'none'):
+    def function(group: str,
+                 dispatch: Union[Literal['slice', 'all'], Callable] = 'all',
+                 execute: Literal['first', 'all'] = 'all',
+                 collect: Union[Literal['none', 'flatten'], Callable] = 'none'):
+        """Remote execution function.
+
+        Args:
+            group: The group to execute.
+            dispatch: How to dispatch the arguments.
+                'slice': load balance
+                'all': all processes do the same thing
+            execute: How to execute
+                'first': Only first worker
+                'all': All processes
+            collect: How to collect the results.
+                'none': Return as-is
+                'flatten': Return a flattened list
+        Returns:
+            The execution result.
+        """
 
         def decorator(func: Callable[..., T]) -> Callable[..., T]:
 
             @functools.wraps(func)
             def wrapper(self, *args, **kwargs) -> T:
-                is_worker = ray.is_initialized() and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
-                if is_worker:
+                if not RayHelper.initialized:
+                    return func(self, *args, **kwargs)
+                if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
                         self.group = os.environ['RAY_SWIFT_GROUP'].split(',')
                     if group not in self.group:
-                        if is_called_from_init():
+                        if RayHelper.is_called_from_init():
+                            # Functions in init of different group, do nothing
                             return None
                         else:
+                            # Should not happen
                             raise ValueError()
                     else:
                         return func(self, *args, **kwargs)
                 else:
-                    if is_called_from_init():
+                    if RayHelper.is_called_from_init():
                         return None
                     result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
                     return RayHelper.collect_func(collect)(result)
@@ -108,6 +160,7 @@ class RayHelper:
 
     @staticmethod
     def execute_all_sync(group, dispatch, execute, method_name: str, *args, **kwargs):
+        import ray
         return ray.get(RayHelper.execute_all_async(group, dispatch, execute, method_name, *args, **kwargs))
 
     @staticmethod
@@ -125,16 +178,23 @@ class RayHelper:
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 remote_call = getattr(workers[i], method_name)
                 result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
-        else:
+            return result
+        elif isinstance(dispatch, Callable):
+            # dispatch is Callable
             result = []
             for i in range(length):
                 sliced_args, sliced_kwargs = dispatch(length, i, *args, **kwargs)
                 remote_call = getattr(workers[i], method_name)
                 result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
             return result
+        else:
+            raise ValueError(f'Invalid dispatch method: {dispatch}')
 
     @staticmethod
     def _create_workers(group: Union[str, List[str]], *args, **kwargs):
+        import ray
+        from ray.runtime_env import RuntimeEnv
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
         nproc_per_node = int(RayHelper.device_groups['nproc_per_node'])
 
         if isinstance(group, str):
@@ -161,9 +221,8 @@ class RayHelper:
             placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
             workers = []
             ip, port = None, None
-            for rank, (pgs, gpu) in enumerate(zip(placement_groups, _config['ranks'])):
-                deploy_pg = pgs
-                node_idx = gpu // nproc_per_node
+            for rank, (deploy_pg, gpu) in enumerate(zip(placement_groups, _config['ranks'])):
+                deploy_pg: Dict
                 cluster_name = '-'.join(local_groups)
                 worker_name = cluster_name + '-' + str(rank)
                 env_vars = os.environ.copy()
@@ -173,17 +232,15 @@ class RayHelper:
                     "LOCAL_RANK": str(0),
                     "CLUSTER_NAME": cluster_name,
                     "WORKER_NAME": worker_name,
-                    "CUDA_VISIBLE_DEVICES": str(deploy_pg["gpu_rank"]),
+                    "CUDA_VISIBLE_DEVICES": ','.join(deploy_pg["gpu_rank"]),
                 })
-
-                node_id = RayHelper.resource_manager.nodes[node_idx]['NodeID']
 
                 @ray.remote
                 def get_node_address():
                     return find_node_ip(), find_free_port()
                 
                 if rank == 0:
-                    ip, port = ray.get(get_node_address.remote())
+                    ip, port = ray.get(get_node_address.options(placement_group=deploy_pg["placement_group"]).remote())
 
                 env_vars["MASTER_ADDR"] = ip
                 env_vars["MASTER_PORT"] = str(port)

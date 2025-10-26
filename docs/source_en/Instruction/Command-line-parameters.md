@@ -686,7 +686,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 - prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
 - orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
-- sampler_type: The type of sampling. Currently supports `sample` (using `do_sample` method). Future support will include `mcts` and `dvts`.
+- sampler_type: The type of sampling. Currently supports `sample` and `distill`.
 - sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
 - output_dir: The output directory. Defaults to `sample_output`.
 - output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
@@ -702,15 +702,6 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - num_return_sequences: The number of original sequences returned by sampling. Defaults to `64`. This parameter is effective for `sample` sampling.
 - cache_files: To avoid loading both `prm` and `generator` simultaneously and causing GPU memory OOM, sampling can be done in two steps. In the first step, set `prm` and `orm` to `None`, and all results will be output to a file. In the second run, set `sampler_engine` to `no` and pass `--cache_files` with the output file from the first sampling. This will use the results from the first run for `prm` and `orm` evaluation and output the final results.
   - Note: When using `cache_files`, the `--dataset` still needs to be provided because the ID for `cache_files` is calculated using the MD5 of the original data. Both pieces of information need to be used together.
-
-#### MCTS
-- rollout_depth: The maximum depth during rollouts, default is `5`.
-- rollout_start_depth: The depth at which rollouts begin; nodes below this depth will only undergo expand operations, default is `3`.
-- max_iterations: The maximum number of iterations for MCTS, default is `100`.
-- process_reward_rate: The proportion of process reward used in calculating value during selection, default is `0.0`, meaning PRM is not used.
-- exploration_rate: A parameter in the UCT algorithm that balances exploration; a higher value gives more weight to nodes with fewer explorations, default is `0.5`.
-- api_key: Required when using the client as an inference engine, default is `EMPTY`.
-- base_url: Required when using the client as an inference engine, default is 'https://dashscope.aliyuncs.com/compatible-mode/v1'.
 
 ## Specific Model Arguments
 
