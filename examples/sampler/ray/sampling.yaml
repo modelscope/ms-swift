@@ -18,6 +18,7 @@ top_p: 1.0
 temperature: 1.0
 prm_threshold: 0.8
 output_file: sampling.jsonl
+engine_kwargs: "{\"mm_processor_cache_gb\":0.0}"
 
 device_groups:
   nproc_per_node: 4
