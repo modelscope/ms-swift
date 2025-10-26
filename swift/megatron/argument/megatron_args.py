@@ -94,6 +94,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     torch_dtype: Optional[torch.dtype] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
+    load_hf_checkpoint: bool = False
+    save_hf_checkpoint: bool = False
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10

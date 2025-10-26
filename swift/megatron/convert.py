@@ -256,10 +256,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     bridge = megatron_model_meta.bridge_cls()
-    incompatible_keys = mg_model.load_state_dict(bridge.convert_hf2mcore(hf_model.state_dict()), strict=False)
-    missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
-    assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
-    assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
+    bridge.load_state_dict(mg_model, bridge.convert_hf2mcore(hf_model.state_dict()))
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
@@ -315,10 +312,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
         bridge = megatron_model_meta.bridge_cls()
-        incompatible_keys = hf_model.load_state_dict(bridge.convert_mcore2hf(mg_model.state_dict()), strict=False)
-        missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
-        assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
-        assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
+        bridge.load_state_dict(hf_model, bridge.convert_mcore2hf(mg_model.state_dict()))
         if args.test_convert_precision:
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model

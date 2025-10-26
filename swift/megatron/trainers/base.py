@@ -47,6 +47,7 @@ class BaseMegatronTrainer(ABC):
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
         self.peft_models = []
+        self.bridge = args.megatron_model_meta.bridge_cls()
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -251,13 +252,16 @@ class BaseMegatronTrainer(ABC):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
-        def new_model_provider_func(*args, **kwargs):
-            model = model_provider_func(*args, **kwargs)
+        args = get_args()
+
+        def new_model_provider_func(*_args, **kwargs):
+            model = model_provider_func(*_args, **kwargs)
+            if args.load_hf_checkpoint:
+                bridge.load_from_hf_checkpoint(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
             self.peft_models.append(prepare_mcore_model(model))
             return model
 
-        args = get_args()
         self._init_multimodal_full(args)
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
@@ -724,9 +728,14 @@ class BaseMegatronTrainer(ABC):
 
         return report_memory_flag
 
-    def save_checkpoint(self, *args, **kwargs):
-        with adapter_state_dict_context():
-            return self._origin_save_checkpoint(*args, **kwargs)
+    def save_checkpoint(self, iteration, *_args, **kwargs):
+        args = get_args()
+        if args.save_hf_checkpoint:
+            ouput_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+            bridge.save_hf_checkpoint(self.unwrapped_models, ouput_dir)
+        else:
+            with adapter_state_dict_context():
+                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
 
     def _patch_megatron(self):
         # support max_epochs

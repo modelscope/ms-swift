@@ -262,3 +262,23 @@ class GPTBridge:
 
     def convert_mcore2hf(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         return self._convert(state_dict, '', '', True)
+
+    def load_state_dict(self, model, state_dict) -> None:
+        """The model can be either hf_model or mg_model"""
+        incompatible_keys = model.load_state_dict(state_dict, strict=False)
+        missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
+        assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
+        assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
+
+    def load_from_hf_checkpoint(self, mg_model, hf_model_dir: str) -> None:
+        """按照mg_model的模型结构, 加载需要的参数，并进行scatter"""
+        print()
+
+    def get_hf_state_dict(self, mg_models) -> Dict[str, torch.Tensor]:
+        """获取完整的hf state_dict"""
+        print()
+
+    def save_hf_checkpoint(self, mg_models, output_dir: str) -> None:
+        """保存mg_model的hf格式checkpoint"""
+        state_dict = get_hf_state_dict(mg_models)
+        # rank0 save()

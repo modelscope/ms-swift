@@ -76,8 +76,13 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             if self.num_workers > 1:
                 self.num_workers = 1
                 logger.info('Using streaming dataset, setting args.num_workers to 1.')
-        if self.load is None and self.no_initialization:
+        if self.load is None and self.no_initialization and not self.load_hf_checkpoint:
             raise ValueError('You did not pass `--load`, so you need to set `--no_initialization false` '
                              'to allow the model to initialize weights properly.')
         if self.cached_dataset and self.context_parallel_size > 1:
             raise ValueError('`cached_dataset` does not support context parallelism.')
+
+    def get_model_kwargs(self):
+        res = super().get_model_kwargs()
+        res['download_model'] = self.load_hf_checkpoint
+        return res
