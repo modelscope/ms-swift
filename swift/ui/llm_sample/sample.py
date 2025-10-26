@@ -70,7 +70,7 @@ class Sample(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            gr.Dropdown(elem_id='sampler_type', choices=['sample', 'mcts', 'distill'], value='sample', scale=5)
+            gr.Dropdown(elem_id='sampler_type', choices=['sample', 'distill'], value='sample', scale=5)
             gr.Dropdown(
                 elem_id='sampler_engine', choices=['pt', 'lmdeploy', 'vllm', 'no', 'client'], value='pt', scale=5)
             gr.Slider(elem_id='num_return_sequences', minimum=1, maximum=128, step=1, value=64, scale=5)

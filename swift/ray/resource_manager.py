@@ -3,12 +3,6 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Any
 
-import ray
-from ray.util.placement_group import PlacementGroup
-
-from swift.utils import find_free_port
-from swift.utils.utils import find_node_ip
-
 
 @dataclass
 class NodeGroup:
@@ -16,14 +10,8 @@ class NodeGroup:
     nodes: List[Any] = field(default_factory=list)
 
 
-@ray.remote
 def get_node_rank():
     return int(os.environ.get("NODE_RANK", "0"))
-
-
-@ray.remote
-def get_node_address():
-    return find_node_ip(), find_free_port()
 
 
 class ResourceManager:
@@ -31,6 +19,8 @@ class ResourceManager:
     possible_keys = ['nproc_per_node', 'nnodes']
 
     def __init__(self, groups: Dict[str, Any]):
+        import ray
+        from ray.util.placement_group import PlacementGroup
         nproc_per_node = int(groups['nproc_per_node'])
         device_types = set([group['device'] for group in groups.values() if hasattr(group, '__getitem__')]) - {'CPU'}
         assert len(device_types) == 1
@@ -47,7 +37,7 @@ class ResourceManager:
             try:
                 ranks = int(ranks)
                 ranks = list(range(last_rank+1, last_rank+1+ranks))
-            except Exception:
+            except Exception: # noqa
                 if isinstance(ranks, str):
                     ranks = eval(ranks)
             finally:
@@ -75,12 +65,11 @@ class ResourceManager:
         ray.get([pg.ready() for pg in self.placement_groups])
 
         self.node_ranks = ray.get(
-            [get_node_rank.options(placement_group=pg).remote() for pg in self.placement_groups])
+            [ray.remote(get_node_rank).options(placement_group=pg).remote() for pg in self.placement_groups])
         if self.node_ranks.count(0) > 1:
             self.node_ranks = list(range(len(self.placement_groups)))
 
         self.node2pg: Dict[int, PlacementGroup] = {}
-        ip, port = None, None
         for node_rank, placement_group in zip(self.node_ranks, self.placement_groups):
             self.node2pg[node_rank] = placement_group
 
@@ -95,7 +84,7 @@ class ResourceManager:
                 node_rank = rank // nproc_per_node
                 gpu_rank = rank % nproc_per_node
                 local_device_groups.append(
-                    dict(node_rank=node_rank, gpu_rank=gpu_rank,
+                    dict(node_rank=node_rank, gpu_rank=[gpu_rank],
                          placement_group=self.node2pg[node_rank], ray_address=ray_address)
                 )
             for worker in group['workers']:
@@ -107,4 +96,6 @@ class ResourceManager:
         return self.device_groups[worker]
 
     def destroy_placement_group(self):
-        [ray.util.remove_placement_group(pg) for pg in self.placement_groups]
+        import ray
+        for pg in self.placement_groups:
+            ray.util.remove_placement_group(pg)

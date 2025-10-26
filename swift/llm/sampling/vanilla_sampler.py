@@ -19,11 +19,11 @@ class VanillaSampler(Sampler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.prepare_sampler()
+        self._prepare_sampler()
         self.caches = self.read_cache()
 
     @RayHelper.function(group='sampler')
-    def prepare_sampler(self):
+    def _prepare_sampler(self):
         if self.args.sampler_engine == 'pt':
             from swift.llm import PtEngine
             _Engine = PtEngine
@@ -146,13 +146,13 @@ class VanillaSampler(Sampler):
             _cur += 1
         return resp_all
 
-    @RayHelper.function(group='orm', execute='first')
+    @RayHelper.function(group='orm')
     def get_orm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
             threshold=0.0)
 
-    @RayHelper.function(group='prm', execute='first')
+    @RayHelper.function(group='prm')
     def get_prm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.prm_model,

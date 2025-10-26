@@ -20,8 +20,7 @@ class SamplingArguments(BaseArguments):
     orm_model: Optional[str] = None
 
     # sampler settings
-    # sample/mcts/dvts/xxx
-    sampler_type: Literal['sample', 'mcts', 'distill'] = 'sample'
+    sampler_type: Literal['sample', 'distill'] = 'sample'
     sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no', 'client'] = 'pt'
     output_dir: str = 'sample_output'
     output_file: Optional[str] = None
@@ -43,15 +42,6 @@ class SamplingArguments(BaseArguments):
 
     # Vanilla
     cache_files: List[str] = dataclasses.field(default_factory=list)
-
-    # MCTS
-    rollout_depth: int = 5
-    rollout_start_depth: int = 3
-    max_iterations: int = 100
-    process_reward_rate: float = 0.0
-    exploration_rate: float = 0.5
-    api_key: str = 'EMPTY'
-    base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     def _init_model_info(self):
         if self.sampler_engine != 'client':
