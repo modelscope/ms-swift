@@ -69,11 +69,12 @@ class VllmEngine(InferEngine):
         task_type: Optional[str] = None,  # embedding
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
+        mm_processor_cache_gb: Optional[float] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
@@ -129,6 +130,7 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             task=task_type,
             disable_cascade_attn=disable_cascade_attn,
+            mm_processor_cache_gb=mm_processor_cache_gb,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -163,12 +165,13 @@ class VllmEngine(InferEngine):
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        enable_prefix_caching: bool = False,
+        enable_prefix_caching: Optional[bool] = None,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
         task: Optional[str] = None,
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
+        mm_processor_cache_gb: Optional[float] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -197,7 +200,10 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
-        for key in ['enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format']:
+        for key in [
+                'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
+                'mm_processor_cache_gb'
+        ]:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
             else:
@@ -214,6 +220,8 @@ class VllmEngine(InferEngine):
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
         self.default_template.set_mode('vllm')
         engine_kwargs.update(self.default_template.prepare_engine_kwargs())
+        if enable_prefix_caching is not None:
+            engine_kwargs['enable_prefix_caching'] = enable_prefix_caching
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
@@ -226,7 +234,6 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             trust_remote_code=True,
-            enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
             **engine_kwargs,
         )
@@ -334,7 +341,11 @@ class VllmEngine(InferEngine):
                 media_data = inputs.get(key) or []
                 if media_data:
                     if self._version_ge('0.6'):
-                        mm_data[key.rstrip('s')] = media_data[0] if len(media_data) == 1 else media_data
+
+                        mm_data[key.rstrip('s')] = media_data[0] if (
+                            len(media_data) == 1 and
+                            # compat qwen3_vl
+                            not isinstance(media_data[0], tuple)) else media_data
                     else:
                         assert len(media_data) == 1, (
                             f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')

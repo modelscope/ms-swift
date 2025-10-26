@@ -13,6 +13,7 @@ class LLMTemplateType:
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwen3 = 'qwen3'
+    qwen3_guard = 'qwen3_guard'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
     qwen3_coder = 'qwen3_coder'
@@ -164,6 +165,8 @@ class MLLMTemplateType:
     interns1 = 'interns1'
     internvl_hf = 'internvl_hf'
 
+    jina_reranker_m0 = 'jina_reranker_m0'
+
     xcomposer2 = 'ixcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
@@ -189,6 +192,7 @@ class MLLMTemplateType:
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
+    deepseek_ocr = 'deepseek_ocr'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -220,6 +224,7 @@ class MLLMTemplateType:
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    paddle_ocr = 'paddle_ocr'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

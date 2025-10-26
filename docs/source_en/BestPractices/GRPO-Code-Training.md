@@ -46,7 +46,9 @@ launch external vLLM server using following script
 ```bash
 CUDA_VISIBLE_DEVICES=7 \
 swift rollout \
-  --model Qwen/Qwen2.5-7B-Instruct
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --vllm_enable_lora true \
+  --vllm_max_lora_rank 16
 ```
 
 ```bash
@@ -65,6 +67,8 @@ swift rlhf \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
     --train_type lora \
+    --lora_rank 16 \
+    --lora_alpha 32 \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
     --load_from_cache_file true \

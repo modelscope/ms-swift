@@ -20,6 +20,7 @@ Swift DOCUMENTATION
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/GRPO/index.rst
+   Instruction/GKD.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
    Instruction/Sample.md
@@ -58,6 +59,8 @@ Swift DOCUMENTATION
    BestPractices/GRPO-Multi-Modal-Training.md
    BestPractices/GRPO-Code-Training.md
    BestPractices/Qwen3-Best-Practice.md
+   BestPractices/Qwen3-VL-Best-Practice.md
+   BestPractices/MLLM-Registration.md
    BestPractices/Embedding.md
    BestPractices/Reranker.md
    BestPractices/Rapidly-Training-VL-model.md
