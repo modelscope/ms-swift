@@ -3,7 +3,6 @@ from copy import deepcopy
 from typing import Optional, Tuple, Union
 
 import torch
-from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
@@ -474,65 +473,24 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
 
 class Qwen3NextBridge(GPTBridge):
 
-    def _convert(self, state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
-        print()
+    def _set_state_dict(self, state_dict, res_state_dict, hf_key: str, mg_key: str, reverse: bool, offset: float = 0):
+        if hf_key in {
+                'model.norm.weight', 'q_norm.weight', 'k_norm.weight', 'input_layernorm.weight',
+                'post_attention_layernorm.weight'
+        }:
+            offset = -1 if reverse else 1
+        else:
+            assert 'norm' not in hf_key, f'hf_key: {hf_key}'  # just check
+        return super()._set_state_dict(state_dict, res_state_dict, hf_key, mg_key, reverse, offset)
 
-
-def convert_mcore2hf_qwen3_next(hf_model, mg_model):
-    from .mcore2hf import set_mlp_state, set_attn_state
-    args = get_args()
-    hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
-        lm_head_weight.data.copy_(mg_model.output_layer.weight)
-    hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight - 1)
-    for layer_idx in range(args.num_layers):
-        layer_type = args.layer_types[layer_idx]
-        mg_layer = mg_model.decoder.layers[layer_idx]
-        hf_layer = hf_model.model.layers[layer_idx]
-        mg_attn = mg_layer.self_attention
-
+    def _set_layer_attn(self, state_dict, layer_idx: int, reverse: bool):
+        layer_type = self.args.layer_types[layer_idx]
         if layer_type == 'linear_attention':
-            hf_layer.linear_attn.load_state_dict(mg_attn.state_dict(), strict=False)
-            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight - 1)
+            res = self._replace_prefix(state_dict, 'linear_attn.', 'self_attention.', reverse)
+            self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
         elif layer_type == 'full_attention':
-            hf_attn = hf_layer.self_attn
-            set_attn_state(args, mg_attn, hf_attn)
-            hf_layer.input_layernorm.weight.data.copy_(mg_attn.linear_qkv.layer_norm_weight - 1)
-            if args.qk_layernorm:
-                hf_attn.q_norm.weight.data.copy_(mg_attn.q_layernorm.weight - 1)
-                hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight - 1)
-
-        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-        hf_layer.post_attention_layernorm.weight.data.copy_(mg_layer.pre_mlp_layernorm.weight - 1)
-
-
-def convert_hf2mcore_qwen3_next(hf_model, mg_model):
-    from .hf2mcore import set_mlp_state, set_attn_state
-    args = get_args()
-    mg_model.embedding.word_embeddings.weight.data.copy_(hf_model.model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight + 1)
-    for layer_idx in range(args.num_layers):
-        layer_type = args.layer_types[layer_idx]
-        mg_layer = mg_model.decoder.layers[layer_idx]
-        hf_layer = hf_model.model.layers[layer_idx]
-        mg_attn = mg_layer.self_attention
-
-        if layer_type == 'linear_attention':
-            mg_attn.load_state_dict(hf_layer.linear_attn.state_dict(), strict=False)
-            mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight + 1)
-        elif layer_type == 'full_attention':
-            hf_attn = hf_layer.self_attn
-            set_attn_state(args, mg_attn, hf_attn)
-            mg_attn.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight + 1)
-            if args.qk_layernorm:
-                mg_attn.q_layernorm.weight.data.copy_(hf_attn.q_norm.weight + 1)
-                mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight + 1)
-
-        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-        mg_layer.pre_mlp_layernorm.weight.data.copy_(hf_layer.post_attention_layernorm.weight + 1)
+            res = super()._set_layer_attn(state_dict, layer_idx, reverse)
+        return res
 
 
 register_megatron_model(
@@ -543,4 +501,5 @@ register_megatron_model(
             ModelType.qwen3_next_thinking,
         ],
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
+        bridge_cls=Qwen3NextBridge,
     ))

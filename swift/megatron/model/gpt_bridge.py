@@ -9,7 +9,7 @@ from swift.utils import disable_safe_ddp_context_use_barrier
 
 
 class GPTBridge:
-    lm_layers_prefix = 'model.layers'  # hf
+    lm_layers_prefix = 'model.layers'  # HF model
 
     def __init__(self):
         self.args = get_args()
@@ -19,11 +19,13 @@ class GPTBridge:
                 model_info.model_dir, model_type=model_info.model_type, return_dummy_model=True)
         self.hf_layers = deep_getattr(self.hf_model, self.lm_layers_prefix)
 
-    def _set_state_dict(self, state_dict, res_state_dict, hf_key: str, mg_key: str, reverse: bool):
+    def _set_state_dict(self, state_dict, res_state_dict, hf_key: str, mg_key: str, reverse: bool, offset: float = 0):
         src_key, tgt_key = hf_key, mg_key
         if reverse:
             src_key, tgt_key = tgt_key, src_key
         res_state_dict[tgt_key] = state_dict[src_key]
+        if offset:
+            res_state_dict[tgt_key] = res_state_dict[tgt_key] + offset
 
     @staticmethod
     def _remove_prefix(state_dict, prefix: str):
@@ -38,24 +40,39 @@ class GPTBridge:
         return {f'{prefix}{k}': v for k, v in state_dict.items()}
 
     @staticmethod
+    def _filter_prefix(state_dict, prefix: str):
+        if not prefix:
+            return state_dict
+        return {k: v for k, v in state_dict.items() if k.startswith(prefix)}
+
+    @staticmethod
+    def _replace_prefix(state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
+        src_prefix, tgt_prefix = hf_prefix, mg_prefix
+        if reverse:
+            src_prefix, tgt_prefix = tgt_prefix, src_prefix
+        res = GPTBridge._remove_prefix(state_dict, src_prefix)
+        return GPTBridge._add_prefix(res, tgt_prefix)
+
+    @staticmethod
     def _is_moe(state_dict):
         for k, v in state_dict.items():
             if 'experts.' in k:
                 return True
         return False
 
-    def _set_attn_state(self, state_dict, hf_prefix: str, mg_prefix: str, hf_attn, reverse: bool):
+    def _set_attn_state(self, state_dict, hf_prefix: str, mg_prefix: str, layer_idx: int, reverse: bool):
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
+        hf_attn = self.hf_layers[layer_idx].self_attn
         args = self.args
         res = {}
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
         if reverse:
             mg_attn_weight = state_dict['linear_qkv.weight'].reshape((num_query_groups, -1, args.hidden_size))
-            q_dim = args.kv_channels * args.num_attention_heads // num_query_groups
-            kv_dim = args.kv_channels
+            q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
+                0] // num_query_groups
             res['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
             res['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1, args.hidden_size)
             res['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size)
@@ -90,11 +107,12 @@ class GPTBridge:
 
         return self._add_prefix(res, tgt_prefix)
 
-    def _set_moe_state(self, state_dict, hf_prefix: str, mg_prefix: str, hf_mlp, reverse: bool):
+    def _set_moe_state(self, state_dict, hf_prefix: str, mg_prefix: str, layer_idx: int, reverse: bool):
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
+        hf_mlp = self.hf_layers[layer_idx].mlp
         res = {}
         hf_gate_key = 'gate.wg.weight' if hasattr(hf_mlp.gate, 'wg') else 'gate.weight'
         self._set_state_dict(state_dict, res, hf_gate_key, 'router.weight', reverse)
@@ -105,14 +123,14 @@ class GPTBridge:
             for key in ['shared_expert', 'shared_experts', 'shared_mlp']:
                 if hasattr(hf_mlp, key):
                     hf_shared_expert_prefix = f'{key}.'
-            res.update(self._set_mlp_state(state_dict, hf_shared_expert_prefix, 'shared_experts.', hf_mlp, reverse))
+            res.update(self._set_mlp_state(state_dict, hf_shared_expert_prefix, 'shared_experts.', layer_idx, reverse))
             if hasattr(hf_mlp, 'shared_expert_gate'):
                 self._set_state_dict(state_dict, res, 'shared_expert_gate.weight', 'shared_experts.gate_weight',
                                      reverse)
         for expert_idx in range(self.args.num_experts):
             hf_expert_prefix = f'experts.{expert_idx}.' if hasattr(hf_mlp.experts, '__len__') else 'experts.'
             res.update(
-                self._set_mlp_state(state_dict, hf_expert_prefix, 'experts.', hf_mlp, reverse, group_idx=expert_idx))
+                self._set_mlp_state(state_dict, hf_expert_prefix, 'experts.', layer_idx, reverse, group_idx=expert_idx))
         return self._add_prefix(res, tgt_prefix)
 
     def _set_mlp_state(
@@ -120,7 +138,7 @@ class GPTBridge:
         state_dict,
         hf_prefix: str,
         mg_prefix: str,
-        hf_mlp,
+        layer_idx: int,
         reverse: bool,
         group_idx: Optional[int] = None,
     ):
@@ -128,6 +146,7 @@ class GPTBridge:
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
+        hf_mlp = self.hf_layers[layer_idx].mlp
         hf_grouped = False
         if group_idx is not None and not hasattr(hf_mlp.experts, '__len__'):
             hf_grouped = True
@@ -163,7 +182,7 @@ class GPTBridge:
         state_dict,
         hf_prefix: str,
         mg_prefix: str,
-        hf_mlp,
+        layer_idx: int,
         reverse: bool,
     ):
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
@@ -184,37 +203,44 @@ class GPTBridge:
                                  reverse)
         return self._add_prefix(res, tgt_prefix)
 
+    def _set_layer_attn(self, state_dict, layer_idx: int, reverse: bool):
+        res = {}
+        if self.args.multi_latent_attention:
+            res.update(self._set_mla_attn_state(state_dict, 'self_attn.', 'self_attention.', layer_idx, reverse))
+            self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
+        else:
+            res.update(self._set_attn_state(state_dict, 'self_attn.', 'self_attention.', layer_idx, reverse))
+            self._set_state_dict(state_dict, res, 'input_layernorm.weight',
+                                 'self_attention.linear_qkv.layer_norm_weight', reverse)
+        return res
+
+    def _set_layer_mlp(self, state_dict, layer_idx: int, reverse: bool):
+        hf_mlp = self.hf_layers[layer_idx].mlp
+        res = {}
+        is_moe = self._is_moe(hf_mlp.state_dict())
+        if is_moe:
+            res.update(self._set_moe_state(state_dict, 'mlp.', 'mlp.', layer_idx, reverse))
+            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'pre_mlp_layernorm.weight',
+                                 reverse)
+        else:
+            res.update(self._set_mlp_state(state_dict, 'mlp.', 'mlp.', layer_idx, reverse))
+            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'mlp.linear_fc1.layer_norm_weight',
+                                 reverse)
+        return res
+
     def _set_layer_state(self, state_dict, layer_idx: int, hf_prefix: str, mg_prefix: str, reverse: bool):
         hf_prefix = f'{hf_prefix}{layer_idx}.'
         mg_prefix = f'{mg_prefix}{layer_idx}.'
-        hf_layer = self.hf_layers[layer_idx]
-        hf_attn, hf_mlp = hf_layer.self_attn, hf_layer.mlp
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
         state_dict = self._remove_prefix(state_dict, src_prefix)
-        res = {}
-        if self.args.multi_latent_attention:
-            res.update(self._set_mla_attn_state(state_dict, 'self_attn.', 'self_attention.', hf_mlp, reverse))
-            self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
-        else:
-            res.update(self._set_attn_state(state_dict, 'self_attn.', 'self_attention.', hf_attn, reverse))
-            self._set_state_dict(state_dict, res, 'input_layernorm.weight',
-                                 'self_attention.linear_qkv.layer_norm_weight', reverse)
-
-        is_moe = self._is_moe(hf_mlp.state_dict())
-        if is_moe:
-            res.update(self._set_moe_state(state_dict, 'mlp.', 'mlp.', hf_mlp, reverse))
-            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'pre_mlp_layernorm.weight',
-                                 reverse)
-        else:
-            res.update(self._set_mlp_state(state_dict, 'mlp.', 'mlp.', hf_mlp, reverse))
-            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'mlp.linear_fc1.layer_norm_weight',
-                                 reverse)
-
+        res = self._set_layer_attn(state_dict, layer_idx, reverse)
+        res.update(self._set_layer_mlp(state_dict, layer_idx, reverse))
         return self._add_prefix(res, tgt_prefix)
 
     def _convert(self, state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
+        """reverse: False: hf -> mg; True: mg -> hf"""
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
             src_prefix, tgt_prefix = tgt_prefix, src_prefix
@@ -222,7 +248,10 @@ class GPTBridge:
         res = {}
         self._set_state_dict(state_dict, res, 'model.embed_tokens.weight', 'embedding.word_embeddings.weight', reverse)
         if self.args.untie_embeddings_and_output_weights:
-            self._set_state_dict(state_dict, res, 'lm_head.weight', 'output_layer.weight', reverse)
+            hf_lm_head_key = 'lm_head.weight'
+            if reverse and self.args.task_type == 'seq_cls':
+                hf_lm_head_key = 'score.weight'
+            self._set_state_dict(state_dict, res, hf_lm_head_key, 'output_layer.weight', reverse)
         self._set_state_dict(state_dict, res, 'model.norm.weight', 'decoder.final_layernorm.weight', reverse)
         for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
             res.update(self._set_layer_state(state_dict, layer_idx, 'model.layers.', 'decoder.layers.', reverse))
