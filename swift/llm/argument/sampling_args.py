@@ -64,7 +64,6 @@ class SamplingArguments(BaseArguments):
                                  f'`--output_file` but now is: {self.output_file}')
         self.padding_side = 'left'
         if self.engine_kwargs is not None:
-            print(self.engine_kwargs)
             self.engine_kwargs = json.loads(self.engine_kwargs)
         else:
             self.engine_kwargs = {}

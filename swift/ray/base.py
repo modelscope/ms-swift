@@ -232,7 +232,7 @@ class RayHelper:
                     "LOCAL_RANK": str(0),
                     "CLUSTER_NAME": cluster_name,
                     "WORKER_NAME": worker_name,
-                    "CUDA_VISIBLE_DEVICES": ','.join(deploy_pg["gpu_rank"]),
+                    "CUDA_VISIBLE_DEVICES": ','.join([str(r) for r in deploy_pg["gpu_rank"]]),
                 })
 
                 @ray.remote
