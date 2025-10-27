@@ -12,7 +12,6 @@ T = TypeVar('T')
 
 
 class RayHelper:
-
     resource_manager: Optional[ResourceManager] = None
 
     worker_cls: Dict = {}
@@ -62,7 +61,7 @@ class RayHelper:
             if frame_info.function == '__init__':
                 return True
         return False
-    
+
     @staticmethod
     def ray_inited():
         import ray
@@ -101,7 +100,7 @@ class RayHelper:
             return cls
 
         return decorator
-    
+
     @staticmethod
     def collect_func(method: Union[Literal['none', 'flatten'], Callable], result):
         if isinstance(result[0], tuple):
@@ -122,7 +121,7 @@ class RayHelper:
             return method(result)
         else:
             raise ValueError(f'Unsupported collect method: {method}')
-    
+
     @staticmethod
     def function(group: str,
                  dispatch: Union[Literal['slice', 'all'], Callable] = 'all',
@@ -168,6 +167,7 @@ class RayHelper:
                         return None
                     result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
                     return RayHelper.collect_func(collect, result)
+
             return wrapper
 
         return decorator
@@ -196,7 +196,7 @@ class RayHelper:
                     output = []
                     for i in range(n):
                         if i < n - 1:
-                            output.append(arg[slice_cnt * i: slice_cnt * (i+1)])
+                            output.append(arg[slice_cnt * i: slice_cnt * (i + 1)])
                         else:
                             output.append(arg[slice_cnt * i:])
                     return output
@@ -228,6 +228,11 @@ class RayHelper:
         from ray.runtime_env import RuntimeEnv
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
         nproc_per_node = int(RayHelper.device_groups['nproc_per_node'])
+        exp_name = os.environ.get('RAY_SWIFT_EXP_NAME')
+        if not exp_name:
+            exp_name = ''
+        else:
+            exp_name += '-'
 
         if isinstance(group, str):
             group = [group]
@@ -249,48 +254,81 @@ class RayHelper:
 
             assert _config is not None
             local_groups = _config['workers']
-            world_size = len(_config['ranks']) // nproc_per_node
-            placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
-            workers = []
-            ip, port = None, None
-            for rank, (deploy_pg, gpu) in enumerate(zip(placement_groups, _config['ranks'])):
-                deploy_pg: Dict
-                cluster_name = '-'.join(local_groups)
-                worker_name = cluster_name + '-' + str(rank)
-                env_vars = os.environ.copy()
-                env_vars.update({
-                    "WORLD_SIZE": str(world_size),
-                    "RANK": str(rank),
-                    "LOCAL_RANK": str(0),
-                    "CLUSTER_NAME": cluster_name,
-                    "WORKER_NAME": worker_name,
-                    "CUDA_VISIBLE_DEVICES": ','.join([str(r) for r in deploy_pg["gpu_rank"]]),
-                })
 
-                @ray.remote
-                def get_node_address():
-                    return find_node_ip(), find_free_port()
-                
-                if rank == 0:
-                    ip, port = ray.get(get_node_address.options(placement_group=deploy_pg["placement_group"]).remote())
+            if _config['device'] != 'CPU':
+                world_size = len(_config['ranks']) // nproc_per_node
+                placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
+                workers = []
+                ip, port = None, None
+                for rank, (deploy_pg, gpu) in enumerate(zip(placement_groups, _config['ranks'])):
+                    deploy_pg: Dict
+                    cluster_name = exp_name + '-'.join(local_groups)
+                    worker_name = cluster_name + '-' + str(rank)
+                    env_vars = os.environ.copy()
+                    env_vars.update({
+                        "WORLD_SIZE": str(world_size),
+                        "RANK": str(rank),
+                        "LOCAL_RANK": str(0),
+                        "CLUSTER_NAME": cluster_name,
+                        "WORKER_NAME": worker_name,
+                        "CUDA_VISIBLE_DEVICES": ','.join([str(r) for r in deploy_pg["gpu_rank"]]),
+                    })
 
-                env_vars["MASTER_ADDR"] = ip
-                env_vars["MASTER_PORT"] = str(port)
-                env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
+                    @ray.remote
+                    def get_node_address():
+                        return find_node_ip(), find_free_port()
 
-                runtime_env = RuntimeEnv(env_vars=env_vars)
+                    if rank == 0:
+                        ip, port = ray.get(
+                            get_node_address.options(placement_group=deploy_pg["placement_group"]).remote())
 
-                worker_options = {
-                    "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=deploy_pg["placement_group"]),
-                    "name": worker_name,
-                    "namespace": 'default',
-                    "runtime_env": runtime_env,
-                    "num_cpus": 0.01,
-                    "num_gpus": 0.01,
-                }
+                    env_vars["MASTER_ADDR"] = ip
+                    env_vars["MASTER_PORT"] = str(port)
+                    env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
 
-                worker = worker_cls.options(**worker_options).remote(*args, **kwargs)
-                workers.append(worker)
+                    runtime_env = RuntimeEnv(env_vars=env_vars)
+
+                    worker_options = {
+                        "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                            placement_group=deploy_pg["placement_group"]),
+                        "name": worker_name,
+                        "namespace": 'default',
+                        "runtime_env": runtime_env,
+                        "num_cpus": 0.01,
+                        "num_gpus": 0.01,
+                    }
+
+                    worker = worker_cls.options(**worker_options).remote(*args, **kwargs)
+                    workers.append(worker)
+            else:
+                world_size = _config['ranks']
+                placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
+                workers = []
+                for deploy_pg, index in zip(placement_groups, list(range(world_size))):
+                    deploy_pg: Dict
+                    cluster_name = '-'.join(local_groups)
+                    worker_name = cluster_name + '-' + str(index)
+                    env_vars = os.environ.copy()
+                    env_vars.update({
+                        "CLUSTER_NAME": cluster_name,
+                        "WORKER_NAME": worker_name,
+                        "CUDA_VISIBLE_DEVICES": '',
+                    })
+                    env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
+
+                    runtime_env = RuntimeEnv(env_vars=env_vars)
+
+                    worker_options = {
+                        "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                            placement_group=deploy_pg["placement_group"]),
+                        "name": worker_name,
+                        "namespace": 'default',
+                        "runtime_env": runtime_env,
+                        "num_cpus": 0.01,
+                    }
+
+                    worker = worker_cls.options(**worker_options).remote(*args, **kwargs)
+                    workers.append(worker)
 
             for g in local_groups:
                 RayHelper.worker_instance[g] = workers

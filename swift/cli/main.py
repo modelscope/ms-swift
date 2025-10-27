@@ -95,8 +95,6 @@ def _compat_web_ui(argv):
 def cli_main(route_mapping: Optional[Dict[str, str]] = None) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
-    if 'local-rank' in argv[0]:
-        argv = argv[1:]
     _compat_web_ui(argv)
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]

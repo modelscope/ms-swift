@@ -75,12 +75,12 @@ class DistillSampler(VanillaSampler):
         super(VanillaSampler, self).__init__(*args, **kwargs)
         assert self.args.sampler_engine == 'client'
         self._prepare_sampler()
-        self.infer_engine.strict = False
         self.caches = self.read_cache()
 
     @RayHelper.function(group='sampler')
     def _prepare_sampler(self):
         self.infer_engine = OpenAIEngine(model=self.args.model, stream=self.args.stream, **self.args.engine_kwargs)
+        self.infer_engine.strict = False
 
     def _prepare_model_tokenizer(self):
         pass
