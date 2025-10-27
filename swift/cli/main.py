@@ -3,8 +3,9 @@ import importlib.util
 import os
 import subprocess
 import sys
+from typing import Any, Dict, List, Optional
+
 import json
-from typing import Dict, List, Optional, Any
 
 from swift.utils import get_logger
 
@@ -57,28 +58,29 @@ def prepare_config_args(argv):
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
                 result = {}
-                def _traverse(config: Any, parent_key: str = ""):
+
+                def _traverse(config: Any, parent_key: str = ''):
                     if isinstance(config, DictConfig):
                         for key, value in config.items():
                             if key == 'device_groups':
                                 result[key] = json.dumps(OmegaConf.to_container(value))
                             else:
-                                current_path = f"{parent_key}.{key}" if parent_key else key
+                                current_path = f'{parent_key}.{key}' if parent_key else key
                                 _traverse(value, current_path)
                     else:
-                        last_key = parent_key.split('.')[-1] if parent_key else ""
+                        last_key = parent_key.split('.')[-1] if parent_key else ''
                         result[last_key] = config
 
                 _traverse(cfg)
                 return result
-                
+
             cfg = parse_dict_config(config)
             for key, value in cfg.items():
                 argv.append(f'--{key}')
                 if not isinstance(value, str):
                     value = str(value)
                 argv.append(value)
-            
+
             argv.pop(i)
             argv.pop(i)
             break

@@ -8,6 +8,7 @@ from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks
+from swift.ray import RayHelper
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -19,6 +20,7 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
+@RayHelper.worker(group=['trainer'])
 class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
@@ -29,6 +31,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        self._prepare_dataset()
+
+    def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
                 import dlrover.trainer.torch.flash_checkpoint.hf_trainer
@@ -42,6 +47,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
+    @RayHelper.function(group='trainer')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
         self.model, self.processor = args.get_model_processor(**kwargs)
@@ -58,6 +64,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
+    @RayHelper.function(group='trainer')
     def _prepare_template(self) -> None:
         args = self.args
         template = args.get_template(self.processor)
@@ -111,6 +118,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(load_from_disk(val_path))
         return train_datasets, val_datasets
 
+    @RayHelper.function(group='trainer')
     def _prepare_dataset(self):
         args = self.args
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
@@ -164,6 +172,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._show_dataset(*datasets)
         return datasets
 
+    @RayHelper.function(group='trainer')
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
@@ -248,6 +257,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return res
 
+    @RayHelper.function(group='trainer')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args

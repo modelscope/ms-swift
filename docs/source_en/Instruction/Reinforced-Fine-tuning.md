@@ -91,4 +91,3 @@ Specifically, we tested the GSM8K metric for `Qwen2.5_math_7b_instruct`:
 | Qwen2.5_math_7b_instruct  | 92.8        | 91.6                 |
 
 As shown, RFT training did not significantly change the GSM8K score, avoiding the previously mentioned performance degradation phenomenon.
-

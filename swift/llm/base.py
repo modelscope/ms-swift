@@ -8,7 +8,6 @@ import swift
 from swift.utils import get_logger, parse_args, seed_everything
 from .argument import BaseArguments
 from .utils import ProcessorMixin
-from swift.ray.base import RayHelper
 
 logger = get_logger()
 

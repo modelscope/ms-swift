@@ -1,8 +1,10 @@
 import functools
-import os
-from typing import Callable, TypeVar, List, Dict, Literal, Union, Any, Optional
 import inspect
+import os
+from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
+
 import numpy as np
+
 from swift.llm.argument.base_args.ray_args import RayArguments
 from swift.ray.resource_manager import ResourceManager
 from swift.utils import find_free_port
@@ -34,6 +36,8 @@ class RayHelper:
         Returns:
             None
         """
+        if RayHelper.ray_inited():
+            return
         import ray
         RayHelper.device_groups = device_groups
         ray.init()
@@ -195,7 +199,7 @@ class RayHelper:
                     output = []
                     for i in range(n):
                         if i < n - 1:
-                            output.append(arg[slice_cnt * i: slice_cnt * (i + 1)])
+                            output.append(arg[slice_cnt * i:slice_cnt * (i + 1)])
                         else:
                             output.append(arg[slice_cnt * i:])
                     return output
@@ -266,12 +270,12 @@ class RayHelper:
                     worker_name = cluster_name + '-' + str(rank)
                     env_vars = os.environ.copy()
                     env_vars.update({
-                        "WORLD_SIZE": str(world_size),
-                        "RANK": str(rank),
-                        "LOCAL_RANK": str(0),
-                        "CLUSTER_NAME": cluster_name,
-                        "WORKER_NAME": worker_name,
-                        "CUDA_VISIBLE_DEVICES": ','.join([str(r) for r in deploy_pg["gpu_rank"]]),
+                        'WORLD_SIZE': str(world_size),
+                        'RANK': str(rank),
+                        'LOCAL_RANK': str(0),
+                        'CLUSTER_NAME': cluster_name,
+                        'WORKER_NAME': worker_name,
+                        'CUDA_VISIBLE_DEVICES': ','.join([str(r) for r in deploy_pg['gpu_rank']]),
                     })
 
                     @ray.remote
@@ -280,22 +284,27 @@ class RayHelper:
 
                     if rank == 0:
                         ip, port = ray.get(
-                            get_node_address.options(placement_group=deploy_pg["placement_group"]).remote())
+                            get_node_address.options(placement_group=deploy_pg['placement_group']).remote())
 
-                    env_vars["MASTER_ADDR"] = ip
-                    env_vars["MASTER_PORT"] = str(port)
-                    env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
+                    env_vars['MASTER_ADDR'] = ip
+                    env_vars['MASTER_PORT'] = str(port)
+                    env_vars['RAY_SWIFT_GROUP'] = ','.join(local_groups)
 
                     runtime_env = RuntimeEnv(env_vars=env_vars)
 
                     worker_options = {
-                        "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                            placement_group=deploy_pg["placement_group"]),
-                        "name": worker_name,
-                        "namespace": 'default',
-                        "runtime_env": runtime_env,
-                        "num_cpus": 0.01,
-                        "num_gpus": 0.01,
+                        'scheduling_strategy':
+                        PlacementGroupSchedulingStrategy(placement_group=deploy_pg['placement_group']),
+                        'name':
+                        worker_name,
+                        'namespace':
+                        'default',
+                        'runtime_env':
+                        runtime_env,
+                        'num_cpus':
+                        0.01,
+                        'num_gpus':
+                        0.01,
                     }
 
                     worker = worker_cls.options(**worker_options).remote(*args, **kwargs)
@@ -310,21 +319,25 @@ class RayHelper:
                     worker_name = cluster_name + '-' + str(index)
                     env_vars = os.environ.copy()
                     env_vars.update({
-                        "CLUSTER_NAME": cluster_name,
-                        "WORKER_NAME": worker_name,
-                        "CUDA_VISIBLE_DEVICES": '',
+                        'CLUSTER_NAME': cluster_name,
+                        'WORKER_NAME': worker_name,
+                        'CUDA_VISIBLE_DEVICES': '',
                     })
-                    env_vars["RAY_SWIFT_GROUP"] = ','.join(local_groups)
+                    env_vars['RAY_SWIFT_GROUP'] = ','.join(local_groups)
 
                     runtime_env = RuntimeEnv(env_vars=env_vars)
 
                     worker_options = {
-                        "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                            placement_group=deploy_pg["placement_group"]),
-                        "name": worker_name,
-                        "namespace": 'default',
-                        "runtime_env": runtime_env,
-                        "num_cpus": 0.01,
+                        'scheduling_strategy':
+                        PlacementGroupSchedulingStrategy(placement_group=deploy_pg['placement_group']),
+                        'name':
+                        worker_name,
+                        'namespace':
+                        'default',
+                        'runtime_env':
+                        runtime_env,
+                        'num_cpus':
+                        0.01,
                     }
 
                     worker = worker_cls.options(**worker_options).remote(*args, **kwargs)

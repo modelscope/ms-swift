@@ -83,8 +83,8 @@ class SwiftSampling(SwiftPipeline):
                 if _index <= index_resume:
                     continue
                 logger.info(f' Sampling index:{_index}')
-                slices = dataset[self.args.num_sampling_batch_size
-                                 * _index:self.args.num_sampling_batch_size * (_index + 1)]
+                slices = dataset[self.args.num_sampling_batch_size * _index:self.args.num_sampling_batch_size
+                                 * (_index + 1)]
                 slices = self.sampler.truncate_input(slices)
                 generated = self.sampler.do_sample(slices)
                 f.writelines(generated)

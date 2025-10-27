@@ -136,8 +136,7 @@ class LLMSample(BaseUI):
                         choices=get_dataset_list(),
                         scale=20,
                         allow_custom_value=True)
-                    gr.Slider(
-                        elem_id='num_sampling_batch_size', minimum=1, maximum=128, step=1, value=1, scale=10)
+                    gr.Slider(elem_id='num_sampling_batch_size', minimum=1, maximum=128, step=1, value=1, scale=10)
                     gr.Slider(elem_id='num_sampling_batches', minimum=1, maximum=128, step=1, value=1, scale=10)
                 SampleRuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):

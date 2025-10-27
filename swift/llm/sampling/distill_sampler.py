@@ -6,8 +6,8 @@ from openai import OpenAI
 
 from swift.llm.infer.protocol import InferRequest, RequestConfig
 from swift.llm.sampling.vanilla_sampler import VanillaSampler
-from .utils import get_messages_md5
 from swift.ray import RayHelper
+from .utils import get_messages_md5
 
 
 class OpenAIEngine:
@@ -96,9 +96,13 @@ class DistillSampler(VanillaSampler):
             reps_content = message.content
         return reps_content
 
-    @RayHelper.function(group='sampler', dispatch=lambda n, i, data: (
-            [{'messages': data['messages'][i * len(data['messages']) // n: (i + 1) * len(data['messages']) // n]}], {}),
-                        collect='flatten')
+    @RayHelper.function(
+        group='sampler',
+        dispatch=lambda n, i, data:
+        ([{
+            'messages': data['messages'][i * len(data['messages']) // n:(i + 1) * len(data['messages']) // n]
+        }], {}),
+        collect='flatten')
     def generate(self, data):
         resp_all = []
         infer_requests = []

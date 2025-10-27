@@ -1,7 +1,8 @@
-import json
 import os
 from dataclasses import dataclass
 from typing import Optional
+
+import json
 
 
 @dataclass

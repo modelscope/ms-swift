@@ -15,8 +15,8 @@ from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
-from .template_args import TemplateArguments
 from .ray_args import RayArguments
+from .template_args import TemplateArguments
 
 logger = get_logger()
 

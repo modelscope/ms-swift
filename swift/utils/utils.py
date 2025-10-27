@@ -243,7 +243,7 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
 
 def find_node_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
+    s.connect(('8.8.8.8', 80))
     return s.getsockname()[0]
 
 

@@ -1,7 +1,7 @@
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -11,7 +11,7 @@ class NodeGroup:
 
 
 def get_node_rank():
-    return int(os.environ.get("NODE_RANK", "0"))
+    return int(os.environ.get('NODE_RANK', '0'))
 
 
 class ResourceManager:
@@ -39,8 +39,8 @@ class ResourceManager:
                 continue
             try:
                 ranks = int(ranks)
-                ranks = list(range(last_rank+1, last_rank+1+ranks))
-            except Exception: # noqa
+                ranks = list(range(last_rank + 1, last_rank + 1 + ranks))
+            except Exception:  # noqa
                 if isinstance(ranks, str):
                     ranks = eval(ranks)
             finally:
@@ -53,7 +53,7 @@ class ResourceManager:
 
         self.nodes = []
         for node in ray.nodes():
-            resource = node["Resources"]
+            resource = node['Resources']
             node_gpu_num = int(resource.get(device_type, 0))
             if node_gpu_num >= nproc_per_node:
                 self.nodes.append(node)
@@ -62,9 +62,9 @@ class ResourceManager:
         cpu_bundles = []
         for i in range(groups['nnodes']):
             node = self.nodes[i]
-            node_cpu = int(node["Resources"]["CPU"])
-            bundles.append({device_type: nproc_per_node, "CPU": node_cpu // 2 + 1})
-            cpu_bundles.append({"CPU": node_cpu // 4 + 1}) # TODO dynamic scheduling
+            node_cpu = int(node['Resources']['CPU'])
+            bundles.append({device_type: nproc_per_node, 'CPU': node_cpu // 2 + 1})
+            cpu_bundles.append({'CPU': node_cpu // 4 + 1})  # TODO dynamic scheduling
 
         nproc_cpu_per_node = cpu_proc_count // len(cpu_bundles) + 1
         self.cpu_node_map = {}
@@ -75,7 +75,7 @@ class ResourceManager:
 
         self.placement_groups = [ray.util.placement_group([bundle]) for bundle in bundles]
         self.cpu_placement_groups = [ray.util.placement_group([bundle]) for bundle in cpu_bundles]
-        cpu_bundles.sort(key=lambda bundle: bundle["CPU"], reverse=True)
+        cpu_bundles.sort(key=lambda bundle: bundle['CPU'], reverse=True)
         ray.get([pg.ready() for pg in self.placement_groups])
         ray.get([pg.ready() for pg in self.cpu_placement_groups])
 
@@ -101,9 +101,11 @@ class ResourceManager:
                     node_rank = rank // nproc_per_node
                     gpu_rank = rank % nproc_per_node
                     local_device_groups.append(
-                        dict(node_rank=node_rank, gpu_rank=[gpu_rank],
-                             placement_group=self.node2pg[node_rank], ray_address=ray_address)
-                    )
+                        dict(
+                            node_rank=node_rank,
+                            gpu_rank=[gpu_rank],
+                            placement_group=self.node2pg[node_rank],
+                            ray_address=ray_address))
                 for worker in group['workers']:
                     self.device_groups[worker] = local_device_groups
             else:
@@ -112,8 +114,9 @@ class ResourceManager:
                 global_cpu_proc_idx = 0
                 for _ in range(ranks):
                     local_device_groups.append(
-                        dict(placement_group=self.cpu_placement_groups[self.cpu_node_map[global_cpu_proc_idx][0]], ray_address=ray_address)
-                    )
+                        dict(
+                            placement_group=self.cpu_placement_groups[self.cpu_node_map[global_cpu_proc_idx][0]],
+                            ray_address=ray_address))
                     global_cpu_proc_idx += 1
                 for worker in group['workers']:
                     self.device_groups[worker] = local_device_groups

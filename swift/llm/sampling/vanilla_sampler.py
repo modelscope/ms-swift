@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from copy import deepcopy
 
+import json
 import numpy as np
 
 from swift.llm import RequestConfig
@@ -86,7 +86,13 @@ class VanillaSampler(Sampler):
             assert not row.get('videos') or all([isinstance(video, str) and video for video in row['videos']])
             assert not row.get('audios') or all([isinstance(audio, str) and audio for audio in row['audios']])
 
-    @RayHelper.function(group='sampler', dispatch=lambda n, i, data: ([{'messages': data['messages'][i * len(data['messages']) // n : (i + 1) * len(data['messages']) // n]}], {}), collect='flatten')
+    @RayHelper.function(
+        group='sampler',
+        dispatch=lambda n, i, data:
+        ([{
+            'messages': data['messages'][i * len(data['messages']) // n:(i + 1) * len(data['messages']) // n]
+        }], {}),
+        collect='flatten')
     def generate(self, data):
         resp_all = []
         infer_requests = []
@@ -149,8 +155,7 @@ class VanillaSampler(Sampler):
     @RayHelper.function(group='orm', dispatch='slice', collect='flatten')
     def get_orm_score(self, infer_requests, ground_truth):
         return get_reward(
-            self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
-            threshold=0.0)
+            self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests), threshold=0.0)
 
     @RayHelper.function(group='prm', dispatch='slice', collect='flatten')
     def get_prm_score(self, infer_requests, ground_truth):
