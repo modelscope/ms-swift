@@ -256,7 +256,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     bridge = megatron_model_meta.bridge_cls()
-    bridge.load_state_dict(mg_model, bridge.convert_hf2mcore(hf_model.state_dict()))
+    bridge.load_weights(mg_model, args.model_info.model_dir)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
@@ -310,24 +310,14 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
         bridge = megatron_model_meta.bridge_cls()
-        bridge.load_state_dict(hf_model, bridge.convert_mcore2hf(mg_model.state_dict()))
-        if args.test_convert_precision:
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-        del mg_model
-        logger.info('Successfully transferred MG model weights to HF model.')
-        ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
-        logger.info('Saving the model...')
-        save_checkpoint(
-            hf_model,
-            processor,
-            args.output_dir,
-            safe_serialization=args.safe_serialization,
-            model_dirs=[ckpt_dir, args.model_dir],
-            max_shard_size=args.max_shard_size,
-            additional_saved_files=hf_model.model_meta.additional_saved_files)
+        logger.info('Converting weights and saving the model...')
+        bridge.save_weights([mg_model], args.output_dir)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
+        if args.test_convert_precision:
+            args.model = args.output_dir
+            hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     elif args.to_mcore:
         if args.thread_count is None:
             checkpoint_size = sum(get_n_params_grads(mg_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9

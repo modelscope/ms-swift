@@ -47,7 +47,7 @@ class BaseMegatronTrainer(ABC):
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
         self.peft_models = []
-        self.bridge = args.megatron_model_meta.bridge_cls()
+        self._bridge = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -61,6 +61,12 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
+    @property
+    def bridge(self):
+        if self._bridge is None:
+            self._bridge = self.args.megatron_model_meta.bridge_cls()
+        return self._bridge
 
     @contextmanager
     def _get_iters(self, train_dataset, val_dataset):
@@ -257,7 +263,7 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
             if args.load_hf_checkpoint:
-                bridge.load_from_hf_checkpoint(model, args.model_info.model_dir)
+                self.bridge.load_weights(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
             self.peft_models.append(prepare_mcore_model(model))
             return model
@@ -732,7 +738,7 @@ class BaseMegatronTrainer(ABC):
         args = get_args()
         if args.save_hf_checkpoint:
             ouput_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-            bridge.save_hf_checkpoint(self.unwrapped_models, ouput_dir)
+            self.bridge.save_weights(self.unwrapped_models, ouput_dir)
         else:
             with adapter_state_dict_context():
                 return self._origin_save_checkpoint(iteration, *_args, **kwargs)

@@ -125,6 +125,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     layer_types: Optional[List[str]] = None
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
+    # hf saver
+    max_shard_size: str = '5GB'
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:

@@ -1,11 +1,14 @@
-from typing import Dict, Optional
+from functools import partial
+from typing import Dict, Literal, Optional, Union
 
 import torch
+from megatron.core import mpu
 from megatron.training import get_args
 from tqdm import tqdm
 
-from swift.llm import deep_getattr, get_model_tokenizer
+from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier
+from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 
 
 class GPTBridge:
@@ -15,17 +18,82 @@ class GPTBridge:
         self.args = get_args()
         model_info = self.args.model_info
         with torch.device('meta'), disable_safe_ddp_context_use_barrier():
-            self.hf_model, _ = get_model_tokenizer(
+            self.hf_model, self.processor = get_model_tokenizer(
                 model_info.model_dir, model_type=model_info.model_type, return_dummy_model=True)
         self.hf_layers = deep_getattr(self.hf_model, self.lm_layers_prefix)
+        self.tp_size = self.args.tensor_model_parallel_size
+        self.pp_size = self.args.pipeline_model_parallel_size
+        self.etp_size = self.args.expert_tensor_parallel_size
+        self.ep_size = self.args.expert_model_parallel_size
 
-    def _set_state_dict(self, state_dict, res_state_dict, hf_key: str, mg_key: str, reverse: bool, offset: float = 0):
-        src_key, tgt_key = hf_key, mg_key
-        if reverse:
-            src_key, tgt_key = tgt_key, src_key
-        res_state_dict[tgt_key] = state_dict[src_key]
+        self.tp_group = mpu.get_tensor_model_parallel_group()
+        self.pp_group = mpu.get_pipeline_model_parallel_group()
+        self.etp_group = mpu.get_expert_tensor_parallel_group()
+        self.ep_group = mpu.get_expert_model_parallel_group()
+
+        self.tp_rank = mpu.get_tensor_model_parallel_rank()
+        self.pp_rank = mpu.get_pipeline_model_parallel_rank()
+        self.etp_rank = mpu.get_expert_tensor_parallel_rank()
+        self.ep_rank = mpu.get_expert_model_parallel_group()
+
+    @staticmethod
+    def _get_tp_split_dim(mg_key: str) -> Optional[int]:
+        key, suffix = mg_key.rsplit('.', 2)[-2:]
+        if suffix == 'layer_norm_weight':
+            return
+        if key in {'word_embeddings', 'output_layer', 'linear_qkv', 'linear_fc1'}:
+            return 0
+        elif key in {'linear_proj', 'linear_fc2'}:
+            return 1
+
+    def _set_weights(self, mg_param, hf_weight, mg_key: str, offset: int = 0):
+        tp_dim = self._get_tp_split_dim(mg_key)
+        hf_weight = hf_weight.to(mg_param.device)
+        if tp_dim is not None and self.tp_size > 1:
+            if self.tp_rank == 0:
+                splited_weights = list(hf_weight.chunk(self.tp_size, dim=tp_dim))
+            else:
+                splited_weights = None
+            tensor = torch.empty_like(mg_param)
+            torch.distributed.scatter(
+                tensor,
+                splited_weights,
+                src=0,
+                group=self.tp_group,
+            )
+        else:
+            tensor = hf_weight
         if offset:
-            res_state_dict[tgt_key] = res_state_dict[tgt_key] + offset
+            tensor = tensor + offset
+        mg_param.data.copy_(tensor)
+
+    def _get_weights(self, mg_weight, mg_key, offset: int = 0):
+        tp_dim = self._get_tp_split_dim(mg_key)
+        if tp_dim is not None and self.tp_size > 1:
+            gather_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)]
+            torch.distributed.gather(
+                mg_weight,
+                gather_list,
+                dst=0,
+                group=self.tp_group,
+            )
+            tensor = torch.cat(gather_list, dim=tp_dim)
+        else:
+            tensor = mg_weight
+        if offset:
+            tensor = tensor + offset
+        return tensor
+
+    def _set_state_dict(self, mg_module, mg_key: str, hf_state_dict, hf_key: str, reverse: bool, offset: float = 0):
+        mg_param = deep_getattr(mg_module, mg_key)
+        if reverse:
+            hf_state_dict[hf_key] = self._get_weights(mg_param.data, mg_key, offset)
+        else:
+            if mg_param is None:
+                assert self.pp_size > 1, f'mg_module: {mg_module}, mg_key: {mg_key}'
+                return
+            hf_weight = hf_state_dict[hf_key].load()
+            self._set_weights(mg_param, hf_weight, mg_key, offset)
 
     @staticmethod
     def _remove_prefix(state_dict, prefix: str):
@@ -60,52 +128,55 @@ class GPTBridge:
                 return True
         return False
 
-    def _set_attn_state(self, state_dict, hf_prefix: str, mg_prefix: str, layer_idx: int, reverse: bool):
-        src_prefix, tgt_prefix = hf_prefix, mg_prefix
+    def _set_attn_state(self, mg_attn, hf_state_dict, hf_prefix: str, layer_idx: int, reverse: bool):
         if reverse:
-            src_prefix, tgt_prefix = tgt_prefix, src_prefix
-        state_dict = self._remove_prefix(state_dict, src_prefix)
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         hf_attn = self.hf_layers[layer_idx].self_attn
         args = self.args
-        res = {}
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
         if reverse:
-            mg_attn_weight = state_dict['linear_qkv.weight'].reshape((num_query_groups, -1, args.hidden_size))
+            mg_attn_weight = mg_attn.linear_qkv.weight.reshape((num_query_groups, -1, args.hidden_size))
             q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
                 0] // num_query_groups
-            res['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
-            res['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1, args.hidden_size)
-            res['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size)
+            hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
+            hf_state_dict['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1, args.hidden_size)
+            hf_state_dict['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size)
         else:
-            res['linear_qkv.weight'] = torch.cat([
-                state_dict['q_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
-                state_dict['k_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
-                state_dict['v_proj.weight'].reshape((num_query_groups, -1, args.hidden_size)),
+            linear_qkv_weight = torch.cat([
+                hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
+                hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
+                hf_state_dict['v_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
             ],
-                                                 dim=1).reshape((-1, args.hidden_size))
-        self._set_state_dict(state_dict, res, 'o_proj.weight', 'linear_proj.weight', reverse)
+                                          dim=1).reshape((-1, args.hidden_size))
+            self._set_weights(mg_attn.linear_qkv.weight, linear_qkv_weight, 'linear_qkv.weight')
+        self._set_state_dict(mg_attn, 'linear_proj.weight', hf_state_dict, 'o_proj.weight', reverse)
 
         # Copy bias
         if args.add_qkv_bias:
             if reverse:
-                mg_attn_bias = state_dict['linear_qkv.bias'].reshape((num_query_groups, -1))
-                res['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
-                res['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
-                res['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1)
+                mg_attn_bias = mg_attn.linear_qkv.bias.reshape((num_query_groups, -1))
+                hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
+                hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
+                hf_state_dict['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1)
             else:
-                res['linear_qkv.bias'] = torch.cat([
-                    state_dict['q_proj.bias'].reshape((num_query_groups, -1)),
-                    state_dict['k_proj.bias'].reshape((num_query_groups, -1)),
-                    state_dict['v_proj.bias'].reshape((num_query_groups, -1)),
+                linear_qkv_bias = torch.cat([
+                    hf_state_dict['q_proj.bias'].load().reshape((num_query_groups, -1)),
+                    hf_state_dict['k_proj.bias'].load().reshape((num_query_groups, -1)),
+                    hf_state_dict['v_proj.bias'].load().reshape((num_query_groups, -1)),
                 ],
-                                                   dim=1).reshape(-1)
+                                            dim=1).reshape(-1)
+                self._set_weights(mg_attn.linear_qkv.bias, linear_qkv_bias, 'linear_qkv.bias')
+
         if args.qk_layernorm:
             hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
             hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
             self._set_state_dict(state_dict, res, hf_q_norm_key, 'q_layernorm.weight', reverse)
             self._set_state_dict(state_dict, res, hf_k_norm_key, 'k_layernorm.weight', reverse)
-
-        return self._add_prefix(res, tgt_prefix)
+        if reverse:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
 
     def _set_moe_state(self, state_dict, hf_prefix: str, mg_prefix: str, layer_idx: int, reverse: bool):
         src_prefix, tgt_prefix = hf_prefix, mg_prefix
@@ -135,53 +206,57 @@ class GPTBridge:
 
     def _set_mlp_state(
         self,
-        state_dict,
+        mg_mlp,
+        hf_state_dict,
         hf_prefix: str,
-        mg_prefix: str,
         layer_idx: int,
         reverse: bool,
         group_idx: Optional[int] = None,
     ):
-        src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
-            src_prefix, tgt_prefix = tgt_prefix, src_prefix
-        state_dict = self._remove_prefix(state_dict, src_prefix)
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         hf_mlp = self.hf_layers[layer_idx].mlp
         hf_grouped = False
-        if group_idx is not None and not hasattr(hf_mlp.experts, '__len__'):
-            hf_grouped = True
-        res = {}
-        # Determines the keys for fc1 and fc2 in megatron
-        if group_idx is None:
-            fc1_key = 'linear_fc1.weight'
-            fc2_key = 'linear_fc2.weight'
-        else:
+        if group_idx is not None:
+            if not hasattr(hf_mlp.experts, '__len__'):
+                hf_grouped = True
             fc1_key = f'linear_fc1.weight{group_idx}'
             fc2_key = f'linear_fc2.weight{group_idx}'
+        else:
+            fc1_key = 'linear_fc1.weight'
+            fc2_key = 'linear_fc2.weight'
         if hf_grouped:
-            res[fc1_key] = state_dict['gate_up_proj'][group_idx].t()
-            res[fc2_key] = state_dict['down_proj'][group_idx].t()
+            res[fc1_key] = hf_state_dict['gate_up_proj'][group_idx].t()
+            res[fc2_key] = hf_state_dict['down_proj'][group_idx].t()
         else:
             if hasattr(hf_mlp, 'gate_up_proj'):
-                self._set_state_dict(state_dict, res, 'gate_up_proj.weight', fc1_key, reverse)
+                self._set_state_dict(hf_state_dict, res, 'gate_up_proj.weight', fc1_key, reverse)
             else:
                 if reverse:
-                    ffn_hidden_size = state_dict[fc1_key].shape[0] // 2
-                    res['gate_proj.weight'] = state_dict[fc1_key][:ffn_hidden_size]
-                    res['up_proj.weight'] = state_dict[fc1_key][ffn_hidden_size:]
+                    ffn_hidden_size = hf_mlp.gate_proj.weight.shape[0]
+                    fc1_weight = deep_getattr(mg_mlp, fc1_key)
+                    hf_state_dict['gate_proj.weight'] = fc1_weight[:ffn_hidden_size]
+                    hf_state_dict['up_proj.weight'] = fc1_weight[ffn_hidden_size:]
                 else:
-                    res[fc1_key] = torch.cat([
-                        state_dict['gate_proj.weight'],
-                        state_dict['up_proj.weight'],
-                    ], dim=0)
-            self._set_state_dict(state_dict, res, 'down_proj.weight', fc2_key, reverse)
-        return self._add_prefix(res, tgt_prefix)
+                    fc1_weight = torch.cat([
+                        hf_state_dict['gate_proj.weight'].load(),
+                        hf_state_dict['up_proj.weight'].load(),
+                    ],
+                                           dim=0)
+                    self._set_weights(deep_getattr(mg_mlp, fc1_key), fc1_weight, 'linear_qkv.weight')
+            self._set_state_dict(mg_mlp, fc2_key, hf_state_dict, 'down_proj.weight', reverse)
+        if reverse:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
 
     def _set_mla_attn_state(
         self,
+        mg_model,
+        mg_prefix: str,
         state_dict,
         hf_prefix: str,
-        mg_prefix: str,
         layer_idx: int,
         reverse: bool,
     ):
@@ -203,82 +278,91 @@ class GPTBridge:
                                  reverse)
         return self._add_prefix(res, tgt_prefix)
 
-    def _set_layer_attn(self, state_dict, layer_idx: int, reverse: bool):
-        res = {}
+    def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, reverse: bool):
+        mg_attn = mg_layer.self_attention
         if self.args.multi_latent_attention:
-            res.update(self._set_mla_attn_state(state_dict, 'self_attn.', 'self_attention.', layer_idx, reverse))
-            self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
+            hf_state_dict.update(self._set_mla_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, reverse))
+            self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', reverse)
         else:
-            res.update(self._set_attn_state(state_dict, 'self_attn.', 'self_attention.', layer_idx, reverse))
-            self._set_state_dict(state_dict, res, 'input_layernorm.weight',
-                                 'self_attention.linear_qkv.layer_norm_weight', reverse)
-        return res
+            hf_state_dict.update(self._set_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, reverse))
+            self._set_state_dict(mg_layer, 'self_attention.linear_qkv.layer_norm_weight', hf_state_dict,
+                                 'input_layernorm.weight', reverse)
+        return hf_state_dict
 
-    def _set_layer_mlp(self, state_dict, layer_idx: int, reverse: bool):
+    def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, reverse: bool):
         hf_mlp = self.hf_layers[layer_idx].mlp
-        res = {}
         is_moe = self._is_moe(hf_mlp.state_dict())
+        mg_mlp = mg_layer.mlp
         if is_moe:
-            res.update(self._set_moe_state(state_dict, 'mlp.', 'mlp.', layer_idx, reverse))
-            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'pre_mlp_layernorm.weight',
+            hf_state_dict.update(self._set_moe_state(mg_mlp, hf_state_dict, 'mlp.', layer_idx, reverse))
+            self._set_state_dict(mg_layer, 'pre_mlp_layernorm.weight', hf_state_dict, 'post_attention_layernorm.weight',
                                  reverse)
         else:
-            res.update(self._set_mlp_state(state_dict, 'mlp.', 'mlp.', layer_idx, reverse))
-            self._set_state_dict(state_dict, res, 'post_attention_layernorm.weight', 'mlp.linear_fc1.layer_norm_weight',
-                                 reverse)
-        return res
+            hf_state_dict.update(self._set_mlp_state(mg_mlp, hf_state_dict, 'mlp.', layer_idx, reverse))
+            self._set_state_dict(mg_layer, 'mlp.linear_fc1.layer_norm_weight', hf_state_dict,
+                                 'post_attention_layernorm.weight', reverse)
+        return hf_state_dict
 
-    def _set_layer_state(self, state_dict, layer_idx: int, hf_prefix: str, mg_prefix: str, reverse: bool):
+    def _set_layer_state(self, mg_layer, hf_state_dict, hf_prefix: str, layer_idx: int, reverse: bool):
         hf_prefix = f'{hf_prefix}{layer_idx}.'
-        mg_prefix = f'{mg_prefix}{layer_idx}.'
-        src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
-            src_prefix, tgt_prefix = tgt_prefix, src_prefix
-        state_dict = self._remove_prefix(state_dict, src_prefix)
-        res = self._set_layer_attn(state_dict, layer_idx, reverse)
-        res.update(self._set_layer_mlp(state_dict, layer_idx, reverse))
-        return self._add_prefix(res, tgt_prefix)
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        hf_state_dict.update(self._set_layer_attn(mg_layer, hf_state_dict, layer_idx, reverse))
+        hf_state_dict.update(self._set_layer_mlp(mg_layer, hf_state_dict, layer_idx, reverse))
+        if reverse:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
 
-    def _convert(self, state_dict, hf_prefix: str, mg_prefix: str, reverse: bool):
+    def _convert(self, mg_model, hf_state_dict, hf_prefix: str, reverse: bool):
         """reverse: False: hf -> mg; True: mg -> hf"""
-        src_prefix, tgt_prefix = hf_prefix, mg_prefix
         if reverse:
-            src_prefix, tgt_prefix = tgt_prefix, src_prefix
-        state_dict = self._remove_prefix(state_dict, src_prefix)
-        res = {}
-        self._set_state_dict(state_dict, res, 'model.embed_tokens.weight', 'embedding.word_embeddings.weight', reverse)
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        self._set_state_dict(mg_model, 'embedding.word_embeddings.weight', hf_state_dict, 'model.embed_tokens.weight',
+                             reverse)
         if self.args.untie_embeddings_and_output_weights:
             hf_lm_head_key = 'lm_head.weight'
             if reverse and self.args.task_type == 'seq_cls':
                 hf_lm_head_key = 'score.weight'
-            self._set_state_dict(state_dict, res, hf_lm_head_key, 'output_layer.weight', reverse)
-        self._set_state_dict(state_dict, res, 'model.norm.weight', 'decoder.final_layernorm.weight', reverse)
+            self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse)
+        self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight', reverse)
+        if reverse:
+            yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+        else:
+            yield
+
         for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
-            res.update(self._set_layer_state(state_dict, layer_idx, 'model.layers.', 'decoder.layers.', reverse))
-        return self._add_prefix(res, tgt_prefix)
+            mg_layer = mg_model.decoder.layers[layer_idx]
+            hf_state_dict = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
+            if reverse:
+                yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+            else:
+                yield
 
-    def convert_hf2mcore(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        return self._convert(state_dict, '', '', False)
+    def load_weights(self, mg_model, hf_model_dir: str) -> None:
+        with SafetensorLazyLoader(hf_model_dir) as loader:
+            state_dict = loader.get_state_dict()
+            list(self._convert(mg_model, state_dict, '', False))
 
-    def convert_mcore2hf(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        return self._convert(state_dict, '', '', True)
+    def export_weights(self, mg_models):
+        state_dict = {}
+        for mg_model in mg_models:
+            yield from self._convert(mg_model, state_dict, '', True)
 
-    def load_state_dict(self, model, state_dict) -> None:
-        """The model can be either hf_model or mg_model"""
-        incompatible_keys = model.load_state_dict(state_dict, strict=False)
-        missing_keys = [k for k in incompatible_keys.missing_keys if not k.endswith('._extra_state')]
-        assert len(incompatible_keys.unexpected_keys) == 0, f'unexpected_keys: {incompatible_keys.unexpected_keys}'
-        assert len(missing_keys) == 0, f'missing_keys: {missing_keys}'
-
-    def load_from_hf_checkpoint(self, mg_model, hf_model_dir: str) -> None:
-        """按照mg_model的模型结构, 加载需要的参数，并进行scatter"""
-        print()
-
-    def get_hf_state_dict(self, mg_models) -> Dict[str, torch.Tensor]:
-        """获取完整的hf state_dict"""
-        print()
-
-    def save_hf_checkpoint(self, mg_models, output_dir: str) -> None:
-        """保存mg_model的hf格式checkpoint"""
-        state_dict = get_hf_state_dict(mg_models)
-        # rank0 save()
+    def save_weights(self, mg_models, output_dir: str) -> None:
+        """Save the mg_model checkpoint in HF format"""
+        saver = StreamingSafetensorSaver(save_dir=output_dir, max_shard_size=self.args.max_shard_size)
+        for k, v in self.export_weights(mg_models):
+            saver.add_tensor(k, v)
+        saver.finalize()
+        # TODO: new_special_tokens
+        self.hf_model.config.save_pretrained(output_dir)
+        save_checkpoint(
+            None,
+            self.processor,
+            output_dir,
+            model_dirs=[self.hf_model.model_info.model_dir],
+            additional_saved_files=self.hf_model.model_meta.additional_saved_files)

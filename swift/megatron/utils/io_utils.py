@@ -1,0 +1,153 @@
+import os
+from functools import partial
+
+import json
+from safetensors.torch import save_file, safe_open
+from swift.utils import is_master
+
+class LazyTensor:
+
+    def __init__(self, tensor=None, loader=None):
+        """You need to provide a tensor or loader"""
+        self.tensor = tensor
+        self.loader = loader
+
+    def load(self):
+        if self.tensor is None:
+            return self.loader()
+        return self.tensor
+
+
+class SafetensorLazyLoader:
+
+    def __init__(self, hf_model_dir: str):
+        self.hf_model_dir = hf_model_dir
+        self._weight_map = {}
+        self._file_handles = {}
+        self._load_index()
+
+    def _open_file(self, filename: str):
+        """Open a safetensors file if not already open."""
+        if filename not in self._file_handles:
+            file_path = os.path.join(self.hf_model_dir, filename)
+            self._file_handles[filename] = safe_open(file_path, framework='pt')
+        return self._file_handles[filename]
+
+    def _load_index(self):
+        """Load the model index file to get weight map."""
+        index_path = os.path.join(self.hf_model_dir, 'model.safetensors.index.json')
+
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                self._index_file = json.load(f)
+                self._weight_map = self._index_file.get('weight_map', {})
+        else:
+            # Single file model
+            safetensors_file = os.path.join(self.hf_model_dir, 'model.safetensors')
+            if os.path.exists(safetensors_file):
+                with safe_open(safetensors_file, framework='pt') as f:
+                    for key in f.keys():
+                        self._weight_map[key] = 'model.safetensors'
+
+    def get_state_dict(self):
+        res = {}
+        for k in self._weight_map.keys():
+            res[k] = LazyTensor(loader=partial(self._load_tensor, key=k))
+        return res
+
+    def _load_tensor(self, key):
+        filename = self._weight_map[key]
+        file_handle = self._open_file(filename)
+        return file_handle.get_tensor(key)
+
+    def close(self):
+        self._file_handles.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+
+
+class StreamingSafetensorSaver:
+    def __init__(self, save_dir, max_shard_size='5GB') -> None:
+        if not is_master():
+            return
+        # max_shard_size: GiB
+        self.save_dir = save_dir
+        os.makedirs(save_dir, exist_ok=True)
+        if isinstance(max_shard_size, str):
+            if max_shard_size.endswith('GB'):
+                max_shard_size = int(max_shard_size[:-2])
+            else:
+                raise ValueError(f"Invalid max_shard_size: {max_shard_size}")
+        self.max_shard_size = max_shard_size * 1000 ** 3
+        self.current_shard = {}
+        self.current_shard_size = 0
+        self.total_size = 0
+        self.shard_index = 1
+        self.weight_map = {}
+
+    def add_tensor(self, name, tensor):
+        if not is_master():
+            return
+        tensor_size = tensor.numel() * tensor.element_size()
+        if self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard:
+            self._save_current_shard()
+
+        self.current_shard[name] = tensor.cpu().contiguous()
+        self.current_shard_size += tensor_size
+
+    def _save_current_shard(self, shard_filename: str = None):
+        if not self.current_shard:
+            return
+        if shard_filename is None:
+            shard_filename = f'model-{self.shard_index:05d}-of-?????.safetensors'
+        shard_path = os.path.join(self.save_dir, shard_filename)
+        save_file(self.current_shard, str(shard_path))
+        for key in self.current_shard.keys():
+            self.weight_map[key] = shard_filename
+
+        self.total_size += self.current_shard_size
+        self.current_shard = {}
+        self.current_shard_size = 0
+        self.shard_index += 1
+
+    def finalize(self):
+        if not is_master():
+            return
+        if self.current_shard:
+            self._save_current_shard()
+        total_shards = self.shard_index - 1
+        # rename `?????`
+        for i in range(1, total_shards + 1):
+            old_path = os.path.join(self.save_dir, f"model-{i:05d}-of-?????.safetensors")
+            if total_shards == 1:
+                new_name = f'model.safetensors'
+            else:
+                new_name = f"model-{i:05d}-of-{total_shards:05d}.safetensors"
+            new_path = os.path.join(self.save_dir, new_name)
+            if os.path.exists(old_path):
+                os.rename(old_path, new_path)
+
+        updated_weight_map = {}
+        for key, filename in self.weight_map.items():
+            new_filename = filename.replace('?????', f'{total_shards:05d}')
+            updated_weight_map[key] = new_filename
+
+        self._save_index(updated_weight_map)
+
+    def _save_index(self, weight_map):
+        index = {
+            "metadata": {
+                "total_size": self.total_size
+            },
+            "weight_map": weight_map
+        }
+
+        index_path = os.path.join(self.save_dir, "model.safetensors.index.json")
+        with open(index_path, 'w') as f:
+            json.dump(index, f, indent=2)
