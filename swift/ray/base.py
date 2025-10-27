@@ -191,8 +191,7 @@ class RayHelper:
             def dispatch_func(arg, n):
                 if isinstance(arg, list):
                     length = len(arg)
-                    assert length >= n
-                    slice_cnt = length // n
+                    slice_cnt = max(length // n, 1)
                     output = []
                     for i in range(n):
                         if i < n - 1:
@@ -208,8 +207,9 @@ class RayHelper:
             for i in range(length):
                 sliced_args = tuple(arg[i] for arg in args)
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
-                remote_call = getattr(workers[i], method_name)
-                result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
+                    remote_call = getattr(workers[i], method_name)
+                    result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
             return result
         elif isinstance(dispatch, Callable):
             # dispatch is Callable

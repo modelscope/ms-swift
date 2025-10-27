@@ -197,7 +197,7 @@ class VanillaSampler(Sampler):
             choices.append(ground_truth)
             choices = np.array(choices)
 
-            if self.orm_model is None and self.prm_model is None:
+            if self.args.orm_model is None and self.args.prm_model is None:
                 positives = choices[:-1]
                 for positive in positives:
                     _resps = deepcopy(resps)
@@ -209,8 +209,8 @@ class VanillaSampler(Sampler):
                 score = np.array(prm_score) + np.array(orm_score * 10)
                 sorted_indices = np.argsort(score)[::-1]
                 pos_indexes = sorted_indices[0:self.args.n_best_to_keep]
-                pos_indexes = [i for i in pos_indexes if _mask[i]]
                 neg_index = sorted_indices[-1]
+                pos_indexes = [int(i) for i in pos_indexes if _mask[i] and i != neg_index]
                 logger.info(
                     f'orm:{orm_score}, prm:{prm_score}, positive index: {pos_indexes}, negative index: {neg_index}')
                 if self.args.easy_query_threshold is not None and sum([score > 0 for score in orm_score]) - 1 >= int(
