@@ -1453,6 +1453,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             while True:
                 try:
                     # Attempt to encode the current sample.
+                    remove_response(current_data['messages'])
                     template.encode(current_data)
                     # If successful, store the result and update the last valid data.
                     inputs[i] = current_data
