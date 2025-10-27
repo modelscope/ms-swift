@@ -105,6 +105,7 @@ class LLMModelType:
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
+    minimax_m2 = 'minimax_m2'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'

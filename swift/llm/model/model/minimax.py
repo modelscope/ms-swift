@@ -158,3 +158,14 @@ register_model(
         TemplateType.minimax_m1,
         get_model_tokenizer_minimax_text,
         architectures=['MiniMaxM1ForCausalLM']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.minimax_m2, [
+            ModelGroup([
+                Model('MiniMax/MiniMax-M2', 'MiniMaxAI/MiniMax-M2'),
+            ]),
+        ],
+        TemplateType.minimax_m2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['MiniMaxM2ForCausalLM']))
