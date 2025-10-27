@@ -2,6 +2,7 @@ import functools
 import os
 from typing import Callable, TypeVar, List, Dict, Literal, Union, Any, Optional
 import inspect
+import numpy as np
 from swift.llm.argument.base_args.ray_args import RayArguments
 from swift.ray.resource_manager import ResourceManager
 from swift.utils import find_free_port
@@ -102,17 +103,26 @@ class RayHelper:
         return decorator
     
     @staticmethod
-    def collect_func(method: Union[Literal['none', 'flatten'], Callable]):
+    def collect_func(method: Union[Literal['none', 'flatten'], Callable], result):
+        if isinstance(result[0], tuple):
+            output = []
+            for i in range(len(result[0])):
+                _single_result = [r[i] for r in result]
+                output.append(RayHelper.collect_func(method, _single_result))
+            return output
         if method == 'none':
-            return lambda x: x
+            return result
         elif method == 'flatten':
-            return lambda x: [item for sublist in x for item in sublist]
+            flatten = [item for sublist in result for item in sublist]
+            if isinstance(result[0], np.ndarray):
+                return np.array(flatten)
+            return type(result[0])(flatten)
         elif isinstance(method, Callable):
             # Callable
-            return method
+            return method(result)
         else:
             raise ValueError(f'Unsupported collect method: {method}')
-
+    
     @staticmethod
     def function(group: str,
                  dispatch: Union[Literal['slice', 'all'], Callable] = 'all',
@@ -157,7 +167,7 @@ class RayHelper:
                     if RayHelper.is_called_from_init():
                         return None
                     result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
-                    return RayHelper.collect_func(collect)(result)
+                    return RayHelper.collect_func(collect, result)
             return wrapper
 
         return decorator
@@ -177,6 +187,24 @@ class RayHelper:
             return [getattr(worker, method_name).remote(*args, **kwargs) for worker in workers]
         elif dispatch == 'slice':
             result = []
+
+            def dispatch_func(arg, n):
+                if isinstance(arg, list):
+                    length = len(arg)
+                    assert length >= n
+                    slice_cnt = length // n
+                    output = []
+                    for i in range(n):
+                        if i < n - 1:
+                            output.append(arg[slice_cnt * i: slice_cnt * (i+1)])
+                        else:
+                            output.append(arg[slice_cnt * i:])
+                    return output
+                else:
+                    return [arg] * n
+
+            args = [dispatch_func(arg, length) for arg in args]
+            kwargs = {k: dispatch_func(v, length) for k, v in kwargs.items()}
             for i in range(length):
                 sliced_args = tuple(arg[i] for arg in args)
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}

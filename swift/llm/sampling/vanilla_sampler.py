@@ -146,13 +146,13 @@ class VanillaSampler(Sampler):
             _cur += 1
         return resp_all
 
-    @RayHelper.function(group='orm')
+    @RayHelper.function(group='orm', dispatch='slice', collect='flatten')
     def get_orm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests),
             threshold=0.0)
 
-    @RayHelper.function(group='prm')
+    @RayHelper.function(group='prm', dispatch='slice', collect='flatten')
     def get_prm_score(self, infer_requests, ground_truth):
         return get_reward(
             self.prm_model,
