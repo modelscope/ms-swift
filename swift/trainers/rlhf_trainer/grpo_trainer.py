@@ -1130,6 +1130,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 break
 
             inputs = next(self.dynamic_resample_iterator)
+            if self.template.truncation_strategy == 'raise':
+                inputs = self.resample_encode_failed_inputs(inputs)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func = self._score_completions(inputs)
