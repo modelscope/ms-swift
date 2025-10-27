@@ -691,8 +691,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - output_dir: The output directory. Defaults to `sample_output`.
 - output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
 - override_exist_file: Whether to overwrite if `output_file` already exists.
-- num_sampling_per_gpu_batch_size: The batch size for each sampling operation.
-- num_sampling_per_gpu_batches: The total number of batches to sample.
+- num_sampling_batch_size: The batch size for each sampling operation.
+- num_sampling_batches: The total number of batches to sample.
 - n_best_to_keep: The number of best sequences to return.
 - data_range: The partition of the dataset being processed for this sampling operation. The format should be `2 3`, meaning the dataset is divided into 3 parts, and this instance is processing the 3rd partition (this implies that typically three `swift sample` processes are running in parallel).
 - temperature: Defaults to `1.0`.

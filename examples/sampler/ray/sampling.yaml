@@ -13,7 +13,7 @@ max_new_tokens: 768
 orm_model: math
 prm_model: Qwen/Qwen2.5-Math-PRM-7B
 override_exist_file: true
-num_sampling_per_gpu_batch_size: 4
+num_sampling_batch_size: 4
 top_p: 1.0
 temperature: 1.0
 prm_threshold: 0.8
