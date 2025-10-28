@@ -575,7 +575,7 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md).
 - kl_in_reward: Controls where the KL regularization is applied. `false` (default): KL is added as a separate term in the loss. `true`: KL is subtracted directly from the reward (integrated into the reward).
 - scale_rewards: Reward scaling strategy. Default is `group` (scale by standard deviation within each group). `batch` scales across the entire batch; `none` disables scaling. In ms-swift<3.10, this was a boolean: `true` means `group`, `false` means `none`.
-- sync_ref_model: Whether to synchronize the reference model. Default is False。
+- sync_ref_model: Whether to synchronize the reference model. Default is False.
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
