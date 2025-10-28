@@ -182,6 +182,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
     kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
+    args = get_args()
     if 'position_ids' not in kwargs:
         kwargs['position_ids'] = position_ids
     with torch.inference_mode(), _model_cpu_forward_context(
@@ -193,7 +194,6 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
             mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
     if hf_model is None:
         return
-    args = get_args()
     if args.task_type == 'seq_cls':
         mg_logits = mg_logits[:, -1]
         mean_diff = (mg_logits - hf_logits).abs().mean().item()

@@ -46,7 +46,7 @@ class GPTBridge:
         elif key in {'linear_proj', 'linear_fc2'}:
             return 1
 
-    def _set_weights(self, mg_param, hf_weight, mg_key: str, offset: int = 0):
+    def _set_weights(self, mg_param, hf_weight, mg_key: str, offset: int = 0, mg_slices=()):
         tp_dim = self._get_tp_split_dim(mg_key)
         hf_weight = hf_weight.to(mg_param.device)
         if tp_dim is not None and self.tp_size > 1:
@@ -54,7 +54,7 @@ class GPTBridge:
                 splited_weights = [t.contiguous() for t in hf_weight.chunk(self.tp_size, dim=tp_dim)]
             else:
                 splited_weights = None
-            tensor = torch.empty_like(mg_param)
+            tensor = torch.empty_like(mg_param.data[mg_slices])
             torch.distributed.scatter(
                 tensor,
                 splited_weights,
@@ -65,7 +65,7 @@ class GPTBridge:
             tensor = hf_weight
         if offset:
             tensor = tensor + offset
-        mg_param.data.copy_(tensor)
+        mg_param.data[mg_slices].copy_(tensor)
 
     def _get_weights(self, mg_weight, mg_key, offset: int = 0):
         tp_dim = self._get_tp_split_dim(mg_key)
@@ -245,7 +245,14 @@ class GPTBridge:
                         hf_state_dict['up_proj.weight'].load(),
                     ],
                                            dim=0)
-                    self._set_weights(deep_getattr(mg_mlp, fc1_key), fc1_weight, 'linear_qkv.weight')
+                    linear_fc1_weight = deep_getattr(mg_mlp, fc1_key)
+                    gate_slices = (slice(None, linear_fc1_weight.shape[0] // 2), )
+                    up_slices = (slice(linear_fc1_weight.shape[0] // 2, None), )
+                    self._set_weights(
+                        linear_fc1_weight, hf_state_dict['gate_proj.weight'].load(), fc1_key, mg_slices=gate_slices)
+                    self._set_weights(
+                        linear_fc1_weight, hf_state_dict['up_proj.weight'].load(), fc1_key, mg_slices=up_slices)
+
             self._set_state_dict(mg_mlp, fc2_key, hf_state_dict, 'down_proj.weight', reverse)
         if reverse:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)

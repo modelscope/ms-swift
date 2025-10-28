@@ -2,6 +2,7 @@
 from typing import List, Optional, Union
 
 from megatron.training import initialize_megatron
+from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 
 from swift.llm import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_master
@@ -44,7 +45,7 @@ class MegatronExport(SwiftPipeline):
             with disable_safe_ddp_context_use_barrier():
                 hf_model = prepare_model_template(args, device_map='cpu')[0] if is_master() else None
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-        args.save_args()
+        args.save_args(args.save)
         logger.info('Saving the model...')
         mg_save_checkpoint(1, [mg_model], None, None, 0)
         logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
