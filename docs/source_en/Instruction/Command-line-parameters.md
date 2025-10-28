@@ -144,6 +144,35 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - bnb_4bit_use_double_quant: Whether to use double quantization. Default is `True`.
 - bnb_4bit_quant_storage: Data type used to store quantized weights. Default is `None`.
 
+### RAY Arguments
+
+- use_ray: Boolean type. Whether to use ray, defaults to `False`.
+- ray_exp_name: Ray experiment name. This field will be used as the prefix for cluster and worker names, can be empty.
+- device_groups: String (jsonstring) type. When using ray, this field must be configured. For details, please refer to the [ray documentation](Ray.md).
+
+### YAML Arguments
+
+- config: You can use config instead of command-line arguments, for example:
+
+```shell
+swift sft --config demo.yaml
+```
+
+The content of demo.yaml consists of other command-line configurations:
+
+```yaml
+# Model args
+model: Qwen/Qwen2.5-7B-Instruct
+dataset: swift/self-cognition
+...
+
+# Train args
+output_dir: xxx/xxx
+gradient_checkpointing: true
+
+...
+```
+
 ## Atomic Arguments
 
 ### Seq2SeqTrainer Arguments
@@ -698,13 +727,13 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 - prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
 - orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
-- sampler_type: The type of sampling. Currently supports `sample` (using `do_sample` method). Future support will include `mcts` and `dvts`.
+- sampler_type: The type of sampling. Currently supports `sample` and `distill`.
 - sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
 - output_dir: The output directory. Defaults to `sample_output`.
 - output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
 - override_exist_file: Whether to overwrite if `output_file` already exists.
-- num_sampling_per_gpu_batch_size: The batch size for each sampling operation.
-- num_sampling_per_gpu_batches: The total number of batches to sample.
+- num_sampling_batch_size: The batch size for each sampling operation.
+- num_sampling_batches: The total number of batches to sample.
 - n_best_to_keep: The number of best sequences to return.
 - data_range: The partition of the dataset being processed for this sampling operation. The format should be `2 3`, meaning the dataset is divided into 3 parts, and this instance is processing the 3rd partition (this implies that typically three `swift sample` processes are running in parallel).
 - temperature: Defaults to `1.0`.
@@ -714,15 +743,6 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - num_return_sequences: The number of original sequences returned by sampling. Defaults to `64`. This parameter is effective for `sample` sampling.
 - cache_files: To avoid loading both `prm` and `generator` simultaneously and causing GPU memory OOM, sampling can be done in two steps. In the first step, set `prm` and `orm` to `None`, and all results will be output to a file. In the second run, set `sampler_engine` to `no` and pass `--cache_files` with the output file from the first sampling. This will use the results from the first run for `prm` and `orm` evaluation and output the final results.
   - Note: When using `cache_files`, the `--dataset` still needs to be provided because the ID for `cache_files` is calculated using the MD5 of the original data. Both pieces of information need to be used together.
-
-#### MCTS
-- rollout_depth: The maximum depth during rollouts, default is `5`.
-- rollout_start_depth: The depth at which rollouts begin; nodes below this depth will only undergo expand operations, default is `3`.
-- max_iterations: The maximum number of iterations for MCTS, default is `100`.
-- process_reward_rate: The proportion of process reward used in calculating value during selection, default is `0.0`, meaning PRM is not used.
-- exploration_rate: A parameter in the UCT algorithm that balances exploration; a higher value gives more weight to nodes with fewer explorations, default is `0.5`.
-- api_key: Required when using the client as an inference engine, default is `EMPTY`.
-- base_url: Required when using the client as an inference engine, default is 'https://dashscope.aliyuncs.com/compatible-mode/v1'.
 
 ## Specific Model Arguments
 

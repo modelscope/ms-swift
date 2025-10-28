@@ -121,9 +121,11 @@ if __name__ == '__main__':
     all_requires = []
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
+    extra_requires['ray'], _ = parse_requirements('requirements/ray.txt')
     all_requires.extend(install_requires)
     all_requires.extend(extra_requires['eval'])
     all_requires.extend(extra_requires['swanlab'])
+    all_requires.extend(extra_requires['ray'])
     extra_requires['all'] = all_requires
 
     setup(
