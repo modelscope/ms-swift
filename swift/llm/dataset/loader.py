@@ -145,20 +145,18 @@ class DatasetSyntax:
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """
-        解析命令行式数据集字符串为 `DatasetSyntax` 对象。
+        函数功能：
+            解析命令行式数据集字符串为 `DatasetSyntax` 对象。
 
-        参数
-        ----
-        - dataset: 原始描述字符串，形如 `hf::id:path#sample` 或本地路径。
+        参数：
+            - dataset: 原始描述字符串，形如 `hf::id:path#sample` 或本地路径。
 
-        返回
-        ----
-        - DatasetSyntax: 解析后的结构化对象。
+        返回值：
+            - DatasetSyntax: 解析后的结构化对象。
 
-        示例
-        ----
-        >>> DatasetSyntax.parse('hf::swift/alpaca:default#100')
-        DatasetSyntax(...)
+        使用示例：
+            >>> DatasetSyntax.parse('hf::swift/alpaca:default#100')
+            DatasetSyntax(...)
         """
         # hf/ms::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample  # 语法提示
         if os.path.exists(dataset):  # 若本地存在该路径（文件或目录）
@@ -371,22 +369,23 @@ class DatasetLoader:
         remove_unused_columns: bool = True,
     ) -> HfDataset:
         """
-        从本地文件路径加载数据集，并调用注册预处理器进行标准化处理。
+        函数功能：
+            从本地文件路径加载数据集，并调用注册预处理器进行标准化处理。
 
-        参数
-        ----
-        - dataset_path: 本地文件路径（csv/json/jsonl/txt 等）。
-        - dataset_meta: 数据集注册信息，内部包含 `preprocess_func`。
-        - num_proc: 预处理多进程数量。
-        - load_from_cache_file: 是否使用缓存文件。
-        - strict: 预处理遇到异常是否抛出。
-        - streaming: 是否以流式方式加载。
-        - columns: 可选的列重命名映射。
-        - remove_unused_columns: 是否移除未使用列。
+        参数：
+            - dataset_path: 本地文件路径（csv/json/jsonl/txt 等）。
+            - dataset_meta: 数据集注册信息，内部包含 `preprocess_func`。
+            - num_proc: 预处理多进程数量。
+            - load_from_cache_file: 是否使用缓存文件。
+            - strict: 预处理遇到异常是否抛出。
+            - streaming: 是否以流式方式加载。
+            - columns: 可选的列重命名映射。
+            - remove_unused_columns: 是否移除未使用列。
 
-        返回
-        ----
-        - HfDataset: 标准化后的 HF 数据集。
+        返回值：
+            - HfDataset: 标准化后的 HF 数据集。
+        注意：
+            - 虽然当前函数支持.txt格式，但是在hf_load_dataset中并不支持.txt，可能是需要文件内容符合某种特定格式（比如json）。
         """
         ext = os.path.splitext(dataset_path)[1].lstrip('.')  # 提取文件扩展名
         file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext  # 兼容 jsonl/txt 到 HF 类型

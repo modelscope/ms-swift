@@ -536,19 +536,9 @@ class StdTemplateInputs:
 
     def __post_init__(self):
         """
-        数据类初始化后的后处理方法。
-        
-        该方法在 dataclass 的 __init__ 方法执行后自动调用，用于初始化索引计数器
-        和标准化多模态数据字段的格式。
-        
         功能：
-            初始化索引计数器，标准化多模态字段格式
-        
-        参数：
-            无（由 dataclass 自动调用）
-        
-        返回值：
-            无
+        数据类初始化后的后处理方法。
+        该方法在 dataclass 的 __init__ 方法执行后自动调用，用于初始化索引计数器和标准化多模态数据字段的格式。
         
         副作用：
             - 初始化 image_idx, audio_idx, video_idx, ref_idx, bbox_idx 为 0
@@ -595,18 +585,11 @@ class StdTemplateInputs:
         if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
             self.rejected_images = [self.rejected_images]
 
-    def to_history(self):
+    def to_history(self) -> Optional[List]:
         """
-        将消息列表转换为历史对话格式。
-        
-        该方法将标准消息格式转换为历史对话格式（通常是 query-response 对的列表）。
-        
         功能：
-            将消息列表转换为历史对话格式
-        
-        参数：
-            无
-        
+        该方法将标准消息格式转换为历史对话格式（通常是 query-response 对的列表）。
+
         返回值：
             Optional[List]: 历史对话列表，如果消息为空则返回 None
                 格式通常为：[[query1, response1], [query2, response2], ...]
@@ -635,18 +618,15 @@ class StdTemplateInputs:
         # 调用工具函数将消息转换为历史对话格式
         return messages_to_history(self.messages)
 
+    # NOTE: @property 装饰器的作用是，
+    # @property 是 Python 的内置装饰器，用于将类的方法伪装成只读属性，从而可以通过“属性访问”的方式调用方法，而无需加括号 ()。
+    # 它常用于封装属性、提供安全的访问方式。
     @property
-    def is_multimodal(self):
+    def is_multimodal(self) -> bool:
         """
-        判断当前输入是否包含多模态数据。
-        
-        该属性检查是否存在图像、音频、视频或对象数据，用于快速判断是否为多模态任务。
-        
         功能：
-            检查是否包含多模态数据
-        
-        参数：
-            无（属性方法）
+            判断当前输入是否包含多模态数据。具体地，
+            该属性检查是否存在图像、音频、视频或对象数据，用于快速判断是否为多模态任务。
         
         返回值：
             bool: 如果包含图像、音频、视频或对象数据，返回 True；否则返回 False
@@ -678,13 +658,10 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
         """
-        从字典创建 StdTemplateInputs 对象（类方法）。
-        
-        该方法将字典格式的输入数据解析并转换为 StdTemplateInputs 对象。处理包括：
-        提取系统提示词、标准化角色名称、提取多模态数据、分离额外参数等。
-        
         功能：
-            从字典创建 StdTemplateInputs 对象，处理各种格式的输入数据
+            类方法，从字典创建 StdTemplateInputs 对象，处理各种格式的输入数据。
+            具体地，将字典格式的输入数据解析并转换为 StdTemplateInputs 对象。处理包括：
+            提取系统提示词、标准化角色名称、提取多模态数据、分离额外参数等。
         
         参数：
             inputs (Dict[str, Any]): 输入数据字典，至少包含 'messages' 字段
@@ -777,7 +754,7 @@ class StdTemplateInputs:
         # ========== 提取和合并多模态数据 ==========
         # 从消息中提取多模态数据（结构化格式）
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
-        
+
         for k in list(media_kwargs.keys()):
             # 从消息中提取的多模态数据
             mm_data = media_kwargs[k]
@@ -808,23 +785,20 @@ class StdTemplateInputs:
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
         """
-        从消息列表中提取多模态数据并转换为占位符格式（静态方法）。
-        
-        该方法解析消息列表中的结构化内容（List[Dict]），提取图像、音频、视频数据，
-        并将消息内容转换为包含占位符的字符串格式（如 "<image>描述图片"）。
-        
         功能：
-            从结构化消息中提取多模态数据，将内容转换为占位符格式
+            静态方法，从消息列表中提取多模态数据并转换为占位符格式。
+            具体地，该方法解析消息列表中的结构化内容（List[Dict]），提取图像、音频、视频数据，
+            并将消息内容转换为包含占位符的字符串格式（如 "<image>描述图片"）。
         
         参数：
             messages (Messages): 消息列表，可能包含结构化的多模态内容
                 例如：[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": "cat.jpg"},
-                        {"type": "text", "text": "What's this?"}
-                    ]
-                }]
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": "cat.jpg"},
+                            {"type": "text", "text": "What's this?"}
+                        ]
+                    }]
         
         返回值：
             Dict[str, Any]: 提取的多模态数据字典，包含以下键：
@@ -926,7 +900,7 @@ class StdTemplateInputs:
                 # 如果有值，添加到对应的多模态数据列表
                 if value:
                     res[f'{key}s'].append(value)
-            
+
             # 将消息内容替换为转换后的字符串
             message['content'] = new_content
         

@@ -85,15 +85,81 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 
 
 def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
+    """
+    功能：
+        按比例缩放图像以满足最大像素数限制，同时保持原始宽高比。具体地，
+        如果图像的总像素数超过指定的最大像素数，则等比例缩放至满足限制；
+        否则返回原图不做修改。此方法常用于减少显存占用和加速模型推理。
+    
+    参数：
+        img (Image.Image): 输入的 PIL 图像对象
+        max_pixels (int): 允许的最大像素数（宽度 × 高度）
+            - 如果为 None 或 <= 0，不进行缩放
+            - 如果图像像素数 <= max_pixels，不进行缩放
+    
+    返回值：
+        Image.Image: 缩放后的 PIL 图像对象（如果需要缩放）或原图（如果不需要缩放）
+    
+    使用示例：
+        # 示例1：缩放超大图像
+        from PIL import Image
+        img = Image.open('large_image.jpg')  # 假设尺寸为 2000x1500 (3,000,000 像素)
+        scaled_img = rescale_image(img, max_pixels=1000000)  # 限制为 1M 像素
+        # 结果：scaled_img 尺寸约为 1155x866 (1,000,230 像素)
+        # 保持原始宽高比 2000:1500 = 1155:866 ≈ 1.333
+        
+        # 示例2：图像已满足要求，不缩放
+        small_img = Image.open('small_image.jpg')  # 假设尺寸为 800x600 (480,000 像素)
+        scaled_img = rescale_image(small_img, max_pixels=1000000)
+        # 结果：scaled_img == small_img（返回原图，未修改）
+        
+        # 示例3：max_pixels 为 None，不缩放
+        img = Image.open('any_image.jpg')
+        scaled_img = rescale_image(img, max_pixels=None)
+        # 结果：scaled_img == img（返回原图）
+        
+        # 示例4：横向图像缩放
+        wide_img = Image.new('RGB', (3000, 1000))  # 宽图：3,000,000 像素
+        scaled_img = rescale_image(wide_img, max_pixels=600000)
+        # 结果：scaled_img 尺寸约为 1500x500 (750,000 像素接近目标)
+        
+        # 示例5：纵向图像缩放
+        tall_img = Image.new('RGB', (1000, 4000))  # 高图：4,000,000 像素
+        scaled_img = rescale_image(tall_img, max_pixels=500000)
+        # 结果：scaled_img 尺寸约为 354x1414 (500,556 像素接近目标)
+    """
+    # 导入 torchvision 的变换模块，用于图像缩放
     import torchvision.transforms as T
+    
+    # 获取图像的原始宽度和原始高度
     width = img.width
     height = img.height
+    
+    # 判断是否需要缩放：
+    # 1) max_pixels 为 None 或 <= 0：不限制像素数
+    # 2) 图像总像素数 <= max_pixels：已满足要求
+    # 如果满足任一条件，直接返回原图
     if max_pixels is None or max_pixels <= 0 or width * height <= max_pixels:
         return img
 
+    # 计算图像的宽高比（aspect ratio）
     ratio = width / height
+    
+    # 计算缩放后的高度
+    # 推导：设缩放后宽高为 w', h'，则：
+    #   w' * h' = max_pixels  (目标像素数)
+    #   w' / h' = ratio       (保持宽高比)
+    # => w' = ratio * h'
+    # => (ratio * h') * h' = max_pixels
+    # => h' = sqrt(max_pixels / ratio)
     height_scaled = math.sqrt(max_pixels / ratio)
+    
+    # 计算缩放后的宽度：宽度 = 高度 × 宽高比
     width_scaled = height_scaled * ratio
+    
+    # 使用 torchvision 的 Resize 变换进行图像缩放
+    # 注意：Resize 接受 (height, width) 顺序的元组
+    # 将浮点数转换为整数，然后应用到图像
     return T.Resize((int(height_scaled), int(width_scaled)))(img)
 
 
@@ -289,11 +355,83 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
 
 def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
                load_func: Callable[[Any], _T] = load_image) -> List[_T]:
+    """
+    功能：
+        批量加载文件列表，使用指定的加载函数处理每个文件。具体地，
+        遍历路径列表，对每个非 None 的路径调用加载函数，并返回加载结果的列表。
+        此方法支持泛型类型，可用于批量加载图像、音频、视频等多种文件类型。
+    
+    参数：
+        path_list (List[Union[str, None, Any, BytesIO]]): 文件路径列表，支持以下类型：
+            - str: 文件路径（URL、本地路径、Base64 编码等）
+            - None: 会被忽略，不加载
+            - BytesIO: 字节流对象
+            - Any: 其他任意类型（如 PIL.Image 对象）
+        load_func (Callable[[Any], _T]): 加载函数，默认为 load_image
+            - 接受单个路径参数，返回加载后的对象
+            - 可以是 load_image、load_audio、load_video 等函数
+            - 支持自定义加载函数
+    
+    返回值：
+        List[_T]: 加载结果的列表，类型由 load_func 的返回值决定
+            - 如果 load_func 是 load_image，返回 List[Image.Image]
+            - 如果 load_func 是 load_audio，返回 List[np.ndarray]
+            - None 值会被跳过，不包含在返回列表中
+    
+    使用示例：
+        # 示例1：批量加载图像（默认）
+        image_paths = ['cat.jpg', 'dog.jpg', 'bird.jpg']
+        images = load_batch(image_paths)
+        # 返回：[Image.Image, Image.Image, Image.Image]
+        
+        # 示例2：批量加载图像（包含 None）
+        image_paths = ['cat.jpg', None, 'dog.jpg']
+        images = load_batch(image_paths)
+        # 返回：[Image.Image, Image.Image]  # None 被跳过
+        
+        # 示例3：批量加载音频
+        from functools import partial
+        audio_paths = ['sound1.mp3', 'sound2.wav']
+        audios = load_batch(
+            audio_paths,
+            load_func=partial(load_audio, sampling_rate=16000, return_sr=True)
+        )
+        # 返回：[(audio_array1, sr1), (audio_array2, sr2)]
+        
+        # 示例4：批量加载视频
+        video_paths = ['video1.mp4', 'video2.avi']
+        videos = load_batch(video_paths, load_func=load_video_llava)
+        # 返回：[video_frames1, video_frames2]
+        
+        # 示例5：自定义加载函数
+        def custom_loader(path):
+            # 自定义加载逻辑
+            return f"Loaded: {path}"
+        
+        paths = ['file1.txt', 'file2.txt']
+        results = load_batch(paths, load_func=custom_loader)
+        # 返回：['Loaded: file1.txt', 'Loaded: file2.txt']
+        
+        # 示例6：混合类型输入
+        from PIL import Image
+        mixed_inputs = [
+            'image.jpg',           # 路径
+            Image.open('cat.jpg'), # PIL.Image 对象
+            None,                  # 跳过
+            BytesIO(b'...')       # 字节流
+        ]
+        images = load_batch(mixed_inputs)
+        # 返回：[Image.Image, Image.Image, Image.Image]
+    """
     res = []
+    # 验证 path_list 必须是列表或元组类型
     assert isinstance(path_list, (list, tuple)), f'path_list: {path_list}'
+    # 遍历路径列表中的每个元素
     for path in path_list:
+        # 跳过 None 值（忽略空路径）
         if path is None:  # ignore None
             continue
+        # 使用指定的加载函数加载当前路径，并将结果添加到列表
         res.append(load_func(path))
     return res
 

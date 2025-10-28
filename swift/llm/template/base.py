@@ -568,7 +568,7 @@ class Template(ProcessorMixin):
         bbox_type = objects.pop('bbox_type', None) or 'real'  # 获取并移除bbox_type，默认为'real'（真实像素坐标）
         image_id_list = objects.pop('image_id', None) or []  # 获取并移除image_id列表，默认为空列表
         image_id_list += [0] * (len(bbox_list) - len(image_id_list))  # 若image_id不足，用0填充（默认关联第一张图像）
-        
+
         for bbox, image_id in zip(bbox_list, image_id_list):  # 遍历每个bbox及其对应的图像ID
             if bbox_type == 'norm1':  # 若bbox已归一化到[0, 1]范围
                 width, height = 1, 1  # 原始尺寸设为1（归一化坐标）
@@ -612,7 +612,7 @@ class Template(ProcessorMixin):
                 raise ValueError(f'inputs.tools: {inputs.tools}')  # 抛出异常
             for i, tool in enumerate(inputs.tools):  # 遍历所有工具定义
                 inputs.tools[i] = agent_template.wrap_tool(tool)  # 使用agent模板包装工具定义（添加特定格式）
-        
+
         # ===== 步骤2：合并连续的tool_call消息 =====
         i = 0  # 初始化消息索引
         messages = inputs.messages  # 获取消息列表引用
@@ -677,70 +677,346 @@ class Template(ProcessorMixin):
             # 缩放图像（减少显存占用）
             if self.max_pixels is not None and images:  # 若设置了max_pixels限制且有图像
                 images = [rescale_image(img, self.max_pixels) for img in images]  # 缩放所有图像到max_pixels限制
-            if images and not load_images_origin:  # fix pt & qwen-vl
+            # 处理特定模型的图像格式要求（针对 PyTorch 和 Qwen-VL 模型）
+            if images and not load_images_origin:  # 如果有图像且原始配置不需要加载（但因max_pixels/objects而被强制加载）
+                # 遍历所有图像，将 PIL.Image 对象转换回文件路径格式
                 for i, image in enumerate(images):
-                    if isinstance(image, Image.Image):
+                    if isinstance(image, Image.Image):  # 如果当前图像是 PIL.Image 对象
+                        # 将 PIL.Image 保存为临时文件并返回路径
+                        # 这是为了修复某些模型（如 PyTorch 原生模型、Qwen-VL）对图像格式的特殊要求
                         images[i] = self._save_pil_image(image)
+            
+            # 将处理后的图像列表更新回 inputs 对象的对应字段
             setattr(inputs, img_field, images)
 
-        if self.mode == 'vllm' and inputs.audios:
+        # ===== 步骤4：加载和预处理音频数据（仅 vLLM 模式） =====
+        if self.mode == 'vllm' and inputs.audios:  # 如果使用 vLLM 推理引擎且包含音频数据
+            # 从环境变量获取音频采样率配置
             sampling_rate = get_env_args('sampling_rate', int, None)
+            # 批量加载音频文件，返回音频数组和采样率
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
 
     @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
-        # compat
+        """
+        功能：
+        该方法用于向后兼容旧版本的图像标签格式。
+        具体地，解析消息中的 <img>路径</img> 标签，提取其中的图像路径并添加到 inputs.images 列表，同时将标签替换为标准的 <image> 占位符。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含 messages 和 images 字段
+        
+        返回值：
+            无（原地修改 inputs 对象的 messages 和 images 字段）
+        
+        使用示例：
+            # 示例1：解析 <img> 标签
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "Look at <img>/path/to/image.jpg</img> and tell me."
+                }],
+                images=[]
+            )
+            Template._replace_image_tags(inputs)
+            # 结果：
+            # inputs.messages[0]['content'] == "Look at <image> and tell me."
+            # inputs.images == ['/path/to/image.jpg']
+            
+            # 示例2：多个图像标签
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "<img>cat.jpg</img> vs <img>dog.jpg</img>"
+                }],
+                images=[]
+            )
+            Template._replace_image_tags(inputs)
+            # 结果：
+            # inputs.messages[0]['content'] == "<image> vs <image>"
+            # inputs.images == ['cat.jpg', 'dog.jpg']
+            
+            # 示例3：images 已存在，跳过处理
+            inputs = StdTemplateInputs(
+                messages=[{"role": "user", "content": "<img>test.jpg</img>"}],
+                images=["existing.jpg"]
+            )
+            Template._replace_image_tags(inputs)
+            # 结果：不做任何修改，直接返回
+            
+            # 示例4：无效的图像路径
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "<img>nonexistent.jpg</img>"
+                }],
+                images=[]
+            )
+            Template._replace_image_tags(inputs)
+            # 结果：警告日志输出，但仍替换标签
+            # inputs.messages[0]['content'] == "<image>"
+            # inputs.images == []  # 无效路径不添加
+        """
+        # 兼容性检查：如果 images 字段已有内容，说明图像已通过标准方式提供，无需处理
         if inputs.images:
             return
+        
+        # 初始化图像路径列表
         images = []
+        
+        # 定义正则表达式模式，匹配 <img>路径</img> 格式
+        # (.+?) 表示非贪婪匹配任意字符（图像路径）
         pattern = r'<img>(.+?)</img>'
+        
+        # 遍历所有消息
         for message in inputs.messages:
+            # 获取消息内容
             content = message['content']
+            
+            # 跳过非字符串内容（如已编码的 token ID 列表）
             if not isinstance(content, str):
                 continue
+            
+            # 使用正则表达式查找所有 <img> 标签中的路径
             for image in re.findall(pattern, content):
-                # only support local_path
-                if os.path.isfile(image):
+                # 验证路径：仅支持本地文件路径
+                if os.path.isfile(image):  # 检查文件是否存在
+                    # 将有效的图像路径添加到列表
                     images.append(image)
                 else:
+                    # 记录警告：图像路径无效或文件不存在
+                    # warning_once 确保相同的警告只输出一次
                     logger.warning_once(f'Failed to parse image path: `{content}`.', hash_id='<img></img>')
+            
+            # 将消息中的所有 <img>...</img> 标签替换为标准的 <image> 占位符
             message['content'] = re.sub(pattern, '<image>', content)
+        
+        # 将提取的图像路径列表更新到 inputs 对象
         inputs.images = images
 
     @staticmethod
     def _replace_start_image_tags(inputs: StdTemplateInputs):
-        # compat
+        """
+        功能：
+            该方法用于支持图像生成任务的兼容性处理，检测并移除消息末尾的 <start-image> 标签，设置图像生成模式。
+            具体地，检查最后一条用户消息是否以 <start-image> 标签结尾。如果是，
+            则移除该标签并将 inputs.generate_mode 设置为 True，表示这是一个图像生成请求。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含 messages 字段
+        
+        返回值：
+            无（原地修改 inputs 对象，设置 generate_mode 属性并可能修改最后一条消息的内容）
+        
+        使用示例：
+            # 示例1：图像生成模式
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "Generate a beautiful sunset<start-image>"
+                }]
+            )
+            Template._replace_start_image_tags(inputs)
+            # 结果：
+            # inputs.messages[-1]['content'] == "Generate a beautiful sunset"
+            # inputs.generate_mode == True
+            
+            # 示例2：普通对话（非生成模式）
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "What is AI?"
+                }]
+            )
+            Template._replace_start_image_tags(inputs)
+            # 结果：
+            # inputs.messages[-1]['content'] == "What is AI?"  # 保持不变
+            # inputs.generate_mode == False
+            
+            # 示例3：最后一条消息是 assistant（不处理）
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "Hello"},
+                    {"role": "assistant", "content": "Hi there!<start-image>"}
+                ]
+            )
+            Template._replace_start_image_tags(inputs)
+            # 结果：
+            # inputs.messages[-1]['content'] == "Hi there!<start-image>"  # 保持不变
+            # inputs.generate_mode == False  # 不启用生成模式
+            
+            # 示例4：标签在中间位置（不处理）
+            inputs = StdTemplateInputs(
+                messages=[{
+                    "role": "user",
+                    "content": "<start-image>Generate image"
+                }]
+            )
+            Template._replace_start_image_tags(inputs)
+            # 结果：
+            # inputs.messages[-1]['content'] == "<start-image>Generate image"  # 保持不变
+            # inputs.generate_mode == False  # 标签必须在末尾
+        """
+        # 初始化生成模式标志为 False（默认为非生成模式）
         generate_mode = False
+        
+        # 获取消息列表中的最后一条消息
         message = inputs.messages[-1]
+        
+        # 获取最后一条消息的内容
         content = message['content']
+        
+        # 检查条件：1) 最后一条消息的角色是 user，2) 内容以 <start-image> 标签结尾
         if message['role'] == 'user' and content.endswith('<start-image>'):
+            # 设置为图像生成模式
             generate_mode = True
-            message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
+            
+            # 从消息内容中移除 <start-image> 标签
+            # 使用切片操作去除末尾的标签文本
+            message['content'] = message['content'][:-len('<start-image>')]
+        
+        # 将生成模式标志保存到 inputs 对象
+        # 后续的模板处理逻辑可以根据此标志调整行为
         inputs.generate_mode = generate_mode
-
+    
     @staticmethod
     def _extend_tokens(
             input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
             replace_idx_list: List[int],
             get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
+        """
+        功能：
+            在指定位置将单个 token 扩展为多个 token 序列。具体地，
+            根据 replace_idx_list 中的索引位置，将 input_ids 中对应位置的单个 token 替换为
+            由 get_new_tokens 函数生成的多个 token。同时同步更新 labels 和 loss_scale，
+            保持它们与 input_ids 的长度一致。此方法常用于多模态模型中将占位符 token
+            （如 <image>）扩展为实际的图像特征 token 序列。
+        
+        参数：
+            input_ids (List[int]): 输入的 token ID 序列
+                例如：[1, 2, 3, 4, 5] 表示原始的 token 序列
+            labels (Optional[List[int]]): 标签序列，用于训练时的损失计算
+                - 如果为 None，不处理
+                - 扩展位置的标签会被设置为 -100（表示不计算损失）
+            loss_scale (Optional[List[float]]): 损失缩放因子序列
+                - 如果为 None，不处理
+                - 扩展位置继承原位置的缩放因子值
+            replace_idx_list (List[int]): 需要替换的索引位置列表
+                例如：[1, 3] 表示在位置 1 和位置 3 进行扩展
+            get_new_tokens (Callable[[int], List[int]]): 生成新 token 序列的函数
+                - 接受索引 i（在 replace_idx_list 中的位置）
+                - 返回用于替换的 token 序列
+                - 例如：lambda i: [100, 101, 102] 返回 3 个 token
+        
+        返回值：
+            Tuple[List[int], Optional[List[int]], Optional[List[float]]]: 返回三元组
+                - 第一个元素：扩展后的 input_ids
+                - 第二个元素：扩展后的 labels（如果输入为 None 则返回 None）
+                - 第三个元素：扩展后的 loss_scale（如果输入为 None 则返回 None）
+        
+        使用示例：
+            # 示例1：基本用法 - 将单个占位符扩展为多个 token
+            input_ids = [1, 999, 3, 999, 5]  # 999 是占位符
+            labels = [1, 2, 3, 4, 5]
+            loss_scale = [1.0, 1.0, 1.0, 1.0, 1.0]
+            replace_idx_list = [1, 3]  # 替换位置 1 和 3 的 token
+            
+            # 生成新 token：每次返回 3 个 token
+            def get_new_tokens(i):
+                return [100 + i*10, 101 + i*10, 102 + i*10]
+            
+            new_ids, new_labels, new_scale = Template._extend_tokens(
+                input_ids, labels, loss_scale, replace_idx_list, get_new_tokens
+            )
+            # 结果：
+            # new_ids == [1, 100, 101, 102, 3, 110, 111, 112, 5]
+            # new_labels == [1, -100, -100, -100, 3, -100, -100, -100, 5]
+            # new_scale == [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            
+            # 示例2：不同长度的扩展
+            input_ids = [10, 20, 30]
+            replace_idx_list = [1]
+            get_new_tokens = lambda i: [201, 202, 203, 204]  # 扩展为 4 个 token
+            
+            new_ids, _, _ = Template._extend_tokens(
+                input_ids, None, None, replace_idx_list, get_new_tokens
+            )
+            # new_ids == [10, 201, 202, 203, 204, 30]
+            
+            # 示例3：多模态场景 - 图像占位符扩展
+            # 原始序列：[BOS, <image>, text1, text2, EOS]
+            input_ids = [1, 32000, 100, 200, 2]  # 32000 是 <image> token
+            labels = [1, -100, 100, 200, 2]
+            replace_idx_list = [1]  # 扩展 <image> token
+            
+            # 图像特征 token 序列（假设图像编码为 256 个 token）
+            image_tokens = list(range(50000, 50256))
+            get_new_tokens = lambda i: image_tokens
+            
+            new_ids, new_labels, _ = Template._extend_tokens(
+                input_ids, labels, None, replace_idx_list, get_new_tokens
+            )
+            # new_ids 长度从 5 变为 260
+            # new_labels 中图像 token 位置全部为 -100（不计算损失）
+            
+            # 示例4：多个占位符，不同长度
+            input_ids = [1, 888, 3, 999, 5]
+            replace_idx_list = [1, 3]
+            
+            def get_new_tokens(i):
+                if i == 0:
+                    return [10, 11]  # 第一个位置扩展为 2 个 token
+                else:
+                    return [20, 21, 22]  # 第二个位置扩展为 3 个 token
+            
+            new_ids, _, _ = Template._extend_tokens(
+                input_ids, None, None, replace_idx_list, get_new_tokens
+            )
+            # new_ids == [1, 10, 11, 3, 20, 21, 22, 5]
+        """
+        # 初始化已添加 token 的累计长度（用于调整后续索引位置）
         added_tokens_len = 0
+        
+        # 遍历所有需要替换的索引位置
         for i, idx in enumerate(replace_idx_list):
+            # 调用 get_new_tokens 函数获取用于替换的新 token 序列
             new_tokens = get_new_tokens(i)
+            
+            # 获取新 token 序列的长度
             token_len = len(new_tokens)
+            
+            # 在 input_ids 中进行替换：
+            # 1. 取原序列的前半部分：[:idx + added_tokens_len]
+            # 2. 插入新 token 序列：new_tokens
+            # 3. 连接原序列的后半部分：[added_tokens_len + idx + 1:]
+            # 注意：added_tokens_len 用于补偿之前替换操作导致的序列长度变化
             input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+            
+            # 如果提供了 labels，同步更新
             if labels:
+                # 新 token 位置的标签设置为 -100（表示不计算损失）
+                # 这在多模态模型中很常见，图像 token 不参与语言建模损失
                 labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+            
+            # 如果提供了 loss_scale，同步更新
             if loss_scale:
+                # 获取原位置的缩放因子值
                 scale_idx = loss_scale[idx + added_tokens_len]
+                # 新 token 位置继承原位置的缩放因子
                 loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
                                                                                                         + idx + 1:]
+            
+            # 更新累计长度：新增的 token 数量为 (token_len - 1)
+            # 减 1 是因为替换掉了原来的 1 个 token
             added_tokens_len += token_len - 1
+        
+        # 返回扩展后的三个序列
         return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
         return nullcontext()
-
+    
     @staticmethod
     def get_base_model(model):
         if isinstance(model, PeftModel):
@@ -749,146 +1025,1073 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码 RLHF（Reinforcement Learning from Human Feedback）训练数据。具体地，
+            将输入数据编码为 chosen（被选择的）和 rejected（被拒绝的）两个版本，
+            用于基于人类反馈的强化学习训练，如 DPO（Direct Preference Optimization）等算法。
+            此方法会分别编码正向样本（chosen）和负向样本（rejected），并将它们的编码结果
+            合并到一个字典中，便于后续的对比学习。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，必须包含以下至少一项：
+                - rejected_response: 拒绝的响应文本（用于替换最后一条消息的内容）
+                - rejected_images: 拒绝的图像列表（用于多模态 RLHF）
+                - margin (可选): 奖励边际值，表示 chosen 和 rejected 之间的奖励差异
+        
+        返回值：
+            Dict[str, Any]: 包含 chosen 和 rejected 编码结果的字典，格式如下：
+                {
+                    'chosen_input_ids': List[int],        # chosen 版本的 token IDs
+                    'chosen_labels': List[int],           # chosen 版本的标签
+                    'chosen_attention_mask': List[int],   # chosen 版本的注意力掩码
+                    ... (其他 chosen 相关字段)
+                    'rejected_input_ids': List[int],      # rejected 版本的 token IDs
+                    'rejected_labels': List[int],         # rejected 版本的标签
+                    'rejected_attention_mask': List[int], # rejected 版本的注意力掩码
+                    ... (其他 rejected 相关字段)
+                    'margin': float (可选)                # 奖励边际值
+                }
+        
+        使用示例：
+            # 示例1：文本 RLHF 数据编码
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "写一首关于春天的诗"},
+                    {"role": "assistant", "content": "春天来了，花儿开了，鸟儿叫了。"}  # chosen
+                ],
+                rejected_response="春天是个季节。"  # rejected
+            )
+            template = Template(...)
+            encoded = template._rlhf_encode(inputs)
+            # encoded 包含：
+            # - chosen_input_ids: 编码的 chosen 响应
+            # - rejected_input_ids: 编码的 rejected 响应
+            # 两者的 prompt 部分相同，只有响应部分不同
+            
+            # 示例2：带边际值的 RLHF 数据
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "解释量子力学"},
+                    {"role": "assistant", "content": "量子力学是研究微观粒子..."}
+                ],
+                rejected_response="量子力学很复杂。",
+                margin=0.5  # 指定奖励边际
+            )
+            encoded = template._rlhf_encode(inputs)
+            # encoded['margin'] == 0.5
+            
+            # 示例3：多模态 RLHF（图像）
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "<image>描述这张图片"},
+                    {"role": "assistant", "content": "这是一只可爱的猫咪"}
+                ],
+                images=["cat_good.jpg"],           # chosen 图像
+                rejected_response="这是一只动物。",  # rejected 响应
+                rejected_images=["cat_bad.jpg"]    # rejected 图像
+            )
+            encoded = template._rlhf_encode(inputs)
+            # chosen 使用 cat_good.jpg，rejected 使用 cat_bad.jpg
+            
+            # 示例4：DPO 训练数据准备
+            # 用于 Direct Preference Optimization
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "请给我一些建议"},
+                    {"role": "assistant", "content": "建议1：保持积极态度..."}
+                ],
+                rejected_response="建议：努力工作。"
+            )
+            encoded = template._rlhf_encode(inputs)
+            # DPO 算法会使用 chosen 和 rejected 的对比来优化模型
+        """
+        # 提取边际值（奖励差异）
         margin = inputs.margin
+        
+        # 创建 chosen 和 rejected 两个版本的输入
+        # chosen_inputs 直接使用原始输入（包含 chosen 响应）
+        # rejected_inputs 是深拷贝，用于创建 rejected 版本
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
 
+        # 验证必须提供至少一种拒绝数据（rejected_response 或 rejected_images）
         assert chosen_inputs.rejected_response or chosen_inputs.rejected_images, f'inputs: {inputs}'
+        
+        # 如果提供了拒绝的响应文本，替换 rejected_inputs 最后一条消息的内容
         if chosen_inputs.rejected_response:
             rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
+        
+        # 如果提供了拒绝的图像，替换 rejected_inputs 的图像列表
         if chosen_inputs.rejected_images:
             rejected_inputs.images = chosen_inputs.rejected_images
+        
+        # 分别编码 chosen 和 rejected 版本
         chosen_encoded = self._encode_truncated(chosen_inputs)
         rejected_encoded = self._encode_truncated(rejected_inputs)
 
+        # 初始化结果字典
         encoded = {}
+        
+        # 遍历 'chosen' 和 'rejected' 两个前缀
         for prefix in ['chosen', 'rejected']:
+            # 使用 locals() 动态获取对应的编码结果
+            # 例如：prefix='chosen' 时，获取 chosen_encoded
             data = locals()[f'{prefix}_encoded']
+            
+            # 将编码结果的所有字段添加到结果字典，并加上前缀
+            # 例如：'input_ids' -> 'chosen_input_ids' 或 'rejected_input_ids'
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
+        
+        # 如果提供了边际值，添加到结果字典
         if margin:
             encoded['margin'] = float(margin)
+        
+        # 返回包含 chosen 和 rejected 编码结果的字典
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码 KTO（Kahneman-Tversky Optimization）训练数据。具体地，
+            KTO 是一种基于二元反馈（好/坏）的优化算法，不需要成对的偏好数据。
+            此方法在 RLHF 编码的基础上，添加了二元标签（True/False）来表示响应的质量，
+            从而支持 KTO 算法的训练。与传统的 RLHF 需要 chosen/rejected 对比不同，
+            KTO 只需要单个样本及其质量标签。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，必须包含：
+                - label: 二元标签，表示响应质量
+                  * True/1: 表示这是一个好的响应（desirable）
+                  * False/0: 表示这是一个坏的响应（undesirable）
+                - rejected_response 或 rejected_images: 拒绝的响应（继承自 RLHF）
+                - margin (可选): 奖励边际值
+        
+        返回值：
+            Dict[str, Any]: 包含 chosen、rejected 编码结果和标签的字典，格式如下：
+                {
+                    'chosen_input_ids': List[int],        # chosen 版本的 token IDs
+                    'chosen_labels': List[int],           # chosen 版本的标签
+                    'rejected_input_ids': List[int],      # rejected 版本的 token IDs
+                    'rejected_labels': List[int],         # rejected 版本的标签
+                    'label': bool,                        # 二元标签 (True=好, False=坏)
+                    'margin': float (可选)                # 奖励边际值
+                }
+        
+        使用示例：
+            # 示例1：好的响应（正样本）
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "解释人工智能"},
+                    {"role": "assistant", "content": "人工智能是计算机科学的一个分支..."}
+                ],
+                rejected_response="AI就是电脑程序。",  # 较差的响应
+                label=1  # 标记为好的响应
+            )
+            template = Template(...)
+            encoded = template._kto_encode(inputs)
+            # encoded['label'] == True  (表示 chosen 是好的响应)
+            
+            # 示例2：坏的响应（负样本）
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "如何学习编程？"},
+                    {"role": "assistant", "content": "多看书。"}  # 简单的响应
+                ],
+                rejected_response="学习编程需要系统地学习...",  # 更好的响应
+                label=0  # 标记为坏的响应
+            )
+            encoded = template._kto_encode(inputs)
+            # encoded['label'] == False  (表示 chosen 是坏的响应)
+            
+            # 示例3：KTO 与传统 RLHF 的区别
+            # 传统 RLHF：需要明确的 chosen/rejected 对
+            # KTO：只需要一个响应 + 质量标签
+            
+            # KTO 训练数据：
+            inputs_good = StdTemplateInputs(
+                messages=[{"role": "user", "content": "问题"}, 
+                         {"role": "assistant", "content": "好答案"}],
+                rejected_response="坏答案",
+                label=True  # 标记好答案
+            )
+            
+            inputs_bad = StdTemplateInputs(
+                messages=[{"role": "user", "content": "问题"},
+                         {"role": "assistant", "content": "坏答案"}],
+                rejected_response="好答案",
+                label=False  # 标记坏答案
+            )
+            
+            # 示例4：多模态 KTO
+            inputs = StdTemplateInputs(
+                messages=[
+                    {"role": "user", "content": "<image>描述这张图"},
+                    {"role": "assistant", "content": "这是一只猫"}
+                ],
+                images=["cat.jpg"],
+                rejected_response="这是动物。",
+                rejected_images=["cat_blur.jpg"],
+                label=True  # 标记为好的描述
+            )
+            encoded = template._kto_encode(inputs)
+        """
+        # 提取并保存原始标签值，然后清空 inputs.label
+        # 这样做是为了避免在调用 _rlhf_encode 时 label 字段干扰处理
         label, inputs.label = inputs.label, None
+        
+        # 调用 RLHF 编码方法，获取 chosen 和 rejected 的编码结果
+        # KTO 复用了 RLHF 的编码逻辑，因为都需要对比两个响应
         encoded = self._rlhf_encode(inputs)
+        
+        # 添加二元标签到编码结果
+        # 将标签转换为布尔值：True 表示好的响应，False 表示坏的响应
         encoded['label'] = bool(label)
+        
+        # 返回包含 chosen、rejected 编码和二元标签的字典
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """函数功能：
+        编码 GKD（Generalized Knowledge Distillation，广义知识蒸馏）训练数据。
+        
+        GKD 是一种知识蒸馏技术，通过让学生模型学习教师模型的输出分布来提升学生模型性能。
+        关键特点：
+        1. 分离 prompt 和 answer：将完整序列分为两部分
+           - prompts: 用户输入部分（不含答案）
+           - input_ids: 完整序列（prompt + answer）
+        2. 训练流程：
+           - 教师模型（通常是更大/更好的模型）和学生模型都处理相同的 input_ids
+           - 计算学生模型和教师模型在 answer 部分的 logits 分布
+           - 使用 KL 散度或 JSD（Jensen-Shannon Divergence）损失让学生模仿教师
+           - prompts 字段用于标识哪部分是 prompt，从而只在 answer 部分计算蒸馏损失
+        3. 与其他训练模式的区别：
+           - 标准训练：只有 input_ids 和 labels，计算交叉熵损失
+           - RLHF/KTO：需要 chosen 和 rejected 两个响应，计算偏好损失
+           - GKD：需要 prompts 分隔符和完整 input_ids，计算分布匹配损失
+        
+        本方法的核心任务：
+        - 调用 _encode_truncated 获取分段编码结果（包含 prompt_input_ids 和 answer_input_ids）
+        - 提取 prompt 部分的 token IDs 并保存为 'prompts' 字段
+        - 清理中间字段（prompt_*、*_answer_），只保留必要的 input_ids 和 prompts
+        
+        参数：
+        - inputs (StdTemplateInputs): 标准模板输入对象，包含：
+            * messages: 对话消息列表（必须包含用户输入和助手回复）
+            * images/videos/audios: 多模态数据（可选）
+            * system: 系统提示词（可选）
+        
+        返回值：
+        - Dict[str, Any]: GKD 训练所需的编码字典，包含：
+            * input_ids (List[int]): 完整的 token ID 序列（prompt + answer）
+            * labels (List[int]): 标签序列（prompt 部分为 -100，answer 部分为实际 token）
+            * loss_scale (Optional[List[float]]): loss 权重序列（如果配置了）
+            * prompts (List[int]): 仅包含 prompt 部分的 token ID 序列
+              - 用于标识 prompt 和 answer 的边界
+              - GKD Trainer 使用此字段来只在 answer 部分计算蒸馏损失
+            * pixel_values/image_sizes 等: 多模态数据（如果有）
+            
+            注意：不包含以下中间字段（已被清理）：
+            - prompt_input_ids, prompt_labels, prompt_loss_scale
+            - answer_input_ids, answer_labels, answer_loss_scale
+        
+        使用示例：
+        >>> # 示例1：基础 GKD 训练数据编码
+        >>> template.mode = 'gkd'
+        >>> inputs = StdTemplateInputs(messages=[
+        ...     {"role": "user", "content": "什么是广义知识蒸馏？"},
+        ...     {"role": "assistant", "content": "GKD 是一种让小模型学习大模型输出分布的技术..."}
+        ... ])
+        >>> encoded = template._gkd_encode(inputs)
+        >>> # encoded 结构：
+        >>> # {
+        >>> #     'input_ids': [101, 1234, ..., 5678, 102],  # 完整序列
+        >>> #     'prompts': [101, 1234, ..., 5678],         # 只有 prompt 部分
+        >>> #     'labels': [-100, -100, ..., 5678, 102],    # prompt 部分为 -100
+        >>> #     'loss_scale': [1.0, 1.0, ..., 1.0]
+        >>> # }
+        >>> # len(encoded['prompts']) + len(answer) == len(encoded['input_ids'])
+        >>> 
+        >>> # 示例2：多模态 GKD（图像描述蒸馏）
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "<image>描述这张图片"},
+        ...         {"role": "assistant", "content": "这是一只可爱的小猫，坐在..."}
+        ...     ],
+        ...     images=["cat.jpg"]
+        ... )
+        >>> encoded = template._gkd_encode(inputs)
+        >>> # encoded 还会包含: pixel_values, image_sizes 等
+        >>> # prompts 包含图像 token 和用户问题
+        >>> 
+        >>> # 示例3：在 GKD Trainer 中的实际使用
+        >>> # 教师模型（大模型）
+        >>> teacher_outputs = teacher_model(input_ids=encoded['input_ids'])
+        >>> # 学生模型（小模型）
+        >>> student_outputs = student_model(input_ids=encoded['input_ids'])
+        >>> 
+        >>> # 计算 answer 部分的起始位置
+        >>> prompt_len = len(encoded['prompts'])
+        >>> 
+        >>> # 只在 answer 部分计算 KL 散度损失
+        >>> teacher_logits = teacher_outputs.logits[:, prompt_len:, :]
+        >>> student_logits = student_outputs.logits[:, prompt_len:, :]
+        >>> kl_loss = F.kl_div(
+        ...     F.log_softmax(student_logits / temperature, dim=-1),
+        ...     F.softmax(teacher_logits / temperature, dim=-1),
+        ...     reduction='batchmean'
+        ... )
+        >>> 
+        >>> # 示例4：与标准训练的对比
+        >>> # 标准训练编码（只有 input_ids 和 labels）
+        >>> template.mode = 'train'
+        >>> encoded_std = template._encode_truncated(inputs)
+        >>> # {'input_ids': [...], 'labels': [...], 'loss_scale': [...]}
+        >>> 
+        >>> # GKD 编码（额外有 prompts 字段用于分隔）
+        >>> template.mode = 'gkd'
+        >>> encoded_gkd = template._gkd_encode(inputs)
+        >>> # {
+        >>> #     'input_ids': [...],    # 与 encoded_std 相同
+        >>> #     'labels': [...],       # 与 encoded_std 相同
+        >>> #     'prompts': [...],      # 额外字段：标识 prompt 边界
+        >>> #     'loss_scale': [...]
+        >>> # }
+        """
+        # 调用 _encode_truncated 方法进行编码
+        # 返回的 encoded 包含：input_ids（完整序列）、answer_input_ids（答案部分）、
+        # prompt_input_ids（提示部分）、labels、loss_scale 等字段
         encoded = self._encode_truncated(inputs)
+        
+        # 提取 prompt 部分的 token IDs 并保存为 'prompts' 字段
+        # 逻辑：input_ids = prompt_input_ids + answer_input_ids
+        # 因此：prompts = input_ids[:-len(answer_input_ids)]
+        # 使用 pop 同时移除 answer_input_ids 字段（因为后续不再需要）
         encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
-        for k in list(encoded.keys()):
+        
+        # 清理所有中间字段，只保留必要的字段
+        # 需要清理的字段包括：
+        # - prompt_input_ids, prompt_labels, prompt_loss_scale（已经合并到 input_ids 等中）
+        # - answer_labels, answer_loss_scale（已经合并，answer_input_ids 已在上面 pop 掉）
+        for k in list(encoded.keys()):  # 使用 list() 避免迭代时修改字典大小
+            # 移除所有以 'prompt_' 开头或以 '_answer_' 结尾的键
             if k.startswith('prompt_') or k.endswith('answer_'):
-                encoded.pop(k, None)
+                encoded.pop(k, None)  # 使用 pop(k, None) 安全删除（即使键不存在也不报错）
+        
+        # 返回清理后的编码字典
+        # 最终包含：input_ids（完整序列）、prompts（仅 prompt 部分）、labels、loss_scale 等
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        _encoded = {}
-        labels = []
+        """函数功能：
+        编码 Embedding 任务的训练或推理数据，支持文本向量化（Text Embedding）任务。
+        
+        Embedding 任务是将文本（或多模态数据）映射到高维向量空间，使得语义相似的内容在向量空间中距离更近。
+        
+        核心概念 - 三元组学习（Triplet Learning）：
+        1. Anchor（锚点样本）：查询文本（query），是需要获取向量表示的基准样本
+        2. Positive（正样本）：与 anchor 语义相关或相似的文本（response）
+        3. Negative（负样本）：与 anchor 语义不相关或不相似的文本（rejected_response）
+        
+        训练目标：
+        - 最小化 anchor 和 positive 之间的距离
+        - 最大化 anchor 和 negative 之间的距离
+        - 通过对比学习（Contrastive Learning）训练模型生成有区分度的向量表示
+        
+        支持的损失函数：
+        1. cosine_similarity: 余弦相似度损失，使用 MSE 拟合相似度标签
+        2. contrastive: 对比学习损失（带 margin），标签为 0/1
+        3. online_contrastive: 考虑 hard negative/positive 的对比损失
+        4. infonce: InfoNCE 损失，batch 内样本两两对比，不需要显式标签
+        
+        数据格式示例：
+        - 训练：{"query": "锚点文本", "response": "正样本文本", "rejected_response": ["负样本1", "负样本2"], "label": 0.8}
+        - 推理：{"query": "查询文本"}
+        
+        本方法的核心任务：
+        1. 训练模式（inputs.messages >= 2）：
+           - 构造 anchor：使用 query 部分（messages[-2]）编码
+           - 构造 positive：使用 response 部分（messages[-1]）编码
+           - 构造 negative：使用 rejected_response 列表逐个编码（可选）
+           - 生成标签：positive 使用 inputs.label（默认 1.0），negative 使用 0.0
+        2. 推理模式（inputs.messages == 1）：
+           - 只编码 anchor（query），用于获取查询文本的向量表示
+           - 不生成 labels
+        3. 多模态支持：
+           - 通过 split_multi_medias 函数分配 images/videos/audios 到各个样本
+           - 支持 <image>、<video>、<audio> 标签
+        
+        参数：
+        - inputs (StdTemplateInputs): 标准模板输入对象，包含：
+            messages (List[Dict]): 对话消息列表
+              - 训练模式：至少 2 条消息，messages[-2] 为 query（user），messages[-1] 为 response（assistant）
+              - 推理模式：仅 1 条消息，messages[0] 为 query
+            rejected_response (Optional[List[str]]): 负样本列表（hard negatives），仅训练模式使用
+            label (Optional[float]): positive 样本的标签值，范围 [0.0, 1.0]，默认 1.0
+              - cosine_similarity loss: 表示相似度（0.0-1.0）
+              - contrastive loss: 0 表示不相关，1 表示相关
+            images/videos/audios (Optional[List]): 多模态数据（可选）
+        
+        返回值：
+        - Dict[str, Any]: 根据模式返回不同结构的字典
+        
+        训练模式返回值：
+        {
+            # Anchor 相关字段（query 的编码）
+            'anchor_input_ids': List[int],           # anchor 的 token IDs
+            'anchor_labels': List[int],              # anchor 的标签（通常全为 -100）
+            'anchor_loss_scale': List[float],        # anchor 的 loss 权重
+            'anchor_pixel_values': ...,              # anchor 的图像数据（如果有）
+            
+            # Positive 相关字段（response 的编码）
+            'positive_input_ids': List[int],         # positive 的 token IDs
+            'positive_labels': List[int],            # positive 的标签（通常全为 -100）
+            'positive_loss_scale': List[float],      # positive 的 loss 权重
+            'positive_pixel_values': ...,            # positive 的图像数据（如果有）
+            
+            # Negative 相关字段（rejected_response 的编码，列表形式）
+            'negative_input_ids': List[List[int]],   # 所有 negative 的 token IDs 列表
+            'negative_labels': List[List[int]],      # 所有 negative 的标签列表
+            'negative_loss_scale': List[List[float]], # 所有 negative 的 loss 权重列表
+            'negative_pixel_values': List[...],      # 所有 negative 的图像数据列表（如果有）
+            
+            # 标签
+            'labels': List[float]                    # [positive_label, negative_label_0, negative_label_1, ...]
+                                                     # positive_label 为 inputs.label（默认 1.0）
+                                                     # 所有 negative_label 为 0.0
+        }
+        
+        推理模式返回值：
+        {
+            'input_ids': List[int],                  # query 的 token IDs
+            'loss_scale': List[float],               # loss 权重（虽然推理不需要）
+            'pixel_values': ...,                     # 图像数据（如果有）
+            # 注意：没有 'labels' 字段
+        }
+        
+        使用示例：
+        >>> # 示例1：纯文本 Embedding 训练（带 hard negatives）
+        >>> template.task_type = 'embedding'
+        >>> template.mode = 'train'
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "什么是机器学习？"},      # query (anchor)
+        ...         {"role": "assistant", "content": "机器学习是人工智能的一个分支..."}  # response (positive)
+        ...     ],
+        ...     rejected_response=[
+        ...         "今天天气真好",           # hard negative 1
+        ...         "我喜欢吃披萨"            # hard negative 2
+        ...     ],
+        ...     label=0.9  # positive 样本的相似度标签
+        ... )
+        >>> encoded = template._embedding_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'anchor_input_ids': [101, 1234, ...],      # "什么是机器学习？"
+        >>> #     'positive_input_ids': [101, 5678, ...],    # "机器学习是..."
+        >>> #     'negative_input_ids': [                    # 2 个 hard negatives
+        >>> #         [101, 9999, ...],                      # "今天天气真好"
+        >>> #         [101, 8888, ...]                       # "我喜欢吃披萨"
+        >>> #     ],
+        >>> #     'labels': [0.9, 0.0, 0.0]  # [positive_label, neg1_label, neg2_label]
+        >>> # }
+        >>> 
+        >>> # 示例2：多模态 Embedding 训练（图像+文本）
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "<image>这张图片展示了什么？"},  # anchor with image
+        ...         {"role": "assistant", "content": "<image>一只可爱的猫"}      # positive with image
+        ...     ],
+        ...     images=["query_image.jpg", "response_image.jpg"],
+        ...     rejected_response=["<image>一辆汽车"],
+        ...     label=1.0
+        ... )
+        >>> # 需要再添加 negative 的图像
+        >>> inputs.images.append("negative_image.jpg")
+        >>> encoded = template._embedding_encode(inputs)
+        >>> # 返回结构包含：
+        >>> # anchor_pixel_values, positive_pixel_values, negative_pixel_values (列表)
+        >>> 
+        >>> # 示例3：推理模式（只获取 query 的向量）
+        >>> template.mode = 'pt'
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "什么是深度学习？"}]
+        ... )
+        >>> encoded = template._embedding_encode(inputs)
+        >>> # 返回结构（简化版）：
+        >>> # {
+        >>> #     'input_ids': [101, 1234, ...],  # 只有 query 的编码
+        >>> #     # 没有 labels 字段
+        >>> # }
+        >>> 
+        >>> # 示例4：不带 hard negatives 的训练（使用 batch 内负样本）
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "Python 是什么？"},
+        ...         {"role": "assistant", "content": "Python 是一种编程语言"}
+        ...     ],
+        ...     rejected_response=[],  # 空列表或 None
+        ...     label=1.0
+        ... )
+        >>> encoded = template._embedding_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'anchor_input_ids': [...],
+        >>> #     'positive_input_ids': [...],
+        >>> #     'negative_input_ids': [],      # 空列表
+        >>> #     'labels': [1.0]                # 只有 positive 的标签
+        >>> # }
+        >>> # 训练时会使用 batch 内其他样本的 positive 作为 negative（InfoNCE）
+        """
+        # 初始化编码字典和标签列表
+        _encoded = {}  # 存储所有编码结果（anchor、positive、negative）
+        labels = []    # 存储标签列表：[positive_label, negative_label_1, negative_label_2, ...]
+        
+        # 判断是推理模式还是训练模式
+        # 推理模式：只有 1 条消息（query），训练模式：至少 2 条消息（query + response）
         inference = len(inputs.messages) == 1
+        
+        # 如果是推理模式，添加一个空的 assistant 消息占位
+        # 这样后续处理可以统一使用 messages[-2] (user) 和 messages[-1] (assistant) 的格式
         if inference:
             inputs.messages.append({'role': 'assistant', 'content': ''})
 
         def split_multi_medias(_inputs):
+            """
+            功能：
+                内部辅助函数：分配多模态数据到各个样本。
+                根据 _inputs.messages[-2] 中的多模态标签数量，从全局 inputs 中切分并分配对应的多模态数据到 _inputs
+            
+            原理：
+            - 多模态数据（images/videos/audios）是按顺序存储的
+            - 需要根据每个样本中的 <image>/<video>/<audio> 标签数量来切分
+            - 例如：inputs.images = [img1, img2, img3, img4]
+              * anchor 有 1 个 <image>，分配 img1
+              * positive 有 2 个 <image>，分配 img2, img3
+              * negative 有 1 个 <image>，分配 img4
+            """
+            # 从倒数第二条消息（通常是 user 角色）中获取内容
             _content = _inputs.messages[-2]['content']
-            image_size = len(re.findall('<image>', _content))
-            video_size = len(re.findall('<video>', _content))
-            audio_size = len(re.findall('<audio>', _content))
+            
+            # 统计该内容中的多模态标签数量
+            image_size = len(re.findall('<image>', _content))  # <image> 标签数量
+            video_size = len(re.findall('<video>', _content))  # <video> 标签数量
+            audio_size = len(re.findall('<audio>', _content))  # <audio> 标签数量
+            
+            # 从全局 inputs.images 中切分前 image_size 个图像给当前 _inputs
             _inputs.images = inputs.images[:image_size]
-            assert len(_inputs.images) == image_size
-            inputs.images = inputs.images[image_size:]
+            assert len(_inputs.images) == image_size  # 确保数量匹配
+            inputs.images = inputs.images[image_size:]  # 从全局列表中移除已分配的图像
+            
+            # 从全局 inputs.videos 中切分前 video_size 个视频给当前 _inputs
             _inputs.videos = inputs.videos[:video_size]
-            assert len(_inputs.videos) == video_size
-            inputs.videos = inputs.videos[video_size:]
+            assert len(_inputs.videos) == video_size  # 确保数量匹配
+            inputs.videos = inputs.videos[video_size:]  # 从全局列表中移除已分配的视频
+            
+            # 从全局 inputs.audios 中切分前 audio_size 个音频给当前 _inputs
             _inputs.audios = inputs.audios[:audio_size]
-            assert len(_inputs.audios) == audio_size
-            inputs.audios = inputs.audios[audio_size:]
+            assert len(_inputs.audios) == audio_size  # 确保数量匹配
+            inputs.audios = inputs.audios[audio_size:]  # 从全局列表中移除已分配的音频
 
-        if not inference:
+        # 根据模式分支处理
+        if not inference:  # 训练模式
+            # ===== 1. 编码 Anchor 样本（查询/query） =====
+            # 深拷贝 inputs 避免修改原始数据
             anchor = deepcopy(inputs)
+            # 清空 assistant 消息内容（只保留 user 部分作为 anchor）
             anchor.messages[-1]['content'] = ''
+            # 清空 rejected_response（anchor 不需要负样本信息）
             anchor.rejected_response = []
+            # 分配多模态数据给 anchor
             split_multi_medias(anchor)
+            # 编码 anchor
             anchor_encoded = self._encode_truncated(anchor)
+            # 将 anchor 编码结果添加到 _encoded，所有键加上 'anchor_' 前缀
             for key in anchor_encoded:
                 _encoded[f'anchor_{key}'] = anchor_encoded[key]
+            
+            # ===== 2. 编码 Positive 样本（正样本/response） =====
+            # 深拷贝 inputs
             positive = deepcopy(inputs)
+            # 将 response 内容（messages[-1]）移动到 user 位置（messages[-2]）
+            # 这样编码时会把 response 当作输入来编码（获取其向量表示）
             positive.messages[-2]['content'] = positive.messages[-1]['content']
+            # 清空 assistant 消息内容
             positive.messages[-1]['content'] = ''
+            # 清空 rejected_response
             positive.rejected_response = []
+            # 分配多模态数据给 positive
             split_multi_medias(positive)
+            # 编码 positive
             positive_encoded = self._encode_truncated(positive)
+            # 将 positive 编码结果添加到 _encoded，所有键加上 'positive_' 前缀
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
+                # 同时为每个 key 初始化对应的 'negative_{key}' 为空列表
+                # 因为 negative 可能有多个，需要用列表存储
                 _encoded[f'negative_{key}'] = []
+            
+            # 添加 positive 样本的标签
+            # 如果 inputs.label 存在则使用其值，否则默认为 1.0（表示完全相关）
             labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
+            # ===== 3. 编码 Negative 样本（负样本/hard negatives） =====
+            # 获取 rejected_response 的数量（hard negatives 的数量）
             rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+            # 遍历每个 negative 样本
             for i in range(rejected_len):
+                # 深拷贝 inputs
                 negative = deepcopy(inputs)
+                # 将第 i 个 rejected_response 移动到 user 位置
+                # 这样编码时会把这个 negative 样本当作输入来编码
                 negative.messages[-2]['content'] = negative.rejected_response[i]
+                # 清空 assistant 消息内容
                 negative.messages[-1]['content'] = ''
+                # 清空 rejected_response
                 negative.rejected_response = []
+                # 分配多模态数据给这个 negative 样本
                 split_multi_medias(negative)
+                # 编码 negative
                 negative_encoded = self._encode_truncated(negative)
+                # 将 negative 编码结果添加到对应的列表中
+                # 注意：negative 是列表形式，因为可能有多个 hard negatives
                 for key in negative_encoded:
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
+                # 为这个 negative 样本添加标签 0.0（表示不相关）
                 labels.append(0.0)
 
+            # 将标签列表添加到编码结果中
+            # labels 格式：[positive_label, negative_label_0, negative_label_1, ...]
             _encoded['labels'] = labels
-        else:
+            
+        else:  # 推理模式
+            # 推理模式只需要编码 query（anchor），不需要 positive 和 negative
+            # ===== 编码 Anchor（查询） =====
+            # 深拷贝 inputs
             anchor = deepcopy(inputs)
+            # 清空 assistant 消息内容（只编码 user 输入）
             anchor.messages[-1]['content'] = ''
+            # 清空 rejected_response
             anchor.rejected_response = []
+            # 分配多模态数据
             split_multi_medias(anchor)
+            # 编码 anchor
             _encoded = self._encode_truncated(anchor)
+            # 移除 labels 字段（推理模式不需要标签）
             _encoded.pop('labels', None)
+        
+        # 返回编码结果
         return _encoded
 
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        _encoded = {}
-        labels = []
+        """函数功能：
+        编码 Reranker（重排序）任务的训练数据，用于文档相关性排序任务。
+        
+        Reranker 是信息检索系统中的关键组件，用于对初步检索的文档进行精细化重排序，
+        将最相关的文档排在前面。
+        
+        核心概念：
+        1. Query（查询）：用户的搜索查询或问题
+        2. Positive Document（正样本文档）：与查询高度相关的文档（response）
+        3. Negative Documents（负样本文档）：与查询不相关或相关性较低的文档（rejected_response）
+        
+        训练目标：
+        - 学习判断文档与查询的相关性
+        - Positive 样本标签为 1（相关）
+        - Negative 样本标签为 0（不相关）
+        - 通过对比学习，使模型能够准确区分相关和不相关的文档
+        
+        两种 Reranker 架构：
+        1. 分类式 Reranker（task_type='reranker'）：
+           - 基于序列分类架构（如 modernbert-reranker）
+           - 输出单个相关性分数
+           - 损失函数：pointwise 或 listwise
+        2. 生成式 Reranker（task_type='generative_reranker'）：
+           - 基于因果语言模型（如 qwen3-reranker）
+           - 输出 "yes"/"no" token 的概率
+           - 损失函数：生成式分类损失
+        
+        数据格式示例：
+        {"query": "什么是机器学习？", "response": "机器学习是AI的分支...", 
+         "rejected_response": ["今天天气不错", "Python是编程语言"]}
+        
+        支持两种输入模式：
+        1. 占位符模式：query 中包含 `{doc}` 占位符
+           - 示例：messages = [{"role": "user", "content": "这段文本 {doc} 与机器学习相关吗？"}]
+           - 编码时会将 {doc} 替换为实际文档内容（response 或 rejected_response[i]）
+           - 适合需要明确指定文档位置的场景
+        2. 标准模式：query 不包含 `{doc}` 占位符
+           - 示例：messages = [
+               {"role": "user", "content": "查询：什么是机器学习？"},
+               {"role": "assistant", "content": "文档：机器学习是..."}
+             ]
+           - 文档内容直接放在 assistant 消息中
+           - 适合标准对话格式
+        
+        本方法的核心任务：
+        1. 编码 positive 样本（query + 相关文档）
+        2. 编码所有 negative 样本（query + 不相关文档）
+        3. 为每个样本生成标签（positive=1, negative=0）
+        4. 返回 positive 和 negative 的编码结果及标签
+        
+        参数：
+        - inputs (StdTemplateInputs): 标准模板输入对象，包含：
+            messages (List[Dict]): 对话消息列表
+              - 占位符模式：1-2 条消息，messages[-2] 包含 {doc} 占位符，messages[-1] 为 positive 文档
+              - 标准模式：2 条消息，messages[-2] 为 query，messages[-1] 为 positive 文档
+            rejected_response (List[str]): 负样本文档列表（hard negatives）
+              - 每个元素是一个不相关或低相关的文档
+        
+        返回值：
+        - Dict[str, Any]: Reranker 训练所需的编码字典
+        
+        {
+            # Positive 相关字段（query + 相关文档的编码）
+            'positive_input_ids': List[int],         # positive 的 token IDs
+            'positive_labels': List[int],            # positive 的标签（用于计算损失）
+            'positive_loss_scale': List[float],      # positive 的 loss 权重
+            
+            # Negative 相关字段（query + 不相关文档的编码，列表形式）
+            'negative_input_ids': List[List[int]],   # 所有 negative 的 token IDs 列表
+            'negative_labels': List[List[int]],      # 所有 negative 的标签列表
+            'negative_loss_scale': List[List[float]], # 所有 negative 的 loss 权重列表
+            
+            # 标签
+            'labels': List[int]                      # [1, 0, 0, 0, ...]
+                                                     # 第一个 1 表示 positive，后续的 0 表示各个 negative
+        }
+        
+        使用示例：
+        >>> # 示例1：占位符模式（推荐，格式更灵活）
+        >>> template.task_type = 'reranker'
+        >>> template.mode = 'train'
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "文档 {doc} 是否与机器学习相关？"}
+        ...         # 注意：这里只有 1 条消息，包含 {doc} 占位符
+        ...     ],
+        ...     # 实际的文档内容通过 response 和 rejected_response 提供
+        ...     response="机器学习是人工智能的一个重要分支...",  # 会被添加到 messages[-1]
+        ...     rejected_response=[
+        ...         "今天天气真好，阳光明媚",       # hard negative 1
+        ...         "Python 是一种编程语言",        # hard negative 2
+        ...         "我喜欢吃披萨和汉堡"            # hard negative 3
+        ...     ]
+        ... )
+        >>> encoded = template._reranker_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'positive_input_ids': [101, ...],  # "文档 [机器学习是...] 是否与机器学习相关？"
+        >>> #     'negative_input_ids': [
+        >>> #         [101, ...],  # "文档 [今天天气...] 是否与机器学习相关？"
+        >>> #         [101, ...],  # "文档 [Python是...] 是否与机器学习相关？"
+        >>> #         [101, ...]   # "文档 [我喜欢...] 是否与机器学习相关？"
+        >>> #     ],
+        >>> #     'labels': [1, 0, 0, 0]  # positive=1, 3个negative=0
+        >>> # }
+        >>> 
+        >>> # 示例2：标准模式（不使用占位符）
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "查询：什么是深度学习？"},
+        ...         {"role": "assistant", "content": "深度学习是机器学习的子领域..."}  # positive
+        ...     ],
+        ...     rejected_response=[
+        ...         "深圳是中国的一座城市",
+        ...         "学习编程需要耐心"
+        ...     ]
+        ... )
+        >>> encoded = template._reranker_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'positive_input_ids': [...],  # query + positive文档
+        >>> #     'negative_input_ids': [
+        >>> #         [...],  # query + "深圳是中国的一座城市"
+        >>> #         [...]   # query + "学习编程需要耐心"
+        >>> #     ],
+        >>> #     'labels': [1, 0, 0]
+        >>> # }
+        >>> 
+        >>> # 示例3：Listwise 损失训练（组内排序）
+        >>> # 数据格式：每个 query 对应 1 个 positive + n 个 negative
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "相关性：{doc} 与'机器学习'"}],
+        ...     response="监督学习是机器学习的主要范式",  # 高相关
+        ...     rejected_response=[
+        ...         "无监督学习也是机器学习的一种",      # 中等相关
+        ...         "Python 有很多机器学习库",          # 低相关
+        ...         "今天是星期一"                      # 不相关
+        ...     ]
+        ... )
+        >>> # Listwise 损失会在组内计算相对排序，而不是独立的二分类
+        >>> 
+        >>> # 示例4：Generative Reranker（生成式）
+        >>> template.task_type = 'generative_reranker'
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "文档：{doc}\n问题：这是否与AI相关？"}],
+        ...     response="人工智能正在改变世界",
+        ...     rejected_response=["今天天气不错"]
+        ... )
+        >>> # 生成式 reranker 会学习生成 "yes"（相关）或 "no"（不相关）
+        """
+        # 初始化编码字典和标签列表
+        _encoded = {}  # 存储所有编码结果（positive、negative）
+        labels = []    # 存储标签列表：[positive_label=1, negative_label_0, negative_label_0, ...]
 
+        # ===== 1. 编码 Positive 样本（query + 相关文档） =====
+        # 深拷贝 inputs 避免修改原始数据
         positive = deepcopy(inputs)
+        # 清空 rejected_response（positive 不需要负样本信息）
         positive.rejected_response = []
+        
+        # 判断是否使用占位符模式
         if '{doc}' in positive.messages[-2]['content']:
+            # 占位符模式：将 {doc} 替换为 positive 文档内容
+            # messages[-1]['content'] 包含实际的 positive 文档
             positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
                 '{doc}', inputs.messages[-1]['content'])
+            # 替换后，移除 messages[-1]（因为其内容已经被嵌入到 messages[-2] 中）
             positive.messages.pop(-1)
+        # 如果不包含 {doc}，说明是标准模式，messages 已经是正确格式，无需修改
+        
+        # 编码 positive 样本
         positive_encoded = self._encode_truncated(positive)
+        # 将 positive 编码结果添加到 _encoded，所有键加上 'positive_' 前缀
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
+            # 同时为每个 key 初始化对应的 'negative_{key}' 为空列表
+            # 因为 negative 可能有多个，需要用列表存储
             _encoded[f'negative_{key}'] = []
+        
+        # 为 positive 样本添加标签 1（表示相关）
         labels.append(1)
 
+        # ===== 2. 编码 Negative 样本（query + 不相关文档） =====
+        # 获取 rejected_response 的数量（hard negatives 的数量）
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+        # 遍历每个 negative 样本
         for i in range(rejected_len):
+            # 深拷贝 inputs
             negative = deepcopy(inputs)
+            
+            # 判断是否使用占位符模式
             if '{doc}' in negative.messages[-2]['content']:
+                # 占位符模式：将 {doc} 替换为第 i 个 negative 文档内容
                 negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
                     '{doc}', negative.rejected_response[i])
+                # 替换后，移除 messages[-1]
                 negative.messages.pop(-1)
             else:
+                # 标准模式：直接将第 i 个 negative 文档放入 messages[-1]['content']
+                # 这样就形成了 query + negative 文档的对
                 negative.messages[-1]['content'] = negative.rejected_response[i]
+            
+            # 清空 rejected_response
             negative.rejected_response = []
+            # 编码这个 negative 样本
             negative_encoded = self._encode_truncated(negative)
+            # 将 negative 编码结果添加到对应的列表中
+            # 注意：negative 是列表形式，因为可能有多个 hard negatives
             for key in negative_encoded:
                 _encoded[f'negative_{key}'].append(negative_encoded[key])
+            
+            # 为这个 negative 样本添加标签 0（表示不相关）
             labels.append(0)
 
+        # 将标签列表添加到编码结果中
+        # labels 格式：[positive_label=1, negative_label_0, negative_label_1, ...]
         _encoded['labels'] = labels
+
+        # 返回编码结果
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """函数功能：
+        编码序列分类（Sequence Classification）任务的训练或推理数据。
+        
+        序列分类是 NLP 中的基础任务，将整个输入序列映射到一个或多个类别标签。
+        常见应用包括：
+        - 文本分类：新闻分类、主题分类
+        - 情感分析：正面/负面/中性情感判断
+        - 意图识别：用户意图分类
+        - 垃圾邮件检测：正常邮件 vs 垃圾邮件
+        
+        支持三种问题类型（problem_type）：
+        1. single_label_classification（单标签分类）：
+           - 每个样本只属于一个类别（互斥）
+           - 标签格式：整数索引（如 0, 1, 2）
+           - 损失函数：交叉熵损失（CrossEntropyLoss）
+           - 示例：情感分类（正面/负面/中性），新闻分类（体育/财经/科技）
+        
+        2. multi_label_classification（多标签分类）：
+           - 每个样本可以属于多个类别（非互斥）
+           - 标签格式：浮点数列表（如 [1.0, 0.0, 1.0] 表示属于第 0 和第 2 类）
+           - 损失函数：二元交叉熵损失（BCEWithLogitsLoss）
+           - 示例：文章标签（可同时包含"技术"、"教育"、"AI"）
+        
+        3. regression（回归）：
+           - 预测连续值而非离散类别
+           - 标签格式：浮点数或浮点数列表
+           - 损失函数：均方误差损失（MSELoss）
+           - 示例：文本相似度评分（0.0-1.0），情感强度预测（-1.0 到 1.0）
+        
+        本方法的核心任务：
+        1. 调用 _encode_truncated 对输入序列进行编码
+        2. 移除编码结果中的 labels 字段（因为需要重新设置）
+        3. 根据 inputs.label 和问题类型设置正确格式的 labels
+        4. 对单标签分类任务，将标签转换为整数类型
+        
+        参数：
+        - inputs (StdTemplateInputs): 标准模板输入对象，包含：
+            messages (List[Dict]): 对话消息列表
+              - 通常只有 1 条消息（待分类的文本）
+              - 或 1-2 条消息（如果包含 system prompt）
+            label (Union[int, float, List[float], None]): 类别标签
+              - 单标签分类：整数（如 0, 1, 2）或可转换为整数的类型
+              - 多标签分类：浮点数列表（如 [1.0, 0.0, 1.0]）
+              - 回归：浮点数（如 0.85）或浮点数列表
+              - 推理模式：None（不需要标签）
+        
+        返回值：
+        - Dict[str, Any]: 序列分类任务所需的编码字典
+        
+        {
+            'input_ids': List[int],              # 输入序列的 token IDs
+            'labels': Union[int, float, List[float]],  # 类别标签（根据 problem_type 类型不同）
+                                                       # - single_label: int (如 2)
+                                                       # - multi_label: List[float] (如 [1.0, 0.0, 1.0])
+                                                       # - regression: float 或 List[float] (如 0.85)
+                                                       # - 推理模式：不包含此字段
+            'loss_scale': List[float],           # loss 权重序列（通常不用于分类任务）
+            'pixel_values': ...,                 # 多模态数据（如果有）
+            # 注意：不包含 attention_mask（会在 data_collator 中生成）
+        }
+        
+        使用示例：
+        >>> # 示例1：单标签分类（情感分析）
+        >>> template.task_type = 'seq_cls'
+        >>> template.mode = 'train'
+        >>> # 配置模型：3 个类别（负面、中性、正面）
+        >>> template.config.num_labels = 3
+        >>> template.config.problem_type = 'single_label_classification'
+        >>> 
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "这部电影真是太棒了！"}],
+        ...     label=2  # 类别 2：正面情感
+        ... )
+        >>> encoded = template._seq_cls_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'input_ids': [101, 1234, 5678, ..., 102],
+        >>> #     'labels': 2  # 整数类型（单标签）
+        >>> # }
+        >>> 
+        >>> # 示例2：多标签分类（文章标签）
+        >>> template.config.num_labels = 5  # 5 个可能的标签
+        >>> template.config.problem_type = 'multi_label_classification'
+        >>> 
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "介绍深度学习在计算机视觉中的应用"}],
+        ...     label=[1.0, 0.0, 1.0, 1.0, 0.0]  # 属于第 0、2、3 类
+        ...     # 可能的标签：[AI, 体育, 技术, 教育, 娱乐]
+        ...     # 该文章同时属于：AI、技术、教育
+        ... )
+        >>> encoded = template._seq_cls_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'input_ids': [101, ...],
+        >>> #     'labels': [1.0, 0.0, 1.0, 1.0, 0.0]  # 浮点数列表（多标签）
+        >>> # }
+        >>> 
+        >>> # 示例3：回归任务（文本相似度评分）
+        >>> template.config.num_labels = 1  # 输出 1 个连续值
+        >>> template.config.problem_type = 'regression'
+        >>> 
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[
+        ...         {"role": "user", "content": "文本1：机器学习\n文本2：深度学习"}
+        ...     ],
+        ...     label=0.85  # 相似度分数（0.0-1.0）
+        ... )
+        >>> encoded = template._seq_cls_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'input_ids': [101, ...],
+        >>> #     'labels': 0.85  # 浮点数（回归）
+        >>> # }
+        >>> 
+        >>> # 示例4：推理模式（不提供标签）
+        >>> template.mode = 'pt'
+        >>> inputs = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "这个产品质量很好"}],
+        ...     label=None  # 推理时不需要标签
+        ... )
+        >>> encoded = template._seq_cls_encode(inputs)
+        >>> # 返回结构：
+        >>> # {
+        >>> #     'input_ids': [101, ...],
+        >>> #     # 没有 'labels' 字段
+        >>> # }
+        >>> 
+        >>> # 示例5：自动推断 problem_type（不显式设置）
+        >>> template.config.problem_type = None  # 自动推断
+        >>> template.config.num_labels = 4
+        >>> 
+        >>> # 整数标签 -> 自动识别为单标签分类
+        >>> inputs1 = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "新闻文本"}],
+        ...     label=1  # 整数
+        ... )
+        >>> encoded1 = template._seq_cls_encode(inputs1)
+        >>> # problem_type 被自动设置为 'single_label_classification'
+        >>> # labels 被转换为 int: 1
+        >>> 
+        >>> # 浮点数列表标签 -> 自动识别为多标签分类
+        >>> inputs2 = StdTemplateInputs(
+        ...     messages=[{"role": "user", "content": "文章内容"}],
+        ...     label=[1.0, 0.0, 1.0, 0.0]  # 浮点数列表
+        ... )
+        >>> encoded2 = template._seq_cls_encode(inputs2)
+        >>> # problem_type 被自动设置为 'multi_label_classification'
+        >>> # labels 保持为 List[float]
+        """
+        # 调用 _encode_truncated 方法对输入进行编码
+        # 返回包含 input_ids、labels（causal_lm 格式）、loss_scale 等字段的字典
         encoded = self._encode_truncated(inputs)
+        
+        # 移除 causal_lm 格式的 labels（因为序列分类不需要逐 token 的标签）
+        # 序列分类任务的 labels 是整个序列对应一个标签，而不是每个 token 一个标签
+        # pop(key, None) 表示如果 key 不存在也不会报错
         encoded.pop('labels', None)
+        
+        # 如果提供了标签（训练模式），则处理并添加到编码结果中
         if inputs.label is not None:
+            # 获取输入的标签
             labels = inputs.label
+            
+            # 根据标签类型和模型配置自动推断问题类型
+            # _get_problem_type 会根据以下规则判断：
+            # 1. 如果 config.problem_type 已设置，直接返回
+            # 2. 如果 labels 是列表且首元素是浮点数 -> 'regression'
+            # 3. 如果 labels 是列表（非浮点数） -> 'multi_label_classification'
+            # 4. 如果 labels 是标量（单个值） -> 'single_label_classification'
             problem_type = self._get_problem_type(self.config, labels=labels)
+            
+            # 如果是单标签分类，将标签转换为整数类型
+            # 这是因为 CrossEntropyLoss 要求标签是整数类型（类别索引）
             if problem_type == 'single_label_classification':
-                labels = int(labels)
+                labels = int(labels)  # 确保标签是整数（如 2 而不是 2.0）
+            
+            # 将处理后的标签添加到编码结果中
+            # 注意：
+            # - single_label: labels 是 int (如 2)
+            # - multi_label: labels 是 List[float] (如 [1.0, 0.0, 1.0])
+            # - regression: labels 是 float 或 List[float] (如 0.85)
             encoded['labels'] = labels
+        
+        # 返回编码结果
+        # 推理模式（inputs.label is None）：不包含 'labels' 字段
+        # 训练模式：包含 'labels' 字段，格式取决于 problem_type
         return encoded
 
     @torch.inference_mode()
@@ -961,7 +2164,7 @@ class Template(ProcessorMixin):
         >>> # encoded: {'chosen_input_ids': [...], 'rejected_input_ids': [...], ...}
         >>> 
         >>> # 示例4：推理场景（不生成labels）
-        >>> template.mode = 'pt'
+        >>> template.mode = 'pt/vllm/sglang/lmdeploy'
         >>> inputs = {"messages": [{"role": "user", "content": "你好"}]}
         >>> encoded = template.encode(inputs, return_length=True)
         >>> # encoded: {'input_ids': [...], 'length': 10} (没有labels)
@@ -991,7 +2194,7 @@ class Template(ProcessorMixin):
         if self.task_type == 'causal_lm':  # 若任务类型为因果语言模型（标准的自回归LM）
             if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:  # 标准训练或推理模式
                 encoded = self._encode_truncated(inputs)  # 调用标准编码方法：处理消息、tokenize、生成labels、应用截断策略
-            elif self.mode == 'rlhf':  # RLHF模式（强化学习从人类反馈）
+            elif self.mode == 'rlhf':  # RLHF模式（基于人类反馈的强化学习）
                 encoded = self._rlhf_encode(inputs)  # 调用RLHF编码方法：分别编码chosen和rejected响应
             elif self.mode == 'kto':  # KTO模式（Kahneman-Tversky优化）
                 encoded = self._kto_encode(inputs)  # 调用KTO编码方法：处理KTO训练所需格式
@@ -1015,7 +2218,7 @@ class Template(ProcessorMixin):
         # ===== 步骤5：添加channel信息（如有） =====
         if inputs.channel is not None:  # 若输入包含channel信息（用于多任务或多数据源场景）
             encoded['channel'] = inputs.channel  # 将channel信息添加到编码结果中
-
+        
         # ===== 步骤6：清理None值并处理length字段 =====
         lengths = [0]  # 初始化长度列表，用于收集所有*length字段的值
         for key in list(encoded.keys()):  # 遍历编码结果的所有键（使用list()避免迭代时修改字典）
@@ -1027,7 +2230,7 @@ class Template(ProcessorMixin):
                     lengths.append(value)  # 添加到lengths列表
                 elif isinstance(value, (tuple, list)):  # 若为列表或元组（多个长度值）
                     lengths += value  # 扩展lengths列表
-        
+
         # ===== 步骤7：根据return_length决定是否保留length字段 =====
         if return_length:  # 若需要返回length
             encoded['length'] = max(lengths)  # 保存所有长度的最大值
@@ -1042,40 +2245,175 @@ class Template(ProcessorMixin):
         return encoded
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        packed = {}
-        keys = set()
-        length = []
-        for r in row:
-            keys.update(r.keys())
-            length.append(r['length'])
-        for key in keys:
-            if key in {'input_ids', 'labels', 'loss_scale'}:
+        """
+        函数功能：
+            将多个数据样本打包（packing）成一个批次样本。该方法主要用于 padding_free 模式下，
+            将多个短序列拼接成一个长序列，以提高训练效率。通过合并 input_ids、labels 等字段，
+            并重新生成 position_ids，实现序列级别的数据打包。
+        
+        参数：
+            row (List[Dict[str, Any]]): 待打包的数据样本列表，每个样本是一个字典，包含以下可能的键：
+                - input_ids (List[int]): 输入token序列
+                - labels (List[int]): 标签token序列
+                - loss_scale (List[float]): 损失缩放因子序列
+                - length (int): 序列长度
+                - channel (Any): 通道信息（如多模态数据的通道）
+                - pixel_values (torch.Tensor, optional): 图像像素值（多模态数据）
+                - pixel_values_videos (torch.Tensor, optional): 视频像素值（多模态数据）
+                - image_sizes (torch.Tensor, optional): 图像尺寸信息（多模态数据）
+        
+        返回值：
+            Dict[str, Any]: 打包后的批次数据字典，包含以下可能的键：
+                - input_ids (List[int]): 拼接后的输入token序列
+                - labels (List[int]): 拼接后的标签token序列
+                - loss_scale (List[float]): 拼接后的损失缩放因子序列
+                - length (int): 所有样本长度的总和
+                - channel (List[Any]): 所有样本的通道信息列表
+                - position_ids (List[int]): 重新生成的位置编码序列
+                - pixel_values (torch.Tensor, optional): 合并后的图像像素值
+                - pixel_values_videos (torch.Tensor, optional): 合并后的视频像素值
+                - image_sizes (torch.Tensor, optional): 合并后的图像尺寸信息
+        
+        使用示例：
+            >>> template = Template(...)
+            >>> row1 = {'input_ids': [1, 2, 3], 'labels': [1, 2, 3], 'length': 3}
+            >>> row2 = {'input_ids': [4, 5], 'labels': [4, 5], 'length': 2}
+            >>> packed = template.packing_row([row1, row2])
+            >>> print(packed['input_ids'])  # [1, 2, 3, 4, 5]
+            >>> print(packed['position_ids'])  # [0, 1, 2, 0, 1]
+            >>> print(packed['length'])  # 5
+        """
+        # ===== 步骤1：初始化打包结果字典和辅助变量 =====
+        packed = {}  # 存储打包后的结果
+        keys = set()  # 收集所有样本中出现的字段名
+        length = []  # 收集所有样本的长度信息
+        
+        # ===== 步骤2：收集所有字段名和长度信息 =====
+        for r in row:  # 遍历每个待打包的样本
+            keys.update(r.keys())  # 将当前样本的所有字段名添加到集合中
+            length.append(r['length'])  # 提取并保存样本的长度
+        
+        # ===== 步骤3：根据字段类型进行不同的打包操作 =====
+        for key in keys:  # 遍历所有收集到的字段名
+            if key in {'input_ids', 'labels', 'loss_scale'}:  # 对于序列类字段
+                # 使用 sum 函数将所有样本的序列首尾拼接成一个长序列
+                # 例如：[[1,2,3], [4,5]] -> [1,2,3,4,5]
                 packed[key] = sum((x[key] for x in row), start=[])
-            elif key == 'length':
+            elif key == 'length':  # 对于长度字段
+                # 计算所有样本长度的总和，得到打包后的总长度
                 packed[key] = sum((x[key] for x in row))
-            elif key == 'channel':
+            elif key == 'channel':  # 对于通道字段
+                # 将所有样本的通道信息收集成列表（不拼接）
                 packed[key] = [x[key] for x in row]
-        if 'position_ids' not in packed:
+        
+        # ===== 步骤4：生成打包后的位置编码 =====
+        if 'position_ids' not in packed:  # 如果打包结果中没有 position_ids
+            # 为每个样本生成从0开始的位置编码，然后拼接
+            # 例如：length=[3,2] -> [[0,1,2], [0,1]] -> [0,1,2,0,1]
+            # 这样每个样本的位置编码都是独立的，从0开始计数
             packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
+        # ===== 步骤5：处理多模态数据（图像、视频等） =====
+        # 调用 _data_collator_mm_data 方法处理 pixel_values、pixel_values_videos、image_sizes 等多模态字段
         packed.update(self._data_collator_mm_data(row))
+        
+        # ===== 步骤6：返回打包后的批次数据 =====
         return packed
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
-
+    
     @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
+        """
+        函数功能：
+            为序列分类任务生成预测结果的对数概率信息。该方法用于提取和组织分类模型的预测结果，
+            包括预测类别的对数概率以及概率最高的前N个候选类别的详细信息。主要用于序列分类
+            （sequence classification）和多标签分类（multi-label classification）任务。
+        
+        参数：
+            pred (int 或 List[int]): 预测的类别索引
+                - 对于单标签分类：整数，表示预测的类别索引（如类别3）
+                - 对于多标签分类：整数列表，表示预测的多个类别索引（如[0, 2, 5]）
+            logprobs (torch.Tensor): 所有类别的对数概率张量
+                - 形状：(num_classes,) 一维张量
+                - 包含每个类别的对数概率值（log probability）
+                - 对于单标签分类：通常来自 log_softmax
+                - 对于多标签分类：通常来自 logsigmoid
+            top_logprobs (int): 返回概率最高的前N个候选类别数量
+                - 用于查看除了预测类别外，其他高概率候选的分布情况
+        
+        返回值：
+            Dict[str, List[Dict[str, Any]]]: 格式化的对数概率信息字典，结构如下：
+                {
+                    'content': [
+                        {
+                            'index': <预测类别索引>,
+                            'logprobs': <预测类别的对数概率值或值列表>,
+                            'top_logprobs': [
+                                {'index': <类别索引>, 'logprob': <对数概率值>},
+                                ...  # 按概率降序排列的前N个候选
+                            ]
+                        }
+                    ]
+                }
+        
+        使用示例：
+            >>> # 单标签分类示例
+            >>> logprobs = torch.tensor([-0.1, -2.3, -0.5, -3.2])  # 4个类别的对数概率
+            >>> pred = 0  # 预测类别0（概率最高）
+            >>> result = Template._get_seq_cls_logprobs(pred, logprobs, top_logprobs=3)
+            >>> print(result)
+            {
+                'content': [{
+                    'index': 0,
+                    'logprobs': -0.1,
+                    'top_logprobs': [
+                        {'index': 0, 'logprob': -0.1},
+                        {'index': 2, 'logprob': -0.5},
+                        {'index': 1, 'logprob': -2.3}
+                    ]
+                }]
+            }
+            
+            >>> # 多标签分类示例
+            >>> logprobs = torch.tensor([-0.2, -0.3, -3.0, -0.1])
+            >>> pred = [0, 1, 3]  # 预测多个类别
+            >>> result = Template._get_seq_cls_logprobs(pred, logprobs, top_logprobs=2)
+            >>> print(result)
+            {
+                'content': [{
+                    'index': [0, 1, 3],
+                    'logprobs': [-0.2, -0.3, -0.1],
+                    'top_logprobs': [
+                        {'index': 3, 'logprob': -0.1},
+                        {'index': 0, 'logprob': -0.2}
+                    ]
+                }]
+            }
+        """
+        # ===== 步骤1：获取概率最高的前N个类别索引 =====
+        # 对 logprobs 按降序排序（descending=True），取前 top_logprobs 个索引
+        # argsort 返回排序后的索引，[:top_logprobs] 截取前N个，tolist() 转为Python列表
         idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
+        
+        # ===== 步骤2：将 logprobs 张量转换为 Python 列表 =====
+        # 转换为列表便于后续索引访问和JSON序列化
         logprobs = logprobs.tolist()
+        
+        # ===== 步骤3：构建并返回格式化的结果字典 =====
         return {
-            'content': [{
-                'index': pred,
+            'content': [{  # content 字段包含一个列表，通常只有一个元素
+                'index': pred,  # 预测的类别索引（单个整数或整数列表）
+                # 根据 pred 类型提取对应的对数概率值：
+                # - 如果是列表/元组（多标签）：提取每个预测类别的对数概率值列表
+                # - 如果是单个整数（单标签）：提取该类别的对数概率值
                 'logprobs': [logprobs[p] for p in pred] if isinstance(pred, (list, tuple)) else logprobs[pred],
+                # top_logprobs 字段：包含概率最高的前N个候选类别的详细信息
                 'top_logprobs': [{
-                    'index': idx,
-                    'logprob': logprobs[idx]
-                } for idx in idxs]
+                    'index': idx,  # 候选类别的索引
+                    'logprob': logprobs[idx]  # 候选类别的对数概率值
+                } for idx in idxs]  # 遍历排序后的前N个索引，构建字典列表
             }]
         }
 
@@ -1468,87 +2806,344 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = []
-        for message in inputs.messages:
-            content = message['content'] or ''
-            if not isinstance(content, str):
-                if message['role'] == 'user':
-                    # Give up adding the default tag
-                    return
-                elif message['role'] == 'assistant':
-                    continue
-            total_content.append(content)
-        if inputs.rejected_response:
-            rejected_response = inputs.rejected_response
-            if isinstance(inputs.rejected_response, str):
-                rejected_response = [rejected_response]
-            total_content += rejected_response
-        total_content = '\n'.join(total_content)
-        if inputs.system:
-            total_content = f'{inputs.system}\n{total_content}'
-        for media_type in ['image', 'audio', 'video']:
+        """
+        函数功能：
+            为多模态输入自动添加缺失的默认标签（如 <image>、<audio>、<video>）。该方法用于
+            处理用户提供了多模态数据但未在文本中显式标注相应标签的情况，通过比较实际多模态
+            数据数量和文本中标签数量，自动在第一条用户消息前补充缺失的标签，确保模板处理时
+            能正确识别和定位多模态数据。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准化的模板输入对象，包含以下字段：
+                - messages (List[Dict[str, Any]]): 对话消息列表
+                    每个消息包含 'role' 和 'content' 字段
+                    role: 'user', 'assistant', 'system', 'tool' 等
+                    content: 字符串内容或结构化多模态内容（list/dict）
+                - images (Optional[List]): 图像数据列表（路径、URL、PIL.Image等）
+                - audios (Optional[List]): 音频文件列表
+                - videos (Optional[List]): 视频文件列表
+                - system (Optional[str]): 系统提示词
+                - rejected_response (Optional[Union[str, List[str]]]): 拒绝的响应（RLHF训练用）
+        
+        返回值：
+            None: 该方法直接修改传入的 inputs 对象（原地修改），不返回任何值。
+                  修改后的 inputs.messages[0]['content'] 会在开头添加缺失的多模态标签。
+        
+        使用示例：
+            >>> # 示例1：用户提供了2张图像，但只标注了1个<image>标签
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": "<image>描述第二张图"}],
+            ...     images=["image1.jpg", "image2.jpg"]
+            ... )
+            >>> Template._add_default_tags(inputs)
+            >>> print(inputs.messages[0]['content'])
+            # 输出: "<image><image>描述第二张图"  # 自动在开头添加了缺失的<image>标签
+            
+            >>> # 示例2：用户提供了3张图像，但没有标注任何<image>标签
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": "这些图片里有什么？"}],
+            ...     images=["img1.jpg", "img2.jpg", "img3.jpg"]
+            ... )
+            >>> Template._add_default_tags(inputs)
+            >>> print(inputs.messages[0]['content'])
+            # 输出: "<image><image><image>这些图片里有什么？"  # 添加了3个<image>标签
+            
+            >>> # 示例3：用户标注的标签多于实际图像数量（会输出警告）
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": "<image><image><image>描述"}],
+            ...     images=["image.jpg"]  # 只有1张图像
+            ... )
+            >>> Template._add_default_tags(inputs)
+            # 警告: num_media: 1, num_media_tags: 3, total_content: ...
+            # 只会替换最前面的1个<image>标签，保留后续标签
+            
+            >>> # 示例4：混合多模态（图像+视频）
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": "分析这些内容"}],
+            ...     images=["img.jpg"],
+            ...     videos=["video.mp4"]
+            ... )
+            >>> Template._add_default_tags(inputs)
+            >>> print(inputs.messages[0]['content'])
+            # 输出: "<image><video>分析这些内容"
+            
+            >>> # 示例5：结构化内容（非字符串）的用户消息会跳过处理
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": [
+            ...         {"type": "image", "image": "img.jpg"},
+            ...         {"type": "text", "text": "描述图片"}
+            ...     ]}],
+            ...     images=["img.jpg"]
+            ... )
+            >>> Template._add_default_tags(inputs)
+            # 不会修改，直接返回（因为content不是字符串）
+        """
+        # ===== 步骤1：收集所有消息内容 =====
+        total_content = []  # 存储所有消息的文本内容
+        for message in inputs.messages:  # 遍历所有对话消息
+            content = message['content'] or ''  # 获取消息内容，若为None则使用空字符串
+            if not isinstance(content, str):  # 若内容不是字符串（是结构化多模态内容）
+                if message['role'] == 'user':  # 若是用户消息
+                    # 结构化内容已经明确指定了多模态数据位置，无需添加默认标签
+                    return  # 直接返回，放弃添加默认标签
+                elif message['role'] == 'assistant':  # 若是助手消息
+                    continue  # 跳过助手的结构化内容（助手通常不使用多模态标签）
+            total_content.append(content)  # 将字符串内容添加到列表
+        
+        # ===== 步骤2：添加拒绝响应内容（RLHF训练用） =====
+        if inputs.rejected_response:  # 若存在拒绝响应
+            rejected_response = inputs.rejected_response  # 获取拒绝响应
+            if isinstance(inputs.rejected_response, str):  # 若拒绝响应是单个字符串
+                rejected_response = [rejected_response]  # 转换为列表格式
+            total_content += rejected_response  # 将拒绝响应添加到总内容中
+        
+        # ===== 步骤3：拼接所有内容为一个字符串 =====
+        total_content = '\n'.join(total_content)  # 用换行符连接所有内容
+        if inputs.system:  # 若存在系统提示词
+            total_content = f'{inputs.system}\n{total_content}'  # 将系统提示添加到开头
+        
+        # ===== 步骤4：遍历所有多模态类型，检查并添加缺失标签 =====
+        for media_type in ['image', 'audio', 'video']:  # 遍历三种多模态类型
+            # 构建字段名和标签名：'image' -> 'images' 和 '<image>'
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
+            # 获取对应的多模态数据（如 inputs.images）
             medias = getattr(inputs, media_key)
-            if not isinstance(medias, list):
-                medias = [medias]
-            if medias:
+            if not isinstance(medias, list):  # 若多模态数据不是列表
+                medias = [medias]  # 转换为单元素列表
+            if medias:  # 若多模态数据列表非空
+                # 统计文本中该类型标签的数量（如<image>出现次数）
                 num_media_tags = len(re.findall(media_tag, total_content))
+                # 获取实际多模态数据的数量
                 num_media = len(medias)
+                # 计算需要新增的标签数量（数据数量 - 标签数量）
                 num_new_tags = num_media - num_media_tags
-                if num_new_tags > 0:
+                if num_new_tags > 0:  # 若标签数量不足（数据多于标签）
+                    # 在第一条消息的内容前添加缺失的标签
+                    # 例如：缺2个<image>标签，则添加 "<image><image>" + 原内容
                     inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
-                elif num_new_tags < 0:
+                elif num_new_tags < 0:  # 若标签数量过多（标签多于数据）
+                    # 输出警告信息，提示用户标签数量与数据不匹配
                     logger.warning(
                         f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
                         'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
+                # 注意：num_new_tags == 0 时，标签数量与数据匹配，无需处理
 
     def _encode_context_list(
             self,
             context_list: List[Context],
             loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
-        """return: input_ids, labels, tokenizer_kwargs"""
-        input_ids: List[int] = []
-        labels: List[int] = []
-        loss_scale: List[float] = []
-        tokenizer_kwargs = {}
-        if loss_scale_list is None:
+        """
+        函数功能：
+            将上下文列表（Context List）编码为token序列，生成模型训练所需的input_ids、labels和
+            loss_scale。该方法是模板编码的核心底层方法，负责将字符串或token列表转换为最终的token
+            序列，并根据loss_scale_list决定每个位置是否参与loss计算。支持灵活的loss权重控制，
+            实现对不同token段设置不同的训练权重。
+        
+        参数：
+            context_list (List[Context]): 上下文列表，每个元素可以是：
+                - str: 需要tokenize的字符串文本（如 "Hello, world!"）
+                - List[int]: 已经tokenize的token ID列表（如 [15339, 11, 1879, 0]）
+                Context类型定义为 Union[str, List[int]]，即 Word 类型
+            loss_scale_list (Optional[List[float]]): loss权重列表，默认为None
+                - 每个元素对应context_list中一个context的loss权重
+                - 值为0.0：该段不参与loss计算（labels设为-100）
+                - 值为1.0：该段正常参与loss计算（labels为实际token）
+                - 值为其他浮点数：该段以指定权重参与loss计算（用于loss_scale）
+                - None时：自动初始化为全0列表（所有context不参与loss计算）
+        
+        返回值：
+            Tuple[List[int], List[int], List[float], Dict[str, Any]]: 包含四个元素的元组
+                - input_ids (List[int]): 完整的输入token ID序列，拼接所有context的token
+                    例如：[151644, 8948, 198, 151645, 872, 151643, 151644, ...]
+                - labels (List[int]): 标签序列，与input_ids等长
+                    参与loss计算的位置：对应的token ID
+                    不参与loss计算的位置：-100（PyTorch中的ignore_index）
+                    例如：[-100, -100, -100, -100, 872, 151643, 151644, ...]
+                - loss_scale (Optional[List[float]]): loss权重序列，与input_ids等长
+                    若所有权重为0或1：返回None（使用标准loss计算）
+                    若包含其他值：返回权重列表（用于加权loss计算）
+                    例如：None 或 [0.0, 0.0, 1.0, 1.0, 0.5, 0.5, ...]
+                - tokenizer_kwargs (Dict[str, Any]): tokenizer的额外参数（当前版本返回空字典）
+        
+        使用示例：
+            >>> # 示例1：基础字符串编码
+            >>> template = Template(...)
+            >>> context_list = ["<|system|>", "You are a helpful assistant.", "<|user|>", "Hello!"]
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 0.0]  # 系统和用户消息不计算loss
+            >>> input_ids, labels, loss_scale, kwargs = template._encode_context_list(
+            ...     context_list, loss_scale_list
+            ... )
+            >>> print(len(input_ids))  # 例如: 15
+            >>> print(labels[:5])  # [-100, -100, -100, -100, -100]
+            >>> print(loss_scale)  # None (所有权重为0或1)
+            
+            >>> # 示例2：包含token列表的编码
+            >>> context_list = ["<|system|>", [123, 456, 789], "<|assistant|>", "Hi there!"]
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 1.0]  # 只有助手回复参与loss计算
+            >>> input_ids, labels, loss_scale, kwargs = template._encode_context_list(
+            ...     context_list, loss_scale_list
+            ... )
+            >>> # labels前面部分全是-100，最后的"Hi there!"对应实际token ID
+            
+            >>> # 示例3：使用自定义loss权重
+            >>> context_list = ["Question: ", "What is AI?", "Answer: ", "AI is..."]
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 0.8]  # 答案部分使用0.8权重
+            >>> input_ids, labels, loss_scale, kwargs = template._encode_context_list(
+            ...     context_list, loss_scale_list
+            ... )
+            >>> print(loss_scale[-5:])  # [0.8, 0.8, 0.8, 0.8, 0.8] (答案部分)
+            
+            >>> # 示例4：loss_scale_list为None的情况
+            >>> context_list = ["Hello", " world"]
+            >>> input_ids, labels, loss_scale, kwargs = template._encode_context_list(context_list)
+            >>> # loss_scale_list自动设为[0.0, 0.0]，所有位置不参与loss计算
+            >>> print(all(l == -100 for l in labels))  # True
+        """
+        # ===== 步骤1：初始化返回值 =====
+        input_ids: List[int] = []  # 存储完整的输入token序列
+        labels: List[int] = []  # 存储标签序列（-100表示不计算loss，否则为token ID）
+        loss_scale: List[float] = []  # 存储loss权重序列
+        tokenizer_kwargs = {}  # 存储tokenizer的额外参数（当前版本未使用）
+        
+        # ===== 步骤2：处理loss_scale_list默认值 =====
+        if loss_scale_list is None:  # 若未提供loss权重列表
+            # 初始化为全0列表，长度与context_list相同（所有context不参与loss计算）
             loss_scale_list = [0.] * len(context_list)
-        if self.loss_scale.keep_loss_scale:
-            ignore_loss_scale = False
-        else:
+        
+        # ===== 步骤3：判断是否需要保留loss_scale =====
+        if self.loss_scale.keep_loss_scale:  # 若配置强制保留loss_scale
+            ignore_loss_scale = False  # 不忽略loss_scale，始终返回权重列表
+        else:  # 若未强制保留
+            # 检查所有权重是否仅为0或1（标准二值权重）
+            # 若是，则ignore_loss_scale=True，返回None而非权重列表（优化性能）
             ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
+
+        # ===== 步骤4：遍历context_list，逐个编码并拼接 =====
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
-            if isinstance(context, str):
-                # tokenizer_kwargs is the returned tokenizer_kwargs,
-                # while curr_tokenizer_kwargs is the tokenizer_kwargs for the current context.
-                token_list = self._tokenize(context)
-            else:
-                token_list = context
+            # 处理当前context，获取其token列表
+            if isinstance(context, str):  # 若context是字符串
+                # 注释说明：tokenizer_kwargs是返回的参数字典，
+                # 而curr_tokenizer_kwargs是当前context使用的tokenizer参数（未使用）
+                token_list = self._tokenize(context)  # 使用tokenizer将字符串转为token列表
+            else:  # 若context已经是token列表（List[int]）
+                token_list = context  # 直接使用该token列表
+            
+            # 拼接input_ids（所有token都加入input_ids）
             input_ids += token_list
-            if loss_scale_list[i] > 0.0:
-                labels += token_list
-            else:
-                labels += [-100] * len(token_list)
-            if not ignore_loss_scale:
+            
+            # 根据loss权重决定labels的值
+            if loss_scale_list[i] > 0.0:  # 若该段参与loss计算（权重>0）
+                labels += token_list  # labels使用实际的token ID
+            else:  # 若该段不参与loss计算（权重=0）
+                labels += [-100] * len(token_list)  # labels全部设为-100（忽略该段loss）
+            
+            # 根据需要添加loss权重
+            if not ignore_loss_scale:  # 若需要保留loss_scale（存在非0/1权重）
+                # 将当前context的权重值扩展到每个token位置
+                # 例如：loss_weight=0.8, len(token_list)=5 -> [0.8, 0.8, 0.8, 0.8, 0.8]
                 loss_scale.extend([loss_weight] * len(token_list))
-        if ignore_loss_scale:
-            loss_scale = None
+        
+        # ===== 步骤5：根据ignore_loss_scale决定是否返回loss_scale =====
+        if ignore_loss_scale:  # 若所有权重为0或1（标准情况）
+            loss_scale = None  # 返回None，不返回权重列表（节省内存和计算）
+        
+        # ===== 步骤6：返回编码结果 =====
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
     def _add_dynamic_eos(input_ids: List[int], labels: List[int], loss_scale: Optional[List[int]],
                          suffix_tokens_id: List[int]) -> None:
-        suffix_len = len(suffix_tokens_id)
-        start = 0
-        for i in range(1, len(labels)):
-            if labels[i - 1] >= 0 and labels[i] == -100:
-                start = i
-            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
-                # [0, 1, 2, -100(start), -100, 3(i), 4]
-                length = i - start
+        """
+        函数功能：
+            动态添加EOS（End of Sentence）token到labels中。该方法用于在助手回复结束位置（从有效
+            token转换到-100的边界）识别并激活suffix token（如<|im_end|>、</s>等）的loss计算。
+            通过检测labels中从有效值（>=0）到-100的转换边界，判断该位置是否包含suffix token，
+            若是则将对应的labels从-100改为实际token ID，使模型学习正确生成结束标记。
+        
+        参数：
+            input_ids (List[int]): 完整的输入token序列
+                包含所有token（系统提示、用户输入、助手回复、分隔符等）
+                例如：[151644, 8948, 872, 151645, 151644, 882, 151643, 151644, ...]
+            labels (List[int]): 标签序列，与input_ids等长
+                有效值（>=0）：该位置参与loss计算，对应token ID
+                -100：该位置不参与loss计算（如系统提示、用户输入部分）
+                例如：[-100, -100, -100, -100, -100, 882, 151643, -100, ...]
+            loss_scale (Optional[List[int]]): loss权重序列，与input_ids等长
+                None：使用标准loss计算
+                List[int]：每个位置的loss权重
+            suffix_tokens_id (List[int]): 后缀token序列（通常是EOS token）
+                从template_meta.suffix编码得到
+                例如：[151643]（<|im_end|>）或 [2]（</s>）
+        
+        返回值：
+            None: 该方法直接修改传入的labels和loss_scale列表（原地修改），不返回任何值。
+                  修改后，suffix token位置的labels从-100变为实际token ID，
+                  对应的loss_scale从0变为1（如果存在）。
+        
+        使用示例：
+            >>> # 示例1：基础EOS token添加
+            >>> input_ids = [1, 2, 3, 100, 200, 4, 5]  # 100是EOS token
+            >>> labels = [1, 2, 3, -100, -100, 6, 7]  # 助手回复后的EOS被标记为-100
+            >>> loss_scale = None
+            >>> suffix_tokens_id = [100]  # EOS token ID
+            >>> Template._add_dynamic_eos(input_ids, labels, loss_scale, suffix_tokens_id)
+            >>> print(labels)
+            # [1, 2, 3, 100, -100, 6, 7]  # 第4个位置从-100变为100
+            
+            >>> # 示例2：带loss_scale的情况
+            >>> input_ids = [10, 20, 30, 151643, 151644, 40]  # 151643是<|im_end|>
+            >>> labels = [10, 20, 30, -100, -100, 50]  # 助手回复结束，EOS位置是-100
+            >>> loss_scale = [1.0, 1.0, 1.0, 0.0, 0.0, 1.0]
+            >>> suffix_tokens_id = [151643]
+            >>> Template._add_dynamic_eos(input_ids, labels, loss_scale, suffix_tokens_id)
+            >>> print(labels)
+            # [10, 20, 30, 151643, -100, 50]  # EOS位置从-100变为151643
+            >>> print(loss_scale)
+            # [1.0, 1.0, 1.0, 1.0, 0.0, 1.0]  # EOS位置的loss_scale从0变为1
+            
+            >>> # 示例3：多token suffix（如"\n</s>"）
+            >>> input_ids = [1, 2, 3, 10, 11, 4, 5]  # 10,11是两个suffix token
+            >>> labels = [1, 2, 3, -100, -100, 6, 7]
+            >>> loss_scale = None
+            >>> suffix_tokens_id = [10, 11]  # 两个token的suffix
+            >>> Template._add_dynamic_eos(input_ids, labels, loss_scale, suffix_tokens_id)
+            >>> print(labels)
+            # [1, 2, 3, 10, 11, 6, 7]  # 两个位置都从-100变为实际token
+            
+            >>> # 示例4：没有匹配suffix的情况（不修改）
+            >>> input_ids = [1, 2, 3, 99, 98, 4, 5]  # 99,98不是suffix token
+            >>> labels = [1, 2, 3, -100, -100, 6, 7]
+            >>> suffix_tokens_id = [100]  # suffix是100，但input_ids中没有
+            >>> Template._add_dynamic_eos(input_ids, labels, loss_scale, suffix_tokens_id)
+            >>> print(labels)
+            # [1, 2, 3, -100, -100, 6, 7]  # 不修改，因为没有匹配
+        """
+        # ===== 步骤1：初始化变量 =====
+        suffix_len = len(suffix_tokens_id)  # 获取suffix的长度（通常为1，如<|im_end|>）
+        start = 0  # 标记当前检测到的助手回复结束位置（从有效token到-100的边界）
+        
+        # ===== 步骤2：遍历labels，寻找需要添加EOS的位置 =====
+        for i in range(1, len(labels)):  # 从索引1开始遍历（需要访问i-1）
+            # 检测助手回复结束的边界：从有效token（>=0）转换到-100
+            if labels[i - 1] >= 0 and labels[i] == -100:  # 发现边界（有效 -> -100）
+                start = i  # 记录边界位置（-100开始的位置）
+            
+            # 检测下一轮助手回复的开始：从-100转换回有效token（>=0）
+            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:  # 发现边界（-100 -> 有效）
+                # 示例：[0, 1, 2, -100(start), -100, 3(i), 4]
+                # start=3, i=5, length=2（中间有2个-100）
+                length = i - start  # 计算中间-100区域的长度
+                
+                # 检查是否满足添加suffix的条件：
+                # 1. 长度足够容纳suffix（length >= suffix_len）
+                # 2. input_ids中对应位置确实是suffix token
                 if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
+                    # 将labels中suffix位置从-100改为实际token ID，使模型学习生成EOS
                     labels[start:start + suffix_len] = suffix_tokens_id
+                    
+                    # 如果存在loss_scale，同时更新对应位置的权重
                     if loss_scale and loss_scale[start:start + suffix_len] == [0] * suffix_len:
+                        # 将suffix位置的loss_scale从0改为1，使该位置参与loss计算
                         loss_scale[start:start + suffix_len] = [1] * suffix_len
 
     @staticmethod
@@ -1699,33 +3294,169 @@ class Template(ProcessorMixin):
 
     def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
                   truncation_strategy: Literal['left', 'right']):
-        """函数功能：截断超长序列，同时保护占位符token不被截断。
+        """
+        函数功能：
+            智能截断超长序列，将序列长度缩减至max_length以内。该方法的核心特点是在截断过程中
+            保护占位符token（placeholder tokens）不被删除，确保多模态数据的占位标记（如<image>、
+            <video>等）始终保留。通过先标记所有需要保护的token，再根据截断策略选择保留其他token，
+            最后同步截断input_ids、labels和loss_mask，保持三者的一致性。
         
         参数：
-        - input_ids: 输入token ID列表
-        - labels: 标签列表（可选）
-        - loss_mask: loss权重列表（可选）
-        - truncation_strategy: 截断策略（'left'左截断/'right'右截断）
+            input_ids (List[int]): 输入token ID序列
+                包含所有token（文本、占位符、特殊token等）
+                例如：[1, 2, 100, 3, 4, 101, 5, 6, 7, 8, ...]（其中100、101是占位符token）
+            labels (Optional[List[int]]): 标签序列，与input_ids等长
+                None：推理模式，无标签
+                List[int]：训练模式，包含实际token ID或-100
+            loss_mask (Optional[List[float]]): loss权重序列，与input_ids等长
+                None：使用标准loss计算
+                List[float]：每个位置的loss权重
+            truncation_strategy (Literal['left', 'right']): 截断策略
+                'left': 左截断，删除序列左侧（开头）的token，保留右侧（结尾）
+                    适用于推理场景，保留最新的上下文
+                'right': 右截断，删除序列右侧（结尾）的token，保留左侧（开头）
+                    适用于训练场景，保留对话开头部分
         
-        返回值：截断后的(input_ids, labels, loss_mask)元组
+        返回值：
+            Tuple[List[int], Optional[List[int]], Optional[List[float]]]: 截断后的三元组
+                - input_ids (List[int]): 截断后的输入token序列，长度 <= max_length
+                - labels (Optional[List[int]]): 截断后的标签序列（若原值非None）
+                - loss_mask (Optional[List[float]]): 截断后的loss权重序列（若原值非None）
+                注：所有占位符token都会保留，即使总长度超过max_length
+        
+        使用示例：
+            >>> # 示例1：右截断（保留左侧），无占位符token
+            >>> template = Template(...)
+            >>> template.max_length = 10
+            >>> template.placeholder_tokens = []  # 无占位符
+            >>> input_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]  # 长度15
+            >>> labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+            >>> loss_mask = None
+            >>> result_ids, result_labels, _ = template._truncate(
+            ...     input_ids, labels, loss_mask, truncation_strategy='right'
+            ... )
+            >>> print(len(result_ids))  # 10
+            >>> print(result_ids)  # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]（保留左侧10个）
+            
+            >>> # 示例2：左截断（保留右侧），无占位符token
+            >>> result_ids, result_labels, _ = template._truncate(
+            ...     input_ids, labels, loss_mask, truncation_strategy='left'
+            ... )
+            >>> print(result_ids)  # [6, 7, 8, 9, 10, 11, 12, 13, 14, 15]（保留右侧10个）
+            
+            >>> # 示例3：右截断，带占位符token（100和101是占位符）
+            >>> template.placeholder_tokens = [100, 101]  # 设置占位符token
+            >>> input_ids = [1, 2, 100, 3, 4, 5, 101, 6, 7, 8, 9, 10, 11, 12]  # 长度14，含2个占位符
+            >>> labels = [1, 2, 100, 3, 4, 5, 101, 6, 7, 8, 9, 10, 11, 12]
+            >>> result_ids, result_labels, _ = template._truncate(
+            ...     input_ids, labels, loss_mask, truncation_strategy='right'
+            ... )
+            >>> print(len(result_ids))  # 10
+            >>> print(100 in result_ids)  # True（占位符100必定保留）
+            >>> print(101 in result_ids)  # True（占位符101必定保留）
+            >>> # result_ids可能是：[1, 2, 100, 3, 4, 5, 101, 6, 7, 8]
+            >>> # 保留了2个占位符 + 8个其他token（左侧的8个非占位符token）
+            
+            >>> # 示例4：占位符数量等于max_length（只保留占位符）
+            >>> template.max_length = 3
+            >>> input_ids = [1, 100, 2, 101, 3, 102, 4]  # 3个占位符：100, 101, 102
+            >>> template.placeholder_tokens = [100, 101, 102]
+            >>> result_ids, _, _ = template._truncate(
+            ...     input_ids, None, None, truncation_strategy='right'
+            ... )
+            >>> print(result_ids)  # [100, 101, 102]（只保留占位符，其他全部删除）
+            
+            >>> # 示例5：带loss_mask的截断
+            >>> template.max_length = 8
+            >>> template.placeholder_tokens = [100]
+            >>> input_ids = [1, 2, 100, 3, 4, 5, 6, 7, 8, 9, 10]  # 长度11
+            >>> labels = [-100, -100, 100, 3, 4, 5, 6, 7, 8, 9, 10]
+            >>> loss_mask = [0.0, 0.0, 1.0, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+            >>> result_ids, result_labels, result_mask = template._truncate(
+            ...     input_ids, labels, loss_mask, truncation_strategy='right'
+            ... )
+            >>> print(len(result_ids))  # 8
+            >>> print(100 in result_ids)  # True
+            >>> print(len(result_mask))  # 8（loss_mask同步截断）
         """
-        placeholder_tokens = torch.tensor(self.placeholder_tokens)  # 转换占位符token为tensor
-        input_ids_tensor = torch.tensor(input_ids)  # 转换input_ids为tensor
-        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)  # 标记所有占位符token位置（需要保护）
-        n_protected = protected.sum().item()  # 计算需要保护的token数量
-        if n_protected < self.max_length:  # 若保护的token数量小于max_length（需要保留部分非保护token）
-            non_protected = (~protected).nonzero(as_tuple=True)[0]  # 获取所有非保护token的索引
-            if truncation_strategy == 'left':  # 若左截断（保留序列右侧）
-                idx = non_protected[-(self.max_length - n_protected):]  # 选择右侧的非保护token
-            else:  # 若右截断（保留序列左侧）
-                idx = non_protected[:self.max_length - n_protected]  # 选择左侧的非保护token
-            protected[idx] = True  # 将选中的非保护token也标记为保护（保留）
-        input_ids = input_ids_tensor[protected].tolist()  # 提取所有保护的token（截断后的input_ids）
-        if labels is not None:  # 若有labels
-            labels = torch.tensor(labels)[protected].tolist()  # 同步截断labels
-        if loss_mask is not None:  # 若有loss_mask
-            loss_mask = torch.tensor(loss_mask)[protected].tolist()  # 同步截断loss_mask
-        return input_ids, labels, loss_mask  # 返回截断后的三元组
+        # ===== 步骤1：准备tensor数据 =====
+        # 将占位符token列表转换为tensor，形状：(num_placeholders,)
+        # 例如：placeholder_tokens = [100, 101] -> tensor([100, 101])
+        placeholder_tokens = torch.tensor(self.placeholder_tokens)
+        
+        # 将input_ids列表转换为tensor，形状：(seq_len,)
+        # 例如：input_ids = [1, 2, 100, 3, 4, 101, 5] -> tensor([1, 2, 100, 3, 4, 101, 5])
+        input_ids_tensor = torch.tensor(input_ids)
+        
+        # ===== 步骤2：标记所有占位符token的位置 =====
+        # NOTE: 张量广播 + 布尔掩码
+        # 使用广播机制比较input_ids和placeholder_tokens，生成一个布尔掩码 protected，标记哪些位置是占位符。
+        # input_ids_tensor[:, None]：形状 (seq_len, 1)，在维度1上添加新维度
+        # placeholder_tokens：形状 (num_placeholders,)
+        # 广播后比较：形状 (seq_len, num_placeholders)，每个位置与每个占位符比较
+        # .any(dim=-1)：沿最后一维（num_placeholders）求或，形状 (seq_len,)
+        # 结果：布尔tensor，True表示该位置是占位符token
+        # 例如：input_ids=[1, 2, 100, 3, 101], placeholders=[100, 101]
+        #       -> protected = tensor([False, False, True, False, True])
+        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)
+        
+        # 计算需要保护的token总数（占位符数量）
+        # .sum()：计算True的数量，.item()：转为Python整数
+        # 例如：protected = [False, False, True, False, True] -> n_protected = 2
+        n_protected = protected.sum().item()
+
+        # ===== 步骤3：选择需要保留的非占位符token =====
+        if n_protected < self.max_length:  # 若占位符数量少于max_length（还能保留部分其他token）
+            # 获取所有非占位符token的索引
+            # ~protected：取反，True变False，False变True
+            # .nonzero(as_tuple=True)[0]：获取True位置的索引，as_tuple=True返回元组，取第一个元素
+            # 例如：protected = [False, False, True, False, True]
+            #       -> ~protected = [True, True, False, True, False]
+            #       -> non_protected = tensor([0, 1, 3])（索引0, 1, 3是非占位符）
+            non_protected = (~protected).nonzero(as_tuple=True)[0]
+            
+            # 根据截断策略选择保留哪些非占位符token
+            if truncation_strategy == 'left':  # 左截断（删除左侧，保留右侧）
+                # 计算能保留的非占位符数量：max_length - n_protected
+                # 选择最右侧的这些非占位符token
+                # 例如：max_length=8, n_protected=2 -> 能保留6个非占位符
+                #       non_protected = [0, 1, 3, 5, 7, 8, 9] (7个) -> 选择最右侧6个：[1, 3, 5, 7, 8, 9]
+                idx = non_protected[-(self.max_length - n_protected):]
+            else:  # 右截断（删除右侧，保留左侧）
+                # 选择最左侧的非占位符token
+                # 例如：max_length=8, n_protected=2 -> 能保留6个非占位符
+                #       non_protected = [0, 1, 3, 5, 7, 8, 9] (7个) -> 选择最左侧6个：[0, 1, 3, 5, 7, 8]
+                idx = non_protected[:self.max_length - n_protected]
+            
+            # 将选中的非占位符token也标记为"保护"（保留）
+            # 此时protected中包含：所有占位符 + 选中的非占位符
+            # 例如：原protected = [False, False, True, False, True]
+            #       idx = [0, 1, 3] -> 新protected = [True, True, True, True, True]（保留前4个位置）
+            protected[idx] = True
+        
+        # ===== 步骤4：根据protected掩码提取保留的token =====
+        # 使用布尔索引提取所有protected=True的token
+        # input_ids_tensor[protected]：形状 (num_protected,)
+        # .tolist()：转回Python列表
+        # 例如：input_ids_tensor = [1, 2, 100, 3, 4, 101, 5]
+        #       protected = [True, True, True, True, False, False, False]
+        #       -> input_ids = [1, 2, 100, 3]
+        input_ids = input_ids_tensor[protected].tolist()
+        
+        # ===== 步骤5：同步截断labels（若存在） =====
+        if labels is not None:  # 若有labels字段
+            # 将labels转为tensor，应用相同的protected掩码，再转回列表
+            # 确保labels与input_ids保持同步
+            labels = torch.tensor(labels)[protected].tolist()
+        
+        # ===== 步骤6：同步截断loss_mask（若存在） =====
+        if loss_mask is not None:  # 若有loss_mask字段
+            # 将loss_mask转为tensor，应用相同的protected掩码，再转回列表
+            # 确保loss_mask与input_ids保持同步
+            loss_mask = torch.tensor(loss_mask)[protected].tolist()
+        
+        # ===== 步骤7：返回截断后的三元组 =====
+        return input_ids, labels, loss_mask
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
         """函数功能：带截断策略的编码方法，调用_encode并根据max_length应用截断。
@@ -1774,68 +3505,249 @@ class Template(ProcessorMixin):
         return encoded  # 返回编码结果
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        """函数功能：核心编码方法，根据template_backend选择swift或jinja编码。
-        
-        参数：inputs - 标准输入对象
-        返回值：编码后的字典，包含input_ids, labels, loss_scale等
         """
-        template_backend = self.template_backend  # 获取模板后端
+        函数功能：
+            Template类的核心编码实现方法。该方法根据配置的模板后端（swift或jinja）选择相应的
+            编码策略，将标准化的输入数据转换为token序列。支持编码器-解码器架构和GKD模式的特殊
+            处理（分离prompt和answer），并处理动态EOS、Megatron上下文并行等高级特性。最后根据
+            训练/推理模式决定是否保留labels和loss_scale字段。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准化的模板输入对象，包含：
+                - messages (List[Dict[str, Any]]): 对话消息列表
+                - system (Optional[str]): 系统提示词
+                - tools (Optional[List[Tool]]): 工具列表（Agent场景）
+                - images/audios/videos: 多模态数据（如有）
+                - 其他特定任务的字段
+        
+        返回值：
+            Dict[str, Any]: 编码后的字典，包含以下字段：
+                - input_ids (List[int]): 输入token序列
+                - labels (Optional[List[int]]): 标签序列（训练模式下有效，推理模式为None）
+                - loss_scale (Optional[List[float]]): loss权重序列（训练模式下有效，推理模式为None）
+                - tokenizer_kwargs (Optional[Dict]): tokenizer的额外参数（如Qwen-Audio的prompt）
+                - prompt_input_ids/answer_input_ids (List[int]): 编码器-解码器或GKD模式下的分段序列
+                - prompt_labels/answer_labels (Optional[List[int]]): 分段标签序列
+                - prompt_loss_scale/answer_loss_scale (Optional[List[float]]): 分段loss权重序列
+        
+        使用示例：
+            >>> # 示例1：标准因果语言模型编码（decoder-only）
+            >>> template = Template(...)
+            >>> template.mode = 'train'
+            >>> template.template_backend = 'swift'
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[
+            ...         {"role": "user", "content": "你好"},
+            ...         {"role": "assistant", "content": "你好！有什么可以帮助你的？"}
+            ...     ]
+            ... )
+            >>> encoded = template._encode(inputs)
+            >>> print(encoded.keys())
+            # dict_keys(['input_ids', 'labels', 'loss_scale'])
+            >>> print(len(encoded['input_ids']))  # 例如: 25
+            >>> print(encoded['labels'][0])  # -100 (第一个token不计算loss)
+            
+            >>> # 示例2：编码器-解码器架构（如T5、Qwen-Audio）
+            >>> template.is_encoder_decoder = True
+            >>> encoded = template._encode(inputs)
+            >>> print(encoded.keys())
+            # dict_keys(['prompt_input_ids', 'prompt_labels', 'prompt_loss_scale',
+            #           'answer_input_ids', 'answer_labels', 'answer_loss_scale',
+            #           'input_ids', 'labels', 'loss_scale', 'tokenizer_kwargs'])
+            >>> # prompt部分: 编码器输入（用户问题）
+            >>> # answer部分: 解码器输入/输出（助手回答）
+            
+            >>> # 示例3：推理模式（不生成labels和loss_scale）
+            >>> template.mode = 'pt'  # 推理模式
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[{"role": "user", "content": "你好"}]
+            ... )
+            >>> encoded = template._encode(inputs)
+            >>> print(encoded['labels'])  # None
+            >>> print(encoded['loss_scale'])  # None
+            >>> print(len(encoded['input_ids']))  # 例如: 10
+            
+            >>> # 示例4：GKD（Generalized Knowledge Distillation）模式
+            >>> template.mode = 'gkd'
+            >>> encoded = template._encode(inputs)
+            >>> # 返回分离的prompt和answer，用于知识蒸馏训练
+            
+            >>> # 示例5：Jinja模板后端（使用tokenizer.apply_chat_template）
+            >>> template.template_backend = 'jinja'
+            >>> encoded = template._encode(inputs)
+            >>> # 使用HuggingFace标准的chat template进行编码
+        """
+        # ===== 步骤1：确定模板后端（swift或jinja） =====
+        template_backend = self.template_backend  # 获取配置的模板后端
+        # 特殊情况：dummy模板在推理模式下自动切换到jinja后端
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.task_type != 'seq_cls'):  # 若为dummy模板且推理模式
-            template_backend = 'jinja'  # 使用jinja后端
-            logger.info_once(f'Setting template_backend: {template_backend}')  # 记录日志
+                and self.task_type != 'seq_cls'):  # 若为dummy模板、启用chat_template、推理模式、非分类任务
+            template_backend = 'jinja'  # 切换到jinja后端（使用tokenizer自带的chat template）
+            logger.info_once(f'Setting template_backend: {template_backend}')  # 记录日志（仅输出一次）
+
+        # ===== 步骤2：根据模板后端调用相应的编码方法 =====
+        # 返回值：res_context_list（上下文列表）, loss_scale_list（loss权重列表）, answer_len（答案部分长度）
         res_context_list, loss_scale_list, answer_len = (
-            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))  # 调用相应的编码方法
-        encoded = {}
-        if self.is_encoder_decoder or self.mode == 'gkd':
-            # tokenizer_kwargs: use prompt (qwen-audio)
-            total_len = len(res_context_list)
-            for key, _slice in zip(['prompt', 'answer'],
-                                   [slice(0, total_len - answer_len),
-                                    slice(total_len - answer_len, total_len)]):
+            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
+        
+        encoded = {}  # 初始化编码结果字典
+        
+        # ===== 步骤3：根据模型架构选择编码策略 =====
+        if self.is_encoder_decoder or self.mode == 'gkd':  # 若为编码器-解码器架构或GKD模式
+            # 需要分离prompt（编码器输入）和answer（解码器输入/输出）
+            # 例如：T5模型的编码器处理问题，解码器生成答案
+            # GKD模式需要分别处理teacher和student的prompt/answer
+            
+            total_len = len(res_context_list)  # 获取总上下文长度
+            # 遍历prompt和answer两部分，分别进行编码
+            for key, _slice in zip(['prompt', 'answer'],  # key: 'prompt' 或 'answer'
+                                   [slice(0, total_len - answer_len),  # prompt部分的切片
+                                    slice(total_len - answer_len, total_len)]):  # answer部分的切片
+                # 简化上下文列表（合并相邻的同类型context）
                 context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
                                                                        loss_scale_list[_slice], inputs)
+                # 将context列表编码为token序列
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
-                encoded[f'{key}_input_ids'] = input_ids
-                encoded[f'{key}_labels'] = labels
-                encoded[f'{key}_loss_scale'] = loss_scale
+                # 保存分段的编码结果
+                encoded[f'{key}_input_ids'] = input_ids  # 'prompt_input_ids' 或 'answer_input_ids'
+                encoded[f'{key}_labels'] = labels  # 'prompt_labels' 或 'answer_labels'
+                encoded[f'{key}_loss_scale'] = loss_scale  # 'prompt_loss_scale' 或 'answer_loss_scale'
+            
+            # 拼接prompt和answer部分，生成完整序列（用于某些场景）
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
             labels = encoded['prompt_labels'] + encoded['answer_labels']
-            loss_scale = None
-            if isinstance(encoded['prompt_loss_scale'], list):
-                loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
-        else:
+            loss_scale = None  # 默认不拼接loss_scale
+            if isinstance(encoded['prompt_loss_scale'], list):  # 若loss_scale是列表（而非None）
+                loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']  # 拼接loss_scale
+        else:  # 标准的decoder-only架构（如GPT、Qwen、LLaMA等）
+            # 简化上下文列表
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
+            # 将完整的context列表一次性编码为token序列
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
+
+        # ===== 步骤4：添加动态EOS token（如需要） =====
+        # 某些模板可能需要在特定位置添加EOS token（如suffix部分）
         self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
 
-        if tokenizer_kwargs:
-            encoded['tokenizer_kwargs'] = tokenizer_kwargs
+        # ===== 步骤5：保存tokenizer额外参数（如Qwen-Audio的prompt参数） =====
+        if tokenizer_kwargs:  # 若有额外的tokenizer参数
+            encoded['tokenizer_kwargs'] = tokenizer_kwargs  # 保存到编码结果中
 
-        encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
-        encoded['loss_scale'] = loss_scale
-        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
-        if encoded.get('labels') is not None:
-            encoded['labels'][0] = -100
-        if encoded.get('loss_scale') is not None:
-            encoded['loss_scale'][0] = 0
-        if not self.is_training:
-            for k in list(encoded.keys()):
-                if k.endswith('labels') or k.endswith('loss_scale'):
-                    encoded[k] = None
+        # ===== 步骤6：保存核心编码结果 =====
+        encoded['input_ids'] = input_ids  # 输入token序列
+        encoded['labels'] = labels  # 标签序列（训练时用于计算loss）
+        encoded['loss_scale'] = loss_scale  # loss权重序列
+        
+        # ===== 步骤7：处理Megatron上下文并行（Context Parallelism） =====
+        self._handle_megatron_cp(encoded)  # 为Megatron-LM的上下文并行添加padding
+        # TODO: fix cp_size & cached_dataset
+
+        # ===== 步骤8：将第一个token的labels设为-100（不计算loss） =====
+        # 第一个token通常是BOS或系统提示的开始，不参与loss计算
+        if encoded.get('labels') is not None:  # 若有labels
+            encoded['labels'][0] = -100  # 设置为-100（PyTorch中ignore_index的默认值）
+        if encoded.get('loss_scale') is not None:  # 若有loss_scale
+            encoded['loss_scale'][0] = 0  # 设置为0（该位置loss权重为0）
+
+        # ===== 步骤9：推理模式下移除labels和loss_scale =====
+        if not self.is_training:  # 若为推理模式（而非训练模式）
+            # 遍历所有键，移除训练相关的字段
+            for k in list(encoded.keys()):  # 使用list()避免在迭代时修改字典
+                if k.endswith('labels') or k.endswith('loss_scale'):  # 若键名以labels或loss_scale结尾
+                    encoded[k] = None  # 设置为None（推理时不需要这些字段）
+        
+        # ===== 步骤10：返回编码结果 =====
         return encoded
 
     def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
-        cp_size = self.sequence_parallel_size
-        if not self.use_megatron or cp_size == 1:
-            return
-        input_ids = encoded['input_ids']
+        """
+        函数功能：
+            处理Megatron-LM的上下文并行（Context Parallelism，简称CP）所需的序列padding。在使用
+            Megatron-LM进行序列并行训练时，序列长度必须是 `cp_size * 2` 的整数倍，以便将序列均匀
+            分割到多个设备上。该方法通过在序列末尾添加padding token，确保序列长度满足这一要求，
+            同时更新对应的labels和loss_scale，使padding部分不参与loss计算。
+        
+        参数：
+            encoded (Dict[str, Any]): 编码后的数据字典，包含以下字段（会被原地修改）：
+                - input_ids (List[int]): 输入token序列
+                - labels (List[int]): 标签序列
+                - loss_scale (Optional[List[float]]): loss权重序列（如有）
+        
+        返回值：
+            None: 该方法直接修改传入的encoded字典（原地修改），不返回任何值。
+                  修改后，input_ids、labels和loss_scale（如有）的长度都会变为 `cp_size * 2` 的整数倍，
+                  padding部分使用pad_token_id填充input_ids，-100填充labels，0填充loss_scale。
+        
+        使用示例：
+            >>> # 示例1：基础场景，序列长度不满足要求
+            >>> template = Template(...)
+            >>> template.use_megatron = True
+            >>> template.sequence_parallel_size = 4  # cp_size = 4，要求长度为8的倍数
+            >>> encoded = {
+            ...     'input_ids': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # 长度10
+            ...     'labels': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ...     'loss_scale': None
+            ... }
+            >>> template._handle_megatron_cp(encoded)
+            >>> print(len(encoded['input_ids']))  # 16（向上取整到8的倍数：16）
+            >>> print(encoded['input_ids'][-6:])  # [10, pad_id, pad_id, pad_id, pad_id, pad_id]
+            >>> print(encoded['labels'][-6:])  # [10, -100, -100, -100, -100, -100]
+            
+            >>> # 示例2：序列长度已经满足要求（不需要padding）
+            >>> encoded = {
+            ...     'input_ids': [1, 2, 3, 4, 5, 6, 7, 8],  # 长度8，已经是8的倍数
+            ...     'labels': [1, 2, 3, 4, 5, 6, 7, 8],
+            ... }
+            >>> template._handle_megatron_cp(encoded)
+            >>> print(len(encoded['input_ids']))  # 8（不变，无需padding）
+            
+            >>> # 示例3：带loss_scale的场景
+            >>> encoded = {
+            ...     'input_ids': [10, 20, 30, 40, 50],  # 长度5
+            ...     'labels': [10, 20, 30, 40, 50],
+            ...     'loss_scale': [1.0, 1.0, 0.8, 0.8, 1.0]
+            ... }
+            >>> template.sequence_parallel_size = 2  # cp_size = 2，要求长度为4的倍数
+            >>> template._handle_megatron_cp(encoded)
+            >>> print(len(encoded['input_ids']))  # 8（向上取整到4的倍数：8）
+            >>> print(encoded['loss_scale'])
+            # [1.0, 1.0, 0.8, 0.8, 1.0, 0, 0, 0]  # padding部分添加了3个0
+            
+            >>> # 示例4：未启用Megatron或cp_size=1（直接返回，不处理）
+            >>> template.use_megatron = False  # 未启用Megatron
+            >>> encoded = {'input_ids': [1, 2, 3], 'labels': [1, 2, 3]}
+            >>> template._handle_megatron_cp(encoded)
+            >>> print(len(encoded['input_ids']))  # 3（不变，直接返回）
+        """
+        # ===== 步骤1：获取上下文并行大小 =====
+        cp_size = self.sequence_parallel_size  # 获取序列并行的分片数量
+        
+        # ===== 步骤2：检查是否需要处理 =====
+        if not self.use_megatron or cp_size == 1:  # 若未启用Megatron或不使用序列并行
+            return  # 直接返回，无需处理（cp_size=1时序列长度无特殊要求）
+        
+        # ===== 步骤3：计算需要padding的长度 =====
+        input_ids = encoded['input_ids']  # 获取输入token序列
+        # 计算padding长度，使序列长度成为 cp_size * 2 的整数倍
+        # 公式：向上取整到 (cp_size * 2) 的倍数，然后减去当前长度
+        # 例如：len=10, cp_size=4 -> (cp_size*2)=8 -> ceil(10/8)*8=16 -> padding_len=16-10=6
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
+        
+        # ===== 步骤4：为input_ids添加padding =====
+        # 在input_ids末尾添加 padding_len 个 pad_token_id
+        # pad_token_id通常是特殊的padding token（如0或其他tokenizer指定的值）
         input_ids += [self.tokenizer.pad_token_id] * padding_len
+        
+        # ===== 步骤5：为labels添加padding =====
+        # 在labels末尾添加 padding_len 个 -100
+        # -100是PyTorch中ignore_index的默认值，表示这些位置不参与loss计算
         encoded['labels'] += [-100] * padding_len
-        if encoded.get('loss_scale') is not None:
+        
+        # ===== 步骤6：为loss_scale添加padding（如果存在） =====
+        if encoded.get('loss_scale') is not None:  # 若loss_scale字段存在且不为None
+            # 在loss_scale末尾添加 padding_len 个 0
+            # 0表示这些padding位置的loss权重为0（不参与loss计算）
             encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
@@ -2313,19 +4225,91 @@ class Template(ProcessorMixin):
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # multimodal
-        res = {}
+        """
+        函数功能：
+            整理和拼接批次中的多模态数据（multimodal data）。该方法专门处理视觉模态的数据，
+            包括图像的像素值、图像尺寸信息和视频的像素值。通过将批次中所有样本的多模态张量
+            沿批次维度拼接，为多模态模型（如视觉-语言模型）提供统一格式的输入数据。
+        
+        参数：
+            batch (List[Dict[str, Any]]): 批量数据列表，每个元素是一个字典，可能包含以下多模态字段：
+                - pixel_values (torch.Tensor, optional): 图像的像素值张量
+                    形状通常为 (num_images, channels, height, width) 或模型特定格式
+                    如 Qwen2-VL 的 (num_patches, channels) 格式
+                - image_sizes (torch.Tensor, optional): 图像尺寸信息张量
+                    用于记录原始图像的宽高，便于模型进行位置编码或后处理
+                    形状通常为 (num_images, 2)，存储 [height, width]
+                - pixel_values_videos (torch.Tensor, optional): 视频的像素值张量
+                    形状通常为 (num_frames, channels, height, width) 或模型特定格式
+                    用于处理视频输入的多模态任务
+        
+        返回值：
+            Dict[str, torch.Tensor]: 拼接后的多模态数据字典，可能包含以下字段：
+                - pixel_values (torch.Tensor): 批次中所有图像的像素值拼接结果
+                    形状为 (total_num_images, channels, height, width) 或模型特定格式
+                - image_sizes (torch.Tensor): 批次中所有图像的尺寸信息拼接结果
+                    形状为 (total_num_images, 2)
+                - pixel_values_videos (torch.Tensor): 批次中所有视频的像素值拼接结果
+                    形状为 (total_num_frames, channels, height, width) 或模型特定格式
+            注：只返回批次中实际存在的字段，不存在的字段不会出现在返回字典中
+        
+        使用示例：
+            >>> # 假设批次中有2个样本，第1个包含图像，第2个只有文本
+            >>> batch = [
+            ...     {
+            ...         'input_ids': [1, 2, 3],
+            ...         'pixel_values': torch.randn(2, 3, 224, 224),  # 2张图像
+            ...         'image_sizes': torch.tensor([[224, 224], [224, 224]])
+            ...     },
+            ...     {
+            ...         'input_ids': [4, 5, 6],
+            ...         'pixel_values': torch.randn(1, 3, 224, 224),  # 1张图像
+            ...         'image_sizes': torch.tensor([[224, 224]])
+            ...     }
+            ... ]
+            >>> template = Template(...)
+            >>> mm_data = template._data_collator_mm_data(batch)
+            >>> print(mm_data['pixel_values'].shape)  # torch.Size([3, 3, 224, 224])
+            >>> print(mm_data['image_sizes'].shape)   # torch.Size([3, 2])
+            
+            >>> # 视频数据示例
+            >>> batch = [
+            ...     {
+            ...         'input_ids': [1, 2],
+            ...         'pixel_values_videos': torch.randn(16, 3, 224, 224)  # 16帧视频
+            ...     }
+            ... ]
+            >>> mm_data = template._data_collator_mm_data(batch)
+            >>> print(mm_data['pixel_values_videos'].shape)  # torch.Size([16, 3, 224, 224])
+        """
+        # ===== 步骤1：初始化结果字典 =====
+        res = {}  # 存储拼接后的多模态数据
+        
+        # ===== 步骤2：处理图像像素值数据 =====
+        # 从批次中提取所有非空的 pixel_values 字段（过滤掉 None 值）
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
-        if len(pixel_values) > 0:
+        if len(pixel_values) > 0:  # 如果批次中至少有一个样本包含图像数据
+            # 沿批次维度（通常是第0维）拼接所有图像的像素值张量
+            # 例如：[tensor(2,3,224,224), tensor(1,3,224,224)] -> tensor(3,3,224,224)
             res['pixel_values'] = torch.concat(pixel_values)
 
+            # ===== 步骤3：处理图像尺寸信息 =====
+            # 从批次中提取所有非空的 image_sizes 字段
             image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
-            if len(image_sizes) > 0:
+            if len(image_sizes) > 0:  # 如果批次中至少有一个样本包含图像尺寸信息
+                # 拼接所有图像的尺寸信息张量
+                # 例如：[tensor([[224,224],[224,224]]), tensor([[224,224]])] -> tensor([[224,224],[224,224],[224,224]])
                 res['image_sizes'] = torch.concat(image_sizes)
 
+        # ===== 步骤4：处理视频像素值数据 =====
+        # 从批次中提取所有非空的 pixel_values_videos 字段（过滤掉 None 值）
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
-        if len(pixel_values_videos) > 0:
+        if len(pixel_values_videos) > 0:  # 如果批次中至少有一个样本包含视频数据
+            # 沿批次维度拼接所有视频的像素值张量
+            # 例如：[tensor(16,3,224,224), tensor(8,3,224,224)] -> tensor(24,3,224,224)
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
+        
+        # ===== 步骤5：返回拼接后的多模态数据字典 =====
         return res
 
     def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
