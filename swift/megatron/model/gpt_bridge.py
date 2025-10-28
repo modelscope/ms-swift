@@ -7,7 +7,7 @@ from megatron.training import get_args
 from tqdm import tqdm
 
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier
+from swift.utils import disable_safe_ddp_context_use_barrier, is_master
 from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 
 
@@ -70,14 +70,13 @@ class GPTBridge:
     def _get_weights(self, mg_weight, mg_key, offset: int = 0):
         tp_dim = self._get_tp_split_dim(mg_key)
         if tp_dim is not None and self.tp_size > 1:
-            gather_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)] if self.tp_rank == 0 else None
-            torch.distributed.gather(
+            tensor_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)]
+            torch.distributed.all_gather(
+                tensor_list,
                 mg_weight,
-                gather_list,
-                dst=0,
                 group=self.tp_group,
             )
-            tensor = torch.cat(gather_list, dim=tp_dim)
+            tensor = torch.cat(tensor_list, dim=tp_dim)
         else:
             tensor = mg_weight
         if offset:
@@ -137,7 +136,8 @@ class GPTBridge:
         args = self.args
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
         if reverse:
-            mg_attn_weight = mg_attn.linear_qkv.weight.reshape((num_query_groups, -1, args.hidden_size))
+            mg_attn_weight = self._get_weights(mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
+            mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
             q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
                 0] // num_query_groups
             hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
@@ -156,7 +156,8 @@ class GPTBridge:
         # Copy bias
         if args.add_qkv_bias:
             if reverse:
-                mg_attn_bias = mg_attn.linear_qkv.bias.reshape((num_query_groups, -1))
+                mg_attn_bias = self._get_weights(mg_attn.linear_qkv.bias.data, 'linear_qkv.bias')
+                mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
                 hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
                 hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
                 hf_state_dict['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1)
@@ -235,10 +236,10 @@ class GPTBridge:
                 self._set_state_dict(hf_state_dict, res, 'gate_up_proj.weight', fc1_key, reverse)
             else:
                 if reverse:
-                    ffn_hidden_size = hf_mlp.gate_proj.weight.shape[0]
                     fc1_weight = deep_getattr(mg_mlp, fc1_key)
-                    hf_state_dict['gate_proj.weight'] = fc1_weight[:ffn_hidden_size]
-                    hf_state_dict['up_proj.weight'] = fc1_weight[ffn_hidden_size:]
+                    hf_state_dict['gate_proj.weight'] = self._get_weights(fc1_weight[:fc1_weight.shape[0] // 2],
+                                                                          fc1_key)
+                    hf_state_dict['up_proj.weight'] = self._get_weights(fc1_weight[fc1_weight.shape[0] // 2:], fc1_key)
                 else:
                     fc1_weight = torch.cat([
                         hf_state_dict['gate_proj.weight'].load(),
@@ -365,11 +366,12 @@ class GPTBridge:
         for k, v in self.export_weights(mg_models):
             saver.add_tensor(k, v)
         saver.finalize()
-        # TODO: new_special_tokens
-        self.hf_model.config.save_pretrained(output_dir)
-        save_checkpoint(
-            None,
-            self.processor,
-            output_dir,
-            model_dirs=[self.hf_model.model_info.model_dir],
-            additional_saved_files=self.hf_model.model_meta.additional_saved_files)
+        if is_master():
+            # TODO: new_special_tokens
+            self.hf_model.config.save_pretrained(output_dir)
+            save_checkpoint(
+                None,
+                self.processor,
+                output_dir,
+                model_dirs=[self.hf_model.model_info.model_dir],
+                additional_saved_files=self.hf_model.model_meta.additional_saved_files)

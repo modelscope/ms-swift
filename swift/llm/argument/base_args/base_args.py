@@ -306,12 +306,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                             **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
-        kwargs.update(self.get_model_kwargs())
+        res = self.get_model_kwargs()
+        res.update(kwargs)
         # compat rlhf
-        kwargs['model_id_or_path'] = model or self.model
-        kwargs['model_type'] = model_type or self.model_type
-        kwargs['model_revision'] = model_revision or self.model_revision
-        kwargs['task_type'] = task_type or self.task_type
-        kwargs['num_labels'] = num_labels or self.num_labels
+        res['model_id_or_path'] = model or self.model
+        res['model_type'] = model_type or self.model_type
+        res['model_revision'] = model_revision or self.model_revision
+        res['task_type'] = task_type or self.task_type
+        res['num_labels'] = num_labels or self.num_labels
 
-        return get_model_tokenizer(**kwargs)
+        return get_model_tokenizer(**res)

@@ -30,7 +30,7 @@ def _test_params_sum(model):
     n_parameter = 0
     for n, p in model.named_parameters():
         n_parameter += 1
-        sum_ = p.cuda().float().abs().sum().cpu().item()
+        sum_ = p.to(device='cuda', dtype=torch.float32).abs().sum().cpu().item()
         if sum_ == 0:
             zero_count += 1
             logger.warning(f'n: {n}, sum: {sum_}')
@@ -321,8 +321,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         bridge.save_weights([mg_model], args.output_dir)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
-            args.model = args.output_dir
-            hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
+            hf_model, template = prepare_model_template(args, model=args.output_dir)
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     elif args.to_mcore:
         if args.thread_count is None:

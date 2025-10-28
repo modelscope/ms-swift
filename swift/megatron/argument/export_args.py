@@ -48,7 +48,6 @@ class MegatronExportArguments(MegatronBaseArguments):
             'no_load_rng': True,
             'finetune': True,
             'attention_backend': 'unfused',
-            'device_map': 'cpu',
             'padding_free': False,
         }
         for k, v in convert_kwargs.items():
