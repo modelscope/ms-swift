@@ -76,7 +76,10 @@ class RayHelper:
 
     @staticmethod
     def ray_inited():
-        import ray
+        try:
+            import ray
+        except ImportError:
+            return False
         return ray.is_initialized()
 
     @staticmethod
