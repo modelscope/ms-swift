@@ -146,7 +146,7 @@ def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[
     _ray_args = os.environ.get('RAY_SWIFT_ARGS')
     if _ray_args:
         argv = json.loads(_ray_args)
-    if argv is None:
+    elif argv is None:
         argv = sys.argv[1:]
     if len(argv) > 0 and argv[0].endswith('.json'):
         json_path = os.path.abspath(os.path.expanduser(argv[0]))
