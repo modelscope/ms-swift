@@ -210,15 +210,8 @@ class RayHelper:
 
             def dispatch_func(arg, n):
                 if isinstance(arg, list):
-                    length = len(arg)
-                    slice_cnt = max(length // n, 1)
-                    output = []
-                    for i in range(n):
-                        if i < n - 1:
-                            output.append(arg[slice_cnt * i:slice_cnt * (i + 1)])
-                        else:
-                            output.append(arg[slice_cnt * i:])
-                    return output
+                    k, m = divmod(len(arg), n)
+                    return [arg[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
                 else:
                     return [arg] * n
 

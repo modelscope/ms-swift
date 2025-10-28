@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Some code borrowed from ROLL: https://github.com/alibaba/ROLL
+import ast
 import math
 import os
 from dataclasses import dataclass, field
@@ -45,7 +46,7 @@ class ResourceManager:
                 ranks = list(range(last_rank + 1, last_rank + 1 + ranks))
             except Exception:  # noqa
                 if isinstance(ranks, str):
-                    ranks = eval(ranks)
+                    ranks = ast.literal_eval(ranks)
             finally:
                 all_ranks.extend(ranks)
                 group['ranks'] = ranks
