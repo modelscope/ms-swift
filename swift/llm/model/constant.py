@@ -105,6 +105,7 @@ class LLMModelType:
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
+    minimax_m2 = 'minimax_m2'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -222,6 +223,7 @@ class MLLMModelType:
     llava1_6_yi = 'llava1_6_yi'
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
+    llava_onevision1_5 = 'llava_onevision1_5'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'

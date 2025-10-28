@@ -205,7 +205,8 @@ class VllmEngine(InferEngine):
                 'mm_processor_cache_gb'
         ]:
             if key in parameters:
-                engine_kwargs[key] = locals()[key]
+                if locals()[key] is not None:
+                    engine_kwargs[key] = locals()[key]
             else:
                 logger.warning(f'The current version of vLLM does not support `{key}`. Ignored.')
         for key in ['task', 'seed']:
