@@ -989,8 +989,8 @@ def test_llava_onevision1_5():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2
-    
-    
+
+
 def test_paddle_ocr():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     pt_engine = PtEngine('PaddlePaddle/PaddleOCR-VL')
