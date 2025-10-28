@@ -63,6 +63,7 @@ class GPTBridge:
                 src=dist.get_global_rank(self.tp_group, 0),
                 group=self.tp_group,
             )
+            del splited_weights
         else:
             tensor = hf_weight
         if offset:
@@ -70,34 +71,46 @@ class GPTBridge:
         mg_param.data[mg_slices].copy_(tensor)
 
     def _get_weights(self, mg_weight, mg_key, offset: int = 0):
+        # tp
+        tp_dim = self._get_tp_split_dim(mg_key)
+        tensor = mg_weight
+        if tensor is not None and tp_dim is not None and self.tp_size > 1:
+            if tp_dim == 0:
+                # save memory
+                tensor_shape = list(tensor.shape)
+                tensor_shape[0] *= self.tp_size
+                output = tensor.new_empty(tensor_shape)
+                dist.all_gather_into_tensor(
+                    output,
+                    tensor,
+                    group=self.tp_group,
+                )
+                tensor = output
+            else:
+                output = [torch.empty_like(tensor) for _ in range(self.tp_size)]
+                dist.all_gather(
+                    output,
+                    tensor,
+                    group=self.tp_group,
+                )
+                tensor = torch.cat(output, dim=tp_dim)
+            del output
         # pp
         if self.pp_size > 1:
-            if mg_weight is None:
+            if tensor is None:
                 output = [None] * self.pp_size
                 dist.all_gather_object(output, None, group=self.pp_group)
                 src_idx = self._find_not_none_index(output)
                 assert len(src_idx) == 1, f'src_idx: {src_idx}'
                 src_idx = src_idx[0]
                 shape, dtype = output[src_idx]
-                mg_weight = torch.empty(shape, device='cuda', dtype=dtype)
-                dist.broadcast(mg_weight, src=dist.get_global_rank(self.pp_group, src_idx), group=self.pp_group)
+                tensor = torch.empty(shape, device='cuda', dtype=dtype)
+                dist.broadcast(tensor, src=dist.get_global_rank(self.pp_group, src_idx), group=self.pp_group)
             else:
                 output = [None] * self.pp_size
-                meta_data = (mg_weight.shape, mg_weight.dtype)
+                meta_data = (tensor.shape, tensor.dtype)
                 dist.all_gather_object(output, meta_data, group=self.pp_group)
-                dist.broadcast(mg_weight, src=dist.get_global_rank(self.pp_group, self.pp_rank), group=self.pp_group)
-        # tp
-        tp_dim = self._get_tp_split_dim(mg_key)
-        if tp_dim is not None and self.tp_size > 1:
-            tensor_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)]
-            dist.all_gather(
-                tensor_list,
-                mg_weight,
-                group=self.tp_group,
-            )
-            tensor = torch.cat(tensor_list, dim=tp_dim)
-        else:
-            tensor = mg_weight
+                dist.broadcast(tensor, src=dist.get_global_rank(self.pp_group, self.pp_rank), group=self.pp_group)
         if offset:
             tensor = tensor + offset
         return tensor
@@ -360,19 +373,11 @@ class GPTBridge:
         if reverse or mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
             self._set_state_dict(mg_model, 'embedding.word_embeddings.weight', hf_state_dict,
                                  'model.embed_tokens.weight', reverse)
-        if reverse or mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
-            if self.args.untie_embeddings_and_output_weights:
-                hf_lm_head_key = 'lm_head.weight'
-                if reverse and self.args.task_type == 'seq_cls':
-                    hf_lm_head_key = 'score.weight'
-                self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse)
-            self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight',
-                                 reverse)
         if reverse:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+            hf_state_dict = {}
         else:
             yield
-
         for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
             start_idx = mg_model.decoder.layers[0].layer_number - 1
             mg_layer_avaiable = (start_idx <= layer_idx <= mg_model.decoder.layers[-1].layer_number - 1)
@@ -383,11 +388,25 @@ class GPTBridge:
                     mg_layer = None
                 else:
                     continue
-            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
+            hf_state_dict = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
             if reverse:
-                yield from list(self._add_prefix(res, hf_prefix).items())
+                yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+                hf_state_dict = {}
             else:
                 yield
+        if reverse or mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+            if self.args.untie_embeddings_and_output_weights:
+                hf_lm_head_key = 'lm_head.weight'
+                if reverse and self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = 'score.weight'
+                self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse)
+            self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight',
+                                 reverse)
+        if reverse:
+            yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+            hf_state_dict = {}
+        else:
+            yield
 
     def load_weights(self, mg_model, hf_model_dir: str) -> None:
         with SafetensorLazyLoader(hf_model_dir) as loader:

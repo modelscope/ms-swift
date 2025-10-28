@@ -11,7 +11,7 @@ from swift.llm import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 from ..argument import MegatronExportArguments
 from ..convert import test_convert_precision
-from ..utils import prepare_mcore_model
+from ..utils import patch_load_base_checkpoint, prepare_mcore_model
 
 logger = get_logger()
 
@@ -39,7 +39,8 @@ class MegatronExport(SwiftPipeline):
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
         mg_model = megatron_model_meta.model_provider(pre_process=pre_process, post_process=post_process)
-        load_checkpoint([mg_model], None, None, strict=True)
+        with patch_load_base_checkpoint():
+            load_checkpoint([mg_model], None, None, strict=True)
         logger.info('Converting weights and saving the model...')
         bridge = megatron_model_meta.bridge_cls()
         bridge.save_weights([mg_model], args.save)
@@ -50,6 +51,7 @@ class MegatronExport(SwiftPipeline):
                 hf_model = prepare_model_template(
                     args, model=args.save, device_map='cpu')[0] if is_last_rank() else None
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+            dist.barrier()
 
     def convert_hf2mcore(self) -> None:
         args = self.args
@@ -72,7 +74,7 @@ class MegatronExport(SwiftPipeline):
             with disable_safe_ddp_context_use_barrier():
                 hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-        dist.barrier()
+            dist.barrier()
         args.save_args(args.save)
         logger.info('Saving the model...')
         mg_save_checkpoint(1, [mg_model], None, None, 0)

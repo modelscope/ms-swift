@@ -11,7 +11,6 @@ import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu
-from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.pipeline_parallel import get_forward_backward_func
@@ -32,7 +31,7 @@ from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
-from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
+from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
 
@@ -133,29 +132,6 @@ class BaseMegatronTrainer(ABC):
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
 
-    @staticmethod
-    def _patch_merge_fn(state_dict_model):
-        # https://github.com/NVIDIA/Megatron-LM/issues/1380
-
-        def sh_ten_merge_fn(sub_state_dict):
-            with torch.no_grad():
-                shared_storage = sub_state_dict[0].untyped_storage()
-                if all(shared_storage.data_ptr() == tensor.untyped_storage().data_ptr() for tensor in sub_state_dict):
-                    element_size = sub_state_dict[0].element_size()
-                    total_numel = sum(tensor.numel() for tensor in sub_state_dict)
-                    if shared_storage.nbytes() == total_numel * element_size:
-                        dim_0 = sum(tensor.shape[0] for tensor in sub_state_dict)
-                        shape = (dim_0, ) + sub_state_dict[0].shape[1:]
-                        combined_tensor = torch.empty(
-                            shape, dtype=sub_state_dict[0].dtype,
-                            device=sub_state_dict[0].device).set_(shared_storage, 0, shape)
-                        return combined_tensor
-                return torch.cat(sub_state_dict)
-
-        for v in state_dict_model.values():
-            if isinstance(v, ShardedTensorFactory) and 'apply_swiglu_sharded_factory' in v.merge_fn.__qualname__:
-                v.merge_fn = sh_ten_merge_fn
-
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
         sharded_state_dict = kwargs.get('sharded_state_dict')
@@ -176,7 +152,7 @@ class BaseMegatronTrainer(ABC):
                 v.key = v.key.replace(f'.{adapter_name}.', '.default.')
                 state_dict_model[k] = v
             sharded_state_dict[model_k] = state_dict_model
-            self._patch_merge_fn(state_dict_model)
+            patch_merge_fn(state_dict_model)  # TODO: check
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         for model_k in model_keys:
             state_dict = res[0][model_k]
@@ -192,7 +168,7 @@ class BaseMegatronTrainer(ABC):
         model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         if self.args.train_type == 'full':
             for k in model_keys:
-                self._patch_merge_fn(sharded_state_dict[k])
+                patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         mapping = {}
         for model_k in model_keys:
@@ -218,7 +194,7 @@ class BaseMegatronTrainer(ABC):
                     v.key = v.key.replace('.modules_to_save.default', '')
                 state_dict_model[k] = v
             sharded_state_dict[model_k] = state_dict_model
-            self._patch_merge_fn(state_dict_model)
+            patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         for model_k in model_keys:
             state_dict = res[0][model_k]
