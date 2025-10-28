@@ -32,7 +32,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_template()
         self._prepare_callbacks()
         self._prepare_dataset()
+        self._prepare_flash_ckpt()
 
+    @RayHelper.function(group='trainer')
     def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
