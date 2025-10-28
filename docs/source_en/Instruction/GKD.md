@@ -33,22 +33,22 @@ In knowledge distillation, there are two choices depending on the order of the t
 #### Forward KL
 
 $$
-\text{KL}(P_{\text{student}} \| P_{\text{teacher}}) = \sum_v P_{\text{student}}(v) \log \frac{P_{\text{student}}(v)}{P_{\text{teacher}}(v)}
-$$
-
-**Characteristics**: Mode-seeking
-- Expectation is computed under the student distribution
-- The student model tends to concentrate on the peak regions (high-probability areas) of the teacher model
-
-#### Reverse KL
-
-$$
 \text{KL}(P_{\text{teacher}} \| P_{\text{student}}) = \sum_v P_{\text{teacher}}(v) \log \frac{P_{\text{teacher}}(v)}{P_{\text{student}}(v)}
 $$
 
 **Characteristics**: Mode-covering
 - Expectation is computed under the teacher distribution
 - The student model tends to cover the entire teacher distribution (including low-probability regions)
+
+#### Reverse KL
+
+$$
+\text{KL}(P_{\text{student}} \| P_{\text{teacher}}) = \sum_v P_{\text{student}}(v) \log \frac{P_{\text{student}}(v)}{P_{\text{teacher}}(v)}
+$$
+
+**Characteristics**: Mode-seeking
+- Expectation is computed under the student distribution
+- The student model tends to concentrate on the peak regions (high-probability areas) of the teacher model
 
 ### Generalized Jensen-Shannon Divergence (Generalized JSD)
 
@@ -78,8 +78,8 @@ $$
 Where $M = \beta \cdot P_{\text{teacher}} + (1-\beta) \cdot P_{\text{student}}$
 
 > For extreme cases ($\beta = 0$ or $\beta = 1$), directly compute a single KL divergence:
-> - When $\beta = 0$: directly define $D = \text{KL}(P_{\text{teacher}} \| P_{\text{student}})$ (Reverse KL, Mode-covering)
-> - When $\beta = 1$: directly define $D = \text{KL}(P_{\text{student}} \| P_{\text{teacher}})$ (Forward KL, Mode-seeking)
+> - When $\beta = 0$: directly define $D = \text{KL}(P_{\text{teacher}} \| P_{\text{student}})$ (Forward KL, Mode-covering)
+> - When $\beta = 1$: directly define $D = \text{KL}(P_{\text{student}} \| P_{\text{teacher}})$ (Reverse KL, Mode-seeking)
 > - When $0 < \beta < 1$: use the above mixture distribution formula for interpolation
 
 By adjusting the $\beta$ parameter, interpolation can be performed between different divergence metrics. When $\beta = 0.5$, the divergence is the standard symmetric JSD.
@@ -142,7 +142,7 @@ We can perform GKD training by setting the following parameters:
 | Parameter | Type | Default | Range | Description |
 |------|------|--------|---------|------|
 | `--teacher_model` | str | Required | - | Teacher model path or model ID |
-| `--beta` | float | 0.5 | [0.0, 1.0] | Divergence interpolation coefficient<br>• 0.0: Reverse KL (mode-covering, more diverse)<br>• 0.5: JSD (balanced, **recommended**)<br>• 1.0: Forward KL (mode-seeking, more focused) |
+| `--beta` | float | 0.5 | [0.0, 1.0] | Divergence interpolation coefficient<br>• 0.0: Forward KL <br>• 0.5: JSD (balanced)<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Off-Policy<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | True/False | Whether to use teacher-generated sequences<br>• False: Use dataset when not on-policy<br>• True: Use teacher generation when not on-policy |
 | `--temperature` | float | 0.9 | > 0 | Generation sampling temperature, controls randomness |
@@ -201,3 +201,14 @@ swift rlhf \
 ```
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/fast.sh)
+
+
+## On-Policy Distillation
+We can achieve the [On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/) training described in the Thinking Machines Lab blog by setting the following parameters:
+
+```bash
+--lmbda 1 # on-policy
+--beta 1 # reverse
+```
+
+For a complete implementation, refer to the example script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh).
