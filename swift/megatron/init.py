@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import logging
 import os
 import subprocess
 import sys
@@ -518,6 +519,16 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
+def _patch_build_train_valid_test_datasets():
+    from megatron.training import training
+
+    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
+        train_valid_test_num_samples = training.get_train_valid_test_num_samples()
+        return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
+
+    training.build_train_valid_test_datasets = build_train_valid_test_datasets
+
+
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
@@ -609,10 +620,17 @@ def _patch_mrope():
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
         args = get_args()
-        if args.position_embedding_type != 'mrope':
+        cu_seqlens_for_batched = cu_seqlens
+        use_batched_mrope = False
+        if cp_group is not None:
+            cp_size = cp_group.size()
+            cu_seqlens_for_batched = cu_seqlens // cp_size
+            use_batched_mrope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
+        if args.position_embedding_type != 'mrope' and not use_batched_mrope:
+            logger.warning_once('Using non-batched RoPE, which may affect performance.')
             return _origin_apply_rotary_pos_emb_thd(
                 t,
-                cu_seqlens,
+                cu_seqlens_for_batched,
                 freqs,
                 rotary_interleaved=rotary_interleaved,
                 multi_latent_attention=multi_latent_attention,
@@ -622,24 +640,20 @@ def _patch_mrope():
 
         if cp_group is None:
             raise ValueError('cp_group must be provided for THD format RoPE')
-        cp_size = cp_group.size()
-        cu_seqlens = cu_seqlens // cp_size
-        seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
 
-        return torch.cat([
-            _apply_rotary_pos_emb_bshd(
-                x.unsqueeze(1),
-                f,
-                rotary_interleaved=rotary_interleaved,
-                multi_latent_attention=multi_latent_attention,
-                mscale=mscale,
-            ) for x, f in zip(torch.split(t, seqlens), torch.split(freqs, seqlens))
-        ]).squeeze(1)
+        return _apply_rotary_pos_emb_bshd(
+            t.unsqueeze(1),
+            freqs,
+            rotary_interleaved=rotary_interleaved,
+            multi_latent_attention=multi_latent_attention,
+            mscale=mscale,
+        ).squeeze(1)
 
     rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
 def _patch_megatron():
+    logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
     _patch_TELinear()
@@ -648,7 +662,9 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
+    _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()

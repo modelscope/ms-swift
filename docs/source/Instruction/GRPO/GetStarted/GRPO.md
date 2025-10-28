@@ -185,7 +185,7 @@ swift rollout \
 
 更多 rollout 参数参考[vLLM参数](../../../Instruction/命令行参数.md#vllm参数)和[rollout 参数](../../../Instruction/命令行参数.md#rollout参数)
 
-注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP。
+注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP，或升级vLLM
 
 
 训练使用以下参数配置外部 vLLM 服务器
@@ -196,6 +196,30 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
+#### 权重同步加速
+swift 3.10 优化了权重同步，设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
+
+```bash
+# rollout(server mode)
+swift rollout \
+    --vllm_enable_lora true \
+    --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
+    ...
+
+# grpo(colocate mode)
+swift rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --vllm_enable_lora true \
+    ...
+```
+
+注意：以下情况无法使用该优化：
+
+- 训练多模态模型的ViT层(freeze_vit false)
+- MoE 模型
+
+优化实现细节请参考该[PR](https://github.com/modelscope/ms-swift/pull/5773)
 
 ## logged metrics
 - completions/mean_length：生成的 completion 的平均长度。

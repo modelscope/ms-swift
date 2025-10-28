@@ -123,20 +123,21 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='trainer')
     def _prepare_dataset(self):
         args = self.args
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        # Defer encoding to the training phase
+        pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
         if args.cached_dataset:
             train_datasets, val_datasets = self._get_cached_dataset()
         else:
             train_datasets, val_datasets = [], []
         if args.dataset:
             train_dataset, val_dataset = self._get_dataset()
-            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=not is_grpo)
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
             train_datasets.append(train_dataset)
             val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         datasets = [train_dataset, val_dataset]
-        if is_grpo:
+        if not pre_process:
             return datasets
         datasets = self._post_process_datasets(datasets)
 
@@ -286,7 +287,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         'you can write a new implementation in the plugin/callback.py.')
 
     @staticmethod
-    def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
+        if isinstance(dataset, LazyLLMDataset):
+            dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:

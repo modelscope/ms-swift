@@ -3,23 +3,25 @@ import functools
 import math
 import os
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from dataclasses import asdict
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
 import torch.nn.functional as F
+from msgspec import field
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
+from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
-from transformers import Trainer
 
-from swift.utils import is_swanlab_available, is_wandb_available
+from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
 
 if is_wandb_available():
     import wandb
@@ -28,6 +30,193 @@ if is_swanlab_available():
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
+T = TypeVar('T')
+
+TensorLoRARequest = None
+if is_vllm_available():
+    from vllm.lora.request import LoRARequest
+
+    class TensorLoRARequest(LoRARequest):
+        peft_config: dict = field(default=None)
+        lora_tensors: dict = field(default=None)
+        lora_embeddings: Optional[Dict[str, torch.Tensor]] = None
+
+        @property
+        def config(self):
+            return self.peft_config
+
+        @property
+        def embeddings(self):
+            return self.lora_embeddings
+
+
+def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugin=None, training_args=None):
+    """
+    Prepares the model for DeepSpeed inference or evaluation by initializing it with the appropriate configuration.
+
+    Args:
+        model: The model to prepare
+        accelerator: The accelerator instance
+        deepspeed_config: Optional deepspeed config. If provided, use this instead of accelerator's plugin.
+        deepspeed_plugin: Optional DeepSpeedPlugin. If provided, use this instead of accelerator's plugin.
+        training_args: Optional training arguments for resolving "auto" values in config
+
+    Returns:
+        The prepared DeepSpeed model
+    """
+    try:
+        import deepspeed
+        import os
+        from copy import deepcopy
+        from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
+        from accelerate.utils import DeepSpeedPlugin
+    except ImportError:
+        pass
+
+    # Determine which config to use and create HfTrainerDeepSpeedConfig
+    if deepspeed_config is not None:
+        # Use provided config - need to wrap it with HfTrainerDeepSpeedConfig to handle "auto" values
+        if isinstance(deepspeed_config, dict):
+            # Create HfTrainerDeepSpeedConfig which will handle "auto" values
+            hf_ds_config = HfTrainerDeepSpeedConfig(deepspeed_config)
+
+            # Process the config with training args to resolve "auto" values
+            if training_args is not None:
+                hf_ds_config.trainer_config_process(training_args)
+
+            # Create a DeepSpeedPlugin with the processed config
+            temp_plugin = DeepSpeedPlugin(hf_ds_config=hf_ds_config)
+            config_kwargs = deepcopy(temp_plugin.deepspeed_config)
+        else:
+            raise ValueError(f'deepspeed_config should be a dict, got {type(deepspeed_config)}')
+    elif deepspeed_plugin is not None:
+        # Use provided plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+    else:
+        # Use accelerator's plugin (default behavior)
+        deepspeed_plugin = accelerator.state.deepspeed_plugin
+        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
+
+    stage = config_kwargs['zero_optimization']['stage']
+
+    if model is not None:
+        hidden_size = (
+            max(model.config.hidden_sizes) if getattr(model.config, 'hidden_sizes', None) else getattr(
+                model.config, 'hidden_size', None))
+        if hidden_size is not None and stage == 3:
+            # Note that `stage3_prefetch_bucket_size` can produce DeepSpeed messages like: `Invalidate trace cache
+            # @ step 0: expected module 1, but got module 0`
+            # This is expected and is not an error, see: https://github.com/microsoft/DeepSpeed/discussions/4081
+            config_kwargs.update({
+                'zero_optimization.reduce_bucket_size': hidden_size * hidden_size,
+                'zero_optimization.stage3_param_persistence_threshold': 10 * hidden_size,
+                'zero_optimization.stage3_prefetch_bucket_size': 0.9 * hidden_size * hidden_size,
+            })
+
+    # If ZeRO-3 is used, we shard both the active and reference model.
+    # Otherwise, we assume the reference model fits in memory and is initialized on each device with ZeRO
+    # disabled (stage 0)
+    if stage != 3:
+        config_kwargs['zero_optimization']['stage'] = 0
+
+    # CRITICAL: Save and clear DeepSpeed-related environment variables before initialization
+    # These environment variables (set during student model's DeepSpeed init) can override our config!
+    # Reference: https://github.com/microsoft/DeepSpeed/issues/xxxx
+    env_vars_to_clear = [
+        'DEEPSPEED_ZERO_STAGE',
+        'DEEPSPEED_CONFIG',
+        'DEEPSPEED_CONFIG_FILE',
+    ]
+    saved_env = {}
+    for env_var in env_vars_to_clear:
+        if env_var in os.environ:
+            saved_env[env_var] = os.environ[env_var]
+            del os.environ[env_var]
+
+    try:
+        # Explicitly pass args=None to ensure no args.deepspeed_config interference
+        model, *_ = deepspeed.initialize(args=None, model=model, config=config_kwargs)
+        model.eval()
+
+    finally:
+        # Restore environment variables
+        for env_var, value in saved_env.items():
+            os.environ[env_var] = value
+
+    return model
+
+
+@contextmanager
+def memory_time_profiling_context(
+    name: str = 'Operation',
+    enable_profiling: bool = True,
+    sync_cuda: bool = True,
+    reset_peak_stats: bool = True,
+):
+    """
+    General-purpose memory and time profiling context manager (pure monitoring, no execution).
+
+    Records memory usage and execution time when entering and exiting the context, but does not
+    handle any actual model loading/offloading operations.
+
+    Args:
+        name: Operation name for logging identification
+        enable_profiling: Whether to enable profiling records
+        sync_cuda: Whether to synchronize CUDA before recording (ensures accuracy with slight overhead)
+        reset_peak_stats: Whether to reset peak memory statistics on exit
+    """
+    if not enable_profiling:
+        yield
+        return
+
+    logger = get_logger()
+
+    # ===== Entry phase: Record initial state =====
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+    gc_collect()
+
+    # Record initial memory state
+    memory_before = torch.cuda.memory_allocated() / 1024**3  # GiB
+    memory_reserved_before = torch.cuda.memory_reserved() / 1024**3
+    max_memory_before = torch.cuda.max_memory_allocated() / 1024**3
+
+    logger.info(f'[{name}] Before: '
+                f'Allocated = {memory_before:.2f} GiB, '
+                f'Reserved = {memory_reserved_before:.2f} GiB, '
+                f'Peak = {max_memory_before:.2f} GiB')
+
+    # Start timing
+    start_time = time.perf_counter()
+
+    yield
+
+    # Synchronize and clean up memory before measuring (important for offload operations)
+    if sync_cuda and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    gc_collect()
+
+    # ===== Exit phase: Record final state =====
+    # Calculate elapsed time (before cleanup to measure actual operation time)
+    elapsed_time = time.perf_counter() - start_time
+
+    # Record final memory state
+    memory_after = torch.cuda.memory_allocated() / 1024**3
+    memory_reserved_after = torch.cuda.memory_reserved() / 1024**3
+    peak_memory = torch.cuda.max_memory_allocated() / 1024**3
+    memory_change = memory_after - memory_before
+
+    logger.info(f'[{name}] After: '
+                f'Allocated = {memory_after:.2f} GiB, '
+                f'Reserved = {memory_reserved_after:.2f} GiB, '
+                f'Peak = {peak_memory:.2f} GiB, '
+                f'Change = {memory_change:+.2f} GiB, '
+                f'Time = {elapsed_time:.2f}s')
+
+    # Reset peak memory statistics for next cycle
+    if reset_peak_stats and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
 
 
 def round_robin(num_reqs, num_workers):
@@ -368,6 +557,230 @@ def patch_save_last_checkpoint():
         RepeatSampler.old_len_func = origin_len_func
 
 
+def get_gather_if_zero3_context(trainer):
+    deepspeed_plugin = trainer.accelerator.state.deepspeed_plugin
+    zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+    if zero_stage_3:
+        import deepspeed
+        gather_if_zero3 = deepspeed.zero.GatheredParameters
+    else:
+        gather_if_zero3 = nullcontext
+    return gather_if_zero3
+
+
+def patch_vllm_load_adapter():
+    from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
+    from vllm.lora.models import LoRAModel
+    from vllm.lora.utils import get_adapter_absolute_path
+
+    try:
+        from vllm.transformers_utils.tokenizer_group import TokenizerGroup
+    except ImportError:
+        # removed in https://github.com/vllm-project/vllm/pull/24078
+        TokenizerGroup = None
+
+    def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
+        """
+        code borrowed from verl.utils.vllm.utils.py
+        based on vllm.lora.worker_manager.WorkerLoRAManager._load_adapter, support load adapter with lora tensors
+        Reason:
+        VLLM does not support adding LoRA from tensors directly. It only supports adding LoRA via file paths.
+        To synchronize the LoRA tensors of the actor model, we need to find a workaround to enable VLLM to
+        load memory-based LoRA tensors.
+        """
+        try:
+            supported_lora_modules = self._adapter_manager.supported_lora_modules
+            packed_modules_mapping = self._adapter_manager.packed_modules_mapping
+            expected_lora_modules: list[str] = []
+            for module in supported_lora_modules:
+                if module in packed_modules_mapping:
+                    expected_lora_modules.extend(packed_modules_mapping[module])
+                else:
+                    expected_lora_modules.append(module)
+            expected_lora_modules = list(set(expected_lora_modules))
+            # this is the patch
+            lora_tensors = None
+            from vllm.lora.peft_helper import PEFTHelper
+            if isinstance(lora_request, TensorLoRARequest):
+                peft_config = lora_request.peft_config
+                lora_tensors = lora_request.lora_tensors
+                peft_helper = PEFTHelper.from_dict(peft_config)
+            else:
+                lora_path = get_adapter_absolute_path(lora_request.lora_path)
+                peft_helper = PEFTHelper.from_local_dir(lora_path, self.max_position_embeddings)
+            # Validates the LoRA configuration against requirements before
+            # loading weights, throwing an exception if validation fails.
+            peft_helper.validate_legal(self.lora_config)
+            # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
+            # to ensure correct loading of lora weights.
+            model = self._adapter_manager.model
+            hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if isinstance(lora_request, TensorLoRARequest):  # this is the patch
+                lora = self._lora_model_cls.from_lora_tensors(
+                    lora_model_id=lora_request.lora_int_id,
+                    tensors=lora_tensors,
+                    peft_helper=peft_helper,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    embeddings=None,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+            else:
+                lora = self._lora_model_cls.from_local_checkpoint(
+                    lora_path,
+                    expected_lora_modules,
+                    peft_helper=peft_helper,
+                    lora_model_id=lora_request.lora_int_id,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+        except Exception as e:
+            raise e
+        if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
+            raise ValueError(f'LoRA added vocab size {lora.extra_vocab_size} is greater than '
+                             f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
+        return lora
+
+    def patched_get_lora_tokenizer(self: TokenizerGroup, lora_request: LoRARequest):
+        # since we pass dummy path, skip get tokenizer from path
+        return self.tokenizer
+
+    if not hasattr(LRUCacheWorkerLoRAManager, '_old_load_adapter'):
+        _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
+        LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
+        LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
+        if TokenizerGroup is not None:
+            TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
+            TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
+
+
+# FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py
+class FlattenedTensorMetadata(BaseModel):
+    """Metadata for a tensor in a flattened bucket"""
+    name: str
+    shape: Tuple[int, ...]
+    dtype: str
+    start_idx: int
+    end_idx: int
+    numel: int
+
+    @field_validator('shape', mode='before')
+    @classmethod
+    def ensure_shape_tuple(cls, v: Any) -> Tuple[int, ...]:
+        # accept tuple/list, torch.Size, or other iterable of ints
+        if torch is not None and isinstance(v, torch.Size):
+            return tuple(int(x) for x in v)
+        if isinstance(v, (list, tuple)):
+            return tuple(int(x) for x in v)
+        if isinstance(v, Iterable):
+            return tuple(int(x) for x in v)
+        raise ValueError('shape must be an iterable of ints (e.g. tuple/list/torch.Size)')
+
+    @field_validator('dtype', mode='before')
+    @classmethod
+    def ensure_dtype_str(cls, v: Any) -> str:
+        # accept torch.dtype or str
+        if torch is not None and isinstance(v, torch.dtype):
+            return str(v)
+        if isinstance(v, str):
+            return v
+        raise ValueError('dtype must be a torch.dtype or str')
+
+
+class FlattenedTensorBucket:
+    """
+    A bucket that flattens multiple tensors into a single tensor for efficient processing
+    while preserving all metadata needed for reconstruction.
+    """
+
+    def __init__(
+        self,
+        named_tensors: List[Tuple[str, torch.Tensor]] = None,
+        flattened_tensor: torch.Tensor = None,
+        metadata: List[FlattenedTensorMetadata] = None,
+    ):
+        """
+        Initialize a tensor bucket from a list of named tensors OR from pre-flattened data.
+        Args:
+            named_tensors: List of (name, tensor) tuples (for creating new bucket)
+            flattened_tensor: Pre-flattened tensor (for reconstruction)
+            metadata: Pre-computed metadata (for reconstruction)
+        """
+        if named_tensors is not None:
+            # Create bucket from named tensors
+            self.metadata: List[FlattenedTensorMetadata] = [None] * len(named_tensors)
+            self.flattened_tensor: torch.Tensor = None
+
+            if not named_tensors:
+                raise ValueError('Cannot create empty tensor bucket')
+
+            # First pass: compute total size and metadata
+            current_idx = 0
+            total_numel = 0
+            for i, (name, tensor) in enumerate(named_tensors):
+                numel = tensor.numel()
+                metadata_obj = FlattenedTensorMetadata(
+                    name=name,
+                    shape=tuple(tensor.shape),
+                    dtype=str(tensor.dtype),
+                    start_idx=current_idx,
+                    end_idx=current_idx + numel,
+                    numel=numel,
+                )
+                self.metadata[i] = metadata_obj
+                current_idx += numel
+                total_numel += numel
+
+            # Pre-allocate the final flattened tensor to avoid intermediate copies
+            # Use the dtype and device of the first tensor
+            first_tensor = named_tensors[0][1]
+            self.flattened_tensor = torch.empty(total_numel, dtype=first_tensor.dtype, device=first_tensor.device)
+
+            # Second pass: copy data directly into pre-allocated tensor
+            for meta, (name, tensor) in zip(self.metadata, named_tensors):
+                self.flattened_tensor[meta.start_idx:meta.end_idx].copy_(tensor.flatten())
+        else:
+            # Initialize from pre-flattened data
+            if flattened_tensor is None or metadata is None:
+                raise ValueError('Must provide either named_tensors or both flattened_tensor and metadata')
+            self.flattened_tensor = flattened_tensor
+            self.metadata = metadata
+
+    def get_flattened_tensor(self) -> torch.Tensor:
+        """Get the flattened tensor containing all bucket tensors"""
+        return self.flattened_tensor
+
+    def get_metadata(self) -> List[FlattenedTensorMetadata]:
+        """Get metadata for all tensors in the bucket"""
+        return self.metadata
+
+    def reconstruct_tensors(self) -> Dict[str, torch.Tensor]:
+        """
+        Reconstruct original tensors from flattened tensor with optimized performance.
+        Uses memory-efficient operations to minimize allocations and copies.
+        """
+        # preallocate the result list
+        reconstructed = {}
+
+        for meta in self.metadata:
+            tensor = self.flattened_tensor[meta.start_idx:meta.end_idx].reshape(meta.shape)
+            dtype = getattr(torch, meta.dtype.split('.')[-1])
+            # batch dtype conversion (if needed)
+            if tensor.dtype != dtype:
+                tensor = tensor.to(dtype)
+
+            reconstructed[meta.name] = tensor
+
+        return reconstructed
+
+
 def identity_data_collator(features):
     """Identity data collator that returns features as-is without any processing."""
     return features
@@ -563,3 +976,101 @@ def set_expandable_segments(enable: bool) -> None:
     if torch.cuda.is_available():
         torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
+
+
+def peft_config_to_dict(peft_config):
+    if not isinstance(peft_config, dict):
+        peft_config = asdict(peft_config)
+    # turn set to list to serializable
+    if 'target_modules' in peft_config and isinstance(peft_config['target_modules'], set):
+        peft_config['target_modules'] = list(peft_config['target_modules'])
+
+    return peft_config
+
+
+def _create_parameter_buckets(named_params, bucket_size_mb=512):
+    """Create parameter buckets for efficient processing"""
+    buckets = []
+    current_bucket = []
+    current_size = 0
+    bucket_size_bytes = bucket_size_mb * 1024 * 1024
+
+    for name, param in named_params:
+        param_size = param.numel() * param.element_size()
+
+        # If adding this param would exceed bucket size, process current bucket first
+        if current_size + param_size > bucket_size_bytes and current_bucket:
+            buckets.append(current_bucket)
+            current_bucket = []
+            current_size = 0
+
+        current_bucket.append((name, param))
+        current_size += param_size
+
+    # Process remaining parameters in the last bucket
+    if current_bucket:
+        buckets.append(current_bucket)
+
+    return buckets
+
+
+def _process_bucket_with_flattened_tensor(trainer, bucket_params):
+    """Process a bucket of parameters using FlattenedTensorBucket for efficiency"""
+    if not bucket_params:
+        return
+
+    # Create FlattenedTensorBucket for efficient processing
+    bucket = FlattenedTensorBucket(named_tensors=bucket_params)
+    metadatas = bucket.get_metadata()
+    flattened_tensor = bucket.get_flattened_tensor()
+
+    # Use the new flattened parameter update method
+    # If not available, fall back to individual parameter updates
+    try:
+        trainer.vllm_client.update_flattened_params(metadatas, flattened_tensor)
+    except AttributeError:
+        # Fallback to individual parameter updates
+        reconstructed = bucket.reconstruct_tensors()
+        for name, param in reconstructed.items():
+            trainer.vllm_client.update_named_param(name, param)
+
+    # Clean up
+    del bucket, metadatas, flattened_tensor
+
+
+def get_even_process_data(trainer, global_data: List[T]) -> List[T]:
+    """
+    Evenly splits `global_data` among all processes.
+
+    Each process receives a contiguous chunk of data. If `len(global_data)` is not
+    perfectly divisible by the number of processes, the first `remainder` processes
+    will receive one additional item.
+
+    Args:
+        global_data (List[T]): The full list of data to be distributed.
+
+    Returns:
+        List[T]: The subset of `global_data` assigned to this process.
+    """
+    num_procs = trainer.accelerator.num_processes
+    proc_idx = trainer.accelerator.process_index
+    total = len(global_data)
+
+    base_size = total // num_procs
+    remainder = total % num_procs
+
+    # Calculate the number of samples that need to be padded
+    # This ensures all processes have the same number of samples for gather operations
+    trainer.rollout_pad_count = 0
+    if remainder > 0 and proc_idx >= remainder:
+        # Processes with extra samples need padding
+        trainer.rollout_pad_count = 1
+
+    if proc_idx < remainder:
+        start = proc_idx * (base_size + 1)
+        end = start + base_size + 1
+    else:
+        start = remainder * (base_size + 1) + (proc_idx - remainder) * base_size
+        end = start + base_size
+
+    return global_data[start:end]

@@ -10,10 +10,13 @@ from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
 from trl.trainer.utils import print_rich_table
 
+from swift.utils import get_logger
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFRewardTrainer.__init__
+
+logger = get_logger()
 
 
 class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):

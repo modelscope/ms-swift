@@ -6,26 +6,31 @@ import inspect
 import multiprocessing
 import os
 import time
+import traceback
+from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import Dict, List, Optional, Union, get_type_hints
+from typing import Dict, List, Optional, Union
 
 import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
+                                               patch_vllm_load_adapter)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
+from .protocol import (InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest,
+                       UpdateFlattenedParamsRequest, UpdateWeightsRequest)
 
 try:
     from vllm.utils import get_open_port
@@ -49,6 +54,84 @@ Note:
 - Rollout is intended solely for GRPO training sampling.
 - For inference or deployment, please use the `swift infer` or `swift deploy` commands.
 """
+
+patch_vllm_load_adapter()
+
+
+class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
+
+    def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
+        """
+        Receives updated weights from the client process and updates the named parameter in the model.
+
+        Args:
+            name (`str`):
+                Name of the weight tensor being updated.
+            dtype (`str`):
+                Data type of the weight tensor as a string (e.g., `"torch.float32"`).
+            shape (`Sequence[int]`):
+                Shape of the weight tensor.
+        """
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        dtype = getattr(torch, dtype.split('.')[-1])
+        # Allocate memory for the incoming weight tensor on the correct device.
+        weight = torch.empty(shape, dtype=dtype, device=self.device)
+
+        # Use NCCL to broadcast the updated weights from the client (src) to all workers.
+        self.pynccl_comm.broadcast(weight, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+
+        # Load the received weights into the model.
+        self.model_runner.model.load_weights(weights=[(name, weight)])
+
+    def update_adapter_flattened_param(self, lora_int_id: int, peft_config: Dict, metadatas: list[Dict]) -> None:
+        """
+        Receives and applies a flattened LoRA adapter to the model.
+        """
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+        lora_request = TensorLoRARequest(
+            lora_name=f'{lora_int_id}',
+            lora_int_id=lora_int_id,
+            lora_path='dummy_lora_path',
+            peft_config=peft_config,
+            lora_tensors=named_params)
+        self.add_lora(lora_request)
+
+    def update_flattened_params(self, metadatas: list[Dict]) -> None:
+        """
+        Receives updated flattened weights from the client process and updates the model parameters.
+
+        Args:
+            metadatas (list[Dict]): List of metadata dictionaries for the flattened tensors.
+        """
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+
+        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+
+        # Load the reconstructed parameters into the model
+        self.model_runner.model.load_weights(weights=list(named_params.items()))
+
 
 logger = get_logger()
 
@@ -109,7 +192,11 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
-            result = method(*args, **kwargs)
+            try:
+                result = method(*args, **kwargs)
+            except Exception:
+                logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
+                result = None
             if command['type'] == 'call':
                 connection.send(result)
         elif command['type'] == 'shutdown':
@@ -138,7 +225,6 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
         # Handle commands
         if command['type'] in ['call', 'fire_and_forget']:
-            import traceback
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
@@ -167,6 +253,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
+        self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
+        self.app.post('/update_flattened_params/')(self.update_flattened_params)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
@@ -224,16 +312,18 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
+            'max_lora_rank': args.vllm_max_lora_rank,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
             infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         kwargs.update(args.get_vllm_engine_kwargs())
+        kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
-        engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        engine_kwargs.update({'worker_extension_cls': 'swift.llm.infer.rollout.WeightSyncWorkerExtension'})
         engine_kwargs['load_format'] = 'dummy'
         if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
             engine_kwargs['data_parallel_size'] = args.vllm_data_parallel_size
@@ -311,6 +401,37 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
         return {'message': 'Request received, updating named parameter'}
 
+    async def update_adapter_flattened_param(self, request: UpdateFlattenedAdapterRequest):
+        peft_config = asdict(request.peft_config)
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (request.lora_int_id, peft_config, metadatas)}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating adapter parameter'}
+
+    async def update_flattened_params(self, request: UpdateFlattenedParamsRequest):
+        """
+        Updates the model weights with flattened tensor data.
+
+        Args:
+            request (UpdateFlattenedParamsRequest):
+                - metadatas (List[FlattenedTensorMetadata]): Metadata for the flattened tensors.
+
+        """
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_flattened_params', 'args': (metadatas, )}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating flattened parameters'}
+
     async def reset_prefix_cache(self):
         """
         Resets the prefix cache for the model.
@@ -342,13 +463,17 @@ class SwiftRolloutDeploy(SwiftPipeline):
         enable_multi_turn = False
         if self.args.multi_turn_scheduler:
             enable_multi_turn = True
-
-        if self.use_async_engine:
-            if self.use_gym_env:
-                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True, 'enable_multi_turn': True}
-            return {'engine_type': 'AsyncLLMEngine', 'enable_multi_turn': enable_multi_turn}
-        else:
-            return {'engine_type': 'LLMEngine', 'enable_multi_turn': enable_multi_turn}
+        use_gym_env = False
+        if self.use_async_engine and self.use_gym_env:
+            use_gym_env = True
+        engine_type = 'AsyncLLMEngine' if self.use_async_engine else 'LLMEngine'
+        enable_lora = self.args.vllm_enable_lora
+        return {
+            'engine_type': engine_type,
+            'enable_multi_turn': enable_multi_turn,
+            'use_gym_env': use_gym_env,
+            'enable_lora': enable_lora,
+        }
 
     async def close_communicator(self):
         """
@@ -429,22 +554,3 @@ def run_rollout(args: RolloutArguments, return_url: bool = False):
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')
-
-
-# https://github.com/huggingface/trl/pull/3690
-# This patch handles backward compatibility for dtype parameter type changes in TRL:
-# - For TRL <= 0.19: dtype_annotation is torch.dtype (needs patching)
-# - For TRL > 0.19: dtype_annotation is str (no patching needed)
-old_update_named_param = WeightSyncWorkerExtension.update_named_param
-dtype_annotation = get_type_hints(old_update_named_param).get('dtype')
-
-if not hasattr(WeightSyncWorkerExtension, 'old_update_named_param') and dtype_annotation == torch.dtype:
-
-    @wraps(old_update_named_param)
-    def patched_update_named_param(self, name, dtype, shape) -> None:
-        if isinstance(dtype, str):
-            dtype = getattr(torch, dtype.split('.')[-1])
-        return old_update_named_param(self, name, dtype, shape)
-
-    WeightSyncWorkerExtension.update_named_param = patched_update_named_param
-    WeightSyncWorkerExtension.old_update_named_param = old_update_named_param

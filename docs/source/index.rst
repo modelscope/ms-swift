@@ -20,6 +20,7 @@ Swift DOCUMENTATION
    Instruction/命令行参数.md
    Instruction/预训练与微调.md
    Instruction/GRPO/index.rst
+   Instruction/GKD.md
    Instruction/人类对齐.md
    Instruction/推理和部署.md
    Instruction/采样.md
@@ -56,6 +57,8 @@ Swift DOCUMENTATION
    BestPractices/GRPO多模态训练.md
    BestPractices/GRPO代码训练.md
    BestPractices/Qwen3最佳实践.md
+   BestPractices/Qwen3-VL最佳实践.md
+   BestPractices/注册多模态模型.md
    BestPractices/Embedding训练.md
    BestPractices/Reranker训练.md
    BestPractices/快速训练VL模型.md
