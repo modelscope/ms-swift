@@ -7,7 +7,7 @@ from megatron.training import get_args
 from tqdm import tqdm
 
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, is_master
+from swift.utils import disable_safe_ddp_context_use_barrier, is_last_rank
 from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 
 
@@ -83,14 +83,25 @@ class GPTBridge:
             tensor = tensor + offset
         return tensor
 
-    def _set_state_dict(self, mg_module, mg_key: str, hf_state_dict, hf_key: str, reverse: bool, offset: float = 0):
+    def _set_state_dict(self,
+                        mg_module,
+                        mg_key: str,
+                        hf_state_dict,
+                        hf_key: str,
+                        reverse: bool,
+                        offset: float = 0,
+                        pre_process: bool = False,
+                        post_process: bool = False):
         mg_param = deep_getattr(mg_module, mg_key)
         if reverse:
             hf_state_dict[hf_key] = self._get_weights(mg_param.data, mg_key, offset)
         else:
-            if mg_param is None:
-                assert self.pp_size > 1, f'mg_module: {mg_module}, mg_key: {mg_key}'
-                return
+            if mg_param is None and self.pp_size > 1:
+                if pre_process and not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_module.vp_stage):
+                    return
+                elif post_process and not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_module.vp_stage):
+                    return
+            assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
             hf_weight = hf_state_dict[hf_key].load()
             self._set_weights(mg_param, hf_weight, mg_key, offset)
 
@@ -329,22 +340,30 @@ class GPTBridge:
             hf_state_dict = {}
         else:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
-        self._set_state_dict(mg_model, 'embedding.word_embeddings.weight', hf_state_dict, 'model.embed_tokens.weight',
-                             reverse)
+        self._set_state_dict(
+            mg_model,
+            'embedding.word_embeddings.weight',
+            hf_state_dict,
+            'model.embed_tokens.weight',
+            reverse,
+            pre_process=True)
         if self.args.untie_embeddings_and_output_weights:
             hf_lm_head_key = 'lm_head.weight'
             if reverse and self.args.task_type == 'seq_cls':
                 hf_lm_head_key = 'score.weight'
-            self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse)
-        self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight', reverse)
+            self._set_state_dict(
+                mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse, post_process=True)
+        self._set_state_dict(
+            mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight', reverse, post_process=True)
         if reverse:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
         else:
             yield
 
-        for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
+        for layer_idx in tqdm(range(len(mg_model.decoder.layers)), dynamic_ncols=True, desc='Converting: '):
             mg_layer = mg_model.decoder.layers[layer_idx]
-            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
+            hf_layer_number = mg_layer.layer_number - 1
+            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', hf_layer_number, reverse)
             if reverse:
                 yield from list(self._add_prefix(res, hf_prefix).items())
             else:
@@ -366,7 +385,7 @@ class GPTBridge:
         for k, v in self.export_weights(mg_models):
             saver.add_tensor(k, v)
         saver.finalize()
-        if is_master():
+        if is_last_rank():
             # TODO: new_special_tokens
             self.hf_model.config.save_pretrained(output_dir)
             save_checkpoint(

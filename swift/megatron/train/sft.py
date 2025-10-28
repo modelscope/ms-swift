@@ -7,7 +7,7 @@ import torch
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
-from swift.utils import get_logger, is_master, plot_images
+from swift.utils import get_logger, is_last_rank, plot_images
 from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
 from .utils import build_streaming_dataloader
@@ -67,7 +67,7 @@ class MegatronSft(SwiftSft):
             self.trainer.train(train_dataset, val_dataset, data_collator)
         finally:
             # Visualization
-            if is_master():
+            if is_last_rank():
                 images_dir = os.path.join(args.save, 'images')
                 logger.info(f'images_dir: {images_dir}')
                 plot_images(images_dir, args.tensorboard_dir)

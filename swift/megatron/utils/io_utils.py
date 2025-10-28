@@ -1,10 +1,11 @@
 import os
 from functools import partial
+from typing import Literal
 
 import json
 from safetensors.torch import safe_open, save_file
 
-from swift.utils import is_master
+from swift.utils import is_last_rank, is_master
 
 
 class LazyTensor:
@@ -74,12 +75,9 @@ class SafetensorLazyLoader:
 
 class StreamingSafetensorSaver:
 
-    def __init__(self, save_dir, max_shard_size='5GB') -> None:
-        if not is_master():
-            return
+    def __init__(self, save_dir, max_shard_size='5GB', save_rank: Literal['master', 'last'] = 'last') -> None:
         # max_shard_size: GiB
         self.save_dir = save_dir
-        os.makedirs(save_dir, exist_ok=True)
         if isinstance(max_shard_size, str):
             if max_shard_size.endswith('GB'):
                 max_shard_size = int(max_shard_size[:-2])
@@ -91,9 +89,12 @@ class StreamingSafetensorSaver:
         self.total_size = 0
         self.shard_index = 1
         self.weight_map = {}
+        self.is_save_rank = is_last_rank() if save_rank == 'last' else is_master()
+        if self.is_save_rank:
+            os.makedirs(save_dir, exist_ok=True)
 
     def add_tensor(self, name, tensor):
-        if not is_master():
+        if not is_save_rank:
             return
         tensor_size = tensor.numel() * tensor.element_size()
         if self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard:
@@ -118,7 +119,7 @@ class StreamingSafetensorSaver:
         self.shard_index += 1
 
     def finalize(self):
-        if not is_master():
+        if not is_save_rank:
             return
         if self.current_shard:
             self._save_current_shard()

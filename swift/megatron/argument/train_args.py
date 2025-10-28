@@ -7,7 +7,7 @@ import json
 
 from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_master
+from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank
 from .megatron_base_args import MegatronBaseArguments
 
 logger = get_logger()
@@ -26,7 +26,7 @@ class MegatronTrainArguments(MegatronBaseArguments):
         if self.add_version:
             self.save = add_version_to_work_dir(self.save)
             logger.info(f'args.save: {self.save}')
-        if is_master():
+        if is_last_rank():
             os.makedirs(self.save, exist_ok=True)
 
     def _init_ckpt_dir(self, adapters=None):

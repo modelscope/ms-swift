@@ -19,7 +19,7 @@ from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template,
 from swift.utils import get_logger, get_n_params_grads
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import convert_hf_config, patch_torch_dist_shard
+from .utils import convert_hf_config, forward_step_helper, patch_torch_dist_shard
 
 logger = get_logger()
 
@@ -67,7 +67,7 @@ def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
 
 @contextmanager
 def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_embedding: bool = False):
-    origin_torch_dtype = next(modules[0].parameters()).dtype
+    origin_torch_dtype = next(modules[-1].parameters()).dtype
 
     def _to_cuda_hook(module, args):
         if device is not None or torch_dtype is not None:
@@ -181,14 +181,16 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # attention_mask = None
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
+    kwargs = inputs.copy()
+    kwargs.pop('labels')
+    kwargs.update({'input_ids': input_ids, 'attention_mask': attention_mask, 'packed_seq_params': packed_seq_params})
     args = get_args()
     if 'position_ids' not in kwargs:
         kwargs['position_ids'] = position_ids
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
-        mg_logits = mg_model(
-            input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
+        # TODO: test pp tie_weights
+        mg_logits = forward_step_helper(mg_model, kwargs, dtype=mg_torch_dtype)
         if args.tensor_model_parallel_size > 1:
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
