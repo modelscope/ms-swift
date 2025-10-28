@@ -39,6 +39,9 @@ class MegatronExportArguments(MegatronBaseArguments):
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
         if self.to_hf or self.to_mcore:
             self._init_convert()
+            if self.model_info.is_moe_model is not None and self.tensor_model_parallel_size > 1:
+                self.sequence_parallel = True
+                logger.info('Settting args.sequence_parallel: True')
 
     def _init_convert(self):
         convert_kwargs = {
