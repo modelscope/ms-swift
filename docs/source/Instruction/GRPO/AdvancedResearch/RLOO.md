@@ -2,7 +2,7 @@
 
 **版本依赖**：ms-swift>=3.10
 
-[REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) 是一种简化的强化学习算法，基于经典的 REINFORCE 策略梯度方法。该算法通过留一法（Leave-One-Out）构造无偏的优势函数基线。
+[REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) 基于经典的 REINFORCE 策略梯度方法，通过留一法（Leave-One-Out）构造无偏的优势函数基线。
 
 ## 算法原理
 

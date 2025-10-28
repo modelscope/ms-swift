@@ -2,7 +2,7 @@
 
 **Version requirement**: ms-swift>=3.10
 
-[REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) is a simplified reinforcement learning algorithm based on the classic REINFORCE policy-gradient method. It constructs an unbiased advantage baseline via the Leave-One-Out (LOO) technique.
+[REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) is a reinforcement learning algorithm based on the classic REINFORCE policy-gradient method. It constructs an unbiased advantage baseline via the Leave-One-Out (LOO) technique.
 
 ## Algorithm Overview
 
@@ -53,7 +53,7 @@ The key advantage is unbiasedness. For the $i$-th sample, its reward $R_i$ is in
 
 To prevent the policy from drifting too far from the reference policy, both algorithms introduce KL divergence regularization, but in different ways:
 
-**GRPO**: Adds KL divergence as an independent regularization term to the [loss](../GetStarted/GRPO.md#grpo-objective-function):
+**GRPO**: Adds KL divergence as an independent regularization term to the [loss](../GetStarted/GRPO.md#algorithm-overview):
 
 $$
 \mathcal{L}(\theta) = -\mathbb{E}\left[\hat{A}_i \log \pi_\theta(a_i|s_i)\right] + \beta \cdot \text{KL}(\pi_\theta \Vert \pi_{\text{ref}})

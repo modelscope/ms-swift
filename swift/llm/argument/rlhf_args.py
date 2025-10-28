@@ -207,8 +207,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.truncation_strategy = 'left'
         assert self.truncation_strategy in ['left', 'delete'
                                             ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
-                                                )  # noqa
+                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
