@@ -32,7 +32,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 16 \
     --temperature 1.0 \
-    --system '/mnt/nas2/hujinghan.hjh/swift/examples/train/grpo/prompt.txt' \
+    --system 'swift/examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
     --report_to tensorboard swanlab \
