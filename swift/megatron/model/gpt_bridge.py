@@ -2,6 +2,7 @@ from functools import partial
 from typing import Dict, Literal, Optional, Union
 
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.training import get_args
 from tqdm import tqdm
@@ -47,6 +48,7 @@ class GPTBridge:
             return 1
 
     def _set_weights(self, mg_param, hf_weight, mg_key: str, offset: int = 0, mg_slices=()):
+        # tp
         tp_dim = self._get_tp_split_dim(mg_key)
         hf_weight = hf_weight.to(mg_param.device)
         if tp_dim is not None and self.tp_size > 1:
@@ -55,10 +57,10 @@ class GPTBridge:
             else:
                 splited_weights = None
             tensor = torch.empty_like(mg_param.data[mg_slices])
-            torch.distributed.scatter(
+            dist.scatter(
                 tensor,
                 splited_weights,
-                src=0,
+                src=dist.get_global_rank(self.tp_group, 0),
                 group=self.tp_group,
             )
         else:
@@ -68,10 +70,27 @@ class GPTBridge:
         mg_param.data[mg_slices].copy_(tensor)
 
     def _get_weights(self, mg_weight, mg_key, offset: int = 0):
+        # pp
+        if self.pp_size > 1:
+            if mg_weight is None:
+                output = [None] * self.pp_size
+                dist.all_gather_object(output, None, group=self.pp_group)
+                src_idx = self._find_not_none_index(output)
+                assert len(src_idx) == 1, f'src_idx: {src_idx}'
+                src_idx = src_idx[0]
+                shape, dtype = output[src_idx]
+                mg_weight = torch.empty(shape, device='cuda', dtype=dtype)
+                dist.broadcast(mg_weight, src=dist.get_global_rank(self.pp_group, src_idx), group=self.pp_group)
+            else:
+                output = [None] * self.pp_size
+                meta_data = (mg_weight.shape, mg_weight.dtype)
+                dist.all_gather_object(output, meta_data, group=self.pp_group)
+                dist.broadcast(mg_weight, src=dist.get_global_rank(self.pp_group, self.pp_rank), group=self.pp_group)
+        # tp
         tp_dim = self._get_tp_split_dim(mg_key)
         if tp_dim is not None and self.tp_size > 1:
             tensor_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)]
-            torch.distributed.all_gather(
+            dist.all_gather(
                 tensor_list,
                 mg_weight,
                 group=self.tp_group,
@@ -83,24 +102,19 @@ class GPTBridge:
             tensor = tensor + offset
         return tensor
 
-    def _set_state_dict(self,
-                        mg_module,
-                        mg_key: str,
-                        hf_state_dict,
-                        hf_key: str,
-                        reverse: bool,
-                        offset: float = 0,
-                        pre_process: bool = False,
-                        post_process: bool = False):
+    @staticmethod
+    def _find_not_none_index(lst):
+        res = []
+        for i, x in enumerate(lst):
+            if x is not None:
+                res.append(i)
+        return res
+
+    def _set_state_dict(self, mg_module, mg_key: str, hf_state_dict, hf_key: str, reverse: bool, offset: float = 0):
         mg_param = deep_getattr(mg_module, mg_key)
         if reverse:
-            hf_state_dict[hf_key] = self._get_weights(mg_param.data, mg_key, offset)
+            hf_state_dict[hf_key] = self._get_weights(None if mg_param is None else mg_param.data, mg_key, offset)
         else:
-            if mg_param is None and self.pp_size > 1:
-                if pre_process and not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_module.vp_stage):
-                    return
-                elif post_process and not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_module.vp_stage):
-                    return
             assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
             hf_weight = hf_state_dict[hf_key].load()
             self._set_weights(mg_param, hf_weight, mg_key, offset)
@@ -147,7 +161,8 @@ class GPTBridge:
         args = self.args
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
         if reverse:
-            mg_attn_weight = self._get_weights(mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
+            mg_attn_weight = self._get_weights(None if mg_attn is None else mg_attn.linear_qkv.weight.data,
+                                               'linear_qkv.weight')
             mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
             q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
                 0] // num_query_groups
@@ -167,7 +182,8 @@ class GPTBridge:
         # Copy bias
         if args.add_qkv_bias:
             if reverse:
-                mg_attn_bias = self._get_weights(mg_attn.linear_qkv.bias.data, 'linear_qkv.bias')
+                mg_attn_bias = self._get_weights(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
+                                                 'linear_qkv.bias')
                 mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
                 hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
                 hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
@@ -248,9 +264,10 @@ class GPTBridge:
             else:
                 if reverse:
                     fc1_weight = deep_getattr(mg_mlp, fc1_key)
-                    hf_state_dict['gate_proj.weight'] = self._get_weights(fc1_weight[:fc1_weight.shape[0] // 2],
-                                                                          fc1_key)
-                    hf_state_dict['up_proj.weight'] = self._get_weights(fc1_weight[fc1_weight.shape[0] // 2:], fc1_key)
+                    hf_state_dict['gate_proj.weight'] = self._get_weights(
+                        None if fc1_weight is None else fc1_weight[:fc1_weight.shape[0] // 2], fc1_key)
+                    hf_state_dict['up_proj.weight'] = self._get_weights(
+                        None if fc1_weight is None else fc1_weight[fc1_weight.shape[0] // 2:], fc1_key)
                 else:
                     fc1_weight = torch.cat([
                         hf_state_dict['gate_proj.weight'].load(),
@@ -298,7 +315,7 @@ class GPTBridge:
         return self._add_prefix(res, tgt_prefix)
 
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, reverse: bool):
-        mg_attn = mg_layer.self_attention
+        mg_attn = None if mg_layer is None else mg_layer.self_attention
         if self.args.multi_latent_attention:
             hf_state_dict.update(self._set_mla_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, reverse))
             self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', reverse)
@@ -311,7 +328,7 @@ class GPTBridge:
     def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, reverse: bool):
         hf_mlp = self.hf_layers[layer_idx].mlp
         is_moe = self._is_moe(hf_mlp.state_dict())
-        mg_mlp = mg_layer.mlp
+        mg_mlp = None if mg_layer is None else mg_layer.mlp
         if is_moe:
             hf_state_dict.update(self._set_moe_state(mg_mlp, hf_state_dict, 'mlp.', layer_idx, reverse))
             self._set_state_dict(mg_layer, 'pre_mlp_layernorm.weight', hf_state_dict, 'post_attention_layernorm.weight',
@@ -340,30 +357,33 @@ class GPTBridge:
             hf_state_dict = {}
         else:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
-        self._set_state_dict(
-            mg_model,
-            'embedding.word_embeddings.weight',
-            hf_state_dict,
-            'model.embed_tokens.weight',
-            reverse,
-            pre_process=True)
-        if self.args.untie_embeddings_and_output_weights:
-            hf_lm_head_key = 'lm_head.weight'
-            if reverse and self.args.task_type == 'seq_cls':
-                hf_lm_head_key = 'score.weight'
-            self._set_state_dict(
-                mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse, post_process=True)
-        self._set_state_dict(
-            mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight', reverse, post_process=True)
+        if reverse or mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+            self._set_state_dict(mg_model, 'embedding.word_embeddings.weight', hf_state_dict,
+                                 'model.embed_tokens.weight', reverse)
+        if reverse or mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+            if self.args.untie_embeddings_and_output_weights:
+                hf_lm_head_key = 'lm_head.weight'
+                if reverse and self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = 'score.weight'
+                self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, reverse)
+            self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight',
+                                 reverse)
         if reverse:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
         else:
             yield
 
-        for layer_idx in tqdm(range(len(mg_model.decoder.layers)), dynamic_ncols=True, desc='Converting: '):
-            mg_layer = mg_model.decoder.layers[layer_idx]
-            hf_layer_number = mg_layer.layer_number - 1
-            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', hf_layer_number, reverse)
+        for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
+            start_idx = mg_model.decoder.layers[0].layer_number - 1
+            mg_layer_avaiable = (start_idx <= layer_idx <= mg_model.decoder.layers[-1].layer_number - 1)
+            if mg_layer_avaiable:
+                mg_layer = mg_model.decoder.layers[layer_idx - start_idx]
+            else:
+                if reverse:
+                    mg_layer = None
+                else:
+                    continue
+            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
             if reverse:
                 yield from list(self._add_prefix(res, hf_prefix).items())
             else:

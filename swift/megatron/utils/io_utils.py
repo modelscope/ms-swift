@@ -94,7 +94,7 @@ class StreamingSafetensorSaver:
             os.makedirs(save_dir, exist_ok=True)
 
     def add_tensor(self, name, tensor):
-        if not is_save_rank:
+        if not self.is_save_rank:
             return
         tensor_size = tensor.numel() * tensor.element_size()
         if self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard:
@@ -119,7 +119,7 @@ class StreamingSafetensorSaver:
         self.shard_index += 1
 
     def finalize(self):
-        if not is_save_rank:
+        if not self.is_save_rank:
             return
         if self.current_shard:
             self._save_current_shard()
