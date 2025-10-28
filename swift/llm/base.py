@@ -29,7 +29,6 @@ class SwiftPipeline(ABC, ProcessorMixin):
             return args
         assert self.args_class is not None
         args, remaining_argv = parse_args(self.args_class, args)
-        logger.error(args)
         if len(remaining_argv) > 0:
             if getattr(args, 'ignore_args_error', False):
                 logger.warning(f'remaining_argv: {remaining_argv}')
