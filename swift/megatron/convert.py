@@ -19,7 +19,7 @@ from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template,
 from swift.utils import get_logger, get_n_params_grads
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import convert_hf_config, forward_step_helper, patch_torch_dist_shard
+from .utils import convert_hf_config, forward_step_helper, get_padding_to, patch_torch_dist_shard
 
 logger = get_logger()
 
@@ -152,7 +152,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     is_multimodal = template.model_meta.is_multimodal
     inputs = get_examples(is_multimodal)
     inputs = template.encode(inputs)
-    inputs = to_device(template.data_collator([inputs]), 'cuda')
+    inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to()), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:

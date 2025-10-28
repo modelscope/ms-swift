@@ -35,7 +35,7 @@ class GPTBridge:
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
-        self.ep_rank = mpu.get_expert_model_parallel_group()
+        self.ep_rank = mpu.get_expert_model_parallel_rank()
 
     @staticmethod
     def _get_tp_split_dim(mg_key: str) -> Optional[int]:
@@ -260,10 +260,32 @@ class GPTBridge:
                 self._set_state_dict(mg_mlp, 'shared_experts.gate_weight', hf_state_dict, 'shared_expert_gate.weight',
                                      reverse)
         for expert_idx in range(self.args.num_experts):
-            hf_expert_prefix = f'experts.{expert_idx}.' if hasattr(hf_mlp.experts, '__len__') else 'experts.'
+            mg_experts = mg_mlp.experts
+            start_idx = mg_experts.num_local_experts * self.ep_rank
+            expert_available = (start_idx <= expert_idx < start_idx + mg_experts.num_local_experts)
+            if expert_available:
+                group_idx = expert_idx - start_idx
+            else:
+                group_idx = None
+                if reverse:
+                    mg_experts = None
+                else:
+                    continue
+            if hasattr(hf_mlp.experts, '__len__'):
+                hf_expert_prefix = f'experts.{expert_idx}.'
+                hf_group_idx = None
+            else:
+                hf_expert_prefix = 'experts.'
+                hf_group_idx = expert_idx
             hf_state_dict.update(
                 self._set_mlp_state(
-                    mg_mlp.experts, hf_state_dict, hf_expert_prefix, layer_idx, reverse, group_idx=expert_idx))
+                    mg_experts,
+                    hf_state_dict,
+                    hf_expert_prefix,
+                    layer_idx,
+                    reverse,
+                    group_idx=group_idx,
+                    hf_group_idx=hf_group_idx))
         if reverse:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
@@ -276,25 +298,23 @@ class GPTBridge:
         layer_idx: int,
         reverse: bool,
         group_idx: Optional[int] = None,
+        hf_group_idx: Optional[int] = None,
     ):
         if reverse:
             hf_state_dict = {}
         else:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         hf_mlp = self.hf_layers[layer_idx].mlp
-        hf_grouped = False
         is_expert = group_idx is not None
         if group_idx is not None:
-            if not hasattr(hf_mlp.experts, '__len__'):
-                hf_grouped = True
             fc1_key = f'linear_fc1.weight{group_idx}'
             fc2_key = f'linear_fc2.weight{group_idx}'
         else:
             fc1_key = 'linear_fc1.weight'
             fc2_key = 'linear_fc2.weight'
-        if hf_grouped:
-            res[fc1_key] = hf_state_dict['gate_up_proj'][group_idx].t()
-            res[fc2_key] = hf_state_dict['down_proj'][group_idx].t()
+        if hf_group_idx is not None:
+            res[fc1_key] = hf_state_dict['gate_up_proj'][hf_group_idx].t()
+            res[fc2_key] = hf_state_dict['down_proj'][hf_group_idx].t()
         else:
             if reverse:
                 fc1_weight = deep_getattr(mg_mlp, fc1_key)
@@ -407,8 +427,8 @@ class GPTBridge:
             yield
         for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
             start_idx = mg_model.decoder.layers[0].layer_number - 1
-            mg_layer_avaiable = (start_idx <= layer_idx <= mg_model.decoder.layers[-1].layer_number - 1)
-            if mg_layer_avaiable:
+            mg_layer_available = (start_idx <= layer_idx < mg_model.decoder.layers[-1].layer_number)
+            if mg_layer_available:
                 mg_layer = mg_model.decoder.layers[layer_idx - start_idx]
             else:
                 if reverse:

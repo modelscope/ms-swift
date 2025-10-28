@@ -299,3 +299,15 @@ def forward_step_helper(model, inputs, dtype=None):
         output_tensor = None
 
     return output_tensor
+
+
+def get_padding_to():
+    args = get_args()
+    padding_to = None
+    if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
+        padding_to = args.tensor_model_parallel_size
+    if args.context_parallel_size > 1:
+        padding_to = (padding_to or 1) * args.context_parallel_size
+    if args.fp8:
+        padding_to = max((padding_to or 1) * 8, 16)
+    return padding_to
