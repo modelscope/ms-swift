@@ -3,7 +3,7 @@ sampler_type: distill
 sampler_engine: client
 model: qwen-max
 stream: true
-dataset: tastelikefeet/competition_math#16
+dataset: modelscope/competition_math#16
 num_return_sequences: 4
 max_length: 2048
 system: "You are a math model, you should **think step by step** carefully, and always consider the basic math principles to avoid making calculating mistakes. Give the final answer wrapped with \\boxed{{}}"
