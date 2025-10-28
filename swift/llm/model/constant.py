@@ -105,6 +105,7 @@ class LLMModelType:
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
+    minimax_m2 = 'minimax_m2'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -270,6 +271,7 @@ class MLLMModelType:
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    paddle_ocr = 'paddle_ocr'
 
 
 class RerankerModelType:
