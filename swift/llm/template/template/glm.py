@@ -119,6 +119,7 @@ class GLM4_1VTemplate(Template):
     end_of_image_token = 151340
     begin_of_video_token = 151341
     end_of_video_token = 151342
+    placeholder_tokens = ['<|image|>', '<|video|>']
 
     def init_processor(self, processor) -> None:
         if processor is None:
@@ -265,6 +266,7 @@ class GLM4_5Template(ThinkingTemplate):
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
+
 
 class GLM4_5VTemplate(GLM4_5Template):
     placeholder_tokens = ['<|image|>']
