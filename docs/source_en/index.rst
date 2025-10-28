@@ -26,6 +26,7 @@ Swift DOCUMENTATION
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
+   Instruction/Ray.md
    Instruction/Reinforced-Fine-tuning.md
    Instruction/Agent-support.md
    Instruction/Supported-models-and-datasets.md
