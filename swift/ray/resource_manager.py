@@ -22,7 +22,8 @@ class ResourceManager:
         import ray
         from ray.util.placement_group import PlacementGroup
         nproc_per_node = int(groups['nproc_per_node'])
-        device_types = set([group['device'] for group in groups.values() if hasattr(group, '__getitem__')]) - {'CPU'}
+        device_types = set([group['device'].upper()
+                            for group in groups.values() if hasattr(group, '__getitem__')]) - {'CPU'}
         assert len(device_types) == 1
         device_type = next(iter(device_types))
         all_ranks = []
@@ -32,13 +33,13 @@ class ResourceManager:
             if group_name in self.possible_keys:
                 continue
             ranks = group['ranks']
-            device = group['device']
+            device = group['device'].upper()
             if device == 'CPU':
                 assert isinstance(ranks, int), 'CPU group only supports integer ranks'
                 cpu_proc_count += ranks
                 continue
             try:
-                ranks = int(ranks)
+                ranks = int(ranks)  # int type
                 ranks = list(range(last_rank + 1, last_rank + 1 + ranks))
             except Exception:  # noqa
                 if isinstance(ranks, str):
@@ -129,4 +130,6 @@ class ResourceManager:
     def destroy_placement_group(self):
         import ray
         for pg in self.placement_groups:
+            ray.util.remove_placement_group(pg)
+        for pg in self.cpu_placement_groups:
             ray.util.remove_placement_group(pg)

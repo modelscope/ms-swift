@@ -6,6 +6,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 import json
+from omegaconf import ListConfig
 
 from swift.utils import get_logger
 
@@ -53,35 +54,31 @@ def prepare_config_args(argv):
         arg_value = argv[i + 1]
         if arg_name == '--config':
             from omegaconf import OmegaConf, DictConfig
-            from swift.ray import RayHelper
             config = OmegaConf.load(arg_value)
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
                 result = {}
-
-                def _traverse(config: Any, parent_key: str = ''):
-                    if isinstance(config, DictConfig):
-                        for key, value in config.items():
-                            if key == 'device_groups':
-                                result[key] = json.dumps(OmegaConf.to_container(value))
-                            else:
-                                current_path = f'{parent_key}.{key}' if parent_key else key
-                                _traverse(value, current_path)
+                for key, value in cfg.items():
+                    if isinstance(value, DictConfig):
+                        result[key] = json.dumps(OmegaConf.to_container(value))
+                    elif isinstance(value, ListConfig):
+                        result[key] = list(value)
                     else:
-                        last_key = parent_key.split('.')[-1] if parent_key else ''
-                        result[last_key] = config
-
-                _traverse(cfg)
+                        result[key] = value
                 return result
 
+            # Convert yaml to cmd line
             cfg = parse_dict_config(config)
             for key, value in cfg.items():
                 argv.append(f'--{key}')
-                if not isinstance(value, str):
-                    value = str(value)
-                argv.append(value)
+                if isinstance(value, list):
+                    argv.extend(value)
+                else:
+                    argv.append(str(value))
 
+            # Pop --config
             argv.pop(i)
+            # Pop value of --config
             argv.pop(i)
             break
 

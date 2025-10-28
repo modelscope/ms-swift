@@ -144,6 +144,35 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - bnb_4bit_use_double_quant: Whether to use double quantization. Default is `True`.
 - bnb_4bit_quant_storage: Data type used to store quantized weights. Default is `None`.
 
+### RAY Arguments
+
+- use_ray: Boolean type. Whether to use ray, defaults to `False`.
+- ray_exp_name: Ray experiment name. This field will be used as the prefix for cluster and worker names, can be empty.
+- device_groups: String (jsonstring) type. When using ray, this field must be configured. For details, please refer to the [ray documentation](Ray.md).
+
+### YAML Arguments
+
+- config: You can use config instead of command-line arguments, for example:
+
+```shell
+swift sft --config demo.yaml
+```
+
+The content of demo.yaml consists of other command-line configurations:
+
+```yaml
+# Model args
+model: Qwen/Qwen2.5-7B-Instruct
+dataset: swift/self-cognition
+...
+
+# Train args
+output_dir: xxx/xxx
+gradient_checkpointing: true
+
+...
+```
+
 ## Atomic Arguments
 
 ### Seq2SeqTrainer Arguments

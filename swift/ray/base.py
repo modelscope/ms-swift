@@ -1,10 +1,10 @@
+import argparse
 import functools
 import inspect
-import json
 import os
-import argparse
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
+import json
 import numpy as np
 
 from swift.llm.argument.base_args.ray_args import RayArguments
@@ -79,6 +79,7 @@ class RayHelper:
         try:
             import ray
         except ImportError:
+            # not installed, not inited
             return False
         return ray.is_initialized()
 
@@ -107,6 +108,7 @@ class RayHelper:
             @functools.wraps(init_method)
             def new_init(self, *args, **kwargs):
                 if not RayHelper.is_worker():
+                    # Create remote workers
                     RayHelper._create_workers(group, *args, **kwargs)
                 init_method(self, *args, **kwargs)
 
@@ -167,6 +169,7 @@ class RayHelper:
                     return func(self, *args, **kwargs)
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
+                        # pass through env
                         self.group = os.environ['RAY_SWIFT_GROUP'].split(',')
                     if group not in self.group:
                         if RayHelper.is_called_from_init():
@@ -179,6 +182,7 @@ class RayHelper:
                         return func(self, *args, **kwargs)
                 else:
                     if RayHelper.is_called_from_init():
+                        # each worker do its own init
                         return None
                     result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
                     return RayHelper.collect_func(collect, result)
@@ -223,6 +227,7 @@ class RayHelper:
                 sliced_args = tuple(arg[i] for arg in args)
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
+                    # skip empty input
                     remote_call = getattr(workers[i], method_name)
                     result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
             return result
@@ -242,7 +247,6 @@ class RayHelper:
         import ray
         from ray.runtime_env import RuntimeEnv
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-        nproc_per_node = int(RayHelper.device_groups['nproc_per_node'])
         exp_name = os.environ.get('RAY_SWIFT_EXP_NAME')
         if not exp_name:
             exp_name = ''
@@ -270,7 +274,12 @@ class RayHelper:
             assert _config is not None
             local_groups = _config['workers']
 
-            if _config['device'] != 'CPU':
+            VISIBLE_ENV_MAPPING = {
+                'GPU': 'CUDA_VISIBLE_DEVICES',
+                'NPU': 'ASCEND_VISIBLE_DEVICES',
+            }
+
+            if _config['device'].upper() != 'CPU':
                 world_size = len(_config['ranks'])
                 placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
                 workers = []
@@ -281,13 +290,20 @@ class RayHelper:
                     worker_name = cluster_name + '-' + str(rank)
                     env_vars = os.environ.copy()
                     env_vars.update({
-                        'WORLD_SIZE': str(world_size),
-                        'RANK': str(rank),
-                        'LOCAL_RANK': str(0),
-                        'CLUSTER_NAME': cluster_name,
-                        'WORKER_NAME': worker_name,
-                        'CUDA_VISIBLE_DEVICES': ','.join([str(r) for r in deploy_pg['gpu_rank']]),
-                        'RAY_SWIFT_ARGS': get_args()
+                        'WORLD_SIZE':
+                        str(world_size),
+                        'RANK':
+                        str(rank),
+                        'LOCAL_RANK':
+                        str(0),
+                        'CLUSTER_NAME':
+                        cluster_name,
+                        'WORKER_NAME':
+                        worker_name,
+                        VISIBLE_ENV_MAPPING[_config['device'].upper()]:
+                        ','.join([str(r) for r in deploy_pg['gpu_rank']]),  # TODO npu
+                        'RAY_SWIFT_ARGS':
+                        get_args(),  # pass through env
                     })
 
                     @ray.remote
@@ -333,7 +349,8 @@ class RayHelper:
                     env_vars.update({
                         'CLUSTER_NAME': cluster_name,
                         'WORKER_NAME': worker_name,
-                        'CUDA_VISIBLE_DEVICES': '',
+                        VISIBLE_ENV_MAPPING[_config['device'].upper()]: '',
+                        'RAY_SWIFT_ARGS': get_args(),  # pass through env
                     })
                     env_vars['RAY_SWIFT_GROUP'] = ','.join(local_groups)
 

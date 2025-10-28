@@ -1,11 +1,6 @@
 model: Qwen/Qwen2.5-7B-Instruct
 split_dataset_ratio: 0.0
 train_type: lora
-target_modules:
-  - q_proj
-  - k_proj
-  - v_proj
-  - o_proj
 torch_dtype: bfloat16
 attn_impl: flash_attn
 num_train_epochs: 5
@@ -24,13 +19,3 @@ dataset_num_proc: 8
 deepspeed: zero3
 model_name: swift-bot
 model_author: swift
-
-use_ray: true
-
-device_groups:
-  nproc_per_node: 4
-  default:
-    device: GPU
-    ranks: list(range(0, 4))
-    workers:
-      - default

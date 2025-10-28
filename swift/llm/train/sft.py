@@ -20,7 +20,7 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
-@RayHelper.worker(group=['trainer'])
+@RayHelper.worker(group=['default'])
 class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
@@ -34,7 +34,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_dataset()
         self._prepare_flash_ckpt()
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
@@ -49,7 +49,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
         self.model, self.processor = args.get_model_processor(**kwargs)
@@ -66,7 +66,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
         args = self.args
         template = args.get_template(self.processor)
@@ -120,7 +120,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(load_from_disk(val_path))
         return train_datasets, val_datasets
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def _prepare_dataset(self):
         args = self.args
         # Defer encoding to the training phase
@@ -175,7 +175,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._show_dataset(*datasets)
         return datasets
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
@@ -260,7 +260,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return res
 
-    @RayHelper.function(group='trainer')
+    @RayHelper.function(group='default')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args
