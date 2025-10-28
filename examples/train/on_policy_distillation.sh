@@ -1,9 +1,9 @@
 # On-Policy Distillation https://thinkingmachines.ai/blog/on-policy-distillation/
 
 # CUDA_VISIBLE_DEVICES=7 \
-# nohup swift rollout \
+# swift rollout \
 #     --model Qwen/Qwen3-8B-Base \
-#     --vllm_max_model_len 24192 > rl.log 2>&1 &
+#     --vllm_max_model_len 24192
 
 NPROC_PER_NODE=7 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
