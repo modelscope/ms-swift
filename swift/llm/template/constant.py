@@ -153,6 +153,7 @@ class MLLMTemplateType:
     llava1_6_yi = 'llava1_6_yi'
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
+    llava_onevision1_5 = 'llava_onevision1_5'
 
     yi_vl = 'yi_vl'
 
