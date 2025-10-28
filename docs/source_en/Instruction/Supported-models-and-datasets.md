@@ -756,6 +756,7 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|&#x2718;|-|[zai-org/cogagent-9b-20241220](https://huggingface.co/zai-org/cogagent-9b-20241220)|
 |[ZhipuAI/GLM-4.1V-9B-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Base)|glm4_1v|glm4_1v|transformers>=4.53|&#x2718;|-|[zai-org/GLM-4.1V-9B-Base](https://huggingface.co/zai-org/GLM-4.1V-9B-Base)|
 |[ZhipuAI/GLM-4.1V-9B-Thinking](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Thinking)|glm4_1v|glm4_1v|transformers>=4.53|&#x2718;|-|[zai-org/GLM-4.1V-9B-Thinking](https://huggingface.co/zai-org/GLM-4.1V-9B-Thinking)|
+|[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4_1v|glm4_1v|transformers>=4.57|&#x2718;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
 |[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4_5v|glm4_5v|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4_5v|glm4_5v|transformers>=4.56|&#x2718;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
