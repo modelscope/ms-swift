@@ -222,7 +222,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
             inputs, total_rewards_per_func = self._dynamic_sampling(inputs, total_rewards_per_func)  # noqa
-        total_advantages = self._compute_advantages(inputs, total_rewards_per_func)
+
+        batch_encoded_inputs = self._prepare_batch_inputs(inputs)
+
+        total_advantages = self._compute_advantages(inputs, total_rewards_per_func, batch_encoded_inputs)
 
         local_advantages = get_even_process_data(self, total_advantages)
         assert len(local_advantages) == len(inputs)
@@ -231,7 +234,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # log metrics in inputs
         self._logs['advantages'].extend(total_advantages.tolist())
 
-        batch_encoded_inputs = self._prepare_batch_inputs(inputs)
+        # Add advantages to each batch in batch_encoded_inputs
+        gas_chunks = self.split_by_mini_batches(inputs)
+        assert len(gas_chunks) == len(batch_encoded_inputs), \
+            f'Mismatch: {len(gas_chunks)} chunks vs {len(batch_encoded_inputs)} batches'
+
+        for batch, batch_encoded in zip(gas_chunks, batch_encoded_inputs):
+            if self.template.padding_free:
+                lengths = batch_encoded['seq_lengths']
+                advantages_stacked = torch.stack([data['advantages'] for data in batch])
+                all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
+            else:
+                all_advantages = torch.stack([data['advantages'] for data in batch])
+            batch_encoded['advantages'] = all_advantages
 
         with patch_profiling_context(self, 'log_metrics'):
             # --- logs (prompts + completions) ---
@@ -336,7 +351,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
+    def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor,
+                            batch_encoded_inputs: List[DataType]) -> torch.Tensor:
         """
         Compute advantages for RL training.
 
@@ -362,7 +378,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
             """Normalize advantages if configured; otherwise, return as-is."""
-            if self.args.scale_rewards:
+            if self.scale_rewards != 'none':
                 return advantages / (rewards_std + 1e-4)
             return advantages
 
@@ -373,7 +389,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mode = 'train' if self.model.training else 'eval'
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
-            rewards_std = group_rewards.std(-1).mean().item()
+            if self.scale_rewards in ['group', 'none']:
+                rewards_std = group_rewards.std(-1).mean().item()
+            elif self.scale_rewards == 'batch':
+                rewards_std = rewards.std().item()
             is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
 
             self._metrics[mode]['reward'].append(rewards_mean)
@@ -395,20 +414,57 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
 
+        if self.kl_in_reward and self.beta != 0.0:
+            kl_list = []
+            for batch_encoded in batch_encoded_inputs:
+                old_per_token_logps = batch_encoded['old_per_token_logps']
+                ref_per_token_logps = batch_encoded['ref_per_token_logps']
+                completion_mask = batch_encoded['completion_mask']
+                if self.template.padding_free:
+                    lengths = batch_encoded['seq_lengths']
+                    per_token_kl = torch.split(old_per_token_logps - ref_per_token_logps, lengths.tolist(), dim=1)
+                    completion_masks = torch.split(completion_mask, lengths.tolist(), dim=1)
+                    kl = torch.cat([(kl * mask).sum(-1) for kl, mask in zip(per_token_kl, completion_masks)])
+                else:
+                    per_token_kl = old_per_token_logps - ref_per_token_logps
+                    kl = (per_token_kl * completion_mask).sum(-1)
+                kl_list.append(kl)
+
+            kl = torch.cat(kl_list, dim=0)
+            kl = gather(kl)
+            mode = 'train' if self.model.training else 'eval'
+            self._metrics[mode]['kl'].append(kl.nanmean().item())
+            rewards = rewards - self.beta * kl
+
         # --------------------------------------------------
         # Case 1: Default grouped mode
         # --------------------------------------------------
         if not self.dynamic_num_samples:
             grouped_rewards = rewards.view(-1, self.num_generations)
+            K = self.num_generations
+
+            # Compute group statistics
             group_rewards_mean = grouped_rewards.mean(dim=1)
-            group_rewards_std = grouped_rewards.std(dim=1)
+            if self.scale_rewards in ['group', 'none']:
+                group_rewards_std = grouped_rewards.std(dim=1)
+            elif self.scale_rewards == 'batch':
+                group_rewards_std = rewards.std().expand_as(group_rewards_mean)
 
             # Broadcast stats back to the original shape
-            group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
-            group_rewards_std = group_rewards_std.repeat_interleave(self.num_generations)
+            group_rewards_mean = group_rewards_mean.repeat_interleave(K)
+            group_rewards_std = group_rewards_std.repeat_interleave(K)
 
-            # Compute advantages relative to group mean
-            advantages = rewards - group_rewards_mean
+            # Compute advantages based on estimation type
+            if self.advantage_estimator == 'rloo':
+                # RLOO: Leave-One-Out baseline
+                # A_i = r_i - mean(r_j for j != i)
+                # = r_i * K/(K-1) - mean_all * K/(K-1)
+                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+            else:  # 'grpo' (default)
+                # GRPO: Simple group mean baseline
+                advantages = rewards - group_rewards_mean
+
+            # Normalize advantages
             advantages = normalize_advantages(advantages, group_rewards_std)
 
             # Log metrics once per group
@@ -446,16 +502,36 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 prompt_to_indices.setdefault(pid, []).append(idx)
 
             prompt_means = torch.zeros(len(unique_rewards), device=device)
-            prompt_stds = torch.zeros(len(unique_rewards), device=device)
             for pid, idxs in prompt_to_indices.items():
                 idx_tensor = torch.tensor(idxs, device=device)
                 r_group = unique_rewards[idx_tensor]
                 prompt_means[idx_tensor] = r_group.mean()
-                prompt_stds[idx_tensor] = r_group.std()
+
+            # Determine std used for normalization according to scale_rewards
+            if self.scale_rewards in ['group', 'none']:
+                prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                for pid, idxs in prompt_to_indices.items():
+                    idx_tensor = torch.tensor(idxs, device=device)
+                    r_group = unique_rewards[idx_tensor]
+                    prompt_stds[idx_tensor] = r_group.std()
+            elif self.scale_rewards == 'batch':
+                batch_std = unique_rewards.std()
+                prompt_stds = torch.full_like(unique_rewards, batch_std)
 
             # Step 4. Compute advantages
-            request_advantages = unique_rewards - prompt_means
-            request_advantages = normalize_advantages(request_advantages, prompt_stds)
+            if self.advantage_estimator == 'rloo':
+                # RLOO: Leave-One-Out baseline for dynamic mode
+                request_advantages = torch.zeros_like(unique_rewards)
+                for pid, idxs in prompt_to_indices.items():
+                    K = len(idxs)
+                    idx_tensor = torch.tensor(idxs, device=device)
+                    r_group = unique_rewards[idx_tensor]
+                    # A_i = r_i * K/(K-1) - mean * K/(K-1)
+                    request_advantages[idx_tensor] = (r_group * K / (K - 1) - r_group.mean() * K / (K - 1))
+                request_advantages = normalize_advantages(request_advantages, prompt_stds)
+            else:  # 'grpo' (default)
+                request_advantages = unique_rewards - prompt_means
+                request_advantages = normalize_advantages(request_advantages, prompt_stds)
 
             # Map advantages back to original order
             rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
@@ -692,17 +768,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # The first sentence has its prompt portion removed due to logits_to_keep
                 lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
                 extra_kwargs.update({'seq_lengths': lengths})
-                advantages_stacked = torch.stack([data['advantages'] for data in batch])
-                all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
-            else:
-                all_advantages = torch.stack([data['advantages'] for data in batch])
-            extra_kwargs.update({'advantages': all_advantages})
             batch_encoded_inputs.update(extra_kwargs)
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
-                    if self.old_policy() else None)
+                    if self.old_policy() or self.kl_in_reward else None)
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -849,10 +920,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             completion_mask = completion_mask & (~truncated_mask)
 
         # Compute the KL divergence between the model and the reference model
-        if self.beta != 0.0:
+        # Only compute KL for loss if kl_in_reward=False (GRPO style)
+        if self.beta != 0.0 and not self.kl_in_reward:
             ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+        else:
+            per_token_kl = None
 
         advantages = inputs['advantages']
         # When under on-policy training
@@ -907,7 +981,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
-        if self.beta != 0.0:
+        if per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         if self.loss_type == 'grpo':
@@ -944,7 +1018,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion_token_count': completion_token_count,
         }
 
-        if self.beta != 0.0:
+        if per_token_kl is not None:
             mean_kl = masked_batch_mean(per_token_kl)
             metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
 
@@ -1339,6 +1413,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def compute_liger_loss(self, unwrapped_model, inputs):
         # Compute the per-token log probabilities for the model
         assert not self.template.padding_free
+        assert self.advantage_estimator == 'grpo'
         input_ids = inputs['input_ids']
         logits_to_keep = inputs['logits_to_keep']
         completion_ids = input_ids[:, -logits_to_keep:]
@@ -1713,6 +1788,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.shuffle_dataset = args.dataset_shuffle
 
         self.loss_type = args.loss_type  # loss normalization
+        self.scale_rewards = args.scale_rewards
 
         # GRPO, https://arxiv.org/abs/2402.03300
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper, Multi-step
@@ -1729,6 +1805,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # GSPO, https://www.arxiv.org/abs/2507.18071
         self.importance_sampling_level = args.importance_sampling_level
+
+        # RLOO,
+        self.advantage_estimator = args.advantage_estimator
+        self.kl_in_reward = args.kl_in_reward
 
         # CHORD, https://arxiv.org/abs/2508.11408
         self.chord_sft_iterator = None
