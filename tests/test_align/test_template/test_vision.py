@@ -993,6 +993,17 @@ def test_deepseek_ocr():
                         '创空间 中体验SWIFT web-ui功能了。')
 
 
+def test_llava_onevision1_5():
+    pt_engine = PtEngine('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct')
+    query = 'Describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 def test_paddle_ocr():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     pt_engine = PtEngine('PaddlePaddle/PaddleOCR-VL')
@@ -1083,4 +1094,5 @@ if __name__ == '__main__':
     # test_internvl_gpt_hf()
     # test_sailvl2()
     # test_deepseek_ocr()
+    # test_llava_onevision1_5()
     # test_paddle_ocr()
