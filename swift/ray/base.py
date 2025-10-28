@@ -83,6 +83,18 @@ class RayHelper:
             if not RayHelper.ray_inited():
                 return cls
             if RayHelper.is_worker():
+                from swift.llm import SwiftPipeline
+                _init_method = cls.__init__
+
+                @functools.wraps(_init_method)
+                def _new_init(self, *args, **kwargs):
+                    from swift.llm import SwiftPipeline
+                    args = args[0]
+                    args = self.args_class(args.__dict__)
+                    RayHelper._create_workers(group, args, **kwargs)
+                    _init_method(self, *args, **kwargs)
+
+                cls.__init__ = _new_init
                 return cls
             cls.decorated = True
             groups = [group] if isinstance(group, str) else group
@@ -96,7 +108,10 @@ class RayHelper:
             @functools.wraps(init_method)
             def new_init(self, *args, **kwargs):
                 if not RayHelper.is_worker():
-                    RayHelper._create_workers(group, *args, **kwargs)
+                    from swift.llm import SwiftPipeline
+                    if isinstance(self, SwiftPipeline):
+                        _args = self._parse_args(args[0])
+                    RayHelper._create_workers(group, _args, **kwargs)
                 init_method(self, *args, **kwargs)
 
             cls.__init__ = new_init
@@ -260,7 +275,7 @@ class RayHelper:
             local_groups = _config['workers']
 
             if _config['device'] != 'CPU':
-                world_size = len(_config['ranks']) // nproc_per_node
+                world_size = len(_config['ranks'])
                 placement_groups: List[List[Dict]] = RayHelper.resource_manager.resource(_group)
                 workers = []
                 ip, port = None, None
@@ -276,6 +291,7 @@ class RayHelper:
                         'CLUSTER_NAME': cluster_name,
                         'WORKER_NAME': worker_name,
                         'CUDA_VISIBLE_DEVICES': ','.join([str(r) for r in deploy_pg['gpu_rank']]),
+                        'RAY_SWIFT_ARGS': 
                     })
 
                     @ray.remote
