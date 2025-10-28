@@ -2,8 +2,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
+    --advantage_estimator rloo \
+    --kl_in_reward true \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins swift/examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode colocate \
@@ -32,7 +34,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 16 \
     --temperature 1.0 \
-    --system 'swift/examples/train/grpo/prompt.txt' \
+    --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
     --report_to tensorboard swanlab \
