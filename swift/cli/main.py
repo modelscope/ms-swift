@@ -53,7 +53,7 @@ def _compat_web_ui(argv):
         logger.warning('Please use `swift app`.')
 
 
-def cli_main(route_mapping: Optional[Dict[str, str]] = None) -> None:
+def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
     _compat_web_ui(argv)
@@ -62,7 +62,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None) -> None:
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}:
+    if not is_megatron and (torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]

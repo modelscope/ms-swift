@@ -51,7 +51,7 @@ class GPTBridge:
         hf_weight = hf_weight.to(mg_param.device)
         if tp_dim is not None and self.tp_size > 1:
             if self.tp_rank == 0:
-                splited_weights = list(hf_weight.chunk(self.tp_size, dim=tp_dim))
+                splited_weights = [t.contiguous() for t in hf_weight.chunk(self.tp_size, dim=tp_dim)]
             else:
                 splited_weights = None
             tensor = torch.empty_like(mg_param)
@@ -70,7 +70,7 @@ class GPTBridge:
     def _get_weights(self, mg_weight, mg_key, offset: int = 0):
         tp_dim = self._get_tp_split_dim(mg_key)
         if tp_dim is not None and self.tp_size > 1:
-            gather_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)]
+            gather_list = [torch.empty_like(mg_weight) for _ in range(self.tp_size)] if self.tp_rank == 0 else None
             torch.distributed.gather(
                 mg_weight,
                 gather_list,
@@ -336,9 +336,9 @@ class GPTBridge:
 
         for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
             mg_layer = mg_model.decoder.layers[layer_idx]
-            hf_state_dict = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
+            res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
             if reverse:
-                yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+                yield from list(self._add_prefix(res, hf_prefix).items())
             else:
                 yield
 

@@ -2,8 +2,10 @@ import os
 from functools import partial
 
 import json
-from safetensors.torch import save_file, safe_open
+from safetensors.torch import safe_open, save_file
+
 from swift.utils import is_master
+
 
 class LazyTensor:
 
@@ -70,9 +72,8 @@ class SafetensorLazyLoader:
         self.close()
 
 
-
-
 class StreamingSafetensorSaver:
+
     def __init__(self, save_dir, max_shard_size='5GB') -> None:
         if not is_master():
             return
@@ -83,8 +84,8 @@ class StreamingSafetensorSaver:
             if max_shard_size.endswith('GB'):
                 max_shard_size = int(max_shard_size[:-2])
             else:
-                raise ValueError(f"Invalid max_shard_size: {max_shard_size}")
-        self.max_shard_size = max_shard_size * 1000 ** 3
+                raise ValueError(f'Invalid max_shard_size: {max_shard_size}')
+        self.max_shard_size = max_shard_size * 1000**3
         self.current_shard = {}
         self.current_shard_size = 0
         self.total_size = 0
@@ -124,11 +125,11 @@ class StreamingSafetensorSaver:
         total_shards = self.shard_index - 1
         # rename `?????`
         for i in range(1, total_shards + 1):
-            old_path = os.path.join(self.save_dir, f"model-{i:05d}-of-?????.safetensors")
+            old_path = os.path.join(self.save_dir, f'model-{i:05d}-of-?????.safetensors')
             if total_shards == 1:
-                new_name = f'model.safetensors'
+                new_name = 'model.safetensors'
             else:
-                new_name = f"model-{i:05d}-of-{total_shards:05d}.safetensors"
+                new_name = f'model-{i:05d}-of-{total_shards:05d}.safetensors'
             new_path = os.path.join(self.save_dir, new_name)
             if os.path.exists(old_path):
                 os.rename(old_path, new_path)
@@ -141,13 +142,8 @@ class StreamingSafetensorSaver:
         self._save_index(updated_weight_map)
 
     def _save_index(self, weight_map):
-        index = {
-            "metadata": {
-                "total_size": self.total_size
-            },
-            "weight_map": weight_map
-        }
+        index = {'metadata': {'total_size': self.total_size}, 'weight_map': weight_map}
 
-        index_path = os.path.join(self.save_dir, "model.safetensors.index.json")
+        index_path = os.path.join(self.save_dir, 'model.safetensors.index.json')
         with open(index_path, 'w') as f:
             json.dump(index, f, indent=2)
