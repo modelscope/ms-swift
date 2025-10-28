@@ -710,6 +710,19 @@ def test_glm4_1v():
         assert response == response2
 
 
+def test_glyph():
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine = PtEngine('ZhipuAI/Glyph')
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 def test_gemma3n():
     pt_engine = PtEngine('google/gemma-3n-E2B-it')
     messages = [{
@@ -1055,6 +1068,7 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
+    test_glyph()
     # test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
@@ -1069,4 +1083,4 @@ if __name__ == '__main__':
     # test_internvl_gpt_hf()
     # test_sailvl2()
     # test_deepseek_ocr()
-    test_paddle_ocr()
+    # test_paddle_ocr()

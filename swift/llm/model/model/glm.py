@@ -273,6 +273,12 @@ register_model(
                 ],
                 requires=['transformers>=4.53'],
             ),
+            ModelGroup(
+                [
+                    Model('ZhipuAI/Glyph', 'zai-org/Glyph'),
+                ],
+                requires=['transformers>=4.57'],
+            ),
         ],
         TemplateType.glm4_1v,
         get_model_tokenizer_glm4_1v,
