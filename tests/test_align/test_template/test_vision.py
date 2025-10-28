@@ -710,6 +710,19 @@ def test_glm4_1v():
         assert response == response2
 
 
+def test_glyph():
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine = PtEngine('ZhipuAI/Glyph')
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 def test_gemma3n():
     pt_engine = PtEngine('google/gemma-3n-E2B-it')
     messages = [{
@@ -980,6 +993,34 @@ def test_deepseek_ocr():
                         '创空间 中体验SWIFT web-ui功能了。')
 
 
+def test_llava_onevision1_5():
+    pt_engine = PtEngine('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct')
+    query = 'Describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_paddle_ocr():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    pt_engine = PtEngine('PaddlePaddle/PaddleOCR-VL')
+    query = 'OCR:'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images, max_tokens=1024)
+    assert response == ('SWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架'
+                        '应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了PEFT提供的轻量训练'
+                        '方案外，也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适'
+                        '配器库可以脱离训练脚本直接使用在自己的自定流程中。\n\n为方便不熟悉深度学习的用户使用，我们提供了一个'
+                        'Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。\n\n此外，我们也'
+                        '在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。\n\nSWIFT具有丰富的文档体'
+                        '系，如有使用问题请请查看这里。\n\n可以在Huggingface space 和 ModelScope创空间 中体验SWIFT web'
+                        '-ui功能了。')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1038,6 +1079,7 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
+    test_glyph()
     # test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
@@ -1051,4 +1093,6 @@ if __name__ == '__main__':
     # test_internvl3_5_hf()
     # test_internvl_gpt_hf()
     # test_sailvl2()
-    test_deepseek_ocr()
+    # test_deepseek_ocr()
+    # test_llava_onevision1_5()
+    # test_paddle_ocr()

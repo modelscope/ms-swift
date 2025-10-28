@@ -502,6 +502,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 break
 
             inputs = next(self.dynamic_resample_iterator)
+            if self.template.truncation_strategy == 'raise':
+                inputs = self.resample_encode_failed_inputs(inputs)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func = self._score_completions(inputs)
@@ -1210,6 +1212,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_local_entropy = not hasattr(super(), '_get_per_token_logps_and_entropies') and compute_entropy
 
         can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy)
+        if 'attention_mask' not in inputs:
+            # when set padding_free true, the attention_mask is not in inputs
+            can_use_super = False
 
         if can_use_super:
             # save memory

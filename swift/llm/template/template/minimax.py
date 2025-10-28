@@ -119,3 +119,14 @@ class MinimaxVLTemplate(Template):
 
 
 register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.minimax_m2,
+        prefix=[']~!b[]~b]system\n{{SYSTEM}}[e~[\n'],
+        prompt=[']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'],
+        chat_sep=['[e~[\n'],
+        suffix=['[e~['],
+        default_system='You are a helpful assistant.',
+        response_prefix='<think>\n',
+    ))
