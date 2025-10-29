@@ -518,6 +518,16 @@ def _patch_torch_FileSystemReader():
     FileSystemReader.read_data = read_data
 
 
+def _patch_validate_non_overlapping_shards_metadata():
+    # too slow
+    from torch.distributed._shard.sharded_tensor import api
+
+    def validate_non_overlapping_shards_metadata(*args, **kwargs):
+        pass
+
+    api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
+
+
 def _patch_TELinear():
     from megatron.core.extensions.transformer_engine import TELinear
 
@@ -680,6 +690,11 @@ def _patch_megatron():
         _patch_torch_FileSystemReader()
         logger.info('Patch FileSystemReader successfully applied.')
     except Exception:
+        pass
+    try:
+        _patch_validate_non_overlapping_shards_metadata()
+    except Exception:
+        logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
     try:
         _patch_peft_BaseTuner()

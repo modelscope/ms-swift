@@ -6,6 +6,7 @@ from dataclasses import fields
 from typing import Any, Dict
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from megatron.core import mpu
 from megatron.training import get_args
@@ -65,8 +66,13 @@ def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
 
 
 @contextmanager
-def _model_cpu_forward_context(modules, torch_dtype=None, compute_device=None, share_embedding: bool = False, target_device='cpu'):
+def _model_cpu_forward_context(modules,
+                               torch_dtype=None,
+                               compute_device=None,
+                               share_embedding: bool = False,
+                               target_device='cpu'):
     origin_torch_dtype = next(modules[-1].parameters()).dtype
+
     def _to_cuda_hook(module, args):
         if compute_device is not None or torch_dtype is not None:
             module.to(device=compute_device, dtype=torch_dtype)
@@ -155,18 +161,15 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
         hf_model.eval()
-        _test_params_sum(hf_model)
+        if dist.get_world_size() == 1:
+            _test_params_sum(hf_model)
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
         model_arch = hf_model.model_meta.model_arch
         ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
-        if hf_model.device == 'cpu':
-            compute_device = 'cuda'
-        else:
-            compute_device = None
         with torch.inference_mode(), _model_cpu_forward_context(
-                hf_modules, torch_dtype, compute_device, share_embedding=share_embedding):
+                hf_modules, torch_dtype, share_embedding=share_embedding):
             hf_inputs.pop('text_position_ids', None)
             hf_logits = hf_model(**hf_inputs).logits
             hf_logits = hf_logits.to('cuda')
@@ -187,8 +190,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         mg_inputs.pop(key, None)
     mg_inputs.update({'packed_seq_params': packed_seq_params})
     args = get_args()
+    mg_device = next(mg_language_model.parameters()).device
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
+            mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
         # TODO: test pp tie_weights
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
         if args.tensor_model_parallel_size > 1:
