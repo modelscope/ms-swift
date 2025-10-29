@@ -355,9 +355,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                     raise ValueError('Please update liger-kernel to 0.6.3 or later')
                 if self.importance_sampling_level == 'sequence_token':
                     self.importance_sampling_level = 'sequence'
-                    logger.info('Set importance_sampling_level to `sequence` since '
-                                'liger-kernel < 0.6.3 does not support sequence-token importance sampling, '
-                                'the two methods are computationally equivalent.')
+                    logger.info('Remapping `importance_sampling_level` from `sequence_token` to `sequence` for '
+                                'liger-kernel compatibility. The two methods are computationally equivalent.')
             if self.advantage_estimator != 'grpo':
                 raise ValueError('Liger loss currently only support grpo advantage estimator')
             from trl.import_utils import is_liger_kernel_available

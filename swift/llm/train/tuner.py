@@ -76,9 +76,6 @@ def apply_liger(model_type: str):
         elif model_type in (ModelType.llava1_5_hf, ModelType.llava_llama3_hf, ModelType.pixtral):
             from liger_kernel.transformers import apply_liger_kernel_to_llava
             apply_liger_kernel_to_llava()
-        elif model_type in (ModelType.llama3_2_vision):
-            from liger_kernel.transformers import apply_liger_kernel_to_mllama
-            apply_liger_kernel_to_mllama()
         elif model_type in (ModelType.paligemma):
             from liger_kernel.transformers import apply_liger_kernel_to_paligemma
             apply_liger_kernel_to_paligemma()
