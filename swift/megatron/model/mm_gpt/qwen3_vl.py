@@ -100,6 +100,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds, deepstack_visual_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
             visual_pos_masks = None
         else:
