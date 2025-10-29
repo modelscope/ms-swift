@@ -51,6 +51,8 @@ def get_torchrun_args() -> Optional[List[str]]:
 def prepare_config_args(argv):
     for i in range(len(argv)):
         if argv[i] == '--config':
+            if i + 1 >= len(argv):
+                raise ValueError('The `--config` argument requires a yaml file path.')
             from omegaconf import OmegaConf, DictConfig
             config = OmegaConf.load(argv[i + 1])
 
