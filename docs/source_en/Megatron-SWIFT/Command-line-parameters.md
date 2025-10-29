@@ -9,7 +9,7 @@
 - 🔥recompute_granularity: Granularity of activation recomputation, options are 'full', 'selective'. 'full' means recomputing the entire transformer layer, while 'selective' means only recomputing the core attention part of the transformer layer. 'selective' is generally recommended. Default is 'selective'.
   - When you set it to 'selective', you can specify `--recompute_modules` to choose which parts to recompute.
 - 🔥recompute_method: This parameter takes effect only when recompute_granularity is set to 'full', options are 'uniform', 'block'. Default is None.
-- 🔥recompute_num_layers: This parameter takes effect only when recompute_granularity is set to 'full'. Default is None. If `recompute_method` is set to uniform, this parameter specifies the number of transformer layers in each uniformly divided recomputation unit. For example, you can specify `--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`. The larger the recompute_num_layers, the smaller the memory usage but higher computation cost. Default is None.
+- 🔥recompute_num_layers: This parameter takes effect only when recompute_granularity is set to 'full'. Default is None. If `recompute_method` is set to uniform, this parameter specifies the number of transformer layers in each uniformly divided recomputation unit. For example, you can specify `--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`. The larger the recompute_num_layers, the smaller the memory usage but higher computation cost. Note: The number of model layers in the current process must be divisible by `recompute_num_layers`. Default is None.
 - 🔥recompute_modules: Options include "core_attn", "moe_act", "layernorm", "mla_up_proj", "mlp", and "moe". The default value is `["core_attn"]`. This parameter takes effect when `--recompute_granularity selective` is set. For example, during MoE training, you can reduce memory usage by specifying `--recompute_granularity selective --recompute_modules core_attn moe`. Among these, "core_attn", "mlp", and "moe" use normal checkpointing, while "moe_act", "layernorm", and "mla_up_proj" use output-discarding checkpointing.
   - "core_attn": Recomputes the core attention part of the Transformer layer.
   - "mlp": Recomputes the dense MLP layer.
@@ -34,7 +34,7 @@
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: This parameter defaults to False during RLHF training or when `task_type` is not equal to 'causal_lm'.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
-  - **Note: The recommended `flash_attn` version is 2.7.4.post1**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`.
+  - **Note: The recommended `flash_attn` version is 2.7.4.post1/2.8.1**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`.
   - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
@@ -53,7 +53,8 @@
   - Note: If `--streaming true` is set, it will be set to 1.
 - seq_length: Defaults to `None`, which means it will be set to `max_length`. To limit the sequence length of the dataset, it is recommended to use the `--max_length` argument under "Basic Parameters" instead; this parameter does not need to be set explicitly.
 - use_cpu_initialization: Initialize weights on the CPU. Defaults to `False`. This option is used during weight conversion between Hugging Face (HF) and MCore formats. The value typically does not need to be modified.
-- 🔥extra_megatron_kwargs: Additional arguments to be passed through directly to Megatron, provided as a JSON string. Defaults to `None`.
+- 🔥megatron_extra_kwargs: Additional arguments to be passed through directly to Megatron, provided as a JSON string. Defaults to `None`.
+  - In "ms-swift<3.10", this parameter was `--extra_megatron_kwargs`.
 
 **Learning Rate Parameters**:
 
@@ -80,6 +81,7 @@
   - Note: **When training on multiple machines, ensure that the save paths on each node point to the same location**. Otherwise, you will need to manually consolidate these weights after training.
 - 🔥save_interval: Checkpoint saving interval (steps), default is 500.
   - Note: Weights will always be saved at the end of training.
+- 🔥save_retain_interval: Interval (in iterations) for retaining checkpoints. Checkpoints not at a multiple of this interval are deleted, except for the final one.
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: Directory of the checkpoint to load, default is None.
@@ -95,6 +97,11 @@
 - no_initialization: Do not initialize weights, default is True.
 - auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
 - exit_on_missing_checkpoint: If `--load` is set but **no checkpoint is found, exit directly** instead of initializing. Default is True.
+- 🔥async_save: Use asynchronous checkpoint saving. Currently only applicable to the `torch_dist` distributed checkpoint format. Defaults to False.
+- use_persistent_ckpt_worker: Use a persistent checkpoint worker process for async saving, i.e., create a dedicated background process to handle asynchronous saving. Defaults to False.
+- ckpt_fully_parallel_load: Apply full load parallelization across DP for distributed checkpoints to accelerate weight loading speed. Defaults to False.
+- ckpt_assume_constant_structure: If the model and optimizer state dict structure remains constant throughout a single training job, allows Megatron to perform additional checkpoint performance optimizations. Defaults to False.
+
 
 **Distributed Parameters**:
 For guidance on selecting parallelization strategies, please refer to the [Training Tips documentation](./Quick-start.md#training-tips).
@@ -113,7 +120,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - distributed_timeout_minutes: The timeout duration for torch.distributed (in minutes). This parameter is deprecated and is now controlled by the `ddp_timeout` in the [Base Arguments](../Instruction/Command-line-parameters.md#base-arguments), with a default value of 300000 minutes.
 - num_layers_per_virtual_pipeline_stage: Number of layers in each virtual pipeline stage. Default is `None`. This parameter and `--num_virtual_stages_per_pipeline_rank` can both be used to configure VPP (Virtual Pipeline Parallelism).
-- num_virtual_stages_per_pipeline_rank: Number of virtual pipeline stages per pipeline-parallel rank. Default is `None`. Used for VPP to reduce pipeline-parallel computation bubbles and improve GPU utilization.
+- num_virtual_stages_per_pipeline_rank: Number of virtual pipeline stages per pipeline-parallel rank. Default is `None`. VPP is used to reduce computational bubbles in pipeline parallelism (PP) and improve GPU utilization, at the cost of slightly increased communication overhead.
 - microbatch_group_size_per_virtual_pipeline_stage: Number of consecutive microbatches processed by each virtual pipeline stage. Default is `None`, which equals `pipeline_model_parallel_size`.
 - 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: "E|(t|)*3,m|m||L". Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
   - This parameter is typically used on heterogeneous GPU clusters.
@@ -203,11 +210,11 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
-- 🔥moe_aux_loss_coeff: Default is 0, which disables aux_loss.
+- 🔥moe_aux_loss_coeff: Defaults to 0, meaning the auxiliary loss is not used. **Generally, a higher value leads to worse training performance but more balanced MoE expert utilization.** Please choose an appropriate value based on experimental results.
   - Note: In ms-swift versions earlier than 3.7.1, the default is None and the value is automatically loaded from config.json.
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
-- 🔥moe_expert_capacity_factor: Capacity factor for each expert. `None` means no tokens will be dropped. Default is `None`. When `--moe_expert_capacity_factor` is set, tokens exceeding an expert’s capacity will be dropped based on their selection probability. This can **balance the training load and improve training speed** (for example, set it to 1.).
+- 🔥moe_expert_capacity_factor: Capacity factor for each expert. `None` means no tokens will be dropped. Default is `None`. When `--moe_expert_capacity_factor` is set, tokens exceeding an expert’s capacity will be dropped based on their selection probability. This can **balance the training load and improve training speed** (for example, set it to 1. or 2.).
 - moe_pad_expert_input_to_capacity: Pad the input of each expert so that its length aligns with the expert capacity length. Default is `False`. This option only takes effect if `--moe_expert_capacity_factor` is set.
 - moe_token_drop_policy: Options are 'probs' and 'position'. Default is 'probs'.
 
@@ -254,7 +261,7 @@ LoRA Training:
 - ref_adapter_load: The path to load the ref_adapter weights, default is `None`. If you want to use LoRA weights generated from SFT for DPO, please use "ms-swift>=3.8" and set `--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true` during training. For resuming training from a checkpoint in this scenario, set `--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`.
 - beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
 - 🔥rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
-  - Note: In "ms-swift<3.8", the default value was `1.`. Starting from "ms-swift>=3.8", the default has been changed to `None`.
+  - **Note**: In "ms-swift<3.8", the default value was `1.`. Starting from "ms-swift>=3.8", the default has been changed to `None`.
 - reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
 - label_smoothing: Default is 0.
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
@@ -267,6 +274,9 @@ LoRA Training:
 - loss_type: default is `'kto'`. See possible values in the TRL docs: https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type.
 - desirable_weight: factor to weight desirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
 - undesirable_weight: factor to weight undesirable losses to counter imbalance between desirable and undesirable pairs. Default is `1.`.
+
+**RM Parameters**:
+- center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 
 **GRPO Parameters**
 - ref_load: Same meaning as in DPO.
@@ -298,6 +308,9 @@ LoRA Training:
 
 For built-in reward function parameters, refer to the [documentation](../Instruction/GRPO/DeveloperGuide/reward_function.md).
 
+**RM Parameters**:
+- center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
+
 ## Training Parameters
 
 Megatron training parameters are inherited from Megatron parameters and basic parameters (**sharing dataset, template, etc. with ms-swift, and also supporting model-specific parameters from ms-swift**). For details on basic parameters, please refer to [here](../Instruction/Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
@@ -309,8 +322,9 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT (Vision Transformer) component during multimodal model training. Defaults to `True`. (**The ViT implementation in Megatron-SWIFT uses the Hugging Face `transformers` library.**)
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to `None`. This parameter only takes effect when `vit_gradient_checkpointing` is enabled.
-- 🔥packing: Whether to use sequence packing to improve computational efficiency (achieving better load balancing across nodes and processes, and higher GPU utilization), at the cost of additional preprocessing time, while also stabilizing GPU memory usage. Defaults to `False`. Currently supported for CPT, SFT, DPO, and KTO.
-  - **Note**: **Sequences within the same batch remain mutually invisible**, except for Qwen3-Next.
+- 🔥packing: Whether to use sequence packing to improve computational efficiency (achieving better load balancing across nodes and processes, and higher GPU utilization), at the cost of additional preprocessing time, while also stabilizing GPU memory usage. Defaults to `False`. Currently supported for CPT, SFT, DPO, KTO and RM.
+  - Note: **Sequences within the same batch remain mutually invisible**, except for Qwen3-Next.
+  - Note: **Packing reduces the number of samples in the dataset; please adjust the gradient accumulation steps and learning rate accordingly**.
 - streaming: Stream data loading and processing, default is False.
   - Note: Since the length of a streaming dataset cannot be determined, the `--train_iters` parameter must be set. Also set the `max_epochs` parameter to ensure training exits after the specified number of epochs, and to validate and save the model weights accordingly.
   - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. **This is generally less efficient than the data sharding approach used in non-streaming datasets.** When the training world_size is large, preprocessing and data distribution can become a training bottleneck.
@@ -330,6 +344,6 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo' and 'kto' are available.
+- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'kto', and 'rm' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.

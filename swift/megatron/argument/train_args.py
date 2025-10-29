@@ -20,6 +20,9 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     load_args: bool = False
 
     def init_model_args(self, tokenizer, config):
+        if self.task_type == 'seq_cls':
+            self.problem_type = self.problem_type or getattr(config, 'problem_type', None)
+            logger.info(f'args.problem_type: {self.problem_type}')
         kwargs = self.megatron_model_meta.convert_hf_config(config)
         if self.new_special_tokens and kwargs['padded_vocab_size'] < len(tokenizer):
             kwargs['padded_vocab_size'] = math.ceil(len(tokenizer) / 128) * 128

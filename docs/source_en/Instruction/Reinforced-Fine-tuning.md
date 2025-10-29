@@ -66,11 +66,7 @@ Reinforced fine-tuning heavily depends on the accuracy of reward evaluations. If
 
 SWIFT supports the `sample` command, which is used for model sampling. Currently supported sampling methods include:
 
-- **do_sample**: A sampling method for open-source models; future updates will include support for model distillation.
-  - URL sampling will also be supported in the future for large-model distillation.
-
-- **mcts**: Monte Carlo sampling, currently under review, with future support planned.
-- **dvts**: Currently under investigation.
+- **sample**: Use `generate` do rollout.
 
 We have provided a general [RFT script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft/rft.py). This script supports self-improvement training and allows dynamic adjustments of sampling temperature, PRM thresholds, and other hyperparameters. The training method is flexible (e.g., fine-tuning, DPO) and supports iterative retraining of the original model or continued training from the previous iteration, even loading all training states from the previous iteration. Developers can incorporate additional data filtering (e.g., ensuring rows with the same ID come from the same query), including diversity checks, language filtering, etc.
 
@@ -95,9 +91,3 @@ Specifically, we tested the GSM8K metric for `Qwen2.5_math_7b_instruct`:
 | Qwen2.5_math_7b_instruct  | 92.8        | 91.6                 |
 
 As shown, RFT training did not significantly change the GSM8K score, avoiding the previously mentioned performance degradation phenomenon.
-
-## Future Roadmap
-
-1. More sampling methods，MCTS for example
-2. Distill from super huge model
-3. On policy RFT like PPO

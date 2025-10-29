@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, ImageOps
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
 from ..base import Template
@@ -232,6 +234,158 @@ class DeepseekJanus(DeepseekVLTemplate):
 
 
 register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, template_cls=DeepseekJanus))
+
+
+class DeepseekOCR(Template):
+    image_placeholder = ['<image>\n']
+
+    def init_env_args(self):
+        model_dir = self.model_info.model_dir
+        self.BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform', model_dir)
+        self.dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess', model_dir)
+        self.crop_mode = get_env_args('crop_mode', bool, True)
+        self.base_size = get_env_args('base_size', int, 1024)
+        self.image_size = get_env_args('image_size', int, 640)
+
+    def _preprocess_image(self, images, image_token_id):
+        # Code borrowed from
+        # https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR/file/view/master/modeling_deepseekocr.py?status=1
+        crop_mode = self.crop_mode
+        patch_size = 16
+        downsample_ratio = 4
+        valid_img_tokens = 0
+        w, h = images[0].size
+        ratio = 1 - ((max(w, h) - min(w, h)) / (max(w, h)))
+
+        image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
+        images_list, images_crop_list = [], []
+        tokenized_str = []
+        images_spatial_crop = []
+        for image in images:
+            if crop_mode:
+                if image.size[0] <= 640 and image.size[1] <= 640:
+                    crop_ratio = [1, 1]
+                else:
+                    if crop_mode:
+                        images_crop_raw, crop_ratio = self.dynamic_preprocess(image)
+                    else:
+                        crop_ratio = [1, 1]
+                """process the global view"""
+                # image = image.resize((base_size, base_size))
+                global_view = ImageOps.pad(
+                    image, (self.base_size, self.base_size), color=tuple(int(x * 255) for x in image_transform.mean))
+
+                if self.base_size == 1024:
+                    valid_img_tokens += int(256 * ratio)
+                elif self.base_size == 1280:
+                    valid_img_tokens += int(400 * ratio)
+
+                images_list.append(image_transform(global_view).to(torch.bfloat16))
+                width_crop_num, height_crop_num = crop_ratio
+
+                images_spatial_crop.append([width_crop_num, height_crop_num])
+
+                if width_crop_num > 1 or height_crop_num > 1:
+                    """process the local views"""
+
+                    for i in range(len(images_crop_raw)):
+                        images_crop_list.append(image_transform(images_crop_raw[i]).to(torch.bfloat16))
+
+                if self.image_size == 640:
+                    valid_img_tokens += len(images_crop_list) * 100
+
+                num_queries = math.ceil((self.image_size // patch_size) / downsample_ratio)
+                num_queries_base = math.ceil((self.base_size // patch_size) / downsample_ratio)
+                """add image tokens"""
+
+                tokenized_image = ([image_token_id] * num_queries_base + [image_token_id]) * num_queries_base
+                tokenized_image += [image_token_id]
+                if width_crop_num > 1 or height_crop_num > 1:
+                    tokenized_image += ([image_token_id] * (num_queries * width_crop_num) + [image_token_id]) * (
+                        num_queries * height_crop_num)
+                tokenized_str.append(tokenized_image)
+            else:
+                """process the global view"""
+                if self.image_size <= 640:
+                    image = image.resize((self.image_size, self.image_size))
+                # else:
+                global_view = ImageOps.pad(
+                    image, (self.image_size, self.image_size), color=tuple(int(x * 255) for x in image_transform.mean))
+                images_list.append(image_transform(global_view).to(torch.bfloat16))
+
+                if self.base_size == 1024:
+                    valid_img_tokens += int(256 * ratio)
+                elif self.base_size == 1280:
+                    valid_img_tokens += int(400 * ratio)
+                elif self.base_size == 640:
+                    valid_img_tokens += int(100 * 1)
+                elif self.base_size == 512:
+                    valid_img_tokens += int(64 * 1)
+
+                width_crop_num, height_crop_num = 1, 1
+
+                images_spatial_crop.append([width_crop_num, height_crop_num])
+                """add image tokens"""
+                num_queries = math.ceil((self.image_size // patch_size) / downsample_ratio)
+
+                tokenized_image = ([image_token_id] * num_queries + [image_token_id]) * num_queries
+                tokenized_image += [image_token_id]
+                tokenized_str.append(tokenized_image)
+        if len(images_list) == 0:
+            images_ori = torch.zeros((1, 3, self.image_size, self.image_size))
+            images_spatial_crop = torch.zeros((1, 2), dtype=torch.long)
+            images_crop = torch.zeros((1, 3, self.base_size, self.base_size))
+
+        else:
+            images_ori = torch.stack(images_list, dim=0)
+            images_spatial_crop = torch.tensor(images_spatial_crop, dtype=torch.long)
+            if images_crop_list:
+                images_crop = torch.stack(images_crop_list, dim=0)
+            else:
+                images_crop = torch.zeros((1, 3, self.base_size, self.base_size))
+        return tokenized_str, images_ori, images_crop, images_spatial_crop
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        image_token = self._tokenize('<image>')
+        idx_list = findall(input_ids, image_token)
+        if idx_list:
+            tokenized_str, images_ori, images_crop, images_spatial_crop = self._preprocess_image(
+                inputs.images, image_token[0])
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda i: tokenized_str[i])
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
+            encoded['images'] = [(images_crop, images_ori)]
+            encoded['images_seq_mask'] = (torch.tensor(input_ids) == image_token[0])[None]
+            encoded['images_spatial_crop'] = images_spatial_crop
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        images = self.gather_list(batch, 'images')
+        if images:
+            res['images'] = images
+        images_seq_mask = self.concat_tensor(batch, 'images_seq_mask', 0)
+        images_spatial_crop = self.concat_tensor(batch, 'images_spatial_crop', 0)
+        if images_seq_mask is not None:
+            res['images_seq_mask'] = images_seq_mask
+        if images_spatial_crop is not None:
+            res['images_spatial_crop'] = images_spatial_crop
+        return res
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.deepseek_ocr,
+        prefix=['<｜begin▁of▁sentence｜>'],
+        prompt=['{{QUERY}}'],
+        chat_sep=None,
+        template_cls=DeepseekOCR))
 
 
 @dataclass

@@ -171,7 +171,7 @@ def get_lm_head_model(model, model_meta=None, lm_heads=None):
     return model
 
 
-def transformers_seq_cls_forward(self, *args, origin_forward, **kwargs):
+def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None, **kwargs):
     labels = kwargs.pop('labels', None)
     return_dict = kwargs.pop('return_dict', None)
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -189,26 +189,30 @@ def transformers_seq_cls_forward(self, *args, origin_forward, **kwargs):
     else:
         batch_size = inputs_embeds.shape[0]
 
-    if self.config.pad_token_id is None and batch_size != 1:
-        raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
-    if self.config.pad_token_id is None:
-        sequence_lengths = -1
+    if padding_side == 'left':
+        pooled_logits = logits[:, -1]
     else:
-        if output.get('attention_mask') is not None:
-            # When use padding_free in seq_cls tasks, `revert_padding_free` will add a attention_mask in the output
-            batch_size = output.get('attention_mask').shape[0]
-            sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
-        elif input_ids is not None:
-            # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-            sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-            sequence_lengths = sequence_lengths % input_ids.shape[-1]
-            sequence_lengths = sequence_lengths.to(logits.device)
-        elif kwargs.get('attention_mask') is not None:
-            sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
-        else:
+        if self.config.pad_token_id is None and batch_size != 1:
+            raise ValueError('Cannot handle batch sizes > 1 if no padding token is defined.')
+        if self.config.pad_token_id is None:
             sequence_lengths = -1
+        else:
+            if output.get('attention_mask') is not None:
+                # When use padding_free in seq_cls tasks, `revert_padding_free` will add a attention_mask in the output
+                batch_size = output.get('attention_mask').shape[0]
+                sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
+            elif input_ids is not None:
+                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
+                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
+                sequence_lengths = sequence_lengths % input_ids.shape[-1]
+            elif kwargs.get('attention_mask') is not None:
+                sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
+            else:
+                sequence_lengths = -1
+        if isinstance(sequence_lengths, torch.Tensor):
+            sequence_lengths = sequence_lengths.to(logits.device)
 
-    pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
 
     loss = None
     if labels is not None:

@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -143,7 +144,10 @@ _T = TypeVar('_T')
 
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     parser = HfArgumentParser([class_type])
-    if argv is None:
+    _ray_args = os.environ.get('RAY_SWIFT_ARGS')
+    if _ray_args:
+        argv = json.loads(_ray_args)
+    elif argv is None:
         argv = sys.argv[1:]
     if len(argv) > 0 and argv[0].endswith('.json'):
         json_path = os.path.abspath(os.path.expanduser(argv[0]))
@@ -239,6 +243,12 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
         log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     logger.info_once(log_info)
     return value
+
+
+def find_node_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    return s.getsockname()[0]
 
 
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
@@ -398,3 +408,14 @@ def remove_response(messages) -> Optional[str]:
     last_role = messages[-1]['role'] if messages else None
     if last_role == 'assistant':
         return messages.pop()['content']
+
+
+@contextmanager
+def disable_deepspeed_zero3():
+    import transformers.integrations.deepspeed as ds_module
+    orig_weak_ref = ds_module._hf_deepspeed_config_weak_ref
+    ds_module._hf_deepspeed_config_weak_ref = None
+    try:
+        yield
+    finally:
+        ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref

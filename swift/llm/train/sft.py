@@ -8,6 +8,7 @@ from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks
+from swift.ray import RayHelper
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -19,6 +20,7 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
+@RayHelper.worker(group=['default'])
 class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
@@ -29,6 +31,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        self._prepare_flash_ckpt()
+
+    @RayHelper.function(group='default')
+    def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
                 import dlrover.trainer.torch.flash_checkpoint.hf_trainer
@@ -42,6 +48,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
+    @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
         self.model, self.processor = args.get_model_processor(**kwargs)
@@ -58,6 +65,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
+    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
         args = self.args
         template = args.get_template(self.processor)
@@ -111,22 +119,24 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(load_from_disk(val_path))
         return train_datasets, val_datasets
 
+    @RayHelper.function(group='default')
     def _prepare_dataset(self):
         args = self.args
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        # Defer encoding to the training phase
+        pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
         if args.cached_dataset:
             train_datasets, val_datasets = self._get_cached_dataset()
         else:
             train_datasets, val_datasets = [], []
         if args.dataset:
             train_dataset, val_dataset = self._get_dataset()
-            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=not is_grpo)
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
             train_datasets.append(train_dataset)
             val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         datasets = [train_dataset, val_dataset]
-        if is_grpo:
+        if not pre_process:
             return datasets
         datasets = self._post_process_datasets(datasets)
 
@@ -164,6 +174,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._show_dataset(*datasets)
         return datasets
 
+    @RayHelper.function(group='default')
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
@@ -248,6 +259,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return res
 
+    @RayHelper.function(group='default')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args
@@ -274,7 +286,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         'you can write a new implementation in the plugin/callback.py.')
 
     @staticmethod
-    def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
+        if isinstance(dataset, LazyLLMDataset):
+            dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:

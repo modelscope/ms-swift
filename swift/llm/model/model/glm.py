@@ -273,6 +273,12 @@ register_model(
                 ],
                 requires=['transformers>=4.53'],
             ),
+            ModelGroup(
+                [
+                    Model('ZhipuAI/Glyph', 'zai-org/Glyph'),
+                ],
+                requires=['transformers>=4.57'],
+            ),
         ],
         TemplateType.glm4_1v,
         get_model_tokenizer_glm4_1v,
@@ -465,5 +471,5 @@ register_model(
         get_model_tokenizer_glm4_5v,
         model_arch=ModelArch.glm4_1v,
         architectures=['Glm4vMoeForConditionalGeneration'],
-        requires=['transformers>=4.56.0.dev'],
+        requires=['transformers>=4.56'],
     ))

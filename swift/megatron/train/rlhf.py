@@ -5,7 +5,7 @@ from swift.llm.train.kto import prepare_kto_dataset
 from swift.trainers.rlhf_trainer.utils import identity_data_collator
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
-from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer
+from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer, MegatronRewardTrainer
 from .sft import MegatronSft
 
 logger = get_logger()
@@ -17,14 +17,16 @@ class MegatronRLHF(MegatronSft):
 
     def prepare_trainer(self):
         args = self.args
-        if args.rlhf_type == 'dpo':
-            trainer_cls = MegatronDPOTrainer
-        elif args.rlhf_type == 'grpo':
-            trainer_cls = MegatronGRPOTrainer
-        elif args.rlhf_type == 'kto':
-            trainer_cls = MegatronKTOTrainer
-        else:
+        trainer_mapping = {
+            'dpo': MegatronDPOTrainer,
+            'grpo': MegatronGRPOTrainer,
+            'kto': MegatronKTOTrainer,
+            'rm': MegatronRewardTrainer
+        }
+        trainer_cls = trainer_mapping.get(args.rlhf_type)
+        if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
+
         return trainer_cls(args, self.template)
 
     def _prepare_template(self) -> None:

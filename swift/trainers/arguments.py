@@ -172,16 +172,20 @@ class VllmArguments:
     Args:
         vllm_gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
         vllm_tensor_parallel_size (int): Tensor parallelism size. Default is 1.
-        vllm_pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
+        vllm_pipeline_parallel_size (int): Pipeline parallelism size. Default is 1.
+        vllm_enable_expert_parallel (bool): Flag to enable expert parallelism for MoE models. Default is False.
         vllm_max_num_seqs (int): Maximum number of sequences. Default is 256.
         vllm_max_model_len (Optional[int]): Maximum model length. Default is None.
         vllm_disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
         vllm_enforce_eager (bool): Flag to enforce eager execution. Default is False.
         vllm_limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
-        vllm_enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
+        vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
         vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
+        vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
+        vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
+        vllm_mm_processor_cache_gb (Optional[float]): MM processor cache size in GB. Default is None.
         vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
     """
     # vllm
@@ -195,39 +199,19 @@ class VllmArguments:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
-    vllm_enable_prefix_caching: bool = False
+    vllm_enable_prefix_caching: Optional[bool] = None
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
+    vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_engine_kwargs: Optional[Union[dict, str]] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
-    # compatibility (will be removed in ms-swift 3.8 and later)
-    gpu_memory_utilization: Optional[float] = None
-    tensor_parallel_size: Optional[int] = None
-    max_model_len: Optional[int] = None
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None
-    data_parallel_size: Optional[int] = None
-    use_async_engine: Optional[bool] = None
-
-    def _handle_compatibility(self):
-        if self.gpu_memory_utilization is not None:
-            self.vllm_gpu_memory_utilization = self.gpu_memory_utilization
-        if self.tensor_parallel_size is not None:
-            self.vllm_tensor_parallel_size = self.tensor_parallel_size
-        if self.max_model_len is not None:
-            self.vllm_max_model_len = self.max_model_len
-        if self.limit_mm_per_prompt is not None:
-            self.vllm_limit_mm_per_prompt = self.limit_mm_per_prompt
-        if self.data_parallel_size is not None:
-            self.vllm_data_parallel_size = self.data_parallel_size
-        if self.use_async_engine is not None:
-            self.vllm_use_async_engine = self.use_async_engine
-
     def __post_init__(self):
-        self._handle_compatibility()
         self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
         adapters = self.adapters
@@ -251,7 +235,9 @@ class VllmArguments:
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
+            'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
             'num_labels': self.num_labels,
+            'engine_kwargs': self.vllm_engine_kwargs,
         }
         if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
             kwargs['task_type'] = self.task_type
@@ -260,24 +246,40 @@ class VllmArguments:
 
 
 @dataclass
-class GRPOArgumentsMixin(VllmArguments):
-    epsilon: float = 0.2
-    epsilon_high: Optional[float] = None
-    delta: Optional[float] = None
+class RolloutTrainerArgumentsMixin(VllmArguments):
+    # generation args
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+    stop_words: List[str] = field(default_factory=list)
+
     # vllm
+    use_vllm: bool = False
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_enable_prefix_caching: bool = True  # overwrite
-
+    vllm_enable_lora: bool = False
+    lora_rank: int = 8  # for vllm lora adapter
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
+
+    async_generate: bool = False
+
+    sleep_level: int = 0
+    move_model_batches: Optional[int] = None
+    offload_optimizer: bool = False
+    offload_model: bool = False
+
+
+@dataclass
+class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
 
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
@@ -298,16 +300,7 @@ class GRPOArgumentsMixin(VllmArguments):
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
 
-    async_generate: bool = False
-
-    sleep_level: int = 0
-    move_model_batches: Optional[int] = None
-    offload_optimizer: bool = False
-    offload_model: bool = False
-    gc_collect_after_offload: bool = False  # deprecated
-
     # multi turn
-    multi_turn_func: Optional[str] = None  # deprecated
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
@@ -321,7 +314,7 @@ class GRPOArgumentsMixin(VllmArguments):
     soft_cache_length: Optional[int] = None
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: bool = True
+    scale_rewards: Optional[Literal['group', 'batch', 'none']] = None
 
     # entropy
     log_entropy: bool = False
@@ -330,6 +323,11 @@ class GRPOArgumentsMixin(VllmArguments):
 
     # GSPO https://www.arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+
+    # RLOO
+    advantage_estimator: Literal['grpo', 'rloo'] = 'grpo'
+    # If false, add KL into loss, otherwise add into reward
+    kl_in_reward: Optional[bool] = None  # rloo: true, grpo: false (default)
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

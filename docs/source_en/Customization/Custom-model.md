@@ -4,7 +4,7 @@ The models built into ms-swift can be used directly by specifying either `model_
 
 Each `model_type` has a unique model structure, template, and loading method. Of course, you can also manually override these by passing `--model_type` and `--template`. You can check the supported `model_type` and templates in the [Supported Models and Datasets](../Instruction/Supported-models-and-datasets.md).
 
-The following introduces how to register a new model and its corresponding template.
+The following introduces how to register a new model and its corresponding template. For best practices, refer to [Best Practices for Registering Multimodal Models](../BestPractices/MLLM-Registration.md).
 
 ## Model Registration
 

@@ -41,7 +41,7 @@ if __name__ == '__main__':
                 infer_backend='vllm',
                 gpu_memory_utilization=0.7,
                 vllm_enforce_eager=True,
-                reranker_use_activation=False,
+                reranker_use_activation=True,
                 verbose=False,
                 log_interval=-1)) as port:
         run_client(port=port)

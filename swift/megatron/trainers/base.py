@@ -92,6 +92,7 @@ class BaseMegatronTrainer(ABC):
                 else:
                     raise ValueError(
                         'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
+                logger.info(f'Setting args.eval_iters: {args.eval_iters}')
             return res
 
         training.initialize_megatron = initialize_megatron

@@ -13,6 +13,7 @@ class LLMTemplateType:
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwen3 = 'qwen3'
+    qwen3_guard = 'qwen3_guard'
     qwen3_thinking = 'qwen3_thinking'
     qwen3_nothinking = 'qwen3_nothinking'
     qwen3_coder = 'qwen3_coder'
@@ -35,6 +36,7 @@ class LLMTemplateType:
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
+    minimax_m2 = 'minimax_m2'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'
@@ -151,6 +153,7 @@ class MLLMTemplateType:
     llava1_6_yi = 'llava1_6_yi'
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
+    llava_onevision1_5 = 'llava_onevision1_5'
 
     yi_vl = 'yi_vl'
 
@@ -163,6 +166,8 @@ class MLLMTemplateType:
     internvl3_5_gpt = 'internvl3_5_gpt'
     interns1 = 'interns1'
     internvl_hf = 'internvl_hf'
+
+    jina_reranker_m0 = 'jina_reranker_m0'
 
     xcomposer2 = 'ixcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -189,6 +194,7 @@ class MLLMTemplateType:
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
+    deepseek_ocr = 'deepseek_ocr'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -220,6 +226,7 @@ class MLLMTemplateType:
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    paddle_ocr = 'paddle_ocr'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
