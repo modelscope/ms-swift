@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Union
 
 import torch
 import torch.nn as nn
+from accelerate.utils import broadcast_object_list
 from megatron.core import mpu
 from megatron.training import get_args, training
 from trl.trainer.grpo_trainer import nanstd
@@ -41,7 +42,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
-        # TODO: multi turn scheduler(colocate multi turn)
         self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
@@ -102,6 +102,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             return_details=True)
 
         self._step = 0
+        self._last_loaded_step = -1
         self._rollout_group = None  # Will be lazily initialized
 
     def _prepare_rollout_engine(self):
@@ -118,12 +119,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_server_multi_turn = False  # TODO
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
-        if self.use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                  'Please install vLLM with `pip install vllm -U` to use it.')
-            assert self.vllm_mode == 'colocate'  # TODO: server mode
-
+        assert self.use_vllm
+        if not is_vllm_available():
+            raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                              'Please install vLLM with `pip install vllm -U` to use it.')
+        if self.vllm_mode == 'server':
+            self.vllm_client = self.args.vllm_client
+        elif self.vllm_mode == 'colocate':
             if not self.world_size % self.vllm_tensor_parallel_size == 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
                                  f'({self.world_size}) evenly.')
@@ -136,6 +138,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 if self.args.sleep_level > 0:
                     self.engine.engine.sleep(self.args.sleep_level)
                     log_gpu_memory('after sleep vLLM engine')
+        else:
+            raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
 
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
@@ -468,14 +472,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         Returns:
             batch: The input batch with rollout completion results merged in.
-
-        Note:
-            Currently only supports colocate mode. Server mode support is planned for future implementation.
         """
         # TODO: server mode
-        assert self.vllm_mode == 'colocate'
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
-        if self.engine.inner_model_executor.is_sleeping:
+        if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
@@ -483,11 +483,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             log_gpu_memory(f'after wake up vLLM engine with {kwargs}')
 
         # Step 2: Load model weights
-        self._move_model_to_vllm()
+        if self._step != self._last_loaded_step:
+            self._move_model_to_vllm()
+            self._last_loaded_step = self._step
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            if (self.engine.inner_model_executor.is_sleeping
+            if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
                 self.engine.engine.wake_up(tags=['kv_cache'])
                 log_gpu_memory('after wake up vLLM engine with kv_cache')
@@ -497,8 +499,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             outputs: List[RolloutOutput] = self._rollout(batch)
 
             # Step4: Sleep to release memory
-            if self.args.sleep_level > 0:
-                self.engine.engine.sleep(self.args.sleep_level)
+            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                self.engine.engine.reset_prefix_cache()
+                self.engine.engine.sleep(level=self.args.sleep_level)
                 log_gpu_memory('after sleep vLLM engine')
             batch = self.postprocess_rollout_data(batch, outputs)
 
