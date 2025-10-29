@@ -42,7 +42,7 @@ class MegatronSft(SwiftSft):
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator
-        padding_to = get_padding_to()
+        padding_to = get_padding_to(self.args)
         logger.info(f'padding_to: {padding_to}')
         data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator

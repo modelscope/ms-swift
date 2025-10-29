@@ -44,8 +44,6 @@ class MegatronExport(SwiftPipeline):
         logger.info('Converting weights and saving the model...')
         bridge = megatron_model_meta.bridge_cls()
         bridge.save_weights([mg_model], args.save)
-        logger.info(f'Successfully saved HF model weights in `{args.save}`.')
-        dist.barrier()
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 hf_model = prepare_model_template(
@@ -68,8 +66,8 @@ class MegatronExport(SwiftPipeline):
         logger.info('Megatron model created successfully.')
         bridge = megatron_model_meta.bridge_cls()
         bridge.load_weights(mg_model, args.model_info.model_dir)
-        logger.info('Successfully transferred HF model weights to MG model.')
         dist.barrier()
+        logger.info('Successfully transferred HF model weights to MG model.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
@@ -78,7 +76,7 @@ class MegatronExport(SwiftPipeline):
         args.save_args(args.save)
         logger.info('Saving the model...')
         mg_save_checkpoint(1, [mg_model], None, None, 0)
-        logger.info(f'Successfully saved Megatron model weights in `{args.save}`.')
+        logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
 
 
 def megatron_export_main(args: Optional[Union[List[str], MegatronExportArguments]] = None):

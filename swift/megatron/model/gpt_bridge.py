@@ -7,9 +7,10 @@ from megatron.training import get_args
 from tqdm import tqdm
 
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, is_last_rank
+from swift.utils import disable_safe_ddp_context_use_barrier, is_last_rank, get_logger
 from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 
+logger = get_logger()
 
 class GPTBridge:
     lm_layers_prefix = 'model.layers'  # HF model
@@ -497,12 +498,14 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
-    def _convert(self, mg_model, hf_state_dict, hf_prefix: str, reverse: bool):
+    def _convert(self, mg_models, hf_state_dict, hf_prefix: str, reverse: bool):
         """reverse: False: hf -> mg; True: mg -> hf"""
         if reverse:
             hf_state_dict = {}
         else:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        mg_models = iter(mg_models)
+        mg_model = next(mg_models)
         if reverse or mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
             self._set_state_dict(mg_model, 'embedding.word_embeddings.weight', hf_state_dict,
                                  'model.embed_tokens.weight', reverse)
@@ -521,6 +524,12 @@ class GPTBridge:
                 if reverse:
                     mg_layer = None
                 else:
+                    continue
+            if reverse and self.pp_size > 1:
+                has_model = torch.tensor([mg_layer is not None], dtype=torch.bool, device='cuda')
+                dist.all_reduce(has_model, group=self.pp_group)
+                if not has_model:
+                    mg_model = next(mg_models)
                     continue
             res = self._set_layer_state(mg_layer, hf_state_dict, 'model.layers.', layer_idx, reverse)
             if reverse:
@@ -545,14 +554,12 @@ class GPTBridge:
     def load_weights(self, mg_model, hf_model_dir: str) -> None:
         with SafetensorLazyLoader(hf_model_dir) as loader:
             state_dict = loader.get_state_dict()
-            list(self._convert(mg_model, state_dict, '', False))
+            list(self._convert([mg_model], state_dict, '', False))
 
     def export_weights(self, mg_models, target_device=None, only_last_rank: bool = False):
         self._target_device = target_device
         self._only_last_rank = only_last_rank
-        state_dict = {}
-        for mg_model in mg_models:
-            yield from self._convert(mg_model, state_dict, '', True)
+        yield from self._convert(mg_models, {}, '', True)
 
     def save_weights(self, mg_models, output_dir: str) -> None:
         """Save the mg_model checkpoint in HF format"""
@@ -569,3 +576,4 @@ class GPTBridge:
                 output_dir,
                 model_dirs=[self.hf_model.model_info.model_dir],
                 additional_saved_files=self.hf_model.model_meta.additional_saved_files)
+            logger.info_info(f'Successfully saved HF model weights in `{output_dir}`.', cond=is_last_rank())

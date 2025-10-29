@@ -301,13 +301,13 @@ def forward_step_helper(model, inputs, dtype=None):
     return output_tensor
 
 
-def get_padding_to():
-    args = get_args()
+def get_padding_to(args):
     padding_to = None
     if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
         padding_to = args.tensor_model_parallel_size
     if args.context_parallel_size > 1:
         padding_to = (padding_to or 1) * args.context_parallel_size
-    if args.fp8:
+    fp8_format = getattr(args, 'fp8_format', None) or getattr(args, 'fp8', None)
+    if fp8_format is not None:
         padding_to = max((padding_to or 1) * 8, 16)
     return padding_to

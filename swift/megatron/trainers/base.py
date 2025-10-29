@@ -713,8 +713,8 @@ class BaseMegatronTrainer(ABC):
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()
         if args.save_hf_checkpoint:
-            ouput_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-            self.bridge.save_weights(self.unwrapped_models, ouput_dir)
+            output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+            self.bridge.save_weights(self.unwrapped_models, output_dir)
         else:
             with adapter_state_dict_context():
                 return self._origin_save_checkpoint(iteration, *_args, **kwargs)

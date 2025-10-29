@@ -175,8 +175,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
             hf_logits = hf_logits.to('cuda')
         hf_model.to('cpu')
 
+    args = get_args()
     template.use_megatron = True
-    mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to()), 'cuda')
+    mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_torch_dtype = torch_dtype
     # thd
@@ -189,7 +190,6 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
         mg_inputs.pop(key, None)
     mg_inputs.update({'packed_seq_params': packed_seq_params})
-    args = get_args()
     mg_device = next(mg_language_model.parameters()).device
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
