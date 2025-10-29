@@ -18,34 +18,72 @@ logger = get_logger()
 
 
 def apply_liger(model_type: str):
-    from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
-                                           apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
-                                           apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
-                                           apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
-    from swift.llm import ModelType
-    if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
-        apply_liger_kernel_to_llama()
-    elif model_type in (ModelType.mistral):
-        apply_liger_kernel_to_mistral()
-    elif model_type in (ModelType.mixtral):
-        apply_liger_kernel_to_mixtral()
-    elif model_type in (ModelType.gemma, ModelType.gemma2):
-        apply_liger_kernel_to_gemma()
-    elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
-        apply_liger_kernel_to_qwen2()
-    elif model_type in (ModelType.qwen3):
-        apply_liger_kernel_to_qwen3()
-    elif model_type in (ModelType.phi3):
-        apply_liger_kernel_to_phi3()
-    elif model_type in (ModelType.llama3_2_vision):
-        apply_liger_kernel_to_mllama()
-    elif model_type in (ModelType.qwen2_vl):
-        apply_liger_kernel_to_qwen2_vl()
-    elif model_type in (ModelType.qwen2_5_vl):
-        apply_liger_kernel_to_qwen2_5_vl()
-    else:
-        raise ValueError(f'Unsupported liger model_type: {model_type}')
+    try:
+        from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
+                                               apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
+                                               apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                               apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
+                                               apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
+        from swift.llm import ModelType
+        if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
+            apply_liger_kernel_to_llama()
+        elif model_type in (ModelType.mistral):
+            apply_liger_kernel_to_mistral()
+        elif model_type in (ModelType.mixtral):
+            apply_liger_kernel_to_mixtral()
+        elif model_type in (ModelType.gemma, ModelType.gemma2):
+            apply_liger_kernel_to_gemma()
+        elif model_type in (ModelType.gemma3_text):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3_text
+            apply_liger_kernel_to_gemma3_text()
+        elif model_type in (ModelType.gemma3_vision, ModelType.gemma3n):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3
+            apply_liger_kernel_to_gemma3()
+        elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
+            apply_liger_kernel_to_qwen2()
+        elif model_type in (ModelType.qwen3, ModelType.qwen3_guard, ModelType.qwen3_thinking,
+                            ModelType.qwen3_nothinking, ModelType.qwen3_coder):
+            apply_liger_kernel_to_qwen3()
+        elif model_type in (ModelType.qwen3_moe, ModelType.qwen3_moe_thinking, ModelType.qwen3_coder):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_moe
+            apply_liger_kernel_to_qwen3_moe()
+        elif model_type in (ModelType.qwen3_next, ModelType.qwen3_next_thinking):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_next
+            apply_liger_kernel_to_qwen3_next()
+        elif model_type in (ModelType.phi3):
+            apply_liger_kernel_to_phi3()
+        elif model_type in (ModelType.llama3_2_vision):
+            apply_liger_kernel_to_mllama()
+        elif model_type in (ModelType.qwen2_vl):
+            apply_liger_kernel_to_qwen2_vl()
+        elif model_type in (ModelType.qwen2_5_vl, ModelType.qwen3_vl, ModelType.qwen3_moe_vl, ModelType.qvq):
+            apply_liger_kernel_to_qwen2_5_vl()
+        elif model_type in (ModelType.glm4, ModelType.glm4_0414, ModelType.glm4_z1_rumination):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4
+            apply_liger_kernel_to_glm4()
+        elif model_type in (ModelType.glm4v, ModelType.glm4_1v):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v
+            apply_liger_kernel_to_glm4v()
+        elif model_type in (ModelType.glm4_5v):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v_moe
+            apply_liger_kernel_to_glm4v_moe()
+        elif model_type in (ModelType.internvl_hf, ModelType.internvl_gpt_hf):
+            from liger_kernel.transformers import apply_liger_kernel_to_internvl
+            apply_liger_kernel_to_internvl()
+        elif model_type in (ModelType.llama4):
+            from liger_kernel.transformers import apply_liger_kernel_to_llama4
+            apply_liger_kernel_to_llama4()
+        elif model_type in (ModelType.llava1_5_hf, ModelType.llava_llama3_hf, ModelType.pixtral):
+            from liger_kernel.transformers import apply_liger_kernel_to_llava
+            apply_liger_kernel_to_llava()
+        elif model_type in (ModelType.paligemma):
+            from liger_kernel.transformers import apply_liger_kernel_to_paligemma
+            apply_liger_kernel_to_paligemma()
+        else:
+            raise ValueError(f'Unsupported liger model_type: {model_type}')
+    except ImportError:
+        raise ImportError('Please upgrade liger-kernel to apply liger kernel to this model '
+                          'by running `pip install -U liger-kernel`')
 
 
 def get_multimodal_target_regex(
@@ -325,6 +363,8 @@ class TunerMixin:
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
+        # transformers >= 4.45.0, apply liger in transformers https://github.com/huggingface/transformers/pull/32860
+        # transformers < 4.45.0, apply liger in here
         if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
