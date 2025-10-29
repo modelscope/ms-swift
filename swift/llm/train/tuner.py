@@ -363,6 +363,8 @@ class TunerMixin:
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
+        # transformers >= 4.45.0, apply liger in transformers https://github.com/huggingface/transformers/pull/32860
+        # transformers < 4.45.0, apply liger in here
         if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
