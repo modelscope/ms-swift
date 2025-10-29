@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Dict, Literal, Optional, Union
 
 import torch
@@ -15,8 +14,11 @@ from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 class GPTBridge:
     lm_layers_prefix = 'model.layers'  # HF model
 
-    def __init__(self):
+    def __init__(self, disable_tqmd: bool = False):
         self.args = get_args()
+        self.disable_tqmd = disable_tqmd
+        self._target_device = None
+        self.only_last_rank = False
         model_info = self.args.model_info
         with torch.device('meta'), disable_safe_ddp_context_use_barrier():
             self.hf_model, self.processor = get_model_tokenizer(
@@ -42,12 +44,20 @@ class GPTBridge:
         key, suffix = mg_key.rsplit('.', 2)[-2:]
         if suffix == 'layer_norm_weight':
             return
-        if key in {'word_embeddings', 'output_layer', 'linear_qkv', 'linear_fc1'}:
+        if key in {'word_embeddings', 'output_layer', 'linear_qkv'}:
             return 0
-        elif key in {'linear_proj', 'linear_fc2'}:
+        elif key in {'linear_proj', 'linear_fc1', 'linear_fc2'}:
+            # linear_fc1 shape [2, X, Y]
             return 1
 
-    def _set_weights(self, mg_param, hf_weight, mg_key: str, offset: float = 0, is_expert: bool = False, mg_slices=()):
+    def _set_weights(
+        self,
+        mg_param: torch.Tensor,
+        hf_weight: torch.Tensor,
+        mg_key: str,
+        offset: float = 0,
+        is_expert: bool = False,
+    ):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
         hf_weight = hf_weight.to(mg_param.device)
@@ -59,7 +69,7 @@ class GPTBridge:
                 splited_weights = [t.contiguous() for t in hf_weight.chunk(tp_size, dim=tp_dim)]
             else:
                 splited_weights = None
-            tensor = torch.empty_like(mg_param.data[mg_slices])
+            tensor = torch.empty_like(mg_param.data)
             dist.scatter(
                 tensor,
                 splited_weights,
@@ -71,9 +81,9 @@ class GPTBridge:
             tensor = hf_weight
         if offset:
             tensor = tensor + offset
-        mg_param.data[mg_slices].copy_(tensor)
+        mg_param.data.copy_(tensor)
 
-    def _get_weights(self, mg_weight, mg_key, offset: int = 0, is_expert: bool = False):
+    def _get_weights(self, mg_weight: torch.Tensor, mg_key: str, offset: int = 0, is_expert: bool = False):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
         tensor = mg_weight
@@ -100,33 +110,42 @@ class GPTBridge:
                 )
                 tensor = torch.cat(output, dim=tp_dim)
             del output
-        # pp
-        if self.pp_size > 1:
-            if tensor is None:
-                output = [None] * self.pp_size
-                dist.all_gather_object(output, None, group=self.pp_group)
-                src_idx = self._find_not_none_index(output)
-                assert len(src_idx) == 1, f'src_idx: {src_idx}'
-                src_idx = src_idx[0]
-                shape, dtype = output[src_idx]
-                tensor = torch.empty(shape, device='cuda', dtype=dtype)
-                dist.broadcast(tensor, src=dist.get_global_rank(self.pp_group, src_idx), group=self.pp_group)
+        # pp/ep
+        for parallel_state in ['ep', 'pp']:
+            if parallel_state == 'pp' and self.pp_size > 1:
+                parallel_group = self.pp_group
+                parallel_rank = self.pp_rank
+            elif parallel_state == 'ep' and is_expert and self.ep_size > 1:
+                parallel_group = self.ep_group
+                parallel_rank = self.ep_rank
             else:
-                output = [None] * self.pp_size
-                meta_data = (tensor.shape, tensor.dtype)
-                dist.all_gather_object(output, meta_data, group=self.pp_group)
-                dist.broadcast(tensor, src=dist.get_global_rank(self.pp_group, self.pp_rank), group=self.pp_group)
+                continue
+            src_rank = torch.tensor([0 if tensor is None else parallel_rank], dtype=torch.int64, device='cuda')
+            dist.all_reduce(src_rank, group=parallel_group)
+            src_rank = dist.get_global_rank(parallel_group, src_rank.item())
+            meta_data = torch.zeros(10, dtype=torch.int64, device='cuda')
+            dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3}
+            dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
+            if tensor is None:
+                dist.broadcast(meta_data, src=src_rank, group=parallel_group)
+                shape = meta_data[1:1 + meta_data[0]].tolist()
+                dtype = dtype_mapping_r[meta_data[-1].item()]
+                tensor = torch.empty(shape, device='cuda', dtype=dtype)
+                dist.broadcast(tensor, src=src_rank, group=parallel_group)
+            else:
+                meta_data[0] = tensor.ndim
+                meta_data[1:1 + tensor.ndim] = torch.tensor(tensor.shape, dtype=torch.int64, device='cuda')
+                meta_data[-1] = dtype_mapping[tensor.dtype]
+                dist.broadcast(meta_data, src=src_rank, group=parallel_group)
+                dist.broadcast(tensor, src=src_rank, group=parallel_group)
+        assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
             tensor = tensor + offset
+        if self._target_device is not None:
+            tensor = tensor.to(device=self._target_device)
+        if self._only_last_rank and not is_last_rank():
+            tensor = None
         return tensor
-
-    @staticmethod
-    def _find_not_none_index(lst):
-        res = []
-        for i, x in enumerate(lst):
-            if x is not None:
-                res.append(i)
-        return res
 
     def _set_state_dict(self,
                         mg_module,
@@ -189,12 +208,15 @@ class GPTBridge:
         if reverse:
             mg_attn_weight = self._get_weights(None if mg_attn is None else mg_attn.linear_qkv.weight.data,
                                                'linear_qkv.weight')
-            mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
-            q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
-                0] // num_query_groups
-            hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size)
-            hf_state_dict['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1, args.hidden_size)
-            hf_state_dict['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size)
+            if mg_attn_weight is not None:
+                mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
+                q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
+                    0] // num_query_groups
+                hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size).clone()
+                hf_state_dict['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(-1,
+                                                                                             args.hidden_size).clone()
+                hf_state_dict['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1, args.hidden_size).clone()
+                del mg_attn_weight
         else:
             linear_qkv_weight = torch.cat([
                 hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
@@ -210,10 +232,11 @@ class GPTBridge:
             if reverse:
                 mg_attn_bias = self._get_weights(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
                                                  'linear_qkv.bias')
-                mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
-                hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1)
-                hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1)
-                hf_state_dict['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1)
+                if mg_attn_bias is not None:
+                    mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
+                    hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1).clone()
+                    hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1).clone()
+                    hf_state_dict['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1).clone()
             else:
                 linear_qkv_bias = torch.cat([
                     hf_state_dict['q_proj.bias'].load().reshape((num_query_groups, -1)),
@@ -254,95 +277,158 @@ class GPTBridge:
             for key in ['shared_expert', 'shared_experts', 'shared_mlp']:
                 if hasattr(hf_mlp, key):
                     hf_shared_expert_prefix = f'{key}.'
+                    shared_expert = getattr(hf_mlp, key)
             hf_state_dict.update(
-                self._set_mlp_state(mg_mlp.shared_experts, hf_state_dict, hf_shared_expert_prefix, layer_idx, reverse))
+                self._set_mlp_state(
+                    mg_mlp.shared_experts,
+                    hf_state_dict,
+                    hf_shared_expert_prefix,
+                    layer_idx,
+                    reverse,
+                    hf_mlp=shared_expert))
             if hasattr(hf_mlp, 'shared_expert_gate'):
                 self._set_state_dict(mg_mlp, 'shared_experts.gate_weight', hf_state_dict, 'shared_expert_gate.weight',
                                      reverse)
-        for expert_idx in range(self.args.num_experts):
+        for ep_rank in range(self.ep_size):
             mg_experts = mg_mlp.experts
-            start_idx = mg_experts.num_local_experts * self.ep_rank
-            expert_available = (start_idx <= expert_idx < start_idx + mg_experts.num_local_experts)
-            if expert_available:
-                group_idx = expert_idx - start_idx
-            else:
-                group_idx = None
+            expert_available = ep_rank == self.ep_rank
+            if not expert_available:
                 if reverse:
                     mg_experts = None
                 else:
                     continue
-            if hasattr(hf_mlp.experts, '__len__'):
-                hf_expert_prefix = f'experts.{expert_idx}.'
-                hf_group_idx = None
-            else:
-                hf_expert_prefix = 'experts.'
-                hf_group_idx = expert_idx
             hf_state_dict.update(
-                self._set_mlp_state(
-                    mg_experts,
-                    hf_state_dict,
-                    hf_expert_prefix,
-                    layer_idx,
-                    reverse,
-                    group_idx=group_idx,
-                    hf_group_idx=hf_group_idx))
+                self._set_expert_state(mg_experts, hf_state_dict, 'experts.', layer_idx, reverse, ep_rank))
         if reverse:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
-    def _set_mlp_state(
+    def _set_expert_state(
         self,
         mg_mlp,
         hf_state_dict,
         hf_prefix: str,
         layer_idx: int,
         reverse: bool,
-        group_idx: Optional[int] = None,
-        hf_group_idx: Optional[int] = None,
+        ep_rank: int,
     ):
         if reverse:
             hf_state_dict = {}
         else:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
-        hf_mlp = self.hf_layers[layer_idx].mlp
-        is_expert = group_idx is not None
-        if group_idx is not None:
-            fc1_key = f'linear_fc1.weight{group_idx}'
-            fc2_key = f'linear_fc2.weight{group_idx}'
-        else:
-            fc1_key = 'linear_fc1.weight'
-            fc2_key = 'linear_fc2.weight'
-        if hf_group_idx is not None:
-            res[fc1_key] = hf_state_dict['gate_up_proj'][hf_group_idx].t()
-            res[fc2_key] = hf_state_dict['down_proj'][hf_group_idx].t()
-        else:
-            if reverse:
-                fc1_weight = deep_getattr(mg_mlp, fc1_key)
-                gate_proj_weight = self._get_weights(
-                    None if fc1_weight is None else fc1_weight[:fc1_weight.shape[0] // 2], fc1_key, is_expert=is_expert)
-                up_proj_weight = self._get_weights(
-                    None if fc1_weight is None else fc1_weight[fc1_weight.shape[0] // 2:], fc1_key, is_expert=is_expert)
-                if hasattr(hf_mlp, 'gate_up_proj'):
-                    hf_state_dict['gate_up_proj'] = torch.concat([gate_proj_weight, up_proj_weight], dim=0)
-                else:
-                    hf_state_dict['gate_proj.weight'] = gate_proj_weight
-                    hf_state_dict['up_proj.weight'] = up_proj_weight
+        hf_experts = self.hf_layers[layer_idx].mlp.experts
+        num_local_experts = self.args.num_experts // self.ep_size
+        # if hf_group_idx is not None:
+        #     res[fc1_key] = hf_state_dict['gate_up_proj'][hf_group_idx].t()
+        #     res[fc2_key] = hf_state_dict['down_proj'][hf_group_idx].t()
+        # else:
+        if reverse:
+            if mg_mlp is None:
+                fc1_weight = None
             else:
-                linear_fc1_weight = deep_getattr(mg_mlp, fc1_key)
-                gate_slices = (slice(None, linear_fc1_weight.shape[0] // 2), )
-                up_slices = (slice(linear_fc1_weight.shape[0] // 2, None), )
-                if hasattr(hf_mlp, 'gate_up_proj'):
-                    gate_up_proj_weight = hf_state_dict['gate_up_proj.weight'].load()
-                    gate_proj_weight = gate_up_proj_weight[gate_slices]
-                    up_proj_weight = gate_up_proj_weight[up_slices]
-                else:
-                    gate_proj_weight = hf_state_dict['gate_proj.weight'].load()
-                    up_proj_weight = hf_state_dict['up_proj.weight'].load()
-                self._set_weights(
-                    linear_fc1_weight, gate_proj_weight, fc1_key, is_expert=is_expert, mg_slices=gate_slices)
-                self._set_weights(linear_fc1_weight, up_proj_weight, fc1_key, is_expert=is_expert, mg_slices=up_slices)
+                fc1_weight = torch.concat([getattr(mg_mlp.linear_fc1, f'weight{i}') for i in range(num_local_experts)],
+                                          dim=0)
+                fc1_weight = fc1_weight.view(num_local_experts * 2, -1, fc1_weight.shape[1])
+            gate_up_proj_weight = self._get_weights(fc1_weight, 'linear_fc1.weight', is_expert=True)
+            del fc1_weight
+            if gate_up_proj_weight is not None:
+                gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, 2, -1, gate_up_proj_weight.shape[-1])
+                for i in range(num_local_experts):
+                    hf_i = i + ep_rank * num_local_experts
+                    if hasattr(hf_experts[i], 'gate_up_proj'):
+                        hf_state_dict[f'{hf_i}.gate_up_proj.weight'] = gate_up_proj_weight[i].view(
+                            -1, gate_up_proj_weight.shape[-1]).clone()
+                    else:
+                        hf_state_dict[f'{hf_i}.gate_proj.weight'] = gate_up_proj_weight[i][0].clone()
+                        hf_state_dict[f'{hf_i}.up_proj.weight'] = gate_up_proj_weight[i][1].clone()
+            del gate_up_proj_weight
+        else:
+            fc1_weight = mg_mlp.linear_fc1.weight0
+            fc1_weight = fc1_weight.new_empty(num_local_experts * 2, fc1_weight.shape[0] // 2, fc1_weight.shape[1])
+            if hasattr(hf_experts[0], 'gate_up_proj'):
+                gate_up_proj_weight = torch.concat([
+                    hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.weight'].load()
+                    for i in range(num_local_experts)
+                ],
+                                                   dim=0)
+            else:
+                weight_list = []
+                start_idx = ep_rank * num_local_experts
+                for i in range(num_local_experts):
+                    gate_proj_weight = hf_state_dict[f'{start_idx + i}.gate_proj.weight'].load()
+                    up_proj_weight = hf_state_dict[f'{start_idx + i}.up_proj.weight'].load()
+                    weight_list.append(torch.stack([gate_proj_weight, up_proj_weight], dim=0))
+                gate_up_proj_weight = torch.concat(weight_list, dim=0)
+                del weight_list
+            self._set_weights(fc1_weight, gate_up_proj_weight, 'linear_fc1.weight', is_expert=True)
+            fc1_weight = fc1_weight.view(num_local_experts, -1, fc1_weight.shape[-1])
+            for i in range(num_local_experts):
+                getattr(mg_mlp.linear_fc1, f'weight{i}').data.copy_(fc1_weight[i].view(-1, fc1_weight.shape[-1]))
+            del fc1_weight
+        if reverse:
+            if mg_mlp is None:
+                fc2_weight = None
+            else:
+                fc2_weight = torch.concat([getattr(mg_mlp.linear_fc2, f'weight{i}') for i in range(num_local_experts)],
+                                          dim=0)
+                fc2_weight = fc2_weight.view(num_local_experts * 2, -1, fc2_weight.shape[1])
+            down_proj_weight = self._get_weights(fc2_weight, 'linear_fc2.weight', is_expert=True)
+            del fc2_weight
+            if down_proj_weight is not None:
+                down_proj_weight = down_proj_weight.view(num_local_experts, -1, down_proj_weight.shape[-1])
+                for i in range(num_local_experts):
+                    hf_i = i + ep_rank * num_local_experts
+                    hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].view(
+                        -1, down_proj_weight.shape[-1]).clone()
+        else:
+            fc2_weight = mg_mlp.linear_fc2.weight0
+            fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
+            down_proj_weight = torch.concat([
+                hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight'].load()
+                for i in range(num_local_experts)
+            ],
+                                            dim=0)
+            self._set_weights(fc2_weight, down_proj_weight, 'linear_fc2.weight', is_expert=True)
+            fc2_weight = fc2_weight.view(num_local_experts, -1, fc2_weight.shape[-1])
+            for i in range(num_local_experts):
+                getattr(mg_mlp.linear_fc2, f'weight{i}').data.copy_(fc2_weight[i])
+        if reverse:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
 
-            self._set_state_dict(mg_mlp, fc2_key, hf_state_dict, 'down_proj.weight', reverse, is_expert=is_expert)
+    def _set_mlp_state(self, mg_mlp, hf_state_dict, hf_prefix: str, layer_idx: int, reverse: bool, hf_mlp=None):
+        if reverse:
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        if hf_mlp is None:
+            hf_mlp = self.hf_layers[layer_idx].mlp
+        if reverse:
+            if mg_mlp is None:
+                fc1_weight = None
+            else:
+                fc1_weight = mg_mlp.linear_fc1.weight
+                fc1_weight = fc1_weight.view(2, fc1_weight.shape[0] // 2, fc1_weight.shape[1])
+            gate_up_proj_weight = self._get_weights(None if fc1_weight is None else fc1_weight, 'linear_fc1.weight')
+            if gate_up_proj_weight is not None:
+                if hasattr(hf_mlp, 'gate_up_proj'):
+                    hf_state_dict['gate_up_proj'] = gate_up_proj_weight.view(-1, gate_up_proj_weight.shape[-1]).clone()
+                else:
+                    hf_state_dict['gate_proj.weight'] = gate_up_proj_weight[0].clone()
+                    hf_state_dict['up_proj.weight'] = gate_up_proj_weight[1].clone()
+        else:
+            fc1_weight = mg_mlp.linear_fc1.weight
+            fc1_weight = fc1_weight.new_empty(2, fc1_weight.shape[0] // 2, fc1_weight.shape[1])
+            if hasattr(hf_mlp, 'gate_up_proj'):
+                gate_up_proj_weight = hf_state_dict['gate_up_proj.weight'].load()
+            else:
+                gate_proj_weight = hf_state_dict['gate_proj.weight'].load()
+                up_proj_weight = hf_state_dict['up_proj.weight'].load()
+                gate_up_proj_weight = torch.concat([gate_proj_weight, up_proj_weight], dim=0)
+            gate_up_proj_weight = gate_up_proj_weight.view(2, -1, gate_up_proj_weight.shape[-1])
+            self._set_weights(fc1_weight, gate_up_proj_weight, 'linear_fc1.weight')
+            mg_mlp.linear_fc1.weight.data.copy_(fc1_weight.view(-1, fc1_weight.shape[-1]))
+        self._set_state_dict(mg_mlp, 'linear_fc2.weight', hf_state_dict, 'down_proj.weight', reverse)
         if reverse:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
@@ -425,7 +511,8 @@ class GPTBridge:
             hf_state_dict = {}
         else:
             yield
-        for layer_idx in tqdm(range(self.args.num_layers), dynamic_ncols=True, desc='Converting: '):
+        for layer_idx in tqdm(
+                range(self.args.num_layers), dynamic_ncols=True, desc='Converting: ', disable=self.disable_tqmd):
             start_idx = mg_model.decoder.layers[0].layer_number - 1
             mg_layer_available = (start_idx <= layer_idx < mg_model.decoder.layers[-1].layer_number)
             if mg_layer_available:
@@ -460,7 +547,9 @@ class GPTBridge:
             state_dict = loader.get_state_dict()
             list(self._convert(mg_model, state_dict, '', False))
 
-    def export_weights(self, mg_models):
+    def export_weights(self, mg_models, target_device=None, only_last_rank: bool = False):
+        self._target_device = target_device
+        self._only_last_rank = only_last_rank
         state_dict = {}
         for mg_model in mg_models:
             yield from self._convert(mg_model, state_dict, '', True)
@@ -468,7 +557,7 @@ class GPTBridge:
     def save_weights(self, mg_models, output_dir: str) -> None:
         """Save the mg_model checkpoint in HF format"""
         saver = StreamingSafetensorSaver(save_dir=output_dir, max_shard_size=self.args.max_shard_size)
-        for k, v in self.export_weights(mg_models):
+        for k, v in self.export_weights(mg_models, target_device='cpu', only_last_rank=True):
             saver.add_tensor(k, v)
         saver.finalize()
         if is_last_rank():

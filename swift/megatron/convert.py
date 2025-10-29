@@ -65,19 +65,18 @@ def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
 
 
 @contextmanager
-def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_embedding: bool = False):
+def _model_cpu_forward_context(modules, torch_dtype=None, compute_device=None, share_embedding: bool = False, target_device='cpu'):
     origin_torch_dtype = next(modules[-1].parameters()).dtype
-
     def _to_cuda_hook(module, args):
-        if device is not None or torch_dtype is not None:
-            module.to(device=device, dtype=torch_dtype)
+        if compute_device is not None or torch_dtype is not None:
+            module.to(device=compute_device, dtype=torch_dtype)
             args = to_float_dtype(args, dtype=torch_dtype)
         return args
 
     def _to_cpu_hook(module, args, output):
         if share_embedding and module is modules[0]:
             return
-        module.to(device='cpu', dtype=origin_torch_dtype)
+        module.to(device=target_device, dtype=origin_torch_dtype)
 
     hooks = []
     for module in modules:
@@ -162,8 +161,12 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         model_arch = hf_model.model_meta.model_arch
         ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
+        if hf_model.device == 'cpu':
+            compute_device = 'cuda'
+        else:
+            compute_device = None
         with torch.inference_mode(), _model_cpu_forward_context(
-                hf_modules, torch_dtype, share_embedding=share_embedding):
+                hf_modules, torch_dtype, compute_device, share_embedding=share_embedding):
             hf_inputs.pop('text_position_ids', None)
             hf_logits = hf_model(**hf_inputs).logits
             hf_logits = hf_logits.to('cuda')
