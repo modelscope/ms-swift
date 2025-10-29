@@ -199,6 +199,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 logger.info('Unmerging LoRA adapters to restore training state...')
                 self._unmerge_lora_adapters()
 
+        if self.vllm_mode == 'server' and self.is_main_process:
+            self.vllm_client.reset_prefix_cache()
+        elif self.vllm_mode == 'colocate':
+            self.engine.engine.reset_prefix_cache()
+
     def _prepare_rewards(self):
         # TODO: reward model
         args = self.args
@@ -532,7 +537,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _rollout(self, batch) -> List[RolloutOutput]:
         request_config = self._get_request_config()
         # TODO: server mode
-        rollout_outputs = self._colocate_rollout(batch, request_config)
+        if self.vllm_mode == 'server':
+            pass
+        elif self.vllm_mode == 'colocate':
+            rollout_outputs = self._colocate_rollout(batch, request_config)
         return rollout_outputs
 
     def postprocess_rollout_data(self, batch, outputs):
