@@ -358,6 +358,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         else:
             self._move_adapter_to_vllm()
 
+        # Reset prefix cache
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.reset_prefix_cache()
+        elif self.vllm_mode == 'colocate':
+            self.engine.engine.reset_prefix_cache()  
+
     def _move_adapter_to_vllm(self):
         """Transfer LoRA adapter weights to vLLM engine"""
         lora_params = OrderedDict()
@@ -464,12 +470,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if is_peft:
             self.base_sync_done = True
-
-        # Reset prefix cache
-        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            self.vllm_client.reset_prefix_cache()
-        elif self.vllm_mode == 'colocate':
-            self.engine.engine.reset_prefix_cache()
 
     def _rollout(self,
                  inputs: Optional[DataType],
