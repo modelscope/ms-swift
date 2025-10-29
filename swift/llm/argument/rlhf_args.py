@@ -337,6 +337,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
+            import liger_kernel
+            liger_kernel_version = version.parse(liger_kernel.__version__)
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
@@ -349,8 +351,12 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             if self.log_entropy:
                 raise ValueError('Liger loss does not support log entropy yet.')
             if self.importance_sampling_level != 'token':
-                raise ValueError('Liger loss currently only support token-level importance sampling'
-                                 'Please set `importance_sampling_level` to `token`')
+                if liger_kernel_version < version.parse('0.6.3'):
+                    raise ValueError('Please update liger-kernel to 0.6.3 or later')
+                if self.importance_sampling_level == 'sequence_token':
+                    self.importance_sampling_level = 'sequence'
+                    logger.info('Remapping `importance_sampling_level` from `sequence_token` to `sequence` for '
+                                'liger-kernel compatibility. The two methods are computationally equivalent.')
             if self.advantage_estimator != 'grpo':
                 raise ValueError('Liger loss currently only support grpo advantage estimator')
             from trl.import_utils import is_liger_kernel_available
