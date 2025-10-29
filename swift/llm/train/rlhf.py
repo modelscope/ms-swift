@@ -5,6 +5,7 @@ from typing import List, Optional, Union
 
 from swift.llm import safe_snapshot_download
 from swift.plugin import Tuner, extra_tuners
+from swift.ray import RayHelper
 from swift.tuners import Swift
 from swift.utils import get_logger, get_model_parameter_info
 from swift.utils.utils import disable_deepspeed_zero3
@@ -16,9 +17,16 @@ from .sft import SwiftSft
 logger = get_logger()
 
 
+@RayHelper.worker(group=['default', 'ref', 'reward', 'value', 'teacher'])
 class SwiftRLHF(SwiftSft):
     args_class = RLHFArguments
     args: args_class
+
+    def __init__(self, args: RLHFArguments):
+        super().__init__(args)
+        self.reward_model = []
+        if self.args.rlhf_type == 'grpo':
+            self.reward_template = []
 
     @staticmethod
     def _get_model_task_type(model_dir):
@@ -47,6 +55,47 @@ class SwiftRLHF(SwiftSft):
                     if num_labels == 1:
                         task_type = 'seq_cls'
         return task_type, num_labels
+
+    @RayHelper.function(group='ref')
+    def _prepare_ref_model(self, key, origin_key, model_type, model_revision):
+        result = self._prepare_single_model(key, origin_key, model_type, model_revision)
+
+        if result is not None:
+            self.ref_model = result[0]
+
+    @RayHelper.function(group='value')
+    def _prepare_value_model(self, key, origin_key, model_type, model_revision):
+        result = self._prepare_single_model(key, origin_key, model_type, model_revision)
+
+        if result is not None:
+            self.value_model = result[0]
+
+    @RayHelper.function(group='teacher')
+    def _prepare_teacher_model(self, key, origin_key, model_type, model_revision):
+        result = self._prepare_single_model(key, origin_key, model_type, model_revision)
+
+        if result is not None:
+            self.teacher_model = result[0]
+
+    def _prepare_reward_model(self, reward_model_path, key, origin_key, model_type, model_revision):
+        rms = self.args.reward_model if isinstance(self.args.reward_model, list) else [self.args.reward_model]
+        self.args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
+        result = self._prepare_single_model(key, origin_key, model_type, model_revision)
+
+        if result is not None:
+            model, processor = result
+            self.reward_model.append(model)
+
+            if self.args.rlhf_type == 'grpo':
+                reward_template = self.args.get_template(processor, processor.model_meta.template)
+                if reward_template.use_model:
+                    reward_template.model = model
+                self.reward_template.append(reward_template)
+        self.args.reward_model = rms  # Restore original value
+
+        if self.args.rlhf_type != 'grpo' and self.reward_model:
+            assert len(self.reward_model) <= 1
+            self.reward_model = self.reward_model[0]
 
     def _prepare_single_model(self, key, origin_key, model_type, model_revision):
         from swift.llm.infer.utils import prepare_adapter
@@ -116,10 +165,7 @@ class SwiftRLHF(SwiftSft):
                 model_type = model_type[0] if model_type else None
                 model_revision = model_revision[0] if model_revision else None
 
-            result = self._prepare_single_model(model_key, key, model_type, model_revision)
-            if result is not None:
-                model, _ = result
-                setattr(self, f'{key}_model', model)
+            getattr(self, f'_prepare_{key}_model')(model_key, key, model_type, model_revision)
 
         # Handle reward model(s)
         self.reward_model = None
@@ -130,26 +176,9 @@ class SwiftRLHF(SwiftSft):
             rm_revisions = args.reward_model_revision if args.reward_model_revision else [None] * num_rms
             assert len(rms) == len(rm_types) == len(rm_revisions)
 
-            self.reward_model = []
-            if args.rlhf_type == 'grpo':
-                self.reward_template = []
-
-            for reward_model_path, rm_type, rm_revision in zip(rms, rm_types, rm_revisions):
-                args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
-                result = self._prepare_single_model('reward', None, rm_type, rm_revision)
-                if result is not None:
-                    model, processor = result
-                    self.reward_model.append(model)
-
-                    if args.rlhf_type == 'grpo':
-                        reward_template = self.args.get_template(processor, processor.model_meta.template)
-                        if reward_template.use_model:
-                            reward_template.model = model
-                        self.reward_template.append(reward_template)
-                args.reward_model = rms  # Restore original value
-                if args.rlhf_type != 'grpo' and self.reward_model:
-                    assert len(self.reward_model) <= 1
-                    self.reward_model = self.reward_model[0]
+            for rm_idx, (reward_model_path, rm_type, rm_revision) in enumerate(zip(rms, rm_types, rm_revisions)):
+                _prepare_reward_model = RayHelper.function(group=f'reward_{rm_idx}')(self._prepare_reward_model)
+                _prepare_reward_model(reward_model_path, 'reward', None, rm_type, rm_revision)
 
         super()._prepare_model_tokenizer()
 

@@ -46,6 +46,7 @@ from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_dd
 from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from swift.ray import RayHelper
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -55,6 +56,7 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
+@RayHelper.worker(group=['default'])
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 
@@ -74,7 +76,7 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
 
-        if args.check_model and hasattr(model, 'model_dir'):
+        if model is not None and args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
                 check_local_model_is_latest(
                     model.model_dir, user_agent={
@@ -99,8 +101,6 @@ class SwiftMixin:
         self.template = template
         self.hub = get_hub()
 
-        self.model_meta = model.model_meta
-
         kwargs.update(self.create_loss_and_metric(args))
         trainer_parameters = inspect.signature(Trainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
@@ -117,20 +117,25 @@ class SwiftMixin:
                 optimizers=optimizers,
                 **kwargs)
 
-        if get_function(model.__class__.forward) is not get_function(model.forward):
-            self.label_names = find_labels(model)
-            self.can_return_loss = can_return_loss(model)
+        self._prepare_model_info(model)
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
         self._patch_tasks()
-        update_generation_config_eos_token(self.model.generation_config, self.template)
-        if getattr(self.model, 'origin_generation_config', None):
-            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
         if self.args.resume_only_model and self.args.ignore_data_skip:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    @RayHelper.function(group='default')
+    def _prepare_model_info(self, model):
+        self.model_meta = model.model_meta
+        if get_function(model.__class__.forward) is not get_function(model.forward):
+            self.label_names = find_labels(model)
+            self.can_return_loss = can_return_loss(model)
+        update_generation_config_eos_token(self.model.generation_config, self.template)
+        if getattr(self.model, 'origin_generation_config', None):
+            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
 
     @contextmanager
     def _patch_timeout(self):

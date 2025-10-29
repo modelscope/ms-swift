@@ -1,18 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
+from contextlib import nullcontext
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from accelerate.utils import gather_object
-from peft import PeftModel
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
-from trl.trainer.utils import RunningMoments
-
+from trl.trainer.utils import RunningMoments, pad_to_length
+from torch import autocast
 from swift.llm import to_device
+from swift.ray import RayHelper
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -27,6 +28,7 @@ def new_gather_function(tensor):
     return torch.concat(to_device(tensor_list, tensor.device), dim=0)
 
 
+@RayHelper.worker(group=['default', 'ref'])
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def __init__(self,
@@ -60,7 +62,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
-        self.is_peft_model = isinstance(model, PeftModel)
 
         self.ref_adapter_name = args.ref_adapter_name
         self.model_adapter_name = None
@@ -176,10 +177,64 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['aux_loss'] = outputs.aux_loss
         return output
 
+    @RayHelper.function(group='default')
     def training_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
 
+    @RayHelper.function(group='default')
     def prediction_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
+
+    def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
+        """Generate samples from the model and reference model for the given batch of inputs."""
+
+        # If one uses `generate_during_eval` with peft + bf16, we need to explicitly call generate with
+        # the torch amp context manager as some hidden states are silently casted to full precision.
+        generate_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
+
+        with generate_context_manager:
+            policy_output = model.generate(
+                input_ids=batch["prompt_input_ids"],
+                attention_mask=batch["prompt_attention_mask"],
+                max_length=self.max_length,
+                do_sample=True,
+                pad_token_id=self.padding_value,
+            )
+
+            # if ref_output in batch use that otherwise use the reference model
+            if "ref_output" in batch:
+                ref_output = batch["ref_output"]
+            else:
+                if self.args.ref_model is None:
+                    with self.null_ref_context():
+                        ref_output = model.generate(
+                            input_ids=batch["prompt_input_ids"],
+                            attention_mask=batch["prompt_attention_mask"],
+                            max_length=self.max_length,
+                            do_sample=True,
+                            pad_token_id=self.padding_value,
+                        )
+                else:
+                    ref_output = self.generate_from_ref(batch)
+
+        policy_output = pad_to_length(policy_output, self.max_length, self.padding_value)
+        policy_output_decoded = self.processing_class.batch_decode(policy_output, skip_special_tokens=True)
+
+        ref_output = pad_to_length(ref_output, self.max_length, self.padding_value)
+        ref_output_decoded = self.processing_class.batch_decode(ref_output, skip_special_tokens=True)
+
+        return policy_output_decoded, ref_output_decoded
+
+    @RayHelper.function(group='ref')
+    def generate_from_ref(self, batch):
+        return self.ref_model.generate(
+            input_ids=batch["prompt_input_ids"],
+            attention_mask=batch["prompt_attention_mask"],
+            max_length=self.max_length,
+            do_sample=True,
+            pad_token_id=self.padding_value,
+        )
