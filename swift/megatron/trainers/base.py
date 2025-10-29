@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os
+import shutil
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
+from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
@@ -710,11 +712,35 @@ class BaseMegatronTrainer(ABC):
 
         return report_memory_flag
 
+    def merge_lora_adapters(self):
+        """Merge LoRA adapters into base model weights for vLLM inference."""
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Merge all active adapters
+                    module.merge()
+
+    def unmerge_lora_adapters(self):
+        """Unmerge LoRA adapters to restore training state."""
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Unmerge to restore separate LoRA weights for training
+                    module.unmerge()
+
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()
         if args.save_hf_checkpoint:
+            if args.train_type == 'lora':
+                self.merge_lora_adapters()
             output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
             self.bridge.save_weights(self.unwrapped_models, output_dir)
+            if is_last_rank():
+                args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+                if os.path.exists(args_path):
+                    shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+            if args.train_type == 'lora':
+                self.unmerge_lora_adapters()
         else:
             with adapter_state_dict_context():
                 return self._origin_save_checkpoint(iteration, *_args, **kwargs)

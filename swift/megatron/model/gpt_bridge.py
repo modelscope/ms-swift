@@ -7,10 +7,11 @@ from megatron.training import get_args
 from tqdm import tqdm
 
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, is_last_rank, get_logger
+from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
+
 
 class GPTBridge:
     lm_layers_prefix = 'model.layers'  # HF model
@@ -576,4 +577,4 @@ class GPTBridge:
                 output_dir,
                 model_dirs=[self.hf_model.model_info.model_dir],
                 additional_saved_files=self.hf_model.model_meta.additional_saved_files)
-            logger.info_info(f'Successfully saved HF model weights in `{output_dir}`.', cond=is_last_rank())
+            logger.info_if(f'Successfully saved HF model weights in `{output_dir}`.', cond=is_last_rank())
