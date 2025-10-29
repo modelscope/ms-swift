@@ -105,7 +105,7 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
     if lora_dtype is not None:
-        torch_dtype = eval(f'torch.{lora_dtype}')
+        torch_dtype = getattr(torch, lora_dtype)
         if hasattr(target, 'lora_A') and adapter_name in target.lora_A:
             target.lora_A[adapter_name].to(torch_dtype)
             target.lora_B[adapter_name].to(torch_dtype)
