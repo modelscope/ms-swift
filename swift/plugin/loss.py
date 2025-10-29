@@ -651,13 +651,7 @@ def listwise_generative_reranker_loss(outputs,
     positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
     negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
 
-    # Create binary classification logits for each sample
-    # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
-    binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
-
-    # Convert to relevance scores using log_softmax (log-probability of positive class)
-    log_probs = torch.log_softmax(binary_logits, dim=1)
-    logits = log_probs[:, 1]  # Log-probability of positive class [batch_size]
+    logits = F.logsigmoid(positive_logits - negative_logits)
 
     # Find positive sample indices to determine group boundaries
     positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1)
