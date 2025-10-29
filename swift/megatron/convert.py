@@ -12,7 +12,6 @@ from megatron.training import get_args
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
-from megatron.training.utils import get_ltor_masks_and_position_ids
 
 from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
                        to_float_dtype)
@@ -152,7 +151,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     is_multimodal = template.model_meta.is_multimodal
     inputs = get_examples(is_multimodal)
     inputs = template.encode(inputs)
-    inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to()), 'cuda')
+    hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
@@ -165,13 +164,13 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
         with torch.inference_mode(), _model_cpu_forward_context(
                 hf_modules, torch_dtype, share_embedding=share_embedding):
-            inputs.pop('text_position_ids', None)
-            hf_logits = hf_model(**inputs).logits
+            hf_inputs.pop('text_position_ids', None)
+            hf_logits = hf_model(**hf_inputs).logits
             hf_logits = hf_logits.to('cuda')
         hf_model.to('cpu')
 
-    input_ids = inputs['input_ids']
-    attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
+    template.use_megatron = True
+    mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to()), 'cuda')
     packed_seq_params = None
     mg_torch_dtype = torch_dtype
     # thd
@@ -181,16 +180,14 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # attention_mask = None
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    kwargs = inputs.copy()
-    kwargs.pop('labels')
-    kwargs.update({'input_ids': input_ids, 'attention_mask': attention_mask, 'packed_seq_params': packed_seq_params})
+    for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
+        mg_inputs.pop(key, None)
+    mg_inputs.update({'packed_seq_params': packed_seq_params})
     args = get_args()
-    if 'position_ids' not in kwargs:
-        kwargs['position_ids'] = position_ids
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
         # TODO: test pp tie_weights
-        mg_logits = forward_step_helper(mg_model, kwargs, dtype=mg_torch_dtype)
+        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
         if args.tensor_model_parallel_size > 1:
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
@@ -203,10 +200,11 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         max_diff = (mg_logits - hf_logits).abs().max().item()
         print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
     else:
+        mg_logits = mg_logits[:, :hf_logits.shape[1]]
         token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
         mean_diff = token_mean_diff.mean().item()
         max_diff = (mg_logits - hf_logits).abs().max().item()
-        loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+        loss_mask = (torch.roll(hf_inputs['labels'], -1) != -100)
         mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
         max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
         print(f'token_mean_diff: {token_mean_diff}')

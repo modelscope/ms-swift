@@ -456,12 +456,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.position_embedding_type is None:
             self.position_embedding_type = 'rope'
-        if self.tensorboard_dir is None and self.save is not None:
-            self.tensorboard_dir = f'{self.save}/runs'
         self._init_moe()
         self._init_mixed_precision()
 
-        self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         self._init_no_rope_fusion()
 

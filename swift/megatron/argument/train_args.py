@@ -46,6 +46,9 @@ class MegatronTrainArguments(MegatronBaseArguments):
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
                              'Please input the training dataset.')
         self._init_save()
+        if self.tensorboard_dir is None and self.save is not None:
+            self.tensorboard_dir = f'{self.save}/runs'
+        self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         if self.load is None and self.no_initialization and not self.load_hf_checkpoint:
             raise ValueError('You did not pass `--load`, so you need to set `--no_initialization false` '
                              'to allow the model to initialize weights properly.')
