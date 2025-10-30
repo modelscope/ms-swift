@@ -13,6 +13,7 @@ from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
+from ...trainers import TrainerFactory
 
 logger = get_logger()
 
@@ -27,6 +28,7 @@ class SwiftRLHF(SwiftSft):
         self.reward_model = []
         if self.args.rlhf_type == 'grpo':
             self.reward_template = []
+        self._prepare_trainer()
 
     @staticmethod
     def _get_model_task_type(model_dir):
@@ -197,7 +199,6 @@ class SwiftRLHF(SwiftSft):
             args.training_args.ref_adapter_name = 'ref_adapter'
         return model
 
-    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
@@ -251,6 +252,39 @@ class SwiftRLHF(SwiftSft):
         if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
             trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
         return trainer_kwargs
+
+    @RayHelper.function(group='default')
+    def _prepare_model(self, train_dataset):
+        # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
+        self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
+        logger.info(f'model: {self.model}')
+        model_parameter_info = get_model_parameter_info(self.model)
+        self.train_msg['model_parameter_info'] = model_parameter_info
+        logger.info(f'model_parameter_info: {model_parameter_info}')
+
+    def _prepare_trainer(self):
+        args = self.args
+        train_dataset, val_dataset = self._prepare_dataset()
+        args.save_args()
+
+        data_collator = self._get_data_collator()
+        self._prepare_model(train_dataset)
+
+        trainer_cls = TrainerFactory.get_trainer_cls(args)
+        self.trainer = trainer_cls(
+            model=self.model,
+            args=self.args.training_args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            callbacks=self.callbacks,
+            template=self.template,
+            **self._get_trainer_kwargs(),
+        )
+
+    @RayHelper.function(group='default')
+    def run(self):
+        return self.train(self.trainer)
 
 
 def rlhf_main(args: Optional[Union[List[str], RLHFArguments]] = None):

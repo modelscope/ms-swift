@@ -28,8 +28,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
+        self._prepare_processor()
         self._prepare_model_tokenizer()
         self._prepare_template()
+        self._patch_model_to_template()
         self._prepare_callbacks()
         self._prepare_flash_ckpt()
 
@@ -48,6 +50,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
+    def _prepare_processor(self, **kwargs):
+        args = self.args
+        _, self.processor = args.get_model_processor(load_model=False, **kwargs)
+
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
@@ -65,16 +71,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
-    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
         args = self.args
         template = args.get_template(self.processor)
         template.set_mode('train')
-        if template.use_model:
-            template.model = self.model
         if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
+
+    @RayHelper.function(group='default')
+    def _patch_model_to_template(self):
+        if self.template.use_model:
+            self.template.model = self.model
 
     def _get_dataset(self):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
