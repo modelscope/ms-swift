@@ -39,9 +39,9 @@ class RLHFTrainerMixin:
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
-        super().__init__(model, *_args, **kwargs)
         self.aux_loss_coef = args.router_aux_loss_coef
         self.padding_value = self.tokenizer.pad_token_id
+        super().__init__(model, *_args, **kwargs)
 
     @RayHelper.function(group='default')
     def _prepare_model(self, args, model):
