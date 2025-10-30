@@ -99,9 +99,9 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             media_inputs = processor.image_processor(images=images, return_tensors='pt')
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
-            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])[0]
+            image_embeds, deepstack_visual_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
-            deepstack_visual_embeds = None
             visual_pos_masks = None
         else:
             if pixel_values is None:
@@ -469,6 +469,8 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
 
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
+        if visual_pos_masks is None:
+            return hidden_states + visual_embeds.mean() * 0
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
