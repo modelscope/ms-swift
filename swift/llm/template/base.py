@@ -2419,46 +2419,270 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _get_problem_type(config, labels=None, logits=None) -> str:
-        problem_type = config.problem_type
-        if problem_type is not None:
-            return problem_type
-        if labels is not None:
-            if isinstance(labels, (list, tuple)):
-                if labels and isinstance(labels[0], float):
+        """
+        函数功能：
+            自动推断或获取序列分类任务的问题类型（problem type）。该方法用于确定模型处理的任务类型，
+            以便选择合适的损失函数和评估指标。支持三种问题类型：回归（regression）、单标签分类
+            （single_label_classification）和多标签分类（multi_label_classification）。推断逻辑
+            基于配置、标签格式或模型输出的形状，并将结果缓存到config中以避免重复计算。
+        
+        参数：
+            config: 模型配置对象，包含以下属性：
+                - problem_type (Optional[str]): 已设置的问题类型，若非None则直接返回
+                - num_labels (int): 类别数量，用于单标签分类的验证
+            labels (Optional[Union[int, List]]): 标签数据，用于推断问题类型
+                - None: 不使用标签推断
+                - int: 单个整数标签 -> 推断为单标签分类
+                    例如：labels=2（表示第2类）
+                - List[float]: 浮点数列表 -> 推断为回归任务
+                    例如：labels=[1.5, 2.3, 0.8]（多个回归目标值）
+                - List[int]: 整数列表 -> 推断为多标签分类
+                    例如：labels=[0, 2, 5]（同时属于类别0、2、5）
+            logits (Optional[torch.Tensor]): 模型输出的logits张量，用于推断问题类型
+                - None: 不使用logits推断
+                - torch.Tensor: 形状为 (..., num_classes) 或 (..., 1)
+                    形状 (..., 1): 推断为回归任务（单值输出）
+                    形状 (..., N) (N>1): 推断为单标签分类（N个类别）
+        
+        返回值：
+            str: 问题类型，可能的值为：
+                - 'regression': 回归任务
+                    用于预测连续值，如房价预测、评分预测等
+                    损失函数：MSELoss
+                - 'single_label_classification': 单标签分类任务
+                    每个样本只属于一个类别，如文本分类、情感分析等
+                    损失函数：CrossEntropyLoss
+                - 'multi_label_classification': 多标签分类任务
+                    每个样本可以同时属于多个类别，如标签预测、属性识别等
+                    损失函数：BCEWithLogitsLoss
+        
+        使用示例：
+            >>> # 示例1：已设置problem_type（直接返回）
+            >>> from transformers import AutoConfig
+            >>> config = AutoConfig.from_pretrained('bert-base-uncased')
+            >>> config.problem_type = 'single_label_classification'
+            >>> problem_type = Template._get_problem_type(config)
+            >>> print(problem_type)  # 'single_label_classification'
+            
+            >>> # 示例2：通过标签推断（单标签分类）
+            >>> config = AutoConfig.from_pretrained('bert-base-uncased')
+            >>> config.num_labels = 5
+            >>> config.problem_type = None
+            >>> labels = 2  # 单个整数标签（第2类）
+            >>> problem_type = Template._get_problem_type(config, labels=labels)
+            >>> print(problem_type)  # 'single_label_classification'
+            >>> print(config.problem_type)  # 'single_label_classification'（已缓存）
+            
+            >>> # 示例3：通过标签推断（回归任务）
+            >>> config.problem_type = None
+            >>> labels = [1.5, 2.3, 0.8]  # 浮点数列表
+            >>> problem_type = Template._get_problem_type(config, labels=labels)
+            >>> print(problem_type)  # 'regression'
+            
+            >>> # 示例4：通过标签推断（多标签分类）
+            >>> config.problem_type = None
+            >>> labels = [0, 2, 5]  # 整数列表（多个类别）
+            >>> problem_type = Template._get_problem_type(config, labels=labels)
+            >>> print(problem_type)  # 'multi_label_classification'
+            
+            >>> # 示例5：通过logits推断（回归任务）
+            >>> import torch
+            >>> config.problem_type = None
+            >>> logits = torch.randn(8, 1)  # 形状 (batch_size, 1)
+            >>> problem_type = Template._get_problem_type(config, logits=logits)
+            >>> print(problem_type)  # 'regression'
+            
+            >>> # 示例6：通过logits推断（单标签分类）
+            >>> logits = torch.randn(8, 10)  # 形状 (batch_size, 10)，10个类别
+            >>> problem_type = Template._get_problem_type(config, logits=logits)
+            >>> print(problem_type)  # 'single_label_classification'
+        """
+        # ===== 步骤1：检查config中是否已设置problem_type =====
+        problem_type = config.problem_type  # 获取配置中的问题类型
+        if problem_type is not None:  # 若已设置（优先级最高）
+            return problem_type  # 直接返回，无需推断
+        
+        # ===== 步骤2：通过labels推断problem_type =====
+        if labels is not None:  # 若提供了labels参数
+            if isinstance(labels, (list, tuple)):  # 若labels是列表或元组
+                # 检查列表中的元素类型来判断任务类型
+                if labels and isinstance(labels[0], float):  # 若列表非空且首元素是浮点数
+                    # 浮点数列表 -> 回归任务（预测连续值）
+                    # 例如：labels=[1.5, 2.3, 0.8] 表示多个目标值的回归
                     problem_type = 'regression'
-                else:
+                else:  # 若列表元素不是浮点数（通常是整数）
+                    # 整数列表 -> 多标签分类（一个样本可以属于多个类别）
+                    # 例如：labels=[0, 2, 5] 表示该样本同时属于类别0、2、5
                     problem_type = 'multi_label_classification'
-            else:
+            else:  # 若labels是单个值（标量）
+                # 单个整数 -> 单标签分类（每个样本只属于一个类别）
+                # 例如：labels=2 表示该样本属于类别2
                 problem_type = 'single_label_classification'
+                # 断言：类别数量必须大于等于 labels+1（因为类别索引从0开始）
+                # 例如：labels=2 要求至少有3个类别（0, 1, 2）
                 assert config.num_labels >= labels + 1
-        if logits is not None:
-            if logits.shape[-1] == 1:
+        
+        # ===== 步骤3：通过logits推断problem_type =====
+        if logits is not None:  # 若提供了logits参数（模型输出）
+            # 检查logits的最后一个维度（输出维度）
+            # logits.shape: (..., num_classes) 或 (..., 1)
+            if logits.shape[-1] == 1:  # 若输出维度为1
+                # 单值输出 -> 回归任务
+                # 例如：logits.shape = (batch_size, 1) -> 每个样本输出一个连续值
                 problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'  # compatible with older versions
-        assert problem_type is not None
-        config.problem_type = problem_type
+            else:  # 若输出维度大于1
+                # 多值输出 -> 单标签分类（兼容旧版本）
+                # 例如：logits.shape = (batch_size, 10) -> 10个类别的logits
+                # 注释：compatible with older versions（兼容旧版本的默认行为）
+                problem_type = 'single_label_classification'
+        
+        assert problem_type is not None  # 确保已成功推断出问题类型
+        config.problem_type = problem_type  # 将推断结果保存到config，避免下次重复推断
         return problem_type
 
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
-        assert isinstance(logits, torch.Tensor)
+        """
+        函数功能：
+            解码序列分类（Sequence Classification）任务的模型输出，将logits转换为预测结果和对数概率。
+            该方法根据问题类型（回归、单标签分类、多标签分类）采用不同的解码策略，生成可读的预测结果
+            和详细的概率信息。对于分类任务，还会提供top-k候选类别的概率分布，便于分析模型的预测置信度。
+        
+        参数：
+            logits (torch.Tensor): 模型输出的logits张量
+                - 回归任务：形状 (batch_size, 1)，每个样本一个连续值
+                    例如：tensor([[2.3], [1.8], [3.5]]) - 3个样本的回归值
+                - 单标签分类：形状 (batch_size, num_classes)，每个样本的类别logits
+                    例如：tensor([[0.2, 1.5, 0.1], [2.0, 0.5, 0.8]]) - 2个样本，3个类别
+                - 多标签分类：形状 (batch_size, num_labels)，每个样本的标签logits
+                    例如：tensor([[0.8, -0.2, 1.5], [0.3, 0.9, -0.5]]) - 2个样本，3个标签
+            top_logprobs (int): 返回概率最高的前N个候选类别（仅对分类任务有效）
+                用于查看模型的预测分布，便于理解模型的置信度
+                例如：top_logprobs=5 表示返回概率最高的前5个类别
+        
+        返回值：
+            Tuple[List, List]: 包含两个列表的元组
+                - preds (List): 预测结果列表
+                    回归任务：List[float]，每个元素是一个浮点数
+                        例如：[2.3, 1.8, 3.5]
+                    单标签分类：List[int]，每个元素是预测的类别索引
+                        例如：[1, 0, 2] - 预测类别1、0、2
+                    多标签分类：List[List[int]]，每个元素是预测的多个类别索引列表
+                        例如：[[0, 2], [1], [0, 1, 2]] - 不同样本预测的类别集合
+                - logprobs (List): 对数概率信息列表
+                    回归任务：List[None]，回归任务没有概率信息
+                        例如：[None, None, None]
+                    分类任务：List[Dict]，每个元素是格式化的概率信息字典
+                        例如：[{'content': [{'index': 1, 'logprobs': -0.5, 'top_logprobs': [...]}]}]
+        
+        使用示例：
+            >>> # 示例1：回归任务
+            >>> import torch
+            >>> template = Template(...)
+            >>> template.config.problem_type = 'regression'
+            >>> logits = torch.tensor([[2.3], [1.8], [3.5]])  # 形状: (3, 1)
+            >>> preds, logprobs = template.decode_seq_cls(logits, top_logprobs=5)
+            >>> print(preds)  # [2.3, 1.8, 3.5]
+            >>> print(logprobs)  # [None, None, None]
+            
+            >>> # 示例2：单标签分类任务
+            >>> template.config.problem_type = None  # 重置，让方法自动推断
+            >>> logits = torch.tensor([[0.2, 1.5, 0.1],   # 样本1，类别1最高
+            ...                        [2.0, 0.5, 0.8]])  # 样本2，类别0最高
+            >>> # logits形状: (2, 3) - 2个样本，3个类别
+            >>> preds, logprobs = template.decode_seq_cls(logits, top_logprobs=3)
+            >>> print(preds)  # [1, 0] - 预测类别索引
+            >>> print(len(logprobs))  # 2
+            >>> print(logprobs[0]['content'][0]['index'])  # 1（第一个样本预测类别1）
+            >>> # logprobs[0]包含top-3类别的概率分布
+            
+            >>> # 示例3：多标签分类任务
+            >>> logits = torch.tensor([[0.8, -0.2, 1.5],   # 样本1
+            ...                        [0.3, 0.9, -0.5]])  # 样本2
+            >>> # sigmoid后：[[0.69, 0.45, 0.82], [0.57, 0.71, 0.38]]
+            >>> # logits形状: (2, 3) - 2个样本，3个标签
+            >>> preds, logprobs = template.decode_seq_cls(logits, top_logprobs=3)
+            >>> print(preds)  # [[0, 2], [0, 1]] - 样本1预测标签0和2，样本2预测标签0和1
+            >>> # 阈值0.5：sigmoid值>=0.5的标签被预测为正类
+            
+            >>> # 示例4：批量处理
+            >>> logits = torch.randn(16, 10)  # 形状: (16, 10) - 16个样本，10个类别
+            >>> preds, logprobs = template.decode_seq_cls(logits, top_logprobs=5)
+            >>> print(len(preds))  # 16
+            >>> print(len(logprobs))  # 16
+            >>> print(type(preds[0]))  # <class 'int'>（单标签分类）
+        """
+        # ===== 步骤1：验证输入类型 =====
+        assert isinstance(logits, torch.Tensor)  # 确保logits是torch.Tensor类型
+        
+        # ===== 步骤2：推断问题类型 =====
+        # 根据logits的形状自动推断任务类型（回归/单标签分类/多标签分类）
         problem_type = self._get_problem_type(self.config, logits=logits)
-        if problem_type == 'regression':
+
+        # ===== 步骤3：根据问题类型解码logits =====
+        if problem_type == 'regression':  # 回归任务
+            # 处理回归任务的输出
+            # logits形状: (batch_size, 1)
+            # .squeeze(dim=-1): 移除最后一个维度，形状变为 (batch_size,)
+            # 例如：tensor([[2.3], [1.8], [3.5]]) -> tensor([2.3, 1.8, 3.5])
+            # .tolist(): 转换为Python列表
             preds = logits.squeeze(dim=-1).tolist()
+            
+            # 回归任务没有概率分布，创建None列表
             logprobs = [None] * len(preds)
-        else:
-            if problem_type == 'single_label_classification':
+        else:  # 分类任务（单标签或多标签）
+            if problem_type == 'single_label_classification':  # 单标签分类
+                # 单标签分类：每个样本选择概率最高的一个类别
+                # logits形状: (batch_size, num_classes)
+                # torch.argmax(logits, dim=-1): 沿最后一个维度（类别维度）取最大值的索引
+                # 例如：tensor([[0.2, 1.5, 0.1], [2.0, 0.5, 0.8]])
+                #       -> tensor([1, 0])（每个样本的最大值索引）
+                # .tolist(): 转换为Python列表
                 preds = torch.argmax(logits, dim=-1).tolist()
+                
+                # 计算对数概率分布
+                # torch.log_softmax(logits, -1): 沿最后一个维度计算log-softmax
+                # 形状保持不变: (batch_size, num_classes)
+                # log_softmax(x) = log(softmax(x)) = log(exp(x) / sum(exp(x)))
+                # 避免直接计算softmax再取log导致的数值不稳定
                 logprobs = torch.log_softmax(logits, -1)
-            else:
-                preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
+            else:  # 多标签分类 (problem_type == 'multi_label_classification')
+                # 多标签分类：每个样本可以选择多个类别
+                # logits形状: (batch_size, num_labels)
+                
+                # 对每个样本（每一行）单独处理
+                preds = []
+                for logprob in torch.sigmoid(logits):  # 遍历batch中的每个样本
+                    # logprob形状: (num_labels,) - 单个样本的sigmoid概率
+                    # torch.sigmoid: 将logits转换为概率 (0, 1)
+                    # (logprob >= 0.5): 应用阈值0.5，形状 (num_labels,)，布尔tensor
+                    # .nonzero(as_tuple=True)[0]: 获取True位置的索引
+                    # .tolist(): 转换为Python列表
+                    # 例如：logprob = tensor([0.69, 0.45, 0.82])
+                    #       -> (logprob >= 0.5) = tensor([True, False, True])
+                    #       -> 索引 [0, 2]（标签0和2被预测为正类）
+                    pred = (logprob >= 0.5).nonzero(as_tuple=True)[0].tolist()
+                    preds.append(pred)
+                
+                # 计算对数sigmoid概率
+                # F.logsigmoid(logits): 计算log(sigmoid(x))
+                # 形状: (batch_size, num_labels)
+                # logsigmoid(x) = log(1 / (1 + exp(-x))) = -log(1 + exp(-x))
                 logprobs = F.logsigmoid(logits)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
+
+            # ===== 步骤4：格式化概率信息（仅分类任务） =====
+            # 为每个样本生成详细的概率信息，包括top-k候选
+            # logprobs当前是tensor，形状: (batch_size, num_classes/num_labels)
+            # 遍历每个样本，调用_get_seq_cls_logprobs生成格式化的概率信息
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) 
+                       for i, pred in enumerate(preds)]
+            # 结果：List[Dict]，每个元素是包含预测和top-k概率的字典
+        
+        # ===== 步骤5：返回预测结果和概率信息 =====
         return preds, logprobs
 
     def decode(self,
                generate_ids: List[int],  # 生成的token ID序列：模型生成的完整token列表
-               *,  # 以下参数必须使用关键字传递
+               *,  # 关键字分隔符，以下参数必须使用关键字传递
                is_finished: bool = True,  # 生成是否已完成：True表示已结束，会跳过stop tokens
                tokenizer_kwargs=None,  # tokenizer.decode的额外参数：如skip_special_tokens等
                first_token=True,  # 是否为第一个token：True时会添加response_prefix
@@ -2517,68 +2741,513 @@ class Template(ProcessorMixin):
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
-
+    
     @contextmanager
     def generate_context(self):
-        origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+        """
+        函数功能：
+            生成模式的上下文管理器，用于在生成（推理）阶段临时切换模板的工作模式和多模态钩子状态。
+            该方法确保在执行生成操作期间，模板处于正确的推理模式（pt），并在多模态模型中临时移除
+            post_encode钩子以避免干扰推理过程。执行完成后，自动恢复原始模式和钩子状态。使用Python的
+            上下文管理器协议（with语句），保证资源的正确管理和状态恢复。
+        
+        返回值：
+            Generator: 上下文管理器生成器，使用yield暂停执行
+                - yield之前：保存原始状态，切换到生成模式，移除多模态钩子
+                - yield之后：恢复原始状态和钩子（在finally块中执行）
+        
+        使用示例：
+            >>> # 示例1：在训练模式下临时切换到生成模式
+            >>> template = Template(...)
+            >>> template.mode = 'train'  # 当前处于训练模式
+            >>> print(template.mode)  # 'train'
+            >>> 
+            >>> with template.generate_context():
+            ...     # 在此上下文中，template.mode自动切换为'pt'
+            ...     print(template.mode)  # 'pt'
+            ...     # 执行生成操作
+            ...     output = model.generate(input_ids, max_new_tokens=100)
+            >>> 
+            >>> # 退出上下文后，自动恢复原始模式
+            >>> print(template.mode)  # 'train'
+            
+            >>> # 示例2：多模态模型的生成
+            >>> template.model_meta.is_multimodal = True
+            >>> template.mode = 'rlhf'
+            >>> 
+            >>> # 在生成前，临时移除post_encode钩子
+            >>> with template.generate_context():
+            ...     # 此时post_encode钩子已被移除，不会干扰生成
+            ...     output = model.generate(input_ids, max_new_tokens=100)
+            >>> 
+            >>> # 退出后，钩子和模式都已恢复
+            >>> print(template.mode)  # 'rlhf'
+            
+            >>> # 示例3：推理模式下使用（mode='pt'，不需要切换）
+            >>> template.mode = 'pt'
+            >>> 
+            >>> with template.generate_context():
+            ...     # mode已经是'pt'，不会切换
+            ...     print(template.mode)  # 'pt'
+            ...     output = model.generate(input_ids, max_new_tokens=100)
+            >>> 
+            >>> print(template.mode)  # 'pt'（保持不变）
+            
+            >>> # 示例4：异常处理（即使发生异常也会恢复状态）
+            >>> template.mode = 'kto'
+            >>> 
+            >>> try:
+            ...     with template.generate_context():
+            ...         print(template.mode)  # 'pt'
+            ...         raise ValueError("模拟错误")
+            ... except ValueError:
+            ...     pass
+            >>> 
+            >>> # 即使发生异常，模式也已恢复
+            >>> print(template.mode)  # 'kto'
+        """
+        # ===== 步骤1：保存原始模式 =====
+        origin_mode = self.mode  # 保存当前的工作模式（train/rlhf/kto/gkd/pt等）
+        
+        # ===== 步骤2：切换到推理模式（如果需要） =====
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:  # 若当前处于训练相关模式
+            # 切换到推理模式（pt = pre-training/prediction/推理模式）
+            # 生成操作需要在推理模式下进行，训练模式会影响编码行为
             self.set_mode('pt')
-        is_multimodal = self.model_meta.is_multimodal
-        if is_multimodal:
+        
+        # ===== 步骤3：处理多模态模型的钩子 =====
+        is_multimodal = self.model_meta.is_multimodal  # 检查是否为多模态模型
+        if is_multimodal:  # 若是多模态模型
+            # 移除post_encode钩子（在生成阶段不需要这些钩子）
+            # post_encode钩子用于训练时的特殊处理，推理时会干扰正常生成
+            # 返回被移除钩子的模型列表，用于后续恢复
             models = self.remove_post_encode_hook()
+        
+        # ===== 步骤4：执行生成操作（yield暂停执行） =====
         try:
+            # yield: 暂停执行，返回控制权给with语句块
+            # with语句块中的代码在此处执行
             yield
+        # ===== 步骤5：清理和恢复（在finally块中确保执行） =====
         finally:
-            if is_multimodal:
+            # finally块保证无论是否发生异常，都会执行恢复操作
+            if is_multimodal:  # 若是多模态模型
+                # 重新注册post_encode钩子，恢复训练时的状态
+                # 使用之前保存的models列表
                 self.register_post_encode_hook(models)
+            # 恢复原始的工作模式
+            # 例如：从'pt'恢复回'train'或'rlhf'等
             self.set_mode(origin_mode)
 
     def generate(self, model, *args, **kwargs):
+        """
+        函数功能：
+            模型生成的包装方法，用于统一调用不同类型模型的generate方法。该方法自动处理特定模型
+            的generate参数兼容性问题，特别是针对支持use_model_defaults参数的模型（如某些transformers
+            版本或自定义模型），自动设置该参数为False以避免使用模型默认配置覆盖用户提供的生成参数。
+            该方法作为template和model.generate之间的桥梁，确保生成调用的一致性和兼容性。
+        
+        参数：
+            model: 模型对象，可能是原始模型或被包装的模型（如LoRA、PeftModel等）
+                包含generate方法用于文本生成
+                例如：AutoModelForCausalLM加载的模型实例
+            *args: 位置参数，直接传递给model.generate
+                通常包括：
+                - input_ids (torch.Tensor): 输入token序列，形状 (batch_size, seq_len)
+                - attention_mask (torch.Tensor): 注意力掩码，形状 (batch_size, seq_len)
+            **kwargs: 关键字参数，传递给model.generate
+                常见参数包括：
+                - max_new_tokens (int): 最大生成token数量
+                - temperature (float): 采样温度
+                - top_p (float): nucleus采样参数
+                - top_k (int): top-k采样参数
+                - do_sample (bool): 是否使用采样
+                - num_beams (int): beam search的beam数量
+                - generation_config: 生成配置对象
+                等其他transformers.GenerationMixin.generate支持的参数
+        
+        返回值：
+            torch.Tensor 或其他类型: 模型生成的结果，具体类型取决于model.generate的返回值
+                - 标准情况：torch.Tensor，形状 (batch_size, total_seq_len)
+                    包含输入token和新生成的token
+                    例如：tensor([[151644, 8948, 872, ...]])
+                - 特殊情况：可能返回GenerateOutput对象（当return_dict_in_generate=True时）
+                    包含sequences、scores等详细信息
+        
+        使用示例：
+            >>> # 示例1：基础生成
+            >>> from transformers import AutoModelForCausalLM, AutoTokenizer
+            >>> template = Template(...)
+            >>> model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
+            >>> tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
+            >>> 
+            >>> # 准备输入
+            >>> input_text = "你好，请介绍一下自己"
+            >>> input_ids = tokenizer.encode(input_text, return_tensors='pt')  # 形状: (1, seq_len)
+            >>> 
+            >>> # 使用template.generate调用
+            >>> output_ids = template.generate(model, input_ids, max_new_tokens=100, 
+            ...                                temperature=0.7, do_sample=True)
+            >>> # output_ids形状: (1, seq_len + new_tokens_len)
+            >>> 
+            >>> # 解码输出
+            >>> output_text = tokenizer.decode(output_ids[0])
+            >>> print(output_text)
+            
+            >>> # 示例2：批量生成
+            >>> input_ids = torch.tensor([[1, 2, 3], [4, 5, 6]])  # 形状: (2, 3)
+            >>> attention_mask = torch.ones_like(input_ids)  # 形状: (2, 3)
+            >>> 
+            >>> output_ids = template.generate(model, input_ids, attention_mask=attention_mask,
+            ...                                max_new_tokens=50, num_beams=5)
+            >>> # output_ids形状: (2, 3 + new_tokens_len)
+            
+            >>> # 示例3：使用generation_config
+            >>> from transformers import GenerationConfig
+            >>> generation_config = GenerationConfig(
+            ...     max_new_tokens=100,
+            ...     temperature=0.7,
+            ...     top_p=0.9,
+            ...     do_sample=True
+            ... )
+            >>> output_ids = template.generate(model, input_ids, 
+            ...                                generation_config=generation_config)
+            
+            >>> # 示例4：返回详细生成信息
+            >>> output = template.generate(model, input_ids, max_new_tokens=50,
+            ...                            return_dict_in_generate=True, output_scores=True)
+            >>> print(type(output))  # <class 'transformers.generation.GenerateOutput'>
+            >>> print(output.sequences.shape)  # (batch_size, total_seq_len)
+            >>> print(len(output.scores))  # 每个生成步骤的logits
+            
+            >>> # 示例5：LoRA模型的生成
+            >>> from peft import get_peft_model
+            >>> peft_model = get_peft_model(model, peft_config)  # 包装的模型
+            >>> # template.generate会自动处理包装模型，获取base_model
+            >>> output_ids = template.generate(peft_model, input_ids, max_new_tokens=100)
+        """
+        # ===== 步骤1：获取基础模型 =====
+        # 从可能被包装的模型（如LoRA、PeftModel）中提取原始的基础模型
+        # 某些包装模型的generate方法签名可能与基础模型不同
         base_model = self.get_base_model(model)
+        
+        # ===== 步骤2：检查基础模型的generate方法签名 =====
+        # 使用inspect获取基础模型generate方法的签名信息
+        # signature包含方法的所有参数信息（名称、类型、默认值等）
         signature = inspect.signature(base_model.generate)
+        
+        # ===== 步骤3：处理use_model_defaults参数（兼容性处理） =====
+        # 检查两个条件：
+        # 1. 基础模型的generate方法是否支持use_model_defaults参数
+        # 2. 用户是否已经在kwargs中提供了use_model_defaults参数
         if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
+            # 若模型支持该参数且用户未提供，则设置为False
+            # use_model_defaults=False: 不使用模型的默认配置，避免覆盖用户传入的参数
+            # 这确保用户通过kwargs传递的参数（如temperature、top_p等）能够生效
             kwargs['use_model_defaults'] = False
+        
+        # ===== 步骤4：调用模型的generate方法并返回结果 =====
+        # 注意：这里使用原始的model（可能是包装模型），而非base_model
+        # 因为包装模型（如PeftModel）可能对generate方法有特殊处理
+        # *args: 展开位置参数（如input_ids, attention_mask）
+        # **kwargs: 展开关键字参数（如max_new_tokens, temperature等）
         return model.generate(*args, **kwargs)
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
-        # Do not print template_meta.suffix[-1] and eos_token.
-        # However, other stop_words will be printed.
-        tokenizer = self.tokenizer
+        """
+        函数功能：
+            跳过（移除）生成序列末尾的停止token，包括EOS token和模板后缀token。该方法用于清理
+            模型生成的输出，移除不应该显示给用户的特殊token。根据生成是否完成（is_finished），
+            采用不同的处理策略：完成时移除完整的后缀token，未完成时移除部分匹配的后缀token（用于
+            流式生成场景）。注意：其他stop_words会被保留并打印，只移除suffix和eos_token。
+        
+        参数：
+            generate_ids (List[int]): 模型生成的token ID序列
+                包含完整的生成结果，可能包含EOS token和模板后缀
+                例如：[151644, 872, 151643, 151644, 2670, 151643]
+                      其中151643可能是<|im_end|>，需要被移除
+            is_finished (bool): 生成是否已完成，默认True
+                - True: 生成已完成，移除完整的后缀token序列
+                    例如：生成结束，移除完整的<|im_end|>
+                - False: 生成未完成（流式生成中），移除部分匹配的后缀token
+                    例如：流式输出时，可能只生成了后缀的一部分，需要移除这部分
+        
+        返回值：
+            List[int]: 清理后的token ID序列，移除了EOS token和模板后缀
+                例如：输入 [151644, 872, 151643]，后缀是[151643]
+                      输出 [151644, 872]（移除了后缀token）
+        
+        使用示例：
+            >>> # 示例1：生成完成，移除完整后缀
+            >>> template = Template(...)
+            >>> template.template_meta.suffix = [['<|im_end|>']]
+            >>> # 假设<|im_end|>的token ID是151643，eos_token_id是151645
+            >>> generate_ids = [151644, 8948, 872, 151643]  # 生成的序列
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
+            >>> print(result)  # [151644, 8948, 872]（移除了后缀151643）
+            
+            >>> # 示例2：生成完成，同时有EOS token和后缀
+            >>> generate_ids = [151644, 8948, 872, 151643, 151645]  # 末尾有eos_token
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
+            >>> print(result)  # [151644, 8948, 872]（移除了eos和后缀）
+            
+            >>> # 示例3：流式生成未完成，移除部分匹配的后缀
+            >>> # 假设后缀是[100, 101]（两个token）
+            >>> template.template_meta.suffix = [[100, 101]]
+            >>> generate_ids = [1, 2, 3, 100]  # 只生成了后缀的第一个token
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=False)
+            >>> print(result)  # [1, 2, 3]（移除了部分匹配的100）
+            
+            >>> # 示例4：流式生成未完成，没有后缀匹配
+            >>> generate_ids = [1, 2, 3, 4]  # 末尾不是后缀的任何部分
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=False)
+            >>> print(result)  # [1, 2, 3, 4]（不修改）
+            
+            >>> # 示例5：空序列
+            >>> generate_ids = []
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
+            >>> print(result)  # []（返回空列表）
+            
+            >>> # 示例6：多token后缀（如"\n</s>"）
+            >>> # 假设后缀是[198, 2]（换行符+</s>）
+            >>> template.template_meta.suffix = [[198, 2]]
+            >>> generate_ids = [1, 2, 3, 198, 2]  # 完整后缀
+            >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
+            >>> print(result)  # [1, 2, 3]（移除了两个token的后缀）
+        """
+        # 注释说明：
+        # - 不打印（移除）template_meta.suffix[-1]和eos_token
+        # - 但是，其他stop_words会被保留并打印
+        
+        # ===== 步骤1：获取tokenizer引用 =====
+        tokenizer = self.tokenizer  # 获取tokenizer对象，用于访问eos_token_id
 
+        # ===== 步骤2：移除末尾的EOS token（如果存在） =====
+        # 检查序列是否非空且最后一个token是eos_token
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
+            # 移除最后一个token（EOS token）
+            # 例如：[1, 2, 3, eos_id] -> [1, 2, 3]
             generate_ids = generate_ids[:-1]
-        # skip suffix and eos_token
+        
+        # ===== 步骤3：获取并处理模板后缀 =====
+        # 注释：跳过suffix和eos_token
+        # 获取模板后缀的最后一个元素（通常是结束标记，如<|im_end|>）
         template_suffix = self.template_meta.suffix[-1]
-        if isinstance(template_suffix, str):
-            # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
+        
+        if isinstance(template_suffix, str):  # 若后缀是字符串（尚未转换为token ID）
+            # 将后缀字符串编码为token ID列表
+            # add_special_tokens=False: 不添加特殊token（如BOS/EOS）
+            # [-1:]: 只取最后一个token（修复某些模型的兼容性问题）
+            # 注释：[-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
+            # 某些模型的后缀可能被编码为多个token，但只需要最后一个
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
+        
+        # ===== 步骤4：计算后缀长度 =====
+        len_tokens = len(template_suffix)  # 后缀包含的token数量
 
-        len_tokens = len(template_suffix)
+        # ===== 步骤5：根据生成状态移除后缀token =====
         if is_finished and generate_ids[-len_tokens:] == template_suffix:
+            # 情况1：生成已完成，且末尾完全匹配后缀
+            # generate_ids[-len_tokens:]: 获取末尾len_tokens个token
+            # 例如：generate_ids=[1,2,3,100,101], suffix=[100,101], len_tokens=2
+            #       -> generate_ids[-2:] = [100,101]，匹配成功
+            # 移除末尾的后缀token
             generate_ids = generate_ids[:-len_tokens]
+            # 结果：[1, 2, 3]
         elif not is_finished:
+            # 情况2：生成未完成（流式生成），可能只生成了后缀的一部分
+            # 需要检查并移除部分匹配的后缀
+            
+            # 从后缀的完整长度开始，逐渐减少，检查是否有部分匹配
+            # range(len_tokens, 0, -1): 从len_tokens到1，递减
+            # 例如：len_tokens=3 -> 遍历3, 2, 1
+            # range(start, stop, step) [start, stop)
             for i in range(len_tokens, 0, -1):
+                # 检查序列末尾的i个token是否匹配后缀的前i个token
+                # generate_ids[-i:]: 末尾i个token
+                # template_suffix[:i]: 后缀的前i个token
+                # 例如：i=2, generate_ids末尾=[100,101], suffix前2个=[100,101]
                 if generate_ids[-i:] == template_suffix[:i]:
+                    # 找到部分匹配，移除末尾的i个token
                     generate_ids = generate_ids[:-i]
-                    break
+                    break  # 找到匹配后立即退出循环
+                # 如果没有找到匹配，继续尝试更短的长度
+        
+        # ===== 步骤6：返回清理后的序列 =====
         return generate_ids
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
+        """
+        函数功能：
+            准备和配置模型生成所需的参数字典，主要负责设置停止词（stop words）的停止条件。该方法
+            从generation_config或template_meta中获取停止词列表，创建StopWordsCriteria停止判断器，
+            并将其添加到stopping_criteria列表中。这确保生成过程在遇到指定的停止词时能够正确终止，
+            避免生成不必要的内容。该方法是生成前的必要准备步骤，统一管理停止条件的配置。
+        
+        参数：
+            generate_kwargs (Dict[str, Any]): 生成参数字典，包含传递给model.generate的所有参数
+                必须包含的键：
+                - 'generation_config': GenerationConfig对象，包含生成配置
+                    可能包含stop_words属性（自定义停止词列表）
+                可能包含的其他键：
+                - 'max_new_tokens': 最大生成token数
+                - 'temperature': 采样温度
+                - 'top_p', 'top_k': 采样参数
+                - 'input_ids': 输入token序列
+                等其他生成参数
+            model (optional): 模型对象，当前版本未使用，预留参数
+                用于未来可能需要根据模型类型调整生成配置的场景
+        
+        返回值：
+            Dict[str, Any]: 更新后的生成参数字典，在原字典基础上添加了停止条件
+                新增或更新的键：
+                - 'stopping_criteria': StoppingCriteriaList对象
+                    包含StopWordsCriteria停止判断器
+                    在生成过程中检查是否遇到停止词
+                保留原有的所有其他键值对
+        
+        使用示例：
+            >>> # 示例1：基础使用，从template_meta获取停止词
+            >>> from transformers import GenerationConfig
+            >>> template = Template(...)
+            >>> template.template_meta.stop_words = ['<|im_end|>', '<|endoftext|>']
+            >>> 
+            >>> # 准备生成参数
+            >>> generation_config = GenerationConfig(max_new_tokens=100, temperature=0.7)
+            >>> generate_kwargs = {
+            ...     'generation_config': generation_config,
+            ...     'input_ids': torch.tensor([[1, 2, 3]]),
+            ...     'do_sample': True
+            ... }
+            >>> 
+            >>> # 准备生成参数，添加停止条件
+            >>> generate_kwargs = template.prepare_generate_kwargs(generate_kwargs)
+            >>> print('stopping_criteria' in generate_kwargs)  # True
+            >>> print(type(generate_kwargs['stopping_criteria']))  
+            # <class 'transformers.StoppingCriteriaList'>
+            
+            >>> # 示例2：generation_config包含自定义停止词（优先级更高）
+            >>> generation_config = GenerationConfig(max_new_tokens=100)
+            >>> generation_config.stop_words = ['STOP', 'END']  # 自定义停止词
+            >>> generate_kwargs = {
+            ...     'generation_config': generation_config,
+            ...     'input_ids': torch.tensor([[1, 2, 3]])
+            ... }
+            >>> 
+            >>> # 使用generation_config中的停止词（而非template_meta的）
+            >>> generate_kwargs = template.prepare_generate_kwargs(generate_kwargs)
+            >>> # 内部的StopWordsCriteria使用['STOP', 'END']作为停止词
+            
+            >>> # 示例3：与model.generate配合使用
+            >>> from transformers import AutoModelForCausalLM
+            >>> model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
+            >>> 
+            >>> # 准备输入和配置
+            >>> input_ids = tokenizer.encode("你好", return_tensors='pt')
+            >>> generation_config = GenerationConfig(max_new_tokens=50)
+            >>> generate_kwargs = {
+            ...     'generation_config': generation_config,
+            ...     'input_ids': input_ids
+            ... }
+            >>> 
+            >>> # 准备参数（添加停止条件）
+            >>> generate_kwargs = template.prepare_generate_kwargs(generate_kwargs)
+            >>> 
+            >>> # 生成（会在遇到停止词时自动停止）
+            >>> output_ids = model.generate(**generate_kwargs)
+            
+            >>> # 示例4：检查停止条件的内容
+            >>> generate_kwargs = template.prepare_generate_kwargs(generate_kwargs)
+            >>> stopping_criteria = generate_kwargs['stopping_criteria']
+            >>> print(len(stopping_criteria))  # 1（包含一个StopWordsCriteria）
+            >>> stop_words_criteria = stopping_criteria[0]
+            >>> print(type(stop_words_criteria))  
+            # <class 'swift.llm.template.utils.StopWordsCriteria'>
+        """
+        # ===== 步骤1：从generate_kwargs中提取generation_config =====
+        # generation_config包含所有生成相关的配置参数
+        # 例如：max_new_tokens, temperature, top_p等
         generation_config = generate_kwargs['generation_config']
+        
+        # ===== 步骤2：获取停止词列表（优先级：generation_config > template_meta） =====
+        # 使用getattr安全获取generation_config的stop_words属性
+        # - 若generation_config有stop_words属性且不为None，使用该值（优先级高）
+        # - 否则使用template_meta.stop_words作为默认值
+        # 停止词列表示例：['<|im_end|>', '<|endoftext|>', '</s>']
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
+        
+        # ===== 步骤3：创建停止条件列表并添加到generate_kwargs =====
+        # StoppingCriteriaList: transformers库的停止条件列表容器
+        # StopWordsCriteria: 自定义的停止词判断器，检查生成的token是否匹配停止词
+        # - 参数1：self.tokenizer - 用于将停止词编码为token ID
+        # - 参数2：stop_words - 停止词列表（字符串形式）
+        # StopWordsCriteria会在生成每个token后检查序列末尾是否出现停止词
+        # 若匹配到停止词，则终止生成过程
         generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
+        
+        # ===== 步骤4：返回更新后的generate_kwargs =====
+        # 返回的字典包含原有的所有参数，加上新添加的stopping_criteria
         return generate_kwargs
 
     @staticmethod
     def _save_pil_image(image: Image.Image) -> str:
+        """
+        函数功能：
+            将PIL.Image对象保存为临时PNG文件并返回文件路径。该方法使用图像内容的SHA256哈希值作为
+            文件名，确保相同内容的图像只保存一次（去重），避免重复存储。临时文件保存在ModelScope的
+            缓存目录下的'tmp/images'子目录中。该方法主要用于将内存中的PIL.Image对象持久化为文件，
+            以满足某些模型（如PyTorch原生模型、Qwen-VL）对图像输入格式为文件路径的要求。
+        
+        参数：
+            image (Image.Image): PIL.Image对象，需要保存的图像
+                - 可以是任意PIL支持的图像格式（RGB、RGBA、L等）
+                - 图像数据将被转换为字节流用于计算哈希值
+                - 最终以PNG格式保存（无损压缩）
+        
+        返回值：
+            str: 保存的图像文件的绝对路径
+                格式：<cache_dir>/tmp/images/<sha256_hash>.png
+                例如：'/home/user/.cache/modelscope/tmp/images/a1b2c3d4...png'
+                - 若文件已存在（相同内容的图像之前已保存），直接返回现有路径
+                - 若文件不存在，保存图像后返回新文件路径
+        """
+        # ===== 步骤1：将PIL.Image对象转换为字节流 =====
+        # tobytes(): 将图像的像素数据转换为原始字节序列
+        # 字节流包含所有像素的RGB/RGBA值，用于后续计算哈希值
         img_bytes = image.tobytes()
+        
+        # ===== 步骤2：计算图像内容的SHA256哈希值 =====
+        # hashlib.sha256(): 创建SHA256哈希对象
+        # hexdigest(): 返回16进制格式的哈希字符串（64个字符）
+        # 哈希值作为文件名，相同内容的图像生成相同哈希，实现自动去重
         img_hash = hashlib.sha256(img_bytes).hexdigest()
+        
+        # ===== 步骤3：构建临时图像存储目录路径 =====
+        # get_cache_dir(): 获取ModelScope缓存根目录（通常为~/.cache/modelscope）
+        # 临时图像目录结构：<cache_dir>/tmp/images/
         tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        
+        # ===== 步骤4：记录目录创建信息（仅首次记录） =====
+        # logger.info_once(): 确保相同的日志信息只输出一次，避免重复日志
         logger.info_once(f'create tmp_dir: {tmp_dir}')
+        
+        # ===== 步骤5：创建临时目录（如果不存在） =====
+        # exist_ok=True: 如果目录已存在不抛出异常，确保目录可用
         os.makedirs(tmp_dir, exist_ok=True)
+        
+        # ===== 步骤6：构建完整的图像文件路径 =====
+        # 文件名格式：<sha256_hash>.png
+        # 使用PNG格式保存，因为PNG是无损压缩格式，适合中间数据存储
         img_path = os.path.join(tmp_dir, f'{img_hash}.png')
-        if not os.path.exists(img_path):
+        
+        # ===== 步骤7：检查文件是否已存在，避免重复保存 =====
+        if not os.path.exists(img_path):  # 如果文件不存在（新图像或缓存已清理）
+            # 将PIL.Image对象保存为PNG文件
+            # image.save(): PIL的保存方法，根据文件扩展名自动选择格式
             image.save(img_path)
+        # 如果文件已存在，跳过保存步骤（利用哈希去重机制）
+        
+        # ===== 步骤8：返回图像文件的绝对路径 =====
         return img_path
 
     @staticmethod
@@ -2590,76 +3259,400 @@ class Template(ProcessorMixin):
             query: Optional[str] = None,
             response: Optional[str] = None,
             round0: Optional[int] = None) -> None:
-        """Concat context list and replace placeholder"""
+        """
+        函数功能：
+            拼接上下文列表并替换模板占位符。该方法遍历输入的上下文列表（context_list），将其中的
+            模板占位符（如{{SYSTEM}}、{{QUERY}}、{{RESPONSE}}等）替换为实际的内容（系统提示、
+            用户问题、助手回复等），并将处理后的结果追加到结果列表（res_context_list和
+            res_context_type）中。这是模板系统构建完整对话上下文的核心方法，通过占位符机制实现
+            灵活的模板定义和动态内容填充。该方法采用原地修改（inplace）方式，直接修改传入的结果
+            列表，不返回新列表。
+        
+        参数：
+            context_list (List[Context]): 输入的上下文列表，包含模板字符串或token列表
+                - Context类型为Union[str, List[int]]，即字符串或token ID列表
+                - 可能包含占位符：
+                  * '{{RESPONSE}}': 助手回复的占位符（完全匹配）
+                  * '{{SYSTEM}}': 系统提示的占位符（字符串内匹配）
+                  * '{{QUERY}}': 用户问题的占位符（字符串内匹配）
+                  * '{{ROUND0}}': 当前轮次索引（从0开始）的占位符
+                  * '{{ROUND1}}': 当前轮次编号（从1开始）的占位符
+                - 示例：['<|system|>', '{{SYSTEM}}', '<|user|>', '{{QUERY}}', '<|assistant|>']
+            
+            res_context_list (List[Context]): 结果上下文列表（原地修改）
+                - 函数会将处理后的上下文追加到此列表
+                - 占位符会被替换为实际内容
+                - 空内容（长度为0）会被跳过
+                - 调用前通常为空列表，函数执行后包含完整的上下文序列
+            
+            res_context_type (List[ContextType]): 结果上下文类型列表（原地修改）
+                - 与res_context_list一一对应，标记每个上下文的类型
+                - 可能的类型：
+                  * ContextType.RESPONSE: 助手回复内容（用于计算loss）
+                  * ContextType.OTHER: 其他内容（系统提示、用户问题、模板标签等）
+                - 用于后续的loss_scale计算和labels生成
+            
+            system (Optional[str]): 系统提示文本，用于替换{{SYSTEM}}占位符
+                - 默认为None（不替换）
+                - 示例：'You are a helpful assistant.'
+            
+            query (Optional[str]): 用户问题文本，用于替换{{QUERY}}占位符
+                - 默认为None（不替换）
+                - 示例：'请介绍一下Python语言'
+            
+            response (Optional[str]): 助手回复文本，用于替换{{RESPONSE}}占位符
+                - 默认为None（不替换）
+                - 若context_list包含'{{RESPONSE}}'但response为None，会触发断言错误
+                - 示例：'Python是一种高级编程语言...'
+            
+            round0 (Optional[int]): 当前对话轮次索引（从0开始）
+                - 用于替换{{ROUND0}}和{{ROUND1}}占位符
+                - round0为原始索引，round1 = round0 + 1为人类可读的轮次编号
+                - 默认为None（不替换轮次占位符）
+                - 示例：round0=0表示第一轮对话，会替换为'0'和'1'
+        
+        返回值：
+            None: 该方法无返回值，通过原地修改res_context_list和res_context_type实现结果传递
+        
+        使用示例：
+            >>> # 示例1：基础使用 - 替换系统提示和用户问题
+            >>> context_list = ['<|system|>', '{{SYSTEM}}', '<|user|>', '{{QUERY}}', '<|assistant|>']
+            >>> res_context_list = []
+            >>> res_context_type = []
+            >>> 
+            >>> Template._concat_context_list(
+            ...     context_list=context_list,
+            ...     res_context_list=res_context_list,
+            ...     res_context_type=res_context_type,
+            ...     system='You are a helpful assistant.',
+            ...     query='Hello, how are you?'
+            ... )
+            >>> 
+            >>> print(res_context_list)
+            # ['<|system|>', 'You are a helpful assistant.', '<|user|>', 'Hello, how are you?', '<|assistant|>']
+            >>> print(res_context_type)
+            # [ContextType.OTHER, ContextType.OTHER, ContextType.OTHER, ContextType.OTHER, ContextType.OTHER]
+            
+            >>> # 示例2：替换助手回复（训练场景）
+            >>> context_list = ['<|user|>', '{{QUERY}}', '<|assistant|>', '{{RESPONSE}}', '<|end|>']
+            >>> res_context_list = []
+            >>> res_context_type = []
+            >>> 
+            >>> Template._concat_context_list(
+            ...     context_list=context_list,
+            ...     res_context_list=res_context_list,
+            ...     res_context_type=res_context_type,
+            ...     query='What is AI?',
+            ...     response='AI stands for Artificial Intelligence.'
+            ... )
+            >>> 
+            >>> print(res_context_list)
+            # ['<|user|>', 'What is AI?', '<|assistant|>', 'AI stands for Artificial Intelligence.', '<|end|>']
+            >>> print(res_context_type)
+            # [ContextType.OTHER, ContextType.OTHER, ContextType.OTHER, ContextType.RESPONSE, ContextType.OTHER]
+            # 注意：response的类型为ContextType.RESPONSE，用于标记需要计算loss的部分
+        """
+        # ===== 步骤1：计算轮次编号（round1 = round0 + 1） =====
+        # round0: 轮次索引（从0开始），用于程序内部
+        # round1: 轮次编号（从1开始），用于用户可读的显示
         round1 = None
-        if round0 is not None:
-            round1 = str(round0 + 1)
-            round0 = str(round0)
+        if round0 is not None:  # 如果提供了轮次索引
+            # 将整数转换为字符串，便于后续字符串替换
+            round1 = str(round0 + 1)  # 第一轮对话：round0=0, round1='1'
+            round0 = str(round0)       # round0='0'
+        
+        # ===== 步骤2：遍历上下文列表，替换占位符并追加到结果列表 =====
         for context in context_list:
-            if isinstance(context, str):
-                if '{{RESPONSE}}' == context:
+            # ===== 步骤2.1：处理字符串类型的上下文（需要替换占位符） =====
+            if isinstance(context, str):  # 如果是字符串（而非token ID列表）
+                # ===== 步骤2.1.1：特殊处理{{RESPONSE}}占位符 =====
+                # {{RESPONSE}}必须完全匹配，且单独作为一个上下文元素
+                if '{{RESPONSE}}' == context:  # 完全相等判断（不是字符串包含）
+                    # 断言response参数不为None，否则无法替换
                     assert response is not None
+                    # 将助手回复追加到结果列表
                     res_context_list.append(response)
+                    # 标记类型为RESPONSE，用于后续loss计算（仅对回复部分计算loss）
                     res_context_type.append(ContextType.RESPONSE)
+                    # 跳过后续处理，进入下一个context
                     continue
+                
+                # ===== 步骤2.1.2：替换其他占位符（支持字符串内包含） =====
+                # 定义需要替换的占位符列表和对应的实际值列表
                 old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}']
                 new_str_list = [system, query, round0, round1]
+                
+                # 遍历所有占位符，执行字符串替换
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
+                    # 只有当新值不为None且占位符存在于字符串中时才替换
                     if new_str is not None and old_str in context:
+                        # 断言new_str必须是字符串类型（因为round0/round1已转为字符串）
                         assert isinstance(new_str, str), f'new_str: {new_str}'
+                        # 执行字符串替换
+                        # 示例：'User {{ROUND0}}: {{QUERY}}' -> 'User 0: Hello'
                         context = context.replace(old_str, new_str)
+            
+            # ===== 步骤2.2：跳过空内容 =====
+            # 如果替换后的内容为空字符串或空列表，跳过不添加
             if len(context) == 0:
                 continue
+            
+            # ===== 步骤2.3：将处理后的上下文追加到结果列表 =====
             res_context_list.append(context)
+            # 标记类型为OTHER（非RESPONSE的所有内容）
+            # 注意：{{RESPONSE}}的类型在步骤2.1.1中已设置为RESPONSE，不会执行到这里
             res_context_type.append(ContextType.OTHER)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
-        """Merge anything in the context to simplify the inputs"""
+        """
+        函数功能：
+            简化和优化上下文列表，通过预处理和合并操作提高编码效率。该方法执行三个核心步骤：
+            (1) 分割特殊标签（如<image>、<video>、<audio>），将包含特殊标签的字符串拆分为多个独立
+            的上下文元素，便于后续的标签替换操作；
+            (2) 预分词处理（pre_tokenize），将特殊标签替换为模型所需的实际内容或token ID（如将
+            <image>替换为图像token序列）；
+            (3) 合并相邻的字符串上下文，将具有相同loss_scale的连续字符串合并为单个字符串，减少
+            上下文元素数量，降低后续tokenization的调用次数，提高处理效率。
+            
+            该方法是编码流程中的重要优化步骤，在保持语义和loss_scale不变的前提下，最小化上下文
+            列表的长度，为后续的_encode_context_list方法提供更高效的输入格式。
+        
+        参数：
+            context_list (List[Context]): 输入的上下文列表
+                - Context类型为Union[str, List[int]]，即字符串或token ID列表
+                - 可能包含特殊标签（如<image>、<video>、<audio>）
+                - 可能包含多个相邻的字符串片段
+                - 示例：['<|system|>', 'You are helpful', '<image>', 'Describe this', [1, 2, 3]]
+            
+            loss_scale_list (List[float]): loss权重列表
+                - 与context_list一一对应，每个上下文元素有一个loss_scale值
+                - loss_scale=0.0表示不参与loss计算（如系统提示、用户问题）
+                - loss_scale=1.0表示正常参与loss计算（如助手回复）
+                - 可以有其他值表示不同的权重（如0.5表示半权重）
+                - 示例：[0.0, 0.0, 0.0, 1.0, 1.0]（前3个不计算loss，后2个计算loss）
+            
+            inputs (StdTemplateInputs): 标准模板输入对象
+                - 包含messages（对话消息列表）
+                - 包含多模态数据（images、videos、audios等）
+                - 用于_pre_tokenize方法进行标签替换和内容填充
+                - 提供上下文信息用于特殊标签的处理
+        
+        返回值：
+            Tuple[List[Context], List[float]]: 简化后的上下文列表和对应的loss_scale列表
+                - 第一个元素：简化后的上下文列表
+                  * 特殊标签已被分割和替换
+                  * 相邻的同loss_scale字符串已被合并
+                  * 列表长度通常小于输入的context_list
+                  * 示例：['<|system|>You are helpful', [image_tokens], 'Describe this', [1, 2, 3]]
+                - 第二个元素：对应的loss_scale列表
+                  * 与简化后的上下文列表一一对应
+                  * 长度与简化后的上下文列表相同
+                  * 示例：[0.0, 0.0, 1.0, 1.0]（合并后元素减少）
+        
+        使用示例：
+            >>> # 示例1：合并相邻的相同loss_scale字符串
+            >>> template = Template(...)
+            >>> context_list = ['Hello', ' ', 'world', '!', '<image>', 'Describe']
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+            >>> inputs = StdTemplateInputs(messages=[...], images=['image.jpg'])
+            >>> 
+            >>> simplified_context, simplified_loss = template._simplify_context_list(
+            ...     context_list, loss_scale_list, inputs
+            ... )
+            >>> print(simplified_context)
+            # ['Hello world!', [image_token_ids], 'Describe']
+            # 注意：前4个相同loss_scale的字符串被合并为1个
+            >>> print(simplified_loss)
+            # [0.0, 0.0, 1.0]
+            
+            >>> # 示例2：处理包含token ID列表的上下文
+            >>> context_list = ['System: ', 'Be helpful', [151643], 'User: ', 'Hello']
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 0.0, 1.0]
+            >>> inputs = StdTemplateInputs(messages=[...])
+            >>> 
+            >>> simplified_context, simplified_loss = template._simplify_context_list(
+            ...     context_list, loss_scale_list, inputs
+            ... )
+            >>> print(simplified_context)
+            # ['System: Be helpful', [151643], 'User: ', 'Hello']
+            # 注意：token ID列表([151643])不能与字符串合并，所以前2个字符串合并，
+            #       后面的'User: '和'Hello'因loss_scale不同而未合并
+            >>> print(simplified_loss)
+            # [0.0, 0.0, 0.0, 1.0]
+        """
+        # ===== 步骤1：分割特殊标签（如<image>、<video>、<audio>） =====
+        # _split_special_tokens方法将包含特殊标签的字符串拆分为多个元素
+        # 例如：'Hello<image>world' -> ['Hello', '<image>', 'world']
+        # 这样可以单独处理特殊标签，便于后续的replace_tag操作
         context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+
+        # ===== 步骤2：预分词处理（替换特殊标签为实际内容/token） =====
+        # _pre_tokenize方法将特殊标签替换为模型所需的内容
+        # 例如：'<image>' -> [image_token_ids]（模型的图像token序列）
+        #       '<video>' -> [video_token_ids]
+        # 同时处理grounding任务的bbox归一化、object/box标签替换等
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
-        res: List[Context] = []  # result of context_list
-        res_loss_scale: List[float] = []  # result of loss_scale_list
-        temp: List[str] = []
-        temp_loss_scale = 0.
+        # ===== 步骤3：合并相邻的同loss_scale字符串 =====
+        # 初始化结果列表
+        res: List[Context] = []  # 简化后的上下文列表
+        res_loss_scale: List[float] = []  # 简化后的loss_scale列表
+        
+        # 初始化临时缓冲区（用于累积相邻的字符串）
+        temp: List[str] = []  # 临时存储待合并的字符串片段
+        temp_loss_scale = 0.  # 当前临时缓冲区的loss_scale值
+        
+        # ===== 步骤3.1：遍历上下文列表，合并相邻的字符串 =====
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
+            # ===== 条件1：可以合并到临时缓冲区 =====
+            # 当前context是字符串 且 loss_scale与缓冲区的loss_scale相同
             if isinstance(context, str) and (loss_scale == temp_loss_scale):
+                # 将字符串添加到临时缓冲区，等待后续合并
                 temp.append(context)
+            
+            # ===== 条件2：不能合并（需要刷新缓冲区） =====
             else:
+                # ===== 步骤3.1.1：刷新临时缓冲区（如果非空） =====
                 if len(temp) > 0:
+                    # 将缓冲区中的所有字符串合并为一个字符串
+                    # 例如：['Hello', ' ', 'world'] -> 'Hello world'
                     res.append(''.join(temp))
+                    # 添加对应的loss_scale
                     res_loss_scale.append(temp_loss_scale)
+                    # 清空缓冲区，准备下一轮累积
                     temp.clear()
-                if isinstance(context, str):  # loss_scale diff
+                
+                # ===== 步骤3.1.2：处理当前context =====
+                if isinstance(context, str):  # 当前是字符串，但loss_scale不同
+                    # 将当前字符串加入临时缓冲区（开始新的累积）
                     temp.append(context)
-                else:
+                else:  # 当前是token ID列表（不能合并）
+                    # 直接添加到结果列表
                     res.append(context)
                     res_loss_scale.append(loss_scale)
+                
+                # 更新临时缓冲区的loss_scale为当前值
                 temp_loss_scale = loss_scale
+        
+        # ===== 步骤3.2：处理剩余的临时缓冲区 =====
+        # 遍历结束后，如果临时缓冲区还有内容，需要刷新
         if len(temp) > 0:
+            # 合并并添加到结果列表
             res.append(''.join(temp))
             res_loss_scale.append(temp_loss_scale)
-
         return res, res_loss_scale
 
     @staticmethod
     def _split_special_tokens(context_list: List[Context],
                               loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
-        """Split special tokens, for example `<image>`, `<video>`, this will help the replace_tag operation"""
-        res: List[Context] = []
-        loss_scale_res: List[float] = []
+        """
+        函数功能：
+            分割字符串中的特殊标签，将包含特殊标签的字符串拆分为多个独立的上下文元素。该方法识别
+            并提取字符串中的特殊标签（如<image>、<video>、<audio>等），将每个特殊标签和其周围的
+            文本内容分离为独立的上下文元素，便于后续的replace_tag操作进行标签替换。例如，将
+            'Hello<image>world'拆分为['Hello', '<image>', 'world']三个独立元素。这种拆分使得
+            特殊标签可以被单独识别和处理，为多模态数据的标签替换提供基础。
+            
+            该方法仅处理字符串类型的上下文，对于token ID列表类型的上下文（已经是token形式）则
+            保持不变。拆分后的所有元素继承原上下文的loss_scale值，确保loss权重在拆分过程中不会丢失。
+        
+        参数：
+            context_list (List[Context]): 输入的上下文列表
+                - Context类型为Union[str, List[int]]，即字符串或token ID列表
+                - 字符串类型的上下文可能包含特殊标签（需要拆分）
+                - token ID列表类型的上下文不需要拆分（已经是token形式）
+                - 示例：['Hello<image>world', [1, 2, 3], 'Text<video>']
+            
+            loss_scale_list (List[float]): loss权重列表
+                - 与context_list一一对应，每个上下文元素有一个loss_scale值
+                - 拆分后，所有拆分出的元素继承原元素的loss_scale值
+                - 示例：[0.0, 1.0, 0.5]
+        
+        返回值：
+            Tuple[List[Context], List[float]]: 拆分后的上下文列表和对应的loss_scale列表
+                - 第一个元素：拆分后的上下文列表
+                  * 字符串中的特殊标签已被分离为独立元素
+                  * 列表长度通常大于输入的context_list（因为拆分）
+                  * 空字符串和空标签会被过滤掉
+                  * 示例：['Hello', '<image>', 'world', [1, 2, 3], 'Text', '<video>']
+                - 第二个元素：对应的loss_scale列表
+                  * 与拆分后的上下文列表一一对应
+                  * 拆分出的元素继承原元素的loss_scale值
+                  * 示例：[0.0, 0.0, 0.0, 1.0, 0.5, 0.5]（第1个元素拆分为3个，都是0.0）
+        
+        使用示例：
+            >>> # 示例1：拆分包含单个特殊标签的字符串
+            >>> context_list = ['Hello<image>world', 'Some text']
+            >>> loss_scale_list = [0.0, 1.0]
+            >>> 
+            >>> res_context, res_loss = Template._split_special_tokens(context_list, loss_scale_list)
+            >>> print(res_context)
+            # ['Hello', '<image>', 'world', 'Some text']
+            # 第1个元素被拆分为3个独立元素：文本-标签-文本
+            >>> print(res_loss)
+            # [0.0, 0.0, 0.0, 1.0]
+            # 拆分出的3个元素都继承原来的loss_scale=0.0
+            
+            >>> # 示例2：拆分包含多个特殊标签的字符串，并混合token列表
+            >>> context_list = ['Image:<image>Video:<video>End', [151643, 151644], 'Audio:<audio>']
+            >>> loss_scale_list = [0.0, 1.0, 0.5]
+            >>> 
+            >>> res_context, res_loss = Template._split_special_tokens(context_list, loss_scale_list)
+            >>> print(res_context)
+            # ['Image:', '<image>', 'Video:', '<video>', 'End', [151643, 151644], 'Audio:', '<audio>']
+            # 第1个元素拆分为5个，第2个是token列表不拆分，第3个拆分为2个
+            >>> print(res_loss)
+            # [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
+            # 注意：token列表([151643, 151644])保持不变，loss_scale也保持为1.0
+        """
+        # ===== 初始化结果列表 =====
+        res: List[Context] = []  # 拆分后的上下文列表
+        loss_scale_res: List[float] = []  # 拆分后的loss_scale列表
+
+        # ===== 遍历上下文列表，对每个元素进行拆分处理 =====
         for context, loss_scale in zip(context_list, loss_scale_list):
+            # 初始化临时列表，存储当前context的拆分结果
             contexts = []
+            
+            # ===== 判断当前context是否为字符串类型 =====
+            # fetch_one: 从嵌套结构中提取第一个元素（支持str、list、tuple等）
+            # 如果context是字符串或包含字符串的结构，返回该字符串
+            # 如果context是token ID列表（如[1, 2, 3]），返回整数，isinstance检查为False
             if isinstance(fetch_one(context), str):
+                # ===== 字符串类型：需要拆分特殊标签 =====
+                # split_str_parts_by: 按照特殊标签列表拆分字符串
+                # Template.special_tokens: ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', ...]
+                # 返回格式：[{'key': '<image>', 'content': 'text1'}, {'key': '', 'content': 'text2'}, ...]
+                #   - 'key': 匹配到的特殊标签（如'<image>'），若无匹配则为空字符串
+                #   - 'content': 标签后的文本内容或标签本身
                 for d in split_str_parts_by(context, Template.special_tokens):
+                    # 将'key'（特殊标签）和'content'（文本内容）按顺序添加到列表
+                    # 例如：'Hello<image>world' -> [{'key': '', 'content': 'Hello'}, 
+                    #                                 {'key': '<image>', 'content': '<image>'},
+                    #                                 {'key': '', 'content': 'world'}]
+                    # extend后：['', 'Hello', '<image>', '<image>', '', 'world']
                     contexts.extend([d['key'], d['content']])
+                
+                # ===== 过滤空字符串和空标签 =====
+                # 列表推导式：仅保留非空元素（c为真值）
+                # 过滤掉空字符串''，只保留有内容的文本和特殊标签
+                # 例如：['', 'Hello', '<image>', '<image>', '', 'world'] 
+                #       -> ['Hello', '<image>', '<image>', 'world']
                 contexts = [c for c in contexts if c]
-                res.extend(contexts)
+                
+                # ===== 将拆分结果添加到结果列表 =====
+                res.extend(contexts)  # 扩展上下文列表
+                # 为拆分出的每个元素分配相同的loss_scale值（继承原元素的loss_scale）
+                # [loss_scale] * len(contexts): 创建长度为contexts的loss_scale副本列表
+                # 例如：如果loss_scale=0.5，contexts有3个元素，则添加[0.5, 0.5, 0.5]
                 loss_scale_res.extend([loss_scale] * len(contexts))
             else:
+                # ===== 非字符串类型（token ID列表）：不需要拆分 =====
+                # 直接添加到结果列表，保持原样
                 res.append(context)
                 loss_scale_res.append(loss_scale)
+        
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
@@ -2688,7 +3681,7 @@ class Template(ProcessorMixin):
             return self.video_placeholder
         elif media_type == 'audio':
             return self.audio_placeholder
-
+    
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
@@ -2738,70 +3731,157 @@ class Template(ProcessorMixin):
 
     def _pre_tokenize_images(self, context_list: List[Context], loss_scale_list: List[float],
                              inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
-        # https://github.com/modelscope/ms-swift/issues/3407
-        # Fix the bounding box position offset issue in the Qwen2.5-VL grounding task.
-        res: List[Context] = []
-        res_loss_scale: List[float] = []
-        inputs.image_idx = 0
+        """
+        函数功能：
+            预分词阶段替换图像标签为模型所需的实际内容或token。遍历上下文列表，将'<image>'标签替换为
+            图像占位符token（如特殊token ID或占位符字符串），同时根据模板后端类型调整图像token的loss_scale。
+            该方法解决了Qwen2.5-VL grounding任务中bbox位置偏移问题（见issue #3407），确保图像标签在
+            分词前被正确替换，避免后续token位置计算错误。
+        
+        参数：
+            context_list (List[Context]): 上下文列表，可能包含'<image>'标签
+            loss_scale_list (List[float]): 与context_list对应的loss权重列表
+            inputs (StdTemplateInputs): 模板输入对象，包含images等多模态数据
+        
+        返回值：
+            Tuple[List[Context], List[float]]: (替换后的上下文列表, 对应的loss_scale列表)
+        
+        使用示例：
+            >>> # 示例1：替换单个图像标签
+            >>> template = Template(...)
+            >>> context_list = ['Describe this', '<image>', 'in detail']
+            >>> loss_scale_list = [0.0, 0.0, 1.0]
+            >>> inputs = StdTemplateInputs(images=['img.jpg'], ...)
+            >>> res_context, res_loss = template._pre_tokenize_images(context_list, loss_scale_list, inputs)
+            >>> # res_context: ['Describe this', '<image_placeholder>', 'in detail']
+            >>> # res_loss: [0.0, 0.0, 1.0]（swift后端下图像token的loss_scale为0.0）
+            
+            >>> # 示例2：多个图像标签
+            >>> context_list = ['Image1:', '<image>', 'Image2:', '<image>']
+            >>> loss_scale_list = [0.0, 0.0, 0.0, 0.0]
+            >>> inputs = StdTemplateInputs(images=['img1.jpg', 'img2.jpg'], ...)
+            >>> res_context, res_loss = template._pre_tokenize_images(context_list, loss_scale_list, inputs)
+            >>> # 第1个<image>替换为img1的占位符，第2个<image>替换为img2的占位符
+        """
+        # 参考：https://github.com/modelscope/ms-swift/issues/3407
+        # 修复Qwen2.5-VL grounding任务中的bbox位置偏移问题
+        res: List[Context] = []  # 替换后的上下文列表
+        res_loss_scale: List[float] = []  # 替换后的loss_scale列表
+        inputs.image_idx = 0  # 初始化图像索引，用于追踪当前处理到第几张图像
 
         for context, loss_scale in zip(context_list, loss_scale_list):
+            # 判断是否需要替换图像标签：context是'<image>' 且 是多模态输入 且 还有未处理的图像
             if context == '<image>' and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
-                c_list = self.replace_tag('image', inputs.image_idx, inputs)
-                inputs.image_idx += 1
+                c_list = self.replace_tag('image', inputs.image_idx, inputs)  # 替换为图像占位符token
+                inputs.image_idx += 1  # 图像索引递增，指向下一张图像
+                # 根据模板后端调整loss_scale：swift后端图像token不计算loss(0.)，其他后端正常计算(1.)
                 loss_scale = 0. if self.template_backend == 'swift' else 1.
             else:
-                c_list = [context]
-            res += c_list
-            res_loss_scale += [loss_scale] * len(c_list)
+                c_list = [context]  # 非图像标签或无图像数据，保持原context
+            res += c_list  # 添加到结果列表
+            res_loss_scale += [loss_scale] * len(c_list)  # 为替换后的所有token分配相同的loss_scale
         return res, res_loss_scale
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
-        """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
-        the model.
-
-        Args:
-            context_list: The content list
-            loss_scale_list: The loss scale list
-        Returns:
-            The context_list and loss_scale_list after replacement.
         """
+        函数功能：
+            预分词阶段将标准标签替换为模型所需的实际内容或token ID。该方法是多模态和特殊任务的核心
+            预处理步骤，负责替换所有特殊标签：<image>、<video>、<audio>（多模态标签）、<ref-object>、
+            <bbox>（grounding任务标签）、<cot-process>（PRM任务标签）。替换后的内容可能是占位符
+            字符串、token ID列表或格式化的坐标字符串。该方法确保在tokenization之前，所有特殊标签都
+            已转换为模型可理解的格式，避免标签被错误地当作普通文本分词。
+        
+        参数：
+            context_list (List[Context]): 上下文列表，可能包含各种特殊标签（<image>、<video>等）
+            loss_scale_list (List[float]): 与context_list对应的loss权重列表
+            inputs (StdTemplateInputs): 模板输入对象，包含多模态数据(images、videos、audios)和
+                                       grounding数据(objects中的ref、bbox)
+        
+        返回值：
+            Tuple[List[Context], List[float]]: (替换后的上下文列表, 对应的loss_scale列表)
+                - 替换后的上下文列表中，特殊标签已被替换为占位符、token ID或格式化字符串
+                - loss_scale列表已根据替换结果调整（多模态token通常为0.0，不参与loss计算）
+        
+        使用示例：
+            >>> # 示例1：多模态标签替换
+            >>> template = Template(...)
+            >>> context_list = ['Describe', '<image>', 'and', '<video>']
+            >>> loss_scale_list = [0.0, 0.0, 1.0, 1.0]
+            >>> inputs = StdTemplateInputs(images=['img.jpg'], videos=['video.mp4'], ...)
+            >>> res_context, res_loss = template._pre_tokenize(context_list, loss_scale_list, inputs)
+            >>> # res_context: ['Describe', '<image_placeholder>', 'and', '<video_placeholder>']
+            >>> # res_loss: [0.0, 0.0, 1.0, 0.0]（多模态token的loss_scale被设为0.0）
+            
+            >>> # 示例2：grounding任务的标签替换
+            >>> context_list = ['Object at', '<bbox>', 'is referred as', '<ref-object>']
+            >>> loss_scale_list = [1.0, 1.0, 1.0, 1.0]
+            >>> inputs = StdTemplateInputs(
+            ...     images=['img.jpg'],
+            ...     objects={'bbox': [[100, 200, 300, 400]], 'ref': ['person']},
+            ...     ...
+            ... )
+            >>> res_context, res_loss = template._pre_tokenize(context_list, loss_scale_list, inputs)
+            >>> # res_context: ['Object at', '[100,200,300,400]', 'is referred as', 'person']
+            >>> # <bbox>被替换为归一化后的坐标字符串，<ref-object>被替换为引用对象名称
+        """
+        # 首先处理图像标签替换
         context_list, loss_scale_list = self._pre_tokenize_images(context_list, loss_scale_list, inputs)
+        
+        # 如果同时存在图像和objects数据，归一化bbox坐标（用于grounding任务）
         if inputs.images and inputs.objects:
             self.normalize_bbox(inputs)
-        # replace tag/object/box
-        res: List[Context] = []  # result of context_list
-        res_loss_scale: List[float] = []  # result of loss_scale_list
+        
+        # 初始化结果列表
+        res: List[Context] = []  # 替换后的上下文列表
+        res_loss_scale: List[float] = []  # 替换后的loss_scale列表
 
-        # reset
+        # 重置各类多模态和特殊标签的索引计数器（video_idx、audio_idx、object_idx、box_idx）
         for k in ['video', 'audio', 'object', 'box']:
             setattr(inputs, f'{k}_idx', 0)
 
+        # 遍历上下文列表，逐个处理每个context
         for context, loss_scale in zip(context_list, loss_scale_list):
+            # 尝试替换视频和音频标签（<video>和<audio>）
             for k in ['video', 'audio']:
+                # 检查三个条件：1)context是对应标签 2)是多模态输入 3)还有未处理的数据
                 if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
                         getattr(inputs, f'{k}s')):
+                    # 调用replace_tag方法替换为占位符或token ID
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
+                    # 索引递增，指向下一个video/audio数据
                     setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
+                    # 多模态token的loss_scale设为0.0（不参与loss计算）
                     loss_scale = 0.
-                    break
+                    break  # 匹配成功，跳出内层循环
             else:
+                # for循环未break（未匹配到video/audio标签），尝试替换grounding和PRM标签
+                # 获取ref和bbox列表（grounding任务的引用对象和边界框）
                 ref = inputs.objects.get('ref') or []
                 bbox = inputs.objects.get('bbox') or []
+                
                 if context == '<ref-object>' and inputs.ref_idx < len(ref):
+                    # 替换<ref-object>标签为实际的引用对象名称
                     idx = inputs.ref_idx
                     c_list = self.replace_ref(ref[idx], idx, inputs)
                     inputs.ref_idx += 1
                 elif context == '<bbox>' and inputs.bbox_idx < len(bbox):
+                    # 替换<bbox>标签为格式化的边界框坐标字符串
                     idx = inputs.bbox_idx
                     c_list = self.replace_bbox(bbox[idx], idx, inputs)
                     inputs.bbox_idx += 1
                 elif context == '<cot-process>' and self.task_type == 'prm':
+                    # 替换<cot-process>标签为PRM任务的思维链过程标签
                     c_list = self.replace_cot_process(inputs)
                 else:
+                    # 不是任何特殊标签，保持原context不变
                     c_list = [context]
+            
+            # 将替换结果添加到结果列表
             res += c_list
+            # 为替换后的所有元素分配相同的loss_scale（通常替换后只有1个元素）
             res_loss_scale += [loss_scale] * len(c_list)
+        
         return res, res_loss_scale
 
     @staticmethod
@@ -3154,124 +4234,330 @@ class Template(ProcessorMixin):
             messages.append({'role': 'assistant', 'content': None})  # inference
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
+        """
+        函数功能：
+            使用Jinja模板后端编码对话消息，调用tokenizer的apply_chat_template方法将消息列表转换为
+            格式化的文本。该方法是HuggingFace标准的模板应用方式，适用于支持Jinja模板的tokenizer（如
+            Qwen、LLaMA等主流模型）。相比于Swift自定义后端，Jinja后端更简洁，直接使用tokenizer内置
+            的对话模板，但灵活性较低。该方法会自动处理system消息的插入、空消息的移除、以及生成提示
+            符的添加，返回格式化的文本字符串供后续分词使用。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含对话消息、系统提示、工具定义等信息
+                - inputs.messages: 对话消息列表，每条消息包含'role'和'content'字段
+                - inputs.system: 可选的系统提示文本
+                - inputs.tools: 可选的工具定义列表（用于function calling）
+        
+        返回值：
+            Tuple[List[str], List[float], int]: (文本列表, loss_scale列表, 答案长度)
+                - 第一个元素: [text]，包含单个格式化文本字符串的列表
+                - 第二个元素: [1.]，loss_scale为1.0（Jinja后端下统一为1.0，不区分prompt和answer）
+                - 第三个元素: answer_len，训练模式下为1，推理模式下为0
+        
+        使用示例：
+            >>> # 示例1：基础对话编码（训练模式）
+            >>> template = Template(..., template_backend='jinja')
+            >>> template.mode = 'train'
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[
+            ...         {"role": "user", "content": "Hello"},
+            ...         {"role": "assistant", "content": "Hi there!"}
+            ...     ]
+            ... )
+            >>> text_list, loss_scale, answer_len = template._jinja_encode(inputs)
+            >>> print(text_list)
+            # ['<|user|>\nHello<|assistant|>\nHi there!']（具体格式取决于tokenizer的模板）
+            >>> print(loss_scale)  # [1.]
+            >>> print(answer_len)  # 1（训练模式）
+            
+            >>> # 示例2：带系统提示和工具的编码（推理模式）
+            >>> template.mode = 'pt'
+            >>> inputs = StdTemplateInputs(
+            ...     system="You are a helpful assistant",
+            ...     messages=[{"role": "user", "content": "What's the weather?"}],
+            ...     tools=[{"type": "function", "function": {"name": "get_weather", ...}}]
+            ... )
+            >>> text_list, loss_scale, answer_len = template._jinja_encode(inputs)
+            >>> # system消息被插入到messages开头，tools参数传递给apply_chat_template
+            >>> print(answer_len)  # 0（推理模式）
+        """
+        # 复制消息列表，避免修改原始输入数据
+        # NOTE: 浅拷贝，复制最外层容器（list 或 dict），但内部的元素（如字典、对象等）仍是原对象的引用。
         messages = inputs.messages.copy()
+        
+        # 如果提供了system提示，将其作为第一条消息插入到messages开头
         if inputs.system is not None:
             messages.insert(0, {'role': 'system', 'content': inputs.system})
+        
+        # 如果最后一条消息的content为None，则移除（通常是推理时的空assistant消息占位符）
         if messages[-1]['content'] is None:
             messages.pop()
+        
+        # 判断是否需要添加生成提示符：最后一条消息不是assistant时需要添加（推理模式）
+        # 若最后一条是user消息，add_generation_prompt=True会添加assistant前缀提示生成
         add_generation_prompt = messages[-1]['role'] != 'assistant'
+        
+        # 初始化额外参数字典，用于传递给apply_chat_template
         kwargs = {}
+        
+        # 如果提供了tools（工具定义），添加到kwargs中（用于function calling场景）
         if inputs.tools:
             kwargs['tools'] = inputs.tools
+        
+        # 调用tokenizer的apply_chat_template方法，将消息列表转换为格式化文本
+        # tokenize=False: 返回文本字符串而非token ID（后续会统一分词）
+        # add_generation_prompt: 是否添加生成提示符（如'<|assistant|>'）
+        # **kwargs: 传递tools等额外参数
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
+        
+        # 计算答案长度：训练模式下为1（表示有答案部分），推理模式下为0（无答案）
+        # Jinja后端下answer_len用于标识是否处于训练模式，但不精确计算实际答案token数
         answer_len = 1 if self.is_training else 0
+        
+        # 返回：[text]文本列表, [1.]统一的loss_scale, answer_len答案长度标识
+        # Jinja后端下loss_scale统一为1.0，不像Swift后端那样区分prompt(0.0)和answer(1.0)
         return [text], [1.], answer_len
 
     def _get_system(self, inputs) -> Optional[str]:
+        """
+        函数功能：
+            获取并处理系统提示（system prompt）。该方法负责确定最终使用的系统提示内容，处理逻辑包括：
+            验证用户提供的系统提示是否符合模板要求、使用默认系统提示（如果用户未提供）、以及在使用
+            工具（tools）时通过agent_template格式化工具定义并整合到系统提示中。该方法是编码流程中
+            system prompt准备的核心环节，确保系统提示既符合模板规范又包含必要的工具信息。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象
+                - inputs.system: 用户提供的系统提示文本（可能为None）
+                - inputs.tools: 工具定义列表，用于function calling（可能为None）
+                - inputs.messages: 对话消息列表，用于agent模板格式化时的上下文
+        
+        返回值：
+            Optional[str]: 处理后的系统提示文本
+                - 若用户提供了system且未使用tools，返回用户的system（经过验证）
+                - 若用户未提供system，返回template_meta.default_system（可能为None）
+                - 若使用了tools，返回格式化后的系统提示（包含工具定义和原system内容）
+                - 可能返回None（当无默认系统提示且用户未提供时）
+        
+        使用示例：
+            >>> # 示例1：使用默认系统提示
+            >>> template = Template(...)
+            >>> template.template_meta.default_system = "You are a helpful assistant"
+            >>> inputs = StdTemplateInputs(messages=[...])  # 未提供system
+            >>> system = template._get_system(inputs)
+            >>> print(system)  # "You are a helpful assistant"
+            
+            >>> # 示例2：使用自定义系统提示和工具
+            >>> inputs = StdTemplateInputs(
+            ...     system="You are a weather assistant",
+            ...     messages=[{"role": "user", "content": "What's the weather?"}],
+            ...     tools=[{"type": "function", "function": {"name": "get_weather", ...}}]
+            ... )
+            >>> system = template._get_system(inputs)
+            >>> # system包含格式化的工具定义和原系统提示，格式由agent_template决定
+            >>> print(system)
+            # "You are a weather assistant\n\n# Tools\n\n## get_weather\n..."
+        """
+        # 获取模板元数据对象，包含模板配置和默认值
         template_meta = self.template_meta
+        
+        # 获取用户提供的系统提示（可能为None）
         system = inputs.system
+        
+        # 获取工具定义列表（可能为None）
         tools = inputs.tools
+        
+        # 验证系统提示是否符合模板要求（某些模板不支持system或有特定格式要求）
         template_meta.check_system(system)
+        
+        # 如果用户未提供系统提示，使用模板的默认系统提示
         if system is None:
             system = template_meta.default_system
 
+        # 如果提供了工具定义，使用agent模板格式化工具信息并整合到系统提示中
         if tools is not None:
+            # _format_tools方法将工具列表格式化为文本描述，并与原系统提示合并
+            # 参数：tools（工具列表）、system or ''（原系统提示或空串）、messages[0]（首条消息作为上下文）
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
     def _swift_prepare_inputs(self, inputs):
-        messages = inputs.messages
-        if len(messages) < 2:
+        """
+        函数功能：
+            预处理Swift后端的输入消息，规范化消息序列格式。该方法处理两类特殊情况：
+            (1)合并assistant后的多个连续tool消息并格式化工具调用结果；
+            (2)合并相同角色的连续消息（assistant连续或user连续）以避免模板解析错误。
+            这些规范化操作确保消息序列符合对话模板的要求，支持function calling和多轮对话的正确编码。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含messages消息列表，该方法会原地修改messages
+        
+        返回值：
+            None: 该方法原地修改inputs.messages，无返回值
+        
+        使用示例：
+            >>> # 示例1：合并连续的tool消息
+            >>> inputs = StdTemplateInputs(messages=[
+            ...     {"role": "assistant", "content": "调用工具"},
+            ...     {"role": "tool", "content": "结果1"},
+            ...     {"role": "tool", "content": "结果2"}
+            ... ])
+            >>> template._swift_prepare_inputs(inputs)
+            >>> # messages变为：[assistant消息(格式化后), 合并的tool消息]
+            
+            >>> # 示例2：合并相同角色的连续消息
+            >>> inputs = StdTemplateInputs(messages=[
+            ...     {"role": "user", "content": "你好"},
+            ...     {"role": "user", "content": "请回答"}
+            ... ])
+            >>> template._swift_prepare_inputs(inputs)
+            >>> # messages变为：[{"role": "user", "content": "你好请回答"}]
+        """
+        messages = inputs.messages  # 获取消息列表
+        if len(messages) < 2:  # 少于2条消息无需处理
             return
-        i = 1
+        
+        i = 1  # 从第2条消息开始遍历（需要比较前后消息）
         while i < len(messages):
-            pre_message, message = messages[i - 1], messages[i]
-            pre_role, pre_content = pre_message['role'], pre_message['content']
-            role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool':
-                i_start = i
+            pre_message, message = messages[i - 1], messages[i]  # 获取当前消息和前一条消息
+            pre_role, pre_content = pre_message['role'], pre_message['content']  # 前一条消息的角色和内容
+            role, content = message['role'], message['content']  # 当前消息的角色和内容
+            if pre_role == 'assistant' and role == 'tool':  # 情况1：assistant后跟tool消息（工具调用场景）
+                i_start = i  # 记录tool消息序列的起始位置
+                # 收集所有连续的tool消息
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
+                # 格式化assistant的工具调用和tool消息序列，返回更新后的assistant内容和合并的tool内容
                 pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
+                # 将多个tool消息替换为单个合并后的tool消息
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
-                i = i_start + 1
+                i = i_start + 1  # 移动到合并后tool消息的下一位置
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
-                # Consecutive messages from the assistant/user role need to be merged to prevent errors.
-                pre_message['content'] = pre_content + content
-                messages.pop(i)
-            else:
+                # 情况2：相同角色的连续消息（assistant连续或user连续），需要合并避免模板解析错误
+                pre_message['content'] = pre_content + content  # 将当前消息内容追加到前一条消息
+                messages.pop(i)  # 删除当前消息（已合并）
+                # i不变，因为删除了当前位置的消息，下一个消息自动移到了当前位置
+            else:  # 其他情况：正常的消息序列，继续遍历
                 i += 1
 
     def _swift_encode(self, inputs: StdTemplateInputs):
-        template_meta = self.template_meta
-        self._swift_prepare_inputs(inputs)
-        system = self._get_system(inputs)
+        """
+        函数功能：
+            使用Swift自定义后端编码对话消息，构建完整的上下文列表和loss权重列表。该方法是Swift后端的核心
+            编码逻辑，负责将结构化的对话消息转换为模板格式的上下文序列，处理包括：系统提示插入、BOS/EOS
+            token添加、多轮对话拼接、工具调用格式化、后置系统提示、loss_scale权重分配等。
+            相比Jinja后端，Swift后端提供更精细的控制（如区分prompt和answer的loss_scale），支持复杂的对话模板和多模态标签处理。
+        
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含messages、system、tools等信息
+        
+        返回值：
+            Tuple[List[Context], List[float], int]: (上下文列表, loss_scale列表, 答案长度)
+                - 第一个元素: res_context_list，上下文列表，包含字符串和token ID列表
+                - 第二个元素: loss_scale_list，与上下文列表对应的loss权重列表
+                - 第三个元素: answer_len，答案部分的上下文元素数量，训练模式下计算，推理模式下为0
+        
+        使用示例：
+            >>> # 示例1：单轮对话编码（训练模式）
+            >>> template = Template(..., template_backend='swift')
+            >>> template.mode = 'train'
+            >>> inputs = StdTemplateInputs(
+            ...     messages=[
+            ...         {"role": "user", "content": "你好"},
+            ...         {"role": "assistant", "content": "你好！有什么可以帮助你的？"}
+            ...     ]
+            ... )
+            >>> context_list, loss_scale, answer_len = template._swift_encode(inputs)
+            >>> # context_list包含：[BOS token, system前缀, 用户消息, assistant消息, suffix]
+            >>> # loss_scale对应每个context的权重，用户消息为0.0，assistant消息为1.0
+            
+            >>> # 示例2：多轮对话with工具调用（推理模式）
+            >>> template.mode = 'pt'
+            >>> inputs = StdTemplateInputs(
+            ...     system="你是一个助手",
+            ...     messages=[
+            ...         {"role": "user", "content": "查询天气"},
+            ...         {"role": "assistant", "content": "调用get_weather"},
+            ...         {"role": "tool", "content": "晴天"},
+            ...         {"role": "user", "content": "谢谢"}
+            ...     ],
+            ...     tools=[...]
+            ... )
+            >>> context_list, loss_scale, answer_len = template._swift_encode(inputs)
+            >>> # 多轮对话被正确拼接，tool消息被格式化，answer_len=0（推理模式）
+        """
+        template_meta = self.template_meta  # 获取模板元数据
+        self._swift_prepare_inputs(inputs)  # 预处理输入消息（合并连续tool消息和相同角色消息）
+        system = self._get_system(inputs)  # 获取并处理系统提示
 
-        self._get_std_messages(inputs.messages)
-        n_round = len(inputs.messages) // 2
-        if n_round > 1 and not self.template_meta.support_multi_round:
+        self._get_std_messages(inputs.messages)  # 标准化消息格式（确保偶数条消息，补充空消息）
+        n_round = len(inputs.messages) // 2  # 计算对话轮次
+        if n_round > 1 and not self.template_meta.support_multi_round:  # 检查模板是否支持多轮对话
             logger.warning_once(
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
-            inputs.messages = inputs.messages[-2:]
+            inputs.messages = inputs.messages[-2:]  # 仅保留最后一轮对话
 
-        res_context_list: List[Context] = []
-        res_context_types: List[ContextType] = []
-        sep_token = None
-        if template_meta.auto_add_bos:
-            all_tokens = self.tokenizer.encode('a')
-            single_token = self.tokenizer.encode('a', add_special_tokens=False)
-            assert len(single_token) == 1
-            idx = all_tokens.index(single_token[0])
-            bos_token = all_tokens[:idx]
-            sep_token = all_tokens[idx + 1:]
-            if bos_token:
-                res_context_list.append(bos_token)
-                res_context_types.append(ContextType.OTHER)
-
+        res_context_list: List[Context] = []  # 初始化结果上下文列表
+        res_context_types: List[ContextType] = []  # 初始化上下文类型列表
+        sep_token = None  # 分隔token，用于auto_add_bos模式
+        if template_meta.auto_add_bos:  # 如果需要自动添加BOS token
+            # 通过编码单个字符'a'来提取BOS和EOS token
+            all_tokens = self.tokenizer.encode('a')  # 完整编码（包含特殊token）
+            single_token = self.tokenizer.encode('a', add_special_tokens=False)  # 仅字符编码
+            assert len(single_token) == 1  # 确保单字符编码为单个token
+            idx = all_tokens.index(single_token[0])  # 找到字符token在完整编码中的位置
+            bos_token = all_tokens[:idx]  # 提取BOS token（字符前的token）
+            sep_token = all_tokens[idx + 1:]  # 提取分隔/EOS token（字符后的token）
+            if bos_token:  # 如果存在BOS token
+                res_context_list.append(bos_token)  # 添加到上下文列表开头
+                res_context_types.append(ContextType.OTHER)  # 标记为OTHER类型
+        
+        # 选择前缀类型：后置系统提示或无系统提示时使用普通prefix，否则使用system_prefix
         if self.template_meta.is_post_system or not system:
             prefix = template_meta.prefix
         else:
             prefix = template_meta.system_prefix
-        self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
+        self._concat_context_list(prefix, res_context_list, res_context_types, system=system)  # 添加前缀和系统提示
 
-        n_round = len(inputs.messages) // 2
+        n_round = len(inputs.messages) // 2  # 重新计算对话轮次（可能已被截断）
+        # 遍历每一轮对话（user-assistant配对）
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
-            query_role, query = query_message['role'], query_message['content']
-            response_role, response = response_message['role'], response_message['content']
-            # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'
-            assert response_role in {'assistant'}, f'response_role: {response_role}'
-            if query_role == 'tool':
-                prompt = query
-                query = ''
-            elif template_meta.is_post_system and i == n_round - 1:
-                prompt = template_meta.system_prompt
-            else:
-                prompt = template_meta.prompt
+            query_role, query = query_message['role'], query_message['content']  # 提取问题的角色和内容
+            response_role, response = response_message['role'], response_message['content']  # 提取回复的角色和内容
+            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'  # 验证问题角色
+            assert response_role in {'assistant'}, f'response_role: {response_role}'  # 验证回复角色
+            
+            # 根据不同情况选择prompt模板
+            if query_role == 'tool':  # 工具调用结果作为输入
+                prompt = query  # tool内容作为prompt（已格式化）
+                query = ''  # query置空
+            elif template_meta.is_post_system and i == n_round - 1:  # 后置系统提示且是最后一轮
+                prompt = template_meta.system_prompt  # 使用system_prompt模板
+            else:  # 普通对话轮次
+                prompt = template_meta.prompt  # 使用标准prompt模板
 
-            context_list = prompt.copy()
-            extra_context_list = []
-            extra_context_type = None
-            if i < n_round - 1:
-                # Not the last round.
-                context_list.append('{{RESPONSE}}')
-                if inputs.messages[2 * (i + 1)]['role'] != 'tool':
-                    extra_context_list = template_meta.chat_sep
+            context_list = prompt.copy()  # 复制prompt模板作为当前轮次的上下文列表
+            extra_context_list = []  # 额外的上下文列表（用于轮次间分隔符或后缀）
+            extra_context_type = None  # 额外上下文的类型
+            
+            if i < n_round - 1:  # 非最后一轮对话
+                context_list.append('{{RESPONSE}}')  # 添加响应占位符
+                if inputs.messages[2 * (i + 1)]['role'] != 'tool':  # 下一轮不是tool消息
+                    extra_context_list = template_meta.chat_sep  # 添加对话分隔符
                     extra_context_type = ContextType.OTHER
-            elif response is not None:
-                # It is the final round, and the response exists (during training).
-                context_list.append('{{RESPONSE}}')
-                # self.is_training needed because we may want to continue generation from
-                # the current response
+            elif response is not None:  # 最后一轮且存在响应（训练模式）
+                context_list.append('{{RESPONSE}}')  # 添加响应占位符
+                # 训练模式且非auto_add_bos，或embedding任务时添加后缀
                 if self.is_training and not sep_token or self.task_type == 'embedding':
-                    extra_context_list = template_meta.suffix
+                    extra_context_list = template_meta.suffix  # 添加后缀（如EOS token）
                     extra_context_type = ContextType.SUFFIX
-            elif template_meta.response_prefix:
-                # final round and during inference.
-                context_list.append(template_meta.response_prefix)
+            elif template_meta.response_prefix:  # 最后一轮且推理模式
+                context_list.append(template_meta.response_prefix)  # 添加响应前缀（引导生成）
 
+
+            # 拼接当前轮次的上下文，替换占位符
             self._concat_context_list(
                 context_list,
                 res_context_list,
@@ -3280,16 +4566,23 @@ class Template(ProcessorMixin):
                 response=response,
                 system=system,
                 round0=i)
-            res_context_list += extra_context_list
+            res_context_list += extra_context_list  # 添加额外上下文（分隔符或后缀）
             res_context_types += [extra_context_type] * len(extra_context_list)
+        
+        # 如果auto_add_bos且存在sep_token，在末尾添加（某些模型的特殊处理）
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
+        
+        # 根据上下文类型计算loss_scale权重列表
         res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
+
+        # 计算答案部分长度：训练模式下统计extra_context和response，推理模式下为0
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
             answer_len = 0
+        
         return res_context_list, loss_scale_list, answer_len
 
     def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
@@ -3656,8 +4949,6 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):  # 使用list()避免在迭代时修改字典
                 if k.endswith('labels') or k.endswith('loss_scale'):  # 若键名以labels或loss_scale结尾
                     encoded[k] = None  # 设置为None（推理时不需要这些字段）
-        
-        # ===== 步骤10：返回编码结果 =====
         return encoded
 
     def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
