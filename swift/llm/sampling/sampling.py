@@ -29,9 +29,6 @@ class SwiftSampling(SwiftPipeline):
         if self.args.sampler_type == 'sample':
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
-        elif self.args.sampler_type == 'mcts':
-            from swift.llm.sampling.mcts import MctsSampler
-            self.sampler = MctsSampler(self.args)
         elif self.args.sampler_type == 'distill':
             from swift.llm.sampling.distill_sampler import DistillSampler
             self.sampler = DistillSampler(self.args)
@@ -76,18 +73,18 @@ class SwiftSampling(SwiftPipeline):
 
         dataset = self._get_dataset()
         dataset_len = len(dataset)
-        total_iters = int(dataset_len // self.args.num_sampling_per_gpu_batch_size)
+        total_iters = int(dataset_len // self.args.num_sampling_batch_size)
 
-        if self.args.num_sampling_per_gpu_batches is None or self.args.num_sampling_per_gpu_batches > total_iters:
-            self.args.num_sampling_per_gpu_batches = total_iters
+        if self.args.num_sampling_batches is None or self.args.num_sampling_batches > total_iters:
+            self.args.num_sampling_batches = total_iters
 
         with open(tmp_file, write_mode) as f:
-            for _index in range(self.args.num_sampling_per_gpu_batches):
+            for _index in range(self.args.num_sampling_batches):
                 if _index <= index_resume:
                     continue
                 logger.info(f' Sampling index:{_index}')
-                slices = dataset[self.args.num_sampling_per_gpu_batch_size
-                                 * _index:self.args.num_sampling_per_gpu_batch_size * (_index + 1)]
+                slices = dataset[self.args.num_sampling_batch_size * _index:self.args.num_sampling_batch_size
+                                 * (_index + 1)]
                 slices = self.sampler.truncate_input(slices)
                 generated = self.sampler.do_sample(slices)
                 f.writelines(generated)
