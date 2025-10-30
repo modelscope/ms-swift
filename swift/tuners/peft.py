@@ -95,8 +95,8 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
 
     if isinstance(target_modules, str) and not any(
         [name in target.__class__.__name__.lower()
-         for name in all_supported_names]) and not any(
-            [isinstance(target, type_) for type_ in all_supported_types]) and not target_parameters:
+         for name in all_supported_names]) and not any([isinstance(target, type_)
+                                                        for type_ in all_supported_types]) and not target_parameters:
         return
 
     if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
