@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -187,6 +187,30 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
 
+    @RayHelper.function(group='default')
+    def _compute_log_probs(self, batch):
+        compte_ref_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
+        with torch.no_grad(), compte_ref_context_manager, self.null_ref_context():
+            ref_model_output = self.concatenated_forward(self.model, batch, is_ref_model=True)
+            return ref_model_output["chosen_logps"], ref_model_output["rejected_logps"]
+
+    @RayHelper.function(group='ref')
+    def _compute_ref_log_probs(self, batch):
+        compte_ref_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
+        with torch.no_grad(), compte_ref_context_manager:
+            ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
+            return ref_model_output["chosen_logps"], ref_model_output["rejected_logps"]
+
+    def compute_ref_log_probs(self, batch: dict[str, torch.LongTensor]) -> dict:
+        if self.args.ref_model is None:
+            return self._compute_log_probs(batch)
+        else:
+            return self._compute_ref_log_probs(batch)
+
     def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
         """Generate samples from the model and reference model for the given batch of inputs."""
 
@@ -228,6 +252,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         ref_output_decoded = self.processing_class.batch_decode(ref_output, skip_special_tokens=True)
 
         return policy_output_decoded, ref_output_decoded
+
+    @contextmanager
+    def null_ref_context(self):
+        """Context manager for handling null reference model (that is, peft adapter manipulation)."""
+        with (
+            self.accelerator.unwrap_model(self.model).disable_adapter()
+            if self.is_peft_model and not self.ref_adapter_name
+            else nullcontext()
+        ):
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.ref_adapter_name)
+            yield
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.model_adapter_name or "default")
 
     @RayHelper.function(group='ref')
     def generate_from_ref(self, batch):
