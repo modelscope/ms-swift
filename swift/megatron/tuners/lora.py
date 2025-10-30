@@ -455,14 +455,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         if origin_device.type == 'cpu':
             self.to(device=origin_device)
 
-    def __getattr__(self, key: str):
-        try:
-            return super().__getattr__(key)
-        except AttributeError:
-            if 'base_layer' in dir(self):
-                return getattr(self.base_layer, key)
-            raise
-
 
 def dispatch_megatron(
     target: torch.nn.Module,

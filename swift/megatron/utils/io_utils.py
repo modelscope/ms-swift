@@ -75,8 +75,13 @@ class SafetensorLazyLoader:
 
 class StreamingSafetensorSaver:
 
-    def __init__(self, save_dir, max_shard_size='5GB', save_rank: Literal['master', 'last'] = 'last') -> None:
-        # max_shard_size: GiB
+    def __init__(
+        self,
+        save_dir,
+        max_shard_size: str = '5GB',
+        save_rank: Literal['master', 'last'] = 'last',
+        is_peft_format: bool = False,
+    ) -> None:
         self.save_dir = save_dir
         if isinstance(max_shard_size, str):
             if max_shard_size.endswith('GB'):
@@ -90,6 +95,7 @@ class StreamingSafetensorSaver:
         self.shard_index = 1
         self.weight_map = {}
         self.is_save_rank = is_last_rank() if save_rank == 'last' else is_master()
+        self.is_peft_format = is_peft_format
         if self.is_save_rank:
             os.makedirs(save_dir, exist_ok=True)
 
@@ -97,7 +103,8 @@ class StreamingSafetensorSaver:
         if not self.is_save_rank:
             return
         tensor_size = tensor.numel() * tensor.element_size()
-        if self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard:
+        if (self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard
+                and not self.is_peft_format):
             self._save_current_shard()
 
         self.current_shard[name] = tensor.cpu().contiguous()

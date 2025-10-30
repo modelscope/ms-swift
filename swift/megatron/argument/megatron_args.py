@@ -96,6 +96,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mlp_padding_free: bool = False
     load_hf_checkpoint: bool = False
     save_hf_checkpoint: bool = False
+    merge_lora: Optional[bool] = None
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
@@ -456,6 +457,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.position_embedding_type is None:
             self.position_embedding_type = 'rope'
+        if self.merge_lora is None:
+            self.merge_lora = self.save_hf_checkpoint
         self._init_moe()
         self._init_mixed_precision()
 
