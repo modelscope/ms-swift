@@ -265,7 +265,8 @@ class RayHelper:
                     _config = config
                     break
 
-            assert _config is not None
+            if _config is None:
+                continue
             local_groups = _config['workers']
 
             VISIBLE_ENV_MAPPING = {

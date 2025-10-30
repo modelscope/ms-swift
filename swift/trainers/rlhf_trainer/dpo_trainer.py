@@ -67,7 +67,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.model_adapter_name = None
         self.reference_free = args.reference_free
         self.use_weighting = False
-
+        import ray; ray.util.pdb.set_trace()
         super().__init__(model, ref_model, *_args, **kwargs)
 
         if 'bco_pair' in loss_types:
