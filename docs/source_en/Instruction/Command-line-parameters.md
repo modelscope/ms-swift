@@ -516,6 +516,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - sft_alpha: The default value is 0. It controls the weight of sft_loss added in GKD. The final loss is `gkd_loss + sft_alpha * sft_loss`.
 - seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
   - Note: You can perform inference on the dataset using the teacher model in advance (accelerated by inference engines such as vLLM, SGLang, or lmdeploy), and set `seq_kd` to False during training. Alternatively, you can set `seq_kd` to True, which will use the teacher model to generate sequences during training (ensuring different generated data across multiple epochs, but at a slower efficiency).
+- offload_teacher_model: Whether to offload the teacher model. If set to True, the teacher model will be loaded only during generate/logps computation. Default: False.
 
 #### Reward/Teacher Model Parameters
 
