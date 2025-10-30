@@ -734,7 +734,8 @@ class BaseMegatronTrainer(ABC):
             if args.train_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
             output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-            self.bridge.save_weights(self.unwrapped_models, output_dir)
+            save_peft_format = args.train_type == 'lora' and not args.merge_lora
+            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
             if is_last_rank():
                 args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
                 if os.path.exists(args_path):

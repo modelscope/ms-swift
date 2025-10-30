@@ -23,8 +23,9 @@ class LazyTensor:
 
 class SafetensorLazyLoader:
 
-    def __init__(self, hf_model_dir: str):
+    def __init__(self, hf_model_dir: str, is_peft_format: bool = False):
         self.hf_model_dir = hf_model_dir
+        self.is_peft_format = is_peft_format
         self._weight_map = {}
         self._file_handles = {}
         self._load_index()
@@ -45,12 +46,16 @@ class SafetensorLazyLoader:
                 self._index_file = json.load(f)
                 self._weight_map = self._index_file.get('weight_map', {})
         else:
+            if self.is_peft_format:
+                safetensors_fname = 'adapter_model.safetensors'
+            else:
+                safetensors_fname = 'model.safetensors'
             # Single file model
-            safetensors_file = os.path.join(self.hf_model_dir, 'model.safetensors')
+            safetensors_file = os.path.join(self.hf_model_dir, safetensors_fname)
             if os.path.exists(safetensors_file):
                 with safe_open(safetensors_file, framework='pt') as f:
                     for key in f.keys():
-                        self._weight_map[key] = 'model.safetensors'
+                        self._weight_map[key] = safetensors_fname
 
     def get_state_dict(self):
         res = {}
