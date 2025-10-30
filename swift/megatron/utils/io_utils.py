@@ -114,7 +114,10 @@ class StreamingSafetensorSaver:
         if not self.current_shard:
             return
         if shard_filename is None:
-            shard_filename = f'model-{self.shard_index:05d}-of-?????.safetensors'
+            if self.is_peft_format:
+                shard_filename = 'adapter_model.safetensors'
+            else:
+                shard_filename = f'model-{self.shard_index:05d}-of-?????.safetensors'
         shard_path = os.path.join(self.save_dir, shard_filename)
         save_file(self.current_shard, str(shard_path))
         for key in self.current_shard.keys():
@@ -130,6 +133,8 @@ class StreamingSafetensorSaver:
             return
         if self.current_shard:
             self._save_current_shard()
+        if self.is_peft_format:
+            return
         total_shards = self.shard_index - 1
         # rename `?????`
         for i in range(1, total_shards + 1):
@@ -142,12 +147,13 @@ class StreamingSafetensorSaver:
             if os.path.exists(old_path):
                 os.rename(old_path, new_path)
 
-        updated_weight_map = {}
-        for key, filename in self.weight_map.items():
-            new_filename = filename.replace('?????', f'{total_shards:05d}')
-            updated_weight_map[key] = new_filename
+        if total_shards > 1:
+            updated_weight_map = {}
+            for key, filename in self.weight_map.items():
+                new_filename = filename.replace('?????', f'{total_shards:05d}')
+                updated_weight_map[key] = new_filename
 
-        self._save_index(updated_weight_map)
+            self._save_index(updated_weight_map)
 
     def _save_index(self, weight_map):
         index = {'metadata': {'total_size': self.total_size}, 'weight_map': weight_map}
