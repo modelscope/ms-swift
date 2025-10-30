@@ -173,13 +173,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             datasets[i] = dataset
         self._show_dataset(*datasets)
         return datasets
-    
+
     @RayHelper.function(group='default')
-    def tune_model(self, train_dataset):
+    def run(self):
+        args = self.args
+        train_dataset, val_dataset = self._prepare_dataset()
+
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
             logger.info(f'args.problem_type: {args.problem_type}')
         args.save_args()
+
+        data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')
@@ -187,12 +192,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
 
-    @RayHelper.function(group='default')
-    def run(self):
-        args = self.args
-        train_dataset, val_dataset = self._prepare_dataset()
-
-        data_collator = self._get_data_collator()
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
             model=self.model,
