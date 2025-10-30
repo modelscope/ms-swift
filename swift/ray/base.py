@@ -35,6 +35,43 @@ class RayHelper:
 
     device_groups: Dict[str, Any] = None
 
+    _registry = None
+
+    @staticmethod
+    def _init_registry():
+        if RayHelper._registry is not None:
+            return
+
+        import ray
+
+        @ray.remote
+        class WorkerRegistry:
+            def __init__(self):
+                self.workers = {}
+
+            def register_workers(self, group: str, worker_handles: List):
+                self.workers[group] = worker_handles
+
+            def get_workers(self, group: Optional[str] = None):
+                if group:
+                    return self.workers.get(group, [])
+                return self.workers
+
+            def get_all_workers(self):
+                return self.workers
+
+            def clear(self):
+                self.workers.clear()
+
+        try:
+            RayHelper._registry = ray.get_actor("swift_worker_registry")
+        except ValueError:
+            RayHelper._registry = WorkerRegistry.options(
+                name="swift_worker_registry",
+                lifetime="detached",
+                namespace="default"
+            ).remote()
+
     @staticmethod
     def initialize(device_groups: Dict[str, Any]):
         """Initialize RayHelper.
@@ -53,12 +90,22 @@ class RayHelper:
         if RayHelper.resource_manager is None:
             # Resource manager initialize only once in the pipeline process.
             RayHelper.resource_manager = ResourceManager(device_groups)
+        RayHelper._init_registry()
 
     @staticmethod
     def teardown():
         if RayHelper.resource_manager is not None:
             RayHelper.resource_manager.destroy_placement_group()
             RayHelper.resource_manager = None
+
+        if RayHelper._registry is not None:
+            import ray
+            try:
+                ray.get(RayHelper._registry.clear.remote())
+                ray.kill(RayHelper._registry)
+            except: # noqa
+                pass
+            RayHelper._registry = None
 
     @staticmethod
     def is_called_from_init():
@@ -199,7 +246,12 @@ class RayHelper:
 
     @staticmethod
     def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
-        workers = RayHelper.worker_instance[group]
+        import ray
+        if group in RayHelper.worker_instance:
+            workers = RayHelper.worker_instance[group]
+        else:
+            workers = ray.get(RayHelper._registry.get_workers.remote(group))
+
         length = len(workers)
         if execute == 'first':
             return getattr(workers[0], method_name).remote(*args, **kwargs)
@@ -369,3 +421,4 @@ class RayHelper:
 
             for g in local_groups:
                 RayHelper.worker_instance[g] = workers
+                ray.get(RayHelper._registry.register_workers.remote(g, workers))
