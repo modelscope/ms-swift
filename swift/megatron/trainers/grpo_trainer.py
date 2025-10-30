@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import base64
 import gc
 import inspect
 from collections import defaultdict
@@ -10,14 +11,15 @@ from typing import Any, Dict, List, Union
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list
+from dacite import from_dict
 from megatron.core import mpu
 from megatron.training import get_args, training
 from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
-from swift.llm import RequestConfig, RowPreprocessor, Template, to_device
+from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
 from swift.llm.infer.protocol import RolloutOutput
-from swift.plugin import orms
+from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
@@ -45,6 +47,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
+        self._prepare_scheduler()  # TODO
         self._prepare_rollout_engine()
         # debug: use mbridge to convert mcore to hf
         self.bridge = None
@@ -118,7 +121,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.use_gym_env = False
         self.enable_server_multi_turn = False  # TODO
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
-        self.dynamic_num_samples = False
         assert self.use_vllm
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -189,6 +191,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     restore_funcs.append(restore_func)
 
             per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
+            # TODO: server mode
             self.engine.inner_model.load_weights(per_tensor_params)
         finally:
             for restore_func in restore_funcs:
@@ -250,6 +253,23 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
         assert self.reward_funcs, 'reward_funcs is not set'
+
+    def _prepare_scheduler(self):
+        """Prepare multi-turn scheduler"""
+        args = self.args
+
+        self.multi_turn_scheduler = None
+        if not hasattr(args, 'multi_turn_scheduler'):
+            return
+
+        if args.multi_turn_scheduler:
+            if isinstance(args.multi_turn_scheduler, str):
+                assert args.multi_turn_scheduler in multi_turns
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
+            else:
+                assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
+                self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _merge_lora_adapters(self):
         """Merge LoRA adapters into base model weights for vLLM inference."""
@@ -538,7 +558,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         request_config = self._get_request_config()
         # TODO: server mode
         if self.vllm_mode == 'server':
-            pass
+            self._server_rollout(batch, request_config)
         elif self.vllm_mode == 'colocate':
             rollout_outputs = self._colocate_rollout(batch, request_config)
         return rollout_outputs
@@ -615,8 +635,59 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return request_config
 
+    def _server_rollout(self,
+                        inputs: DataType,
+                        request_config: RequestConfig,
+                        is_global_inputs: bool = False) -> List[RolloutOutput]:
+        # TODO: async generate
+        infer_requests = self.inputs2requests(inputs)
+
+        if is_global_inputs:
+            per_device_size = len(infer_requests) // self.world_size
+            all_requests = infer_requests
+            all_requests_lengths = [per_device_size] + [0] * (self.world_size - 1)
+        else:
+            all_requests = gather_object(infer_requests)
+            all_requests_lengths = gather_object([len(infer_requests)])
+
+        if not any(requests for requests in all_requests):
+            return []
+
+        if self.is_main_process:
+            all_outputs: List[RolloutOutput] = self.vllm_client.infer(
+                infer_requests=all_requests, request_config=request_config)
+            assert len(all_outputs) == len(all_requests)  # TODO: dynamic num of samples
+        else:
+            all_outputs = [None] * len(all_requests)
+
+        if not is_global_inputs:
+            all_outputs = broadcast_object_list(all_outputs, from_process=0)
+            start_idx = sum(all_requests_lengths[:self.process_index])
+            end_idx = start_idx + all_requests_lengths[self.process_index]
+            outputs = all_outputs[start_idx:end_idx]
+        else:
+            outputs = all_outputs if self.is_main_process else []
+        return outputs
+
     def _colocate_rollout(self, batch, request_config: RequestConfig):
+        if self.vllm_tensor_parallel_size > 1:
+            local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
+            local_input_length = len(batch)
+            all_input_lengths = [None] * self.vllm_tensor_parallel_size
+            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
+
+            start_idx = sum(all_input_lengths[:local_rank_in_group])
+            end_idx = start_idx + all_input_lengths[local_rank_in_group]
+
+            gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
+            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
+            batch = [p for sublist in gathered_batch for p in sublist]
+
         outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
+
+        if self.vllm_tensor_parallel_size > 1:
+            outputs = outputs[start_idx:end_idx]
+
         return outputs
 
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
@@ -950,3 +1021,56 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
                 log_gpu_memory('after load optimizer to gpu')
+
+    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+        """Convert raw input data into RolloutInferRequest objects"""
+
+        def _process_image_data(image_data: Union[dict, str]) -> str:
+            if isinstance(image_data, dict):
+                if image_data.get('bytes'):
+                    return base64.b64encode(image_data['bytes']).decode('utf-8')
+                if image_data.get('path'):
+                    return image_data['path']
+            return image_data
+
+        if not inputs:
+            return []
+        args = self.args
+
+        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
+        requests_dicts = []
+
+        for data in inputs:
+            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
+            if 'uuid' not in request_data:
+                request_data['uuid'] = data['request_id']
+            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                extra_fields = {
+                    k: v
+                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                }
+                if extra_fields:
+                    request_data['data_dict'] = extra_fields
+            elif self.multi_turn_scheduler:
+                base_data_dict = {}
+                if 'data_dict' in data:
+                    if isinstance(data['data_dict'], dict):
+                        base_data_dict = data['data_dict']
+                    else:
+                        raise ValueError('data_dict exists but is not a dictionary')
+                extra_data = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                }
+                final_data_dict = {**extra_data, **base_data_dict}
+                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+
+            requests_dicts.append(request_data)
+
+        for request in requests_dicts:
+            if 'images' in request and request['images']:
+                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
+                    request['images'], list) else _process_image_data(request['images']))
+
+        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
