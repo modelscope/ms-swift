@@ -27,13 +27,13 @@ from trl.trainer.utils import selective_log_softmax
 from swift.llm import RowPreprocessor, Template, to_device
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
-from swift.utils import (JsonlWriter, empty_cache, get_logger, is_swanlab_available, is_wandb_available,
-                         remove_response, seed_worker, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+                         seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, patch_profiling_context, patch_profiling_decorator,
-                    patch_save_last_checkpoint, replace_assistant_response_with_ids)
+from .utils import (_ForwardRedirection, aggressive_empty_cache, compute_chord_loss, get_even_process_data,
+                    identity_data_collator, load_pil_img, make_chord_sft_dataset, patch_profiling_context,
+                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -1478,19 +1478,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.offload_model(self.ref_model)
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
-        empty_cache()
 
         try:
             yield
         finally:
             # reload (load back) model when exiting context
+            aggressive_empty_cache()
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
                     self.load_model(self.ref_model)
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
-            empty_cache()
 
     @patch_profiling_decorator
     def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:

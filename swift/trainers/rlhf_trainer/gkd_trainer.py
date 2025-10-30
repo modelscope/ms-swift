@@ -3,8 +3,7 @@ import inspect
 import random
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
-from copy import copy
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -13,10 +12,10 @@ from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
-from swift.utils import empty_cache, get_logger, unwrap_model_for_generation
+from swift.utils import get_logger, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, memory_time_profiling_context, prepare_deepspeed
+from .utils import aggressive_empty_cache, identity_data_collator, prepare_deepspeed
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -236,17 +235,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.offload_model(self.accelerator.unwrap_model(self.model))
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
-        torch.cuda.synchronize()
-        empty_cache()
+
         try:
             yield
         finally:
             # reload (load back) model when exiting context
+            aggressive_empty_cache()
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
-            empty_cache()
 
     def _get_random_num(self) -> float:
         """

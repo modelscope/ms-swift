@@ -30,13 +30,13 @@ from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
-from swift.utils import empty_cache, get_logger, is_vllm_available, remove_response
+from swift.utils import get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
-                    _process_bucket_with_flattened_tensor, get_even_process_data, get_gather_if_zero3_context,
-                    patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
-                    patch_vllm_load_adapter, set_expandable_segments)
+                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, get_even_process_data,
+                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+                    patch_profiling_decorator, patch_vllm_load_adapter, set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -645,9 +645,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            set_expandable_segments(False)
+
             if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                aggressive_empty_cache()
+                set_expandable_segments(False)
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
             if hasattr(self, 'async_generate') and self.async_generate:
@@ -671,8 +673,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if self.vllm_mode == 'colocate' and args.sleep_level > 0:
                 self.engine.engine.reset_prefix_cache()
                 self.engine.engine.sleep(level=args.sleep_level)
-                empty_cache()
-            set_expandable_segments(True)
+                aggressive_empty_cache()
+                set_expandable_segments(True)
         return outputs
 
     def _preprocess_inputs(self, inputs: DataType) -> DataType:
