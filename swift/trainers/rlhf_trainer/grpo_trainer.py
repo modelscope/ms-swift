@@ -445,14 +445,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # Compute group statistics
             group_rewards_mean = grouped_rewards.mean(dim=1)
-            if self.scale_rewards in ['group', 'none']:
-                group_rewards_std = grouped_rewards.std(dim=1)
-            elif self.scale_rewards == 'batch':
-                group_rewards_std = rewards.std().expand_as(group_rewards_mean)
 
             # Broadcast stats back to the original shape
             group_rewards_mean = group_rewards_mean.repeat_interleave(K)
-            group_rewards_std = group_rewards_std.repeat_interleave(K)
 
             # Compute advantages based on estimation type
             if self.advantage_estimator == 'rloo':
@@ -460,12 +455,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # A_i = r_i - mean(r_j for j != i)
                 # = r_i * K/(K-1) - mean_all * K/(K-1)
                 advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                # REINFORCE++: Group baseline with global whitening
+                # Step 1: Subtract group mean
+                advantages = rewards - group_rewards_mean
+                # Step 2: Global whitening (key difference from GRPO)
+                # For REINFORCE++, std is computed on advantages (rewards - group_mean)
+                if self.scale_rewards == 'batch':
+                    # Use std of advantages for global normalization
+                    batch_mean = advantages.mean()
+                    batch_std = advantages.std()
+                    advantages = (advantages - batch_mean) / (batch_std + 1e-4)
+                elif self.scale_rewards == 'group':
+                    # Use group-level std on advantages
+                    advantages_grouped = advantages.view(-1, K)
+                    group_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                    advantages = advantages / (group_std + 1e-4)
+                # If scale_rewards == 'none', no normalization
             else:  # 'grpo' (default)
                 # GRPO: Simple group mean baseline
                 advantages = rewards - group_rewards_mean
 
-            # Normalize advantages
-            advantages = normalize_advantages(advantages, group_rewards_std)
+            # Normalize advantages for GRPO and RLOO
+            if self.advantage_estimator in ['grpo', 'rloo']:
+                # Compute std based on original rewards (GRPO/RLOO behavior)
+                if self.scale_rewards in ['group', 'none']:
+                    group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                elif self.scale_rewards == 'batch':
+                    group_rewards_std = rewards.std().expand_as(rewards)
+                advantages = normalize_advantages(advantages, group_rewards_std)
 
             # Log metrics once per group
             log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=rewards_per_func)
@@ -507,17 +525,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 r_group = unique_rewards[idx_tensor]
                 prompt_means[idx_tensor] = r_group.mean()
 
-            # Determine std used for normalization according to scale_rewards
-            if self.scale_rewards in ['group', 'none']:
-                prompt_stds = torch.zeros(len(unique_rewards), device=device)
-                for pid, idxs in prompt_to_indices.items():
-                    idx_tensor = torch.tensor(idxs, device=device)
-                    r_group = unique_rewards[idx_tensor]
-                    prompt_stds[idx_tensor] = r_group.std()
-            elif self.scale_rewards == 'batch':
-                batch_std = unique_rewards.std()
-                prompt_stds = torch.full_like(unique_rewards, batch_std)
-
             # Step 4. Compute advantages
             if self.advantage_estimator == 'rloo':
                 # RLOO: Leave-One-Out baseline for dynamic mode
@@ -528,9 +535,53 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     r_group = unique_rewards[idx_tensor]
                     # A_i = r_i * K/(K-1) - mean * K/(K-1)
                     request_advantages[idx_tensor] = (r_group * K / (K - 1) - r_group.mean() * K / (K - 1))
+
+                # Determine std for RLOO (based on original rewards)
+                if self.scale_rewards in ['group', 'none']:
+                    prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                    for pid, idxs in prompt_to_indices.items():
+                        idx_tensor = torch.tensor(idxs, device=device)
+                        r_group = unique_rewards[idx_tensor]
+                        prompt_stds[idx_tensor] = r_group.std()
+                elif self.scale_rewards == 'batch':
+                    batch_std = unique_rewards.std()
+                    prompt_stds = torch.full_like(unique_rewards, batch_std)
                 request_advantages = normalize_advantages(request_advantages, prompt_stds)
+
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                # REINFORCE++: Group baseline with global whitening for dynamic mode
+                # Step 1: Subtract group mean
+                request_advantages = unique_rewards - prompt_means
+
+                # Step 2: Global whitening (std computed on advantages)
+                if self.scale_rewards == 'batch':
+                    # Use std of advantages for global normalization
+                    batch_mean = request_advantages.mean()
+                    batch_std = request_advantages.std()
+                    request_advantages = (request_advantages - batch_mean) / (batch_std + 1e-4)
+                elif self.scale_rewards == 'group':
+                    # Use group-level std on advantages
+                    prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                    for pid, idxs in prompt_to_indices.items():
+                        idx_tensor = torch.tensor(idxs, device=device)
+                        adv_group = request_advantages[idx_tensor]
+                        prompt_stds[idx_tensor] = adv_group.std()
+                    request_advantages = request_advantages / (prompt_stds + 1e-4)
+                # If scale_rewards == 'none', no normalization
+
             else:  # 'grpo' (default)
                 request_advantages = unique_rewards - prompt_means
+
+                # Determine std for GRPO (based on original rewards)
+                if self.scale_rewards in ['group', 'none']:
+                    prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                    for pid, idxs in prompt_to_indices.items():
+                        idx_tensor = torch.tensor(idxs, device=device)
+                        r_group = unique_rewards[idx_tensor]
+                        prompt_stds[idx_tensor] = r_group.std()
+                elif self.scale_rewards == 'batch':
+                    batch_std = unique_rewards.std()
+                    prompt_stds = torch.full_like(unique_rewards, batch_std)
                 request_advantages = normalize_advantages(request_advantages, prompt_stds)
 
             # Map advantages back to original order
