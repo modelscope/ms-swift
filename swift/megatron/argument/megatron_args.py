@@ -9,7 +9,6 @@ import json
 import torch
 from transformers.utils.versions import require_version
 
-from swift.llm.argument.base_args import to_abspath
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
@@ -96,6 +95,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mlp_padding_free: bool = False
     load_hf_checkpoint: bool = False
     save_hf_checkpoint: bool = False
+    model: Optional[str] = None
+    adapters: List[str] = field(default_factory=list)
     merge_lora: Optional[bool] = None
     # streaming dataloader
     dataloader_persistent_workers: bool = True
@@ -459,6 +460,12 @@ class MegatronArguments(ExtraMegatronArguments):
             self.position_embedding_type = 'rope'
         if self.merge_lora is None:
             self.merge_lora = self.save_hf_checkpoint
+        if self.adapters or self.adapter_load or self.ref_adapter_load:
+            if self.train_type == 'full':
+                self.train_type = 'lora'
+                logger.info('Setting args.train_type: lora')
+        if self.adapters:
+            self._load_adapter_config()
         self._init_moe()
         self._init_mixed_precision()
 
@@ -502,3 +509,22 @@ class MegatronArguments(ExtraMegatronArguments):
         # parameter conflict
         extra_args.pop('loss_scale', None)
         return extra_args
+
+    def _load_adapter_config(self):
+        assert len(self.adapters) == 1, 'Currently only support one adapter'
+        adapter_path = self.adapters[0]
+        adapter_config_path = os.path.join(adapter_path, 'adapter_config.json')
+        adapter_config = {}
+        if os.path.exists(adapter_config_path):
+            with open(adapter_config_path, 'r') as f:
+                adapter_config = json.load(f)
+        mapping = {'r': 'lora_rank', 'bias': 'lora_bias'}
+        for k in ['lora_alpha', 'lora_dropout', 'use_rslora']:
+            mapping[k] = k
+        for k, v in adapter_config.items():
+            if k not in mapping:
+                continue
+            k = mapping[k]
+            if v != getattr(self, k):
+                setattr(self, k, v)
+                logger.info(f'Setting {k}: {v}')

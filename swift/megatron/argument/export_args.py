@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from swift.llm import HfConfigFactory
 from swift.llm.argument.base_args import to_abspath
 from swift.utils import get_logger
+from .megatron_args import MegatronArguments
 from .megatron_base_args import MegatronBaseArguments
 
 logger = get_logger()
@@ -37,6 +38,10 @@ class MegatronExportArguments(MegatronBaseArguments):
         super().__post_init__()
         self._init_save()
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
+        extra_config = MegatronArguments.load_args_config(self.adapter_load or self.load)
+        extra_config['adapter_load'] = self.adapter_load
+        for k, v in extra_config.items():
+            setattr(self, k, v)
         if self.to_hf or self.to_mcore:
             self._init_convert()
             if self.model_info.is_moe_model is not None and self.tensor_model_parallel_size > 1:

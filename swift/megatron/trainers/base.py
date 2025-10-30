@@ -243,7 +243,11 @@ class BaseMegatronTrainer(ABC):
             if args.load_hf_checkpoint:
                 self.bridge.load_weights(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
-            self.peft_models.append(prepare_mcore_model(model))
+            peft_model = prepare_mcore_model(model)
+            if args.load_hf_checkpoint and args.train_type == 'lora' and args.adapters:
+                assert len(args.adapters) == 1, 'Currently only support one adapter'
+                self.bridge.load_weights(model, args.adapters[0], is_peft_format=True)
+            self.peft_models.append(peft_model)
             return model
 
         self._init_multimodal_full(args)
