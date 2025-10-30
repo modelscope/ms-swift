@@ -251,9 +251,6 @@ class SwiftRLHF(SwiftSft):
         if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
             trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
         return trainer_kwargs
-    
-    def run(self):
-        return super().run()
 
 
 def rlhf_main(args: Optional[Union[List[str], RLHFArguments]] = None):

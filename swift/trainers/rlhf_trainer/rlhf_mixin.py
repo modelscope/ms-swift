@@ -16,7 +16,6 @@ from trl.trainer.utils import selective_log_softmax
 from swift.ray import RayHelper
 
 
-@RayHelper.worker(group=['default', 'ref', 'reward', 'value', 'teacher'])
 class RLHFTrainerMixin:
 
     def __init__(self,
@@ -60,13 +59,13 @@ class RLHFTrainerMixin:
     @RayHelper.function(group='ref')
     def _prepare_ref_model(self, args, ref_model):
         from trl.trainer import disable_dropout_in_model
-        if getattr(args, 'disable_dropout', False):
-            if ref_model is not None:
+        if ref_model is not None:
+            if getattr(args, 'disable_dropout', False):
                 disable_dropout_in_model(ref_model)
-                if self.is_deepspeed_enabled:
-                    self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
-                else:
-                    self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+            if self.is_deepspeed_enabled:
+                self.ref_model = prepare_deepspeed(ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(ref_model, evaluation_mode=True)
 
     def create_loss_and_metric(self, args):
         return {}
@@ -129,7 +128,6 @@ class RLHFTrainerMixin:
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)
 
-    @RayHelper.function(group='default')
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*

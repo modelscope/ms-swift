@@ -28,7 +28,6 @@ def new_gather_function(tensor):
     return torch.concat(to_device(tensor_list, tensor.device), dim=0)
 
 
-@RayHelper.worker(group=['default', 'ref'])
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def __init__(self,

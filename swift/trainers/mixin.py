@@ -56,7 +56,6 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-@RayHelper.worker(group=['default'])
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 
@@ -127,7 +126,6 @@ class SwiftMixin:
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
 
-    @RayHelper.function(group='default')
     def _prepare_model_info(self, model):
         self.model_meta = model.model_meta
         if get_function(model.__class__.forward) is not get_function(model.forward):
