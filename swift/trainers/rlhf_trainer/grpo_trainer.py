@@ -31,9 +31,9 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
                          seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (_ForwardRedirection, aggressive_empty_cache, compute_chord_loss, get_even_process_data,
-                    identity_data_collator, load_pil_img, make_chord_sft_dataset, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
+from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
+                    load_pil_img, make_chord_sft_dataset, patch_profiling_context, patch_profiling_decorator,
+                    patch_save_last_checkpoint, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -1483,7 +1483,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             yield
         finally:
             # reload (load back) model when exiting context
-            aggressive_empty_cache()
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
