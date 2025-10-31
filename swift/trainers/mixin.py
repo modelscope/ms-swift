@@ -104,7 +104,7 @@ class SwiftMixin:
         trainer_parameters = inspect.signature(Trainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), RayHelper.patch_init():
             super().__init__(
                 model=model,
                 args=args,
@@ -117,7 +117,8 @@ class SwiftMixin:
                 **kwargs)
 
         self._prepare_model_info(model)
-        self.label_names = self.label_names or ['labels']
+        if not getattr(self, 'label_names', []):
+            self.label_names = ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
         self._patch_tasks()
@@ -182,11 +183,13 @@ class SwiftMixin:
         finally:
             trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
-    def get_use_logits_to_keep(self, default_value: bool = True):
+    def get_use_logits_to_keep(self, default_value: bool = True, model = None):
         use_logits_to_keep = self.args.use_logits_to_keep
+        if model is None:
+            model = self.model
         if use_logits_to_keep is None:
-            base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_meta.is_multimodal
+            base_model = self.template.get_base_model(model)
+            use_logits_to_keep = (not model.model_meta.is_multimodal
                                   and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
                                   and default_value)
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')

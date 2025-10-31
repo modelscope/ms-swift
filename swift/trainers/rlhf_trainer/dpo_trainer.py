@@ -83,10 +83,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
 
-        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1, model)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(batch)
-        if self.aux_loss_enabled:
+        aux_loss_enabled = model.model_info.is_moe_model and self.args.router_aux_loss_coef > 0
+        if aux_loss_enabled:
             batch['output_router_logits'] = True
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
@@ -171,7 +172,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
-        if self.aux_loss_enabled:
+        aux_loss_enabled = model.model_info.is_moe_model and self.args.router_aux_loss_coef > 0
+        if aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
 
@@ -186,7 +188,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             return super().prediction_step(model, inputs, *args, **kwargs)
 
     @RayHelper.function(group='default')
-    def _compute_log_probs(self, batch):
+    def compute_log_probs_model(self, batch):
         compte_ref_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
         )
@@ -194,8 +196,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             ref_model_output = self.concatenated_forward(self.model, batch, is_ref_model=True)
             return ref_model_output["chosen_logps"], ref_model_output["rejected_logps"]
 
-    @RayHelper.function(group='ref')
-    def _compute_ref_log_probs(self, batch):
+    @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
+    def compute_log_probs_ref_model(self, batch):
         compte_ref_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
         )
@@ -205,9 +207,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def compute_ref_log_probs(self, batch: dict[str, torch.LongTensor]) -> dict:
         if self.args.ref_model is None:
-            return self._compute_log_probs(batch)
+            return self.compute_log_probs_model(batch)
         else:
-            return self._compute_ref_log_probs(batch)
+            return self.compute_log_probs_ref_model(batch)
 
     def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
         """Generate samples from the model and reference model for the given batch of inputs."""
@@ -251,7 +253,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         return policy_output_decoded, ref_output_decoded
 
-    @RayHelper.function(group='ref')
+    @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
     def generate_from_ref(self, batch):
         return self.ref_model.generate(
             input_ids=batch["prompt_input_ids"],

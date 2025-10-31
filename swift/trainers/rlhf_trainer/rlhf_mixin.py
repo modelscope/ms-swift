@@ -32,15 +32,14 @@ class RLHFTrainerMixin:
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
 
         self._prepare_model(args, model)
-        self._prepare_ref_model(args, ref_model)
-
         # not use
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
         self.aux_loss_coef = args.router_aux_loss_coef
-        self.padding_value = self.tokenizer.pad_token_id
         super().__init__(model, *_args, **kwargs)
+        self._prepare_ref_model(args, ref_model)
+        self.padding_value = self.tokenizer.pad_token_id
 
     @RayHelper.function(group='default')
     def _prepare_model(self, args, model):

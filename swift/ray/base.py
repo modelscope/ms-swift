@@ -2,6 +2,7 @@
 import argparse
 import functools
 import inspect
+from contextlib import contextmanager
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
@@ -38,7 +39,7 @@ class RayHelper:
     _registry = None
 
     @staticmethod
-    def _init_registry():
+    def init_registry():
         if RayHelper._registry is not None:
             return
 
@@ -66,11 +67,14 @@ class RayHelper:
         try:
             RayHelper._registry = ray.get_actor("swift_worker_registry")
         except ValueError:
-            RayHelper._registry = WorkerRegistry.options(
-                name="swift_worker_registry",
-                lifetime="detached",
-                namespace="default"
-            ).remote()
+            try:
+                RayHelper._registry = WorkerRegistry.options(
+                    name="swift_worker_registry",
+                    lifetime="detached",
+                ).remote()
+            except ValueError:
+                RayHelper._registry = ray.get_actor("swift_worker_registry")
+        assert RayHelper._registry is not None
 
     @staticmethod
     def initialize(device_groups: Dict[str, Any]):
@@ -90,7 +94,7 @@ class RayHelper:
         if RayHelper.resource_manager is None:
             # Resource manager initialize only once in the pipeline process.
             RayHelper.resource_manager = ResourceManager(device_groups)
-        RayHelper._init_registry()
+        RayHelper.init_registry()
 
     @staticmethod
     def teardown():
@@ -106,7 +110,26 @@ class RayHelper:
             except: # noqa
                 pass
             RayHelper._registry = None
+    
+    @contextmanager
+    def patch_init():
+        if not RayHelper.is_default():
+            from transformers import Trainer
+            init_method = Trainer.__init__
 
+            @functools.wraps(init_method)
+            def new_init(self, *args, **kwargs):
+                from accelerate import Accelerator
+                self.processing_class = kwargs['processing_class']
+                self.args = kwargs['args']
+                self.accelerator = Accelerator(kwargs['args'])
+                self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
+                self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
+            Trainer.__init__ = new_init
+        yield
+        if not RayHelper.is_default():
+            Trainer.__init__ = init_method
+            
     @staticmethod
     def is_called_from_init():
         """If some function called from __init__.
@@ -130,6 +153,10 @@ class RayHelper:
             # not installed, not inited
             return False
         return ray.is_initialized()
+    
+    @staticmethod
+    def is_default():
+        return 'default' in os.environ.get('RAY_SWIFT_GROUP', '').split(',')
 
     @staticmethod
     def is_worker():
@@ -215,6 +242,7 @@ class RayHelper:
             def wrapper(self, *args, **kwargs) -> T:
                 if not RayHelper.ray_inited():
                     return func(self, *args, **kwargs)
+                RayHelper.init_registry()
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
                         # pass through env
@@ -224,8 +252,8 @@ class RayHelper:
                             # Functions in init of different group, do nothing
                             return None
                         else:
-                            # Should not happen
-                            raise ValueError()
+                            result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
+                            return RayHelper.collect_func(collect, result)
                     else:
                         return func(self, *args, **kwargs)
                 else:
@@ -245,20 +273,20 @@ class RayHelper:
         return ray.get(RayHelper.execute_all_async(group, dispatch, execute, method_name, *args, **kwargs))
 
     @staticmethod
-    def get_workers(group, dispatch):
+    def get_workers(group, execute):
         import ray
         if group in RayHelper.worker_instance:
             workers = RayHelper.worker_instance[group]
         else:
             workers = ray.get(RayHelper._registry.get_workers.remote(group))
-        if dispatch == 'first':
+        if execute == 'first':
             return [workers[0]]
-        elif dispatch == 'all':
+        elif execute == 'all':
             return workers
-        elif dispatch == 'peer':
+        elif execute == 'peer':
             return workers[RayHelper.get_peer_index(len(workers))]
         else:
-            raise ValueError(f'Unsupported dispatch method: {dispatch}')
+            raise ValueError(f'Unsupported execute method: {execute}')
 
     @staticmethod
     def get_peer_index(target_size):
@@ -277,7 +305,7 @@ class RayHelper:
     @staticmethod
     def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
         import ray
-        workers = RayHelper.get_workers(group, dispatch)
+        workers = RayHelper.get_workers(group, execute)
         length = len(workers)
         if execute == 'first':
             return getattr(workers[0], method_name).remote(*args, **kwargs)
@@ -300,8 +328,14 @@ class RayHelper:
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
                     # skip empty input
-                    remote_call = getattr(workers[i], method_name)
-                    result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                    # import ray; ray.util.pdb.set_trace()
+                    if hasattr(workers[i], method_name):
+                        remote_call = getattr(workers[i], method_name)
+                        result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                    else:
+                        remote_call = getattr(workers[i], 'call_trainer')
+                        result.append(remote_call.remote(method_name, *sliced_args, **sliced_kwargs))
+                    
             return result
         elif isinstance(dispatch, Callable):
             # dispatch is Callable

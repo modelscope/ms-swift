@@ -24,6 +24,8 @@ class SwiftRLHF(SwiftSft):
     args: args_class
 
     def __init__(self, args: RLHFArguments):
+        self.model = None
+        self.callbacks = []
         super().__init__(args)
         self.reward_model = []
         if self.args.rlhf_type == 'grpo':
@@ -271,6 +273,7 @@ class SwiftRLHF(SwiftSft):
         self._prepare_model(train_dataset)
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
+        self.args.training_args.ref_model = self.args.ref_model
         self.trainer = trainer_cls(
             model=self.model,
             args=self.args.training_args,
@@ -281,6 +284,9 @@ class SwiftRLHF(SwiftSft):
             template=self.template,
             **self._get_trainer_kwargs(),
         )
+    
+    def call_trainer(self, func, *args, **kwargs):
+        return getattr(self.trainer, func)(*args, **kwargs)
 
     @RayHelper.function(group='default')
     def run(self):
