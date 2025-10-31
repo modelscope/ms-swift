@@ -332,7 +332,7 @@ def get_current_device():
     return current_device
 
 
-def get_torch_device() -> any:
+def get_torch_device():
     if is_torch_cuda_available():
         return torch.cuda
     elif is_torch_npu_available():

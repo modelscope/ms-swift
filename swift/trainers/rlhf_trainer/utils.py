@@ -64,7 +64,7 @@ def aggressive_empty_cache(force_sync: bool = True, max_retries: int = 3) -> Non
     logger = get_logger()
 
     device = get_torch_device()
-    if not device.is_available():
+    if not hasattr(device, 'is_available') or not device.is_available():
         return
 
     for attempt in range(max_retries):
