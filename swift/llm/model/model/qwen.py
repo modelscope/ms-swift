@@ -935,6 +935,9 @@ def _patch_deepstack_process(model):
 
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
+        from swift.trainers.sequence_parallel import sequence_parallel
+        if sequence_parallel.world_size:
+            visual_pos_masks, visual_embeds = sequence_parallel.pad_and_split_mm_tokens(visual_pos_masks, visual_embeds)
         if visual_pos_masks is None:
             return hidden_states + visual_embeds.mean() * 0
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
