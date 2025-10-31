@@ -27,8 +27,8 @@ from trl.trainer.utils import selective_log_softmax
 from swift.llm import RowPreprocessor, Template, to_device
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
-from swift.utils import (JsonlWriter, empty_cache, get_logger, is_swanlab_available, is_wandb_available,
-                         remove_response, seed_worker, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+                         seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
@@ -1478,7 +1478,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.offload_model(self.ref_model)
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
-        empty_cache()
 
         try:
             yield
@@ -1490,7 +1489,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.load_model(self.ref_model)
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
-            empty_cache()
 
     @patch_profiling_decorator
     def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
