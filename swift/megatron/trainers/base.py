@@ -27,6 +27,7 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from tqdm.auto import tqdm
 
 from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
@@ -305,6 +306,8 @@ class BaseMegatronTrainer(ABC):
             logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
+            if hasattr(module.weight, 'main_param'):
+                module.weight.main_param.copy_(module.weight.view(-1))
 
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
@@ -351,12 +354,14 @@ class BaseMegatronTrainer(ABC):
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
-        with torch.no_grad():
+        with torch.no_grad(), tqdm(
+                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
                 print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
             while iteration < args.eval_iters:
                 iteration += 1
+                prog_bar.update()
                 if verbose:
                     print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
 
@@ -734,21 +739,21 @@ class BaseMegatronTrainer(ABC):
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()
+        if args.train_type == 'lora' and args.merge_lora:
+            self.merge_lora_adapters()
+        save_peft_format = args.train_type == 'lora' and not args.merge_lora
         if args.save_hf_checkpoint:
-            if args.train_type == 'lora' and args.merge_lora:
-                self.merge_lora_adapters()
             output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-            save_peft_format = args.train_type == 'lora' and not args.merge_lora
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
             if is_last_rank():
                 args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
                 if os.path.exists(args_path):
                     shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
-            if args.train_type == 'lora' and args.merge_lora:
-                self.unmerge_lora_adapters()
         else:
-            with adapter_state_dict_context():
+            with adapter_state_dict_context(is_peft_format=save_peft_format):
                 return self._origin_save_checkpoint(iteration, *_args, **kwargs)
+        if args.train_type == 'lora' and args.merge_lora:
+            self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
         # support max_epochs

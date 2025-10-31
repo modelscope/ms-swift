@@ -3,8 +3,10 @@ from typing import Dict, Literal, Optional, Union
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.training import get_args
+from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
@@ -24,6 +26,7 @@ class GPTBridge:
         self._target_device = None
         self._only_last_rank = False
         self._peft_target_modules = set()
+        self._peft_modules_to_save = set()
         self._is_peft_format = False
         model_info = self.args.model_info
         with torch.device('meta'), disable_safe_ddp_context_use_barrier():
@@ -175,10 +178,10 @@ class GPTBridge:
                         offset: float = 0,
                         is_expert: bool = False):
         module_key, param_key = mg_key.rsplit('.', 1)
+        hf_module_key, hf_param_key = hf_key.rsplit('.', 1)
         sub_module = deep_getattr(mg_module, module_key)
         if isinstance(sub_module, LoraParallelLinear) and self._is_peft_format and param_key != 'layer_norm_weight':
             if to_mcore:
-                hf_module_key, hf_param_key = hf_key.rsplit('.', 1)
                 lora_A_key = f'{module_key}.lora_A.default.{param_key}'
                 lora_B_key = f'{module_key}.lora_B.default.{param_key}'
                 mg_lora_A = deep_getattr(mg_module, f'{lora_A_key}')
@@ -188,7 +191,6 @@ class GPTBridge:
                 self._set_weight(mg_lora_A, hf_lora_A, lora_A_key, offset, is_expert)
                 self._set_weight(mg_lora_B, hf_lora_B, lora_B_key, offset, is_expert)
             else:
-                hf_module_key, hf_param_key = hf_key.rsplit('.', 1)
                 lora_A_key = f'{module_key}.lora_A.default.{param_key}'
                 lora_B_key = f'{module_key}.lora_B.default.{param_key}'
                 lora_A_tensor = deep_getattr(mg_module, f'{lora_A_key}.data')
@@ -201,7 +203,7 @@ class GPTBridge:
                     self._peft_target_modules.add(hf_module_key)
                     hf_state_dict[hf_lora_A_key] = lora_A
                     hf_state_dict[hf_lora_B_key] = lora_B
-        elif not self._is_peft_format:
+        elif not self._is_peft_format or isinstance(sub_module, ModulesToSaveWrapper):
             if isinstance(sub_module, LoraParallelLinear):
                 mg_param = deep_getattr(sub_module, f'base_layer.{param_key}')
             else:
@@ -209,8 +211,13 @@ class GPTBridge:
             if to_mcore:
                 assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
                 hf_weight = hf_state_dict[hf_key].load()
+                if module_key in {'embedding.word_embeddings', 'output_layer'
+                                  } and hf_weight.shape[0] < self.args.padded_vocab_size:
+                    hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
                 self._set_weight(mg_param, hf_weight, mg_key, offset, is_expert)
             else:
+                if isinstance(sub_module, ModulesToSaveWrapper):
+                    self._peft_modules_to_save.add(hf_module_key)
                 weight = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset, is_expert)
                 if weight is not None:
                     hf_state_dict[hf_key] = weight
@@ -667,6 +674,9 @@ class GPTBridge:
                 if not to_mcore and self.args.task_type == 'seq_cls':
                     hf_lm_head_key = 'score.weight'
                 self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
+            else:
+                self._set_state_dict(mg_model, 'output_layer.weight', hf_state_dict, 'model.embed_tokens.weight',
+                                     to_mcore)
             self._set_state_dict(mg_model, 'decoder.final_layernorm.weight', hf_state_dict, 'model.norm.weight',
                                  to_mcore)
         if to_mcore:
@@ -687,6 +697,7 @@ class GPTBridge:
         self._only_last_rank = only_last_rank
         self._is_peft_format = is_peft_format
         self._peft_target_modules = set()
+        self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
         yield from self._convert(mg_models, {}, hf_prefix, False)
 
@@ -702,6 +713,7 @@ class GPTBridge:
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config['default'])
                 peft_config.target_modules = self._peft_target_modules
+                peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
                 # TODO: new_special_tokens

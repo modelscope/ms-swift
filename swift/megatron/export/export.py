@@ -83,6 +83,9 @@ class MegatronExport(SwiftPipeline):
             prepare_mcore_model(mg_model)
             assert len(args.adapters) == 1, 'Currently only support one adapter'
             bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+            if args.merge_lora:
+                logger.info('Merge LoRA...')
+                mg_model = peft_model.merge_and_unload()
         logger.info('Successfully transferred HF model weights to MG model.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
@@ -92,7 +95,8 @@ class MegatronExport(SwiftPipeline):
         if is_last_rank():
             args.save_args(args.save)
         logger.info('Saving the model...')
-        with adapter_state_dict_context():
+        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        with adapter_state_dict_context(is_peft_format=save_peft_format):
             mg_save_checkpoint(1, [mg_model], None, None, 0)
         logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
 

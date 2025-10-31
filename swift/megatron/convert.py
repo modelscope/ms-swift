@@ -19,7 +19,8 @@ from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template,
 from swift.utils import get_logger, get_n_params_grads
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import convert_hf_config, forward_step_helper, get_padding_to, patch_torch_dist_shard
+from .utils import (convert_hf_config, forward_step_helper, get_padding_to, patch_load_base_checkpoint,
+                    patch_torch_dist_shard)
 
 logger = get_logger()
 
@@ -315,7 +316,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     if megatron_args.load is None:
         raise ValueError('Please specify `--mcore_model`.')
-    load_checkpoint([mg_model], None, None, strict=True)
+    with patch_load_base_checkpoint():
+        load_checkpoint([mg_model], None, None, strict=True)
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
