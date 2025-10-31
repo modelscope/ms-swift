@@ -223,13 +223,22 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
 
         if self.kl_in_reward is None:
-            self.kl_in_reward = self.advantage_estimator == 'rloo'
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
         if self.scale_rewards is None:
-            if self.advantage_estimator == 'rloo':
-                self.scale_rewards = 'none'
-            else:
+            if self.advantage_estimator == 'grpo':
                 self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
