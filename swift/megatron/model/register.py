@@ -28,6 +28,18 @@ class MegatronModelMeta:
 
     extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 
+    def convert_mcore_lora_to_hf_peft(self, peft_model, mg_model, hf_model, dst_dir: str, num_groups: int) -> None:
+        """Convert Megatron Core LoRA adapter to HuggingFace PEFT format."""
+        # only for gpt model type
+        if self.megatron_model_type != 'gpt':
+            raise ValueError(
+                f'convert_mcore_lora_to_hf_peft is only supported for gpt model type, '
+                f'but got {self.megatron_model_type}'
+            )
+
+        from .gpt.mcore2hf import convert_mcore_lora_to_hf_peft
+        convert_mcore_lora_to_hf_peft(peft_model, mg_model, hf_model, dst_dir, num_groups)
+
 
 def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):
     megatron_model_type = megatron_model_meta.megatron_model_type
