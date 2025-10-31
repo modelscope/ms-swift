@@ -190,7 +190,7 @@ class RayHelper:
     @staticmethod
     def function(group: str,
                  dispatch: Union[Literal['slice', 'all'], Callable] = 'all',
-                 execute: Literal['first', 'all'] = 'all',
+                 execute: Literal['first', 'peer', 'all'] = 'all',
                  collect: Union[Literal['none', 'flatten'], Callable] = 'none'):
         """Remote execution function.
 
@@ -245,13 +245,39 @@ class RayHelper:
         return ray.get(RayHelper.execute_all_async(group, dispatch, execute, method_name, *args, **kwargs))
 
     @staticmethod
-    def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
+    def get_workers(group, dispatch):
         import ray
         if group in RayHelper.worker_instance:
             workers = RayHelper.worker_instance[group]
         else:
             workers = ray.get(RayHelper._registry.get_workers.remote(group))
+        if dispatch == 'first':
+            return [workers[0]]
+        elif dispatch == 'all':
+            return workers
+        elif dispatch == 'peer':
+            return workers[RayHelper.get_peer_index(len(workers))]
+        else:
+            raise ValueError(f'Unsupported dispatch method: {dispatch}')
 
+    @staticmethod
+    def get_peer_index(target_size):
+        rank = int(os.environ.get('RANK', '0'))
+        world_size = int(os.environ.get('WORLD_SIZE', '1'))
+
+        k, m = divmod(target_size, world_size)
+        start_idx = rank * k + min(rank, m)
+        end_idx = (rank + 1) * k + min(rank + 1, m)
+        if target_size < world_size:
+            start_idx = rank % target_size
+            end_idx = start_idx + 1
+
+        return slice(start_idx, end_idx)
+
+    @staticmethod
+    def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
+        import ray
+        workers = RayHelper.get_workers(group, dispatch)
         length = len(workers)
         if execute == 'first':
             return getattr(workers[0], method_name).remote(*args, **kwargs)

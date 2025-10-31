@@ -126,6 +126,7 @@ class SwiftMixin:
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
 
+    @RayHelper.function(group='default')
     def _prepare_model_info(self, model):
         self.model_meta = model.model_meta
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -614,6 +615,7 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    @RayHelper.function(group='default')
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
             model = self.model.model

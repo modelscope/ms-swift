@@ -35,7 +35,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_callbacks()
         self._prepare_flash_ckpt()
 
-    @RayHelper.function(group='default')
     def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
@@ -57,7 +56,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
-        self.model, self.processor = args.get_model_processor(**kwargs)
+        self.model, _ = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare(
@@ -127,7 +126,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(load_from_disk(val_path))
         return train_datasets, val_datasets
 
-    @RayHelper.function(group='default')
     def _prepare_dataset(self):
         args = self.args
         # Defer encoding to the training phase
