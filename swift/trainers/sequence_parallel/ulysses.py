@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 from functools import partial
-from types import MethodType
+from types import MethodType, SimpleNamespace
 from typing import Any, Optional, Tuple
 
 import torch
@@ -564,7 +564,7 @@ class SequenceParallel:
             (input_ids.shape[0], input_ids.shape[1], mm_embeds.shape[-1])).to(mm_embeds.device).to(mm_embeds.dtype)
         empty_embeds[visual_mask] = mm_embeds
 
-        embeds = type('Embed', (), {'weight': mm_embeds})
+        embeds = SimpleNamespace(weight=mm_embeds)
 
         _, split_input_embeds, _, _, _, _, extra_values = self.pad_and_split_inputs(
             None,
@@ -745,7 +745,7 @@ class SequenceParallel:
         input_ids = inputs.get('input_ids')
         if position_ids is None:
             position_ids = inputs.get('position_ids')
-        if position_ids is not None and position_ids.shape[0] == inputs['input_ids'].shape[0]:
+        if position_ids is not None and input_ids is not None and position_ids.shape[0] == input_ids.shape[0]:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if input_ids is not None:
             self.extra_kwargs['input_ids'] = input_ids.clone()
