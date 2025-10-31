@@ -59,6 +59,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if mpu.is_pipeline_first_stage():
             micro_batch_size = 1  # use qkv_format 'thd'
             seq_length = inputs['input_ids'].shape[1]
+            if 'position_ids' in inputs:
+                seq_length = inputs['position_ids'].shape[-1]
             if args.sequence_parallel:
                 seq_length //= mpu.get_tensor_model_parallel_world_size()
             recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
@@ -82,11 +84,16 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
         return output_tensor
 
-    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples=None):
+    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples=None, per_token=False):
         args = get_args()
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
+        if per_token:
+            if args.context_parallel_size > 1:
+                per_token_logps = all_reduce(per_token_logps, group=mpu.get_context_parallel_group())
+            return per_token_logps
+
         if num_samples is None:
             num_samples = packed_seq_params.num_samples * 2
         cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size

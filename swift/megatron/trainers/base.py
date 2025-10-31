@@ -3,7 +3,7 @@ import collections
 import os
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from typing import Dict, Literal
 
@@ -27,8 +27,10 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from torch.distributed.nn import all_reduce
+from transformers.utils import ContextManagers
 
-from swift.llm import dynamic_gradient_checkpointing
+from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -41,11 +43,12 @@ logger = get_logger()
 
 class BaseMegatronTrainer(ABC):
 
-    def __init__(self, args, template):
+    def __init__(self, args, template: Template):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
+        self.wrapped_models = []
         self.peft_models = []
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
@@ -70,9 +73,11 @@ class BaseMegatronTrainer(ABC):
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
+            num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
@@ -82,6 +87,7 @@ class BaseMegatronTrainer(ABC):
                     args.eval_iters = 0
                 elif hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
                     raise ValueError(
@@ -262,6 +268,7 @@ class BaseMegatronTrainer(ABC):
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
+        self.wrapped_models = model
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
