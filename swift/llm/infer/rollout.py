@@ -450,7 +450,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         The returned object contains three keys:
         - engine_type (str): Either 'AsyncLLMEngine' or 'LLMEngine', indicating
         whether the asynchronous or synchronous engine is in use.
-        - gym_env (bool, optional): Present and True **only when**
+        - use_gym_env (bool, optional): Present and True **only when**
         ``use_async_engine`` and ``use_gym_env`` are both True.
         - enable_multi_turn (bool): True if multi-turn scheduling is enabled
         via ``args.multi_turn_scheduler``, otherwise False.
