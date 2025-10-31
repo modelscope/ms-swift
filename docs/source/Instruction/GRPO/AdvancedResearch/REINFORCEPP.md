@@ -1,4 +1,4 @@
-# REINFORCE++ Baseline
+# REINFORCE++: An Efficient RLHF Algorithm with Robustness to Both Prompt and Reward Models
 
 **版本依赖**：ms-swift>=3.10
 
