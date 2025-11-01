@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .base import RayHelper
+from .base import RayHelper, RayMixin
 
 
 def try_init_ray():

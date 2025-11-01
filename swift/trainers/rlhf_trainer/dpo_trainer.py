@@ -1,18 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
+from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from accelerate.utils import gather_object
-from peft import PeftModel
+from torch import autocast
 from transformers import PreTrainedModel
+from transformers.modeling_utils import unwrap_model
 from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
-from trl.trainer.utils import RunningMoments
+from trl.trainer.utils import RunningMoments, pad_to_length
 
 from swift.llm import to_device
+from swift.ray import RayHelper
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -25,6 +28,17 @@ def new_gather_function(tensor):
     tensor_list = gather_object([tensor])
     tensor_list = [t[None] if t.ndim == 0 else t for t in tensor_list]
     return torch.concat(to_device(tensor_list, tensor.device), dim=0)
+
+
+def dispatch_ref_batch(n, i, *args, **kwargs):
+    mini_batch = {}
+    batch = args[0]
+    for key in batch:
+        tensor = batch[key]
+        batch_size = tensor.shape[0]
+        k, m = divmod(batch_size, n)
+        mini_batch[key] = tensor[i * k + min(i, m):(i + 1) * k + min(i + 1, m)]
+    return (mini_batch, ), {}
 
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
@@ -60,13 +74,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
-        self.is_peft_model = isinstance(model, PeftModel)
 
         self.ref_adapter_name = args.ref_adapter_name
         self.model_adapter_name = None
         self.reference_free = args.reference_free
         self.use_weighting = False
-
         super().__init__(model, ref_model, *_args, **kwargs)
 
         if 'bco_pair' in loss_types:
@@ -84,10 +96,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
 
-        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1, model)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(batch)
-        if self.aux_loss_enabled:
+        aux_loss_enabled = unwrap_model(model).model_info.is_moe_model and self.args.router_aux_loss_coef > 0
+        if aux_loss_enabled:
             batch['output_router_logits'] = True
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
@@ -172,7 +185,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
-        if self.aux_loss_enabled:
+        if aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
 
@@ -183,3 +196,72 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     def prediction_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
+
+    @RayHelper.function(group='default')
+    def _compute_log_probs(self, batch):
+        compte_ref_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
+        with torch.no_grad(), compte_ref_context_manager, self.null_ref_context():
+            ref_model_output = self.concatenated_forward(self.model, batch, is_ref_model=True)
+            return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
+
+    @RayHelper.function(group='ref', execute='peer', dispatch=dispatch_ref_batch, collect='flatten')
+    def _compute_ref_log_probs(self, batch):
+        compte_ref_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
+        with torch.no_grad(), compte_ref_context_manager:
+            ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
+            return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
+
+    def compute_ref_log_probs(self, batch: dict[str, torch.LongTensor]) -> dict:
+        if self.args.ref_model is None:
+            return self._compute_log_probs(batch)
+        else:
+            return self._compute_ref_log_probs(batch)
+
+    def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
+        generate_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
+
+        with generate_context_manager:
+            policy_output = model.generate(
+                input_ids=batch['prompt_input_ids'],
+                attention_mask=batch['prompt_attention_mask'],
+                max_length=self.max_length,
+                do_sample=True,
+                pad_token_id=self.padding_value,
+            )
+
+            # if ref_output in batch use that otherwise use the reference model
+            if 'ref_output' in batch:
+                ref_output = batch['ref_output']
+            else:
+                if self.args.ref_model is None:
+                    with self.null_ref_context():
+                        ref_output = model.generate(
+                            input_ids=batch['prompt_input_ids'],
+                            attention_mask=batch['prompt_attention_mask'],
+                            max_length=self.max_length,
+                            do_sample=True,
+                            pad_token_id=self.padding_value,
+                        )
+                else:
+                    ref_output = self.generate_from_ref(batch)
+
+        policy_output = pad_to_length(policy_output, self.max_length, self.padding_value)
+        policy_output_decoded = self.processing_class.batch_decode(policy_output, skip_special_tokens=True)
+
+        ref_output = pad_to_length(ref_output, self.max_length, self.padding_value)
+        ref_output_decoded = self.processing_class.batch_decode(ref_output, skip_special_tokens=True)
+
+        return policy_output_decoded, ref_output_decoded
+
+    @RayHelper.function(group='ref', execute='peer', dispatch=dispatch_ref_batch, collect='flatten')
+    def generate_from_ref(self, batch):
+        return self.ref_model.generate(
+            input_ids=batch['prompt_input_ids'],
+            attention_mask=batch['prompt_attention_mask'],
+            max_length=self.max_length,
+            do_sample=True,
+            pad_token_id=self.padding_value,
+        )

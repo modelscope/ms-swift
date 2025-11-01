@@ -1,0 +1,33 @@
+model: Qwen/Qwen2.5-7B
+train_type: full
+dataset: swift/chinese-c4#2000
+torch_dtype: bfloat16
+streaming: true
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+learning_rate: 1e-5
+gradient_accumulation_steps: 2
+packing: true
+eval_steps: 500
+save_steps: 500
+save_total_limit: 2
+logging_steps: 5
+deepspeed: zero3
+max_length: 8192
+max_steps: 10000
+warmup_ratio: 0.05
+dataloader_num_workers: 4
+dataset_num_proc: 8
+save_only_model: true
+output_dir: output/Qwen2.5-7B
+attn_impl: flash_attn
+
+use_ray: true
+
+device_groups:
+  nproc_per_node: 4
+  default:
+    device: GPU
+    ranks: list(range(0, 4))
+    workers:
+      - pt:default

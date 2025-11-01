@@ -2,15 +2,16 @@
 
 SWIFT已经支持使用ray来进行多卡或多节点训练。已有功能中对ray的支持情况如下：
 
-| 功能       | 支持ray | 例子                                                                             | 可分配角色           |
-|----------|-------|--------------------------------------------------------------------------------|-----------------|
-| pt/sft   | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray | default         |
-| dpo      | ❎     |                                                                                |                 |
-| grpo     | ❎     |                                                                                |                 |
-| ppo      | ❎     |                                                                                |                 |
-| megatron | ❎     |                                                                                |                 |
-| sampling | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill      | sampler/prm/orm |
-| distill  | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample       | sampler/prm/orm |
+| 功能       | 支持ray | 例子                                                                                    | 可分配角色            |
+|----------|-------|---------------------------------------------------------------------------------------|------------------|
+| pt       | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/pt.sh  | pt:default       |
+| sft      | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/sft.sh | sft:default      |
+| dpo      | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/dpo.sh | rlhf:default/ref |
+| grpo     | ❎     |                                                                                       |                  |
+| ppo      | ❎     |                                                                                       |                  |
+| megatron | ❎     |                                                                                       |                  |
+| sampling | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill             | sampler/prm/orm  |
+| distill  | ✅     | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample              | sampler/prm/orm  |
 
 ## 技术细节
 

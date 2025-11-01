@@ -7,10 +7,13 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from peft import PeftModel
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 from trl.trainer.utils import selective_log_softmax
+
+from swift.ray import RayHelper
 
 
 class RLHFTrainerMixin:
@@ -20,37 +23,48 @@ class RLHFTrainerMixin:
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  *_args,
                  **kwargs):
-        from trl.trainer import disable_dropout_in_model
-        from swift.llm import HfConfigFactory
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
         self.beta = getattr(args, 'beta', 0.0)
-        if getattr(args, 'disable_dropout', False):
-            disable_dropout_in_model(model)
-            if self.ref_model is not None:
-                disable_dropout_in_model(self.ref_model)
-
         self.is_encoder_decoder = kwargs['template'].is_encoder_decoder
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
-        if self.is_encoder_decoder:
-            self.decoder_start_token_id = HfConfigFactory.get_config_attr(model.config, 'decoder_start_token_id')
-            self.pad_token_id = HfConfigFactory.get_config_attr(model.config, 'pad_token_id')
+
+        self._prepare_model(args, model)
         # not use
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
-        super().__init__(model, *_args, **kwargs)
-        self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
         self.aux_loss_coef = args.router_aux_loss_coef
-        if ref_model is not None:
-            if self.is_deepspeed_enabled:
-                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
-            else:
-                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
-
+        super().__init__(model, *_args, **kwargs)
+        self._prepare_ref_model(args, ref_model)
         self.padding_value = self.tokenizer.pad_token_id
+
+    @RayHelper.function(group='default')
+    def _prepare_model(self, args, model):
+        from trl.trainer import disable_dropout_in_model
+        from swift.llm import HfConfigFactory
+        if getattr(args, 'disable_dropout', False):
+            if model is not None:
+                disable_dropout_in_model(model)
+
+        self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
+        self.is_peft_model = isinstance(model, PeftModel)
+        if self.is_encoder_decoder:
+            self.decoder_start_token_id = HfConfigFactory.get_config_attr(model.config, 'decoder_start_token_id')
+            self.pad_token_id = HfConfigFactory.get_config_attr(model.config, 'pad_token_id')
+
+    @RayHelper.function(group='ref')
+    def _prepare_ref_model(self, args, ref_model):
+        from trl.trainer import disable_dropout_in_model
+        if ref_model is not None:
+            if getattr(args, 'disable_dropout', False):
+                disable_dropout_in_model(ref_model)
+            if self.is_deepspeed_enabled:
+                self.ref_model = prepare_deepspeed(ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(ref_model, evaluation_mode=True)
 
     def create_loss_and_metric(self, args):
         return {}

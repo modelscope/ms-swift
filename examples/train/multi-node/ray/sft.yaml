@@ -33,4 +33,4 @@ device_groups:
     device: GPU
     ranks: list(range(0, 4))
     workers:
-      - default
+      - sft:default
