@@ -379,6 +379,15 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_megatron_tokenizer():
+    from megatron.training import global_vars
+
+    def build_tokenizer(args):
+        return 'dummy_tokenizer'
+
+    global_vars.build_tokenizer = build_tokenizer
+
+
 def _patch_peft_ModulesToSaveWrapper():
     if version.parse(peft.__version__) >= version.parse('0.16'):
         from peft.utils import other as peft_module
@@ -507,6 +516,16 @@ def _patch_torch_FileSystemReader():
         return fut
 
     FileSystemReader.read_data = read_data
+
+
+def _patch_validate_non_overlapping_shards_metadata():
+    # too slow
+    from torch.distributed._shard.sharded_tensor import api
+
+    def validate_non_overlapping_shards_metadata(*args, **kwargs):
+        pass
+
+    api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
 
 
 def _patch_TELinear():
@@ -664,12 +683,18 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    _patch_megatron_tokenizer()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
         logger.info('Patch FileSystemReader successfully applied.')
     except Exception:
+        pass
+    try:
+        _patch_validate_non_overlapping_shards_metadata()
+    except Exception:
+        logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
     try:
         _patch_peft_BaseTuner()
