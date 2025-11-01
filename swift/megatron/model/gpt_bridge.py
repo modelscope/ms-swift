@@ -582,7 +582,7 @@ class GPTBridge:
                     for i in range(num_local_experts):
                         getattr(mg_mlp.linear_fc2, f'weight{i}').data.copy_(fc2_weight[i])
             else:
-                is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc1,
+                is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc2,
                                                                   LoraParallelLinear) and self._is_peft_format
                 is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
                 if self.pp_size > 1:
@@ -590,22 +590,41 @@ class GPTBridge:
                 if is_expert and self.ep_size > 1:
                     dist.all_reduce(is_lora, group=self.ep_group)
                 if is_lora:
-                    print()
+                    if mg_mlp is None:
+                        lora_A = None
+                        lora_B = None
+                    else:
+                        lora_A = torch.concat([
+                            getattr(mg_mlp.linear_fc2.lora_A['default'], f'weight{i}') for i in range(num_local_experts)
+                        ],
+                                              dim=0)
+                        lora_B = torch.concat([
+                            getattr(mg_mlp.linear_fc2.lora_B['default'], f'weight{i}') for i in range(num_local_experts)
+                        ],
+                                              dim=0)
+                    lora_A = self._get_weight(lora_A, 'linear_fc2.lora_A.default.weight', is_expert=is_expert)
+                    lora_B = self._get_weight(lora_B, 'linear_fc2.lora_B.default.weight', is_expert=is_expert)
+                    if lora_A is not None:
+                        self._peft_target_modules.update({'down_proj'})
+                        lora_A = lora_A.view(num_local_experts, -1, lora_A.shape[-1])
+                        lora_B = lora_B.view(num_local_experts, -1, lora_B.shape[-1])
+                        for i in range(num_local_experts):
+                            hf_i = i + ep_rank * num_local_experts
+                            hf_state_dict[f'{hf_i}.down_proj.lora_A.weight'] = lora_A[i].clone()
+                            hf_state_dict[f'{hf_i}.down_proj.lora_B.weight'] = lora_B[i].clone()
                 else:
                     if mg_mlp is None:
                         fc2_weight = None
                     else:
                         fc2_weight = torch.concat(
                             [getattr(mg_mlp.linear_fc2, f'weight{i}') for i in range(num_local_experts)], dim=0)
-                        fc2_weight = fc2_weight.view(num_local_experts * 2, -1, fc2_weight.shape[1])
                     down_proj_weight = self._get_weight(fc2_weight, 'linear_fc2.weight', is_expert=is_expert)
                     del fc2_weight
                     if down_proj_weight is not None:
                         down_proj_weight = down_proj_weight.view(num_local_experts, -1, down_proj_weight.shape[-1])
                         for i in range(num_local_experts):
                             hf_i = i + ep_rank * num_local_experts
-                            hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].view(
-                                -1, down_proj_weight.shape[-1]).clone()
+                            hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].clone()
         else:
             self._set_state_dict(
                 mg_mlp, 'linear_fc2.weight', hf_state_dict, 'down_proj.weight', to_mcore, is_expert=is_expert)

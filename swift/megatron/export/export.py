@@ -97,11 +97,6 @@ class MegatronExport(SwiftPipeline):
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
         logger.info('Successfully transferred HF model weights to MG model.')
-        if args.test_convert_precision:
-            with disable_safe_ddp_context_use_barrier():
-                hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-            dist.barrier()
         if is_last_rank():
             args.save_args(args.save)
         logger.info('Saving the model...')
@@ -109,6 +104,11 @@ class MegatronExport(SwiftPipeline):
         with adapter_state_dict_context(is_peft_format=save_peft_format):
             mg_save_checkpoint(1, [mg_model], None, None, 0)
         logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
+        if args.test_convert_precision:
+            with disable_safe_ddp_context_use_barrier():
+                hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+            dist.barrier()
 
 
 def megatron_export_main(args: Optional[Union[List[str], MegatronExportArguments]] = None):
