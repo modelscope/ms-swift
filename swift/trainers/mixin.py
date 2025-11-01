@@ -104,6 +104,8 @@ class SwiftMixin:
         trainer_parameters = inspect.signature(Trainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
+        # if 'ref' in os.environ.get('RAY_SWIFT_GROUP', ''):
+        import ray; ray.util.pdb.set_trace()
         with self.hub.patch_hub(), RayHelper.patch_init():
             super().__init__(
                 model=model,
@@ -187,6 +189,7 @@ class SwiftMixin:
         use_logits_to_keep = self.args.use_logits_to_keep
         if model is None:
             model = self.model
+        model = unwrap_model(model)
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(model)
             use_logits_to_keep = (not model.model_meta.is_multimodal

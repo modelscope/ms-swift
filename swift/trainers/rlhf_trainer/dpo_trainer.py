@@ -12,7 +12,7 @@ from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, pad_to_length
-
+from transformers.modeling_utils import unwrap_model
 from swift.llm import to_device
 from swift.ray import RayHelper
 from swift.utils import get_logger
@@ -27,6 +27,17 @@ def new_gather_function(tensor):
     tensor_list = gather_object([tensor])
     tensor_list = [t[None] if t.ndim == 0 else t for t in tensor_list]
     return torch.concat(to_device(tensor_list, tensor.device), dim=0)
+
+
+def dispatch_ref_batch(n, i, *args, **kwargs):
+    mini_batch = {}
+    batch = args[0]
+    for key in batch:
+        tensor = batch[key]
+        batch_size = tensor.shape[0]
+        k, m = divmod(batch_size, n)
+        mini_batch[key] = tensor[i * k + min(i, m):(i + 1) * k + min(i + 1, m)]
+    return (mini_batch, ), {}
 
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
@@ -87,7 +98,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1, model)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(batch)
-        aux_loss_enabled = model.model_info.is_moe_model and self.args.router_aux_loss_coef > 0
+        aux_loss_enabled = unwrap_model(model).model_info.is_moe_model and self.args.router_aux_loss_coef > 0
         if aux_loss_enabled:
             batch['output_router_logits'] = True
         labels = batch.pop('labels', None)
@@ -193,8 +204,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             ref_model_output = self.concatenated_forward(self.model, batch, is_ref_model=True)
             return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
 
-    @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
-    def _compute_ref_log_probs_ref(self, batch):
+    @RayHelper.function(group='ref', execute='peer', dispatch=dispatch_ref_batch, collect='flatten')
+    def _compute_ref_log_probs(self, batch):
         compte_ref_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with torch.no_grad(), compte_ref_context_manager:
@@ -205,7 +216,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.args.ref_model is None:
             return self._compute_log_probs(batch)
         else:
-            return self._compute_ref_log_probs_ref(batch)
+            return self._compute_ref_log_probs(batch)
 
     def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
         generate_context_manager = (
@@ -244,7 +255,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         return policy_output_decoded, ref_output_decoded
 
-    @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
+    @RayHelper.function(group='ref', execute='peer', dispatch=dispatch_ref_batch, collect='flatten')
     def generate_from_ref(self, batch):
         return self.ref_model.generate(
             input_ids=batch['prompt_input_ids'],

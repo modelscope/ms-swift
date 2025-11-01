@@ -130,6 +130,8 @@ class RayHelper:
                 self.accelerator = Accelerator(kwargs['args'])
                 self.is_deepspeed_enabled = getattr(self.accelerator.state, 'deepspeed_plugin', None) is not None
                 self.is_fsdp_enabled = getattr(self.accelerator.state, 'fsdp_plugin', None) is not None
+                if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
+                    self.propagate_args_to_deepspeed()
 
             Trainer.__init__ = new_init
         yield
@@ -311,13 +313,21 @@ class RayHelper:
 
     @staticmethod
     def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
-        import ray
         workers = RayHelper.get_workers(group, execute)
         length = len(workers)
+
+        def remote_func(worker, *args, **kwargs):
+            if hasattr(worker, method_name):
+                remote_call = getattr(worker, method_name)
+                return remote_call.remote(*args, **kwargs)
+            else:
+                remote_call = getattr(worker, 'call_inner_function')
+                return remote_call.remote(method_name, *args, **kwargs)
+
         if execute == 'first':
-            return getattr(workers[0], method_name).remote(*args, **kwargs)
+            return remote_func(workers[0], *args, **kwargs)
         elif dispatch == 'all':
-            return [getattr(worker, method_name).remote(*args, **kwargs) for worker in workers]
+            return [remote_func(worker, *args, **kwargs) for worker in workers]
         elif dispatch == 'slice':
             result = []
 
@@ -334,13 +344,7 @@ class RayHelper:
                 sliced_args = tuple(arg[i] for arg in args)
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
-                    # skip empty input
-                    if hasattr(workers[i], method_name):
-                        remote_call = getattr(workers[i], method_name)
-                        result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
-                    else:
-                        remote_call = getattr(workers[i], 'call_inner_function')
-                        result.append(remote_call.remote(method_name, *sliced_args, **sliced_kwargs))
+                    result.append(remote_func(workers[i], *sliced_args, **sliced_kwargs))
 
             return result
         elif isinstance(dispatch, Callable):
@@ -348,8 +352,7 @@ class RayHelper:
             result = []
             for i in range(length):
                 sliced_args, sliced_kwargs = dispatch(length, i, *args, **kwargs)
-                remote_call = getattr(workers[i], method_name)
-                result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                result.append(remote_func(workers[i], *sliced_args, **sliced_kwargs))
             return result
         else:
             raise ValueError(f'Invalid dispatch method: {dispatch}')
