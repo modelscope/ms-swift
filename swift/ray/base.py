@@ -3,6 +3,7 @@ import argparse
 import functools
 import inspect
 import os
+from types import SimpleNamespace
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
@@ -58,7 +59,14 @@ class RayHelper:
                 self.workers = {}
 
             def register_workers(self, group: str, worker_handles: List):
-                self.workers[group] = worker_handles
+                if group == 'sft:default':
+                    group = ['default', 'sft:default']
+                elif group == 'rlhf:default':
+                    group = ['default', 'rlhf:default']
+                else:
+                    group = [group]
+                for _group in group:
+                    self.workers[_group] = worker_handles
 
             def get_workers(self, group: Optional[str] = None):
                 if group:
@@ -118,24 +126,25 @@ class RayHelper:
     @staticmethod
     @contextmanager
     def patch_init():
-        if not RayHelper.is_default():
+        if RayHelper.ray_inited() and not RayHelper.is_default():
             from transformers import Trainer
             init_method = Trainer.__init__
 
             @functools.wraps(init_method)
             def new_init(self, *args, **kwargs):
-                from accelerate import Accelerator
+                from transformers import Trainer, enable_full_determinism, set_seed
+                self: Trainer
                 self.processing_class = kwargs['processing_class']
-                self.args = kwargs['args']
-                self.accelerator = Accelerator(kwargs['args'])
-                self.is_deepspeed_enabled = getattr(self.accelerator.state, 'deepspeed_plugin', None) is not None
-                self.is_fsdp_enabled = getattr(self.accelerator.state, 'fsdp_plugin', None) is not None
-                if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
-                    self.propagate_args_to_deepspeed()
+                args = kwargs['args']
+                self.args = args
+                enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
+                self.model = SimpleNamespace(tp_size=1)
+                self.create_accelerator_and_postprocess()
+                self.args._setup_devices
 
             Trainer.__init__ = new_init
         yield
-        if not RayHelper.is_default():
+        if RayHelper.ray_inited() and not RayHelper.is_default():
             Trainer.__init__ = init_method
 
     @staticmethod
@@ -164,7 +173,9 @@ class RayHelper:
 
     @staticmethod
     def is_default():
-        return 'default' in os.environ.get('RAY_SWIFT_GROUP', '').split(',')
+        ray_groups = os.environ.get('RAY_SWIFT_GROUP', '').split(',')
+        default_names = ['default', 'sft:default', 'rlhf:default']
+        return any(name in ray_groups for name in default_names)
 
     @staticmethod
     def is_worker():
@@ -203,6 +214,8 @@ class RayHelper:
 
     @staticmethod
     def collect_func(method: Union[Literal['none', 'flatten'], Callable], result):
+        if not result:
+            return result
         if isinstance(result[0], tuple):
             output = []
             for i in range(len(result[0])):
@@ -254,7 +267,11 @@ class RayHelper:
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
                         # pass through env
-                        self.group = os.environ['RAY_SWIFT_GROUP'].split(',')
+                        default_names = ['default', 'sft:default', 'rlhf:default']
+                        groups = os.environ['RAY_SWIFT_GROUP'].split(',')
+                        if 'sft:default' in groups or 'rlhf:default' in groups:
+                            groups.append('default')
+                        self.group = groups
                     if group not in self.group:
                         if RayHelper.is_called_from_init():
                             # Functions in init of different group, do nothing

@@ -20,7 +20,7 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
-@RayHelper.worker(group=['default'])
+@RayHelper.worker(group=['sft:default'])
 class SwiftSft(SwiftPipeline, TunerMixin, RayMixin):
     args_class = TrainArguments
     args: args_class

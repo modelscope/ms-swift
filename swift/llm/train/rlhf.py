@@ -18,7 +18,7 @@ from .sft import SwiftSft
 logger = get_logger()
 
 
-@RayHelper.worker(group=['default', 'ref', 'reward', 'value', 'teacher'])
+@RayHelper.worker(group=['rlhf:default', 'ref', 'reward', 'value', 'teacher'])
 class SwiftRLHF(SwiftSft):
     args_class = RLHFArguments
     args: args_class
