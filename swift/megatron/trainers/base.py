@@ -241,11 +241,11 @@ class BaseMegatronTrainer(ABC):
 
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
-            if args.load_hf_checkpoint:
+            if args.load_safetensors:
                 self.bridge.load_weights(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.load_hf_checkpoint and args.train_type == 'lora' and args.adapters:
+            if args.load_safetensors and args.train_type == 'lora' and args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
                 self.bridge.load_weights(model, args.adapters[0], is_peft_format=True)
             self.peft_models.append(peft_model)
@@ -742,7 +742,7 @@ class BaseMegatronTrainer(ABC):
         if args.train_type == 'lora' and args.merge_lora:
             self.merge_lora_adapters()
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
-        if args.save_hf_checkpoint:
+        if args.save_safetensors:
             output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
             if is_last_rank():

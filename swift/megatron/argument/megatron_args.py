@@ -93,8 +93,9 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     torch_dtype: Optional[torch.dtype] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
-    load_hf_checkpoint: bool = False
-    save_hf_checkpoint: bool = False
+    # safetensors
+    load_safetensors: bool = False
+    save_safetensors: bool = False
     model: Optional[str] = None
     adapters: List[str] = field(default_factory=list)
     merge_lora: Optional[bool] = None
@@ -459,7 +460,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.position_embedding_type is None:
             self.position_embedding_type = 'rope'
         if self.merge_lora is None:
-            self.merge_lora = self.save_hf_checkpoint
+            self.merge_lora = self.save_safetensors
         if self.adapters or self.adapter_load or self.ref_adapter_load:
             if self.train_type == 'full':
                 self.train_type = 'lora'

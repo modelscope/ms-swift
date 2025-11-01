@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code borrowed from huggingface/peft
 import math
+import warnings
 from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
@@ -49,7 +50,9 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
     ):
         config = base_layer.config
         super().__init__(config=config)
-        LoraLayer.__init__(self, base_layer=base_layer)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            LoraLayer.__init__(self, base_layer=base_layer)
 
         if use_dora:
             raise ValueError(f'{self.__class__.__name__} does not support DoRA yet, please set it to False')

@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+import shutil
 from typing import List, Optional, Union
 
 import torch.distributed as dist
@@ -39,18 +41,26 @@ class MegatronExport(SwiftPipeline):
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
         mg_model = megatron_model_meta.model_provider(pre_process=pre_process, post_process=post_process)
-        with patch_load_base_checkpoint():
-            load_checkpoint([mg_model], None, None, strict=True)
+        bridge = megatron_model_meta.bridge_cls()
+        if args.load is not None:
+            with patch_load_base_checkpoint():
+                load_checkpoint([mg_model], None, None, strict=True)
+        elif args.model is not None:
+            bridge.load_weights(mg_model, args.model_info.model_dir)
+        else:
+            raise ValueError('Please specify `--load` or `--model`.')
         if args.adapter_load is not None:
-            prepare_mcore_model(mg_model)
+            peft_model = prepare_mcore_model(mg_model)
             with adapter_state_dict_context():
                 load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+            if args.merge_lora:
+                logger.info('Merge LoRA...')
+                mg_model = peft_model.merge_and_unload()
         logger.info('Converting weights and saving the model...')
-        bridge = megatron_model_meta.bridge_cls()
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         bridge.save_weights([mg_model], args.save, is_peft_format=save_peft_format)
         if is_last_rank():
-            args_path = os.path.join(os.path.dirname(args.save), 'args.json')
+            args_path = os.path.join(args.adapter_load or args.load, 'args.json')
             if os.path.exists(args_path):
                 shutil.copy(args_path, os.path.join(args.save, 'args.json'))
         if args.test_convert_precision:
@@ -58,7 +68,7 @@ class MegatronExport(SwiftPipeline):
                 if save_peft_format:
                     kwargs = {'adapters': [args.save]}
                 else:
-                    kwargs - {'model': args.save}
+                    kwargs = {'model': args.save}
                 hf_model = prepare_model_template(args, device_map='cpu', **kwargs)[0] if is_last_rank() else None
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
             dist.barrier()
