@@ -2,8 +2,8 @@
 import argparse
 import functools
 import inspect
-from contextlib import contextmanager
 import os
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
 import json
@@ -21,6 +21,12 @@ def get_args():
     parser = argparse.ArgumentParser()
     _, unknown = parser.parse_known_args()
     return json.dumps(unknown)
+
+
+class RayMixin:
+
+    def call_inner_function(self, func, *args, **kwargs):
+        return getattr(self.trainer, func)(*args, **kwargs)
 
 
 class RayHelper:
@@ -47,6 +53,7 @@ class RayHelper:
 
         @ray.remote
         class WorkerRegistry:
+
             def __init__(self):
                 self.workers = {}
 
@@ -58,22 +65,19 @@ class RayHelper:
                     return self.workers.get(group, [])
                 return self.workers
 
-            def get_all_workers(self):
-                return self.workers
-
             def clear(self):
                 self.workers.clear()
 
         try:
-            RayHelper._registry = ray.get_actor("swift_worker_registry")
+            RayHelper._registry = ray.get_actor('swift_worker_registry')
         except ValueError:
             try:
                 RayHelper._registry = WorkerRegistry.options(
-                    name="swift_worker_registry",
-                    lifetime="detached",
+                    name='swift_worker_registry',
+                    lifetime='detached',
                 ).remote()
             except ValueError:
-                RayHelper._registry = ray.get_actor("swift_worker_registry")
+                RayHelper._registry = ray.get_actor('swift_worker_registry')
         assert RayHelper._registry is not None
 
     @staticmethod
@@ -107,10 +111,11 @@ class RayHelper:
             try:
                 ray.get(RayHelper._registry.clear.remote())
                 ray.kill(RayHelper._registry)
-            except: # noqa
+            except:  # noqa
                 pass
             RayHelper._registry = None
-    
+
+    @staticmethod
     @contextmanager
     def patch_init():
         if not RayHelper.is_default():
@@ -123,13 +128,14 @@ class RayHelper:
                 self.processing_class = kwargs['processing_class']
                 self.args = kwargs['args']
                 self.accelerator = Accelerator(kwargs['args'])
-                self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
-                self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
+                self.is_deepspeed_enabled = getattr(self.accelerator.state, 'deepspeed_plugin', None) is not None
+                self.is_fsdp_enabled = getattr(self.accelerator.state, 'fsdp_plugin', None) is not None
+
             Trainer.__init__ = new_init
         yield
         if not RayHelper.is_default():
             Trainer.__init__ = init_method
-            
+
     @staticmethod
     def is_called_from_init():
         """If some function called from __init__.
@@ -153,7 +159,7 @@ class RayHelper:
             # not installed, not inited
             return False
         return ray.is_initialized()
-    
+
     @staticmethod
     def is_default():
         return 'default' in os.environ.get('RAY_SWIFT_GROUP', '').split(',')
@@ -252,7 +258,8 @@ class RayHelper:
                             # Functions in init of different group, do nothing
                             return None
                         else:
-                            result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args, **kwargs)
+                            result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args,
+                                                                **kwargs)
                             return RayHelper.collect_func(collect, result)
                     else:
                         return func(self, *args, **kwargs)
@@ -328,14 +335,13 @@ class RayHelper:
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
                     # skip empty input
-                    # import ray; ray.util.pdb.set_trace()
                     if hasattr(workers[i], method_name):
                         remote_call = getattr(workers[i], method_name)
                         result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
                     else:
-                        remote_call = getattr(workers[i], 'call_trainer')
+                        remote_call = getattr(workers[i], 'call_inner_function')
                         result.append(remote_call.remote(method_name, *sliced_args, **sliced_kwargs))
-                    
+
             return result
         elif isinstance(dispatch, Callable):
             # dispatch is Callable

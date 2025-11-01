@@ -8,7 +8,7 @@ from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks
-from swift.ray import RayHelper
+from swift.ray import RayHelper, RayMixin
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -21,7 +21,7 @@ logger = get_logger()
 
 
 @RayHelper.worker(group=['default'])
-class SwiftSft(SwiftPipeline, TunerMixin):
+class SwiftSft(SwiftPipeline, TunerMixin, RayMixin):
     args_class = TrainArguments
     args: args_class
 
@@ -50,11 +50,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
     def _prepare_processor(self, **kwargs):
-        args = self.args
-        _, self.processor = args.get_model_processor(load_model=False, **kwargs)
+        """Prepare processor only."""
+        _, self.processor = self.args.get_model_processor(load_model=False, **kwargs)
 
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
+        """Prepare model and tokenizer."""
         args = self.args
         self.model, _ = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
@@ -80,6 +81,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     @RayHelper.function(group='default')
     def _patch_model_to_template(self):
+        """Some template need model to do preprocess, especially for mllm models."""
         if self.template.use_model:
             self.template.model = self.model
 

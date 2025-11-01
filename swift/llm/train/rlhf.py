@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 from swift.llm import safe_snapshot_download
 from swift.plugin import Tuner, extra_tuners
 from swift.ray import RayHelper
+from swift.trainers import TrainerFactory
 from swift.tuners import Swift
 from swift.utils import get_logger, get_model_parameter_info
 from swift.utils.utils import disable_deepspeed_zero3
@@ -13,7 +14,6 @@ from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
-from ...trainers import TrainerFactory
 
 logger = get_logger()
 
@@ -256,7 +256,7 @@ class SwiftRLHF(SwiftSft):
         return trainer_kwargs
 
     @RayHelper.function(group='default')
-    def _prepare_model(self, train_dataset):
+    def _add_adapter_to_model(self, train_dataset):
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')
@@ -270,7 +270,7 @@ class SwiftRLHF(SwiftSft):
         args.save_args()
 
         data_collator = self._get_data_collator()
-        self._prepare_model(train_dataset)
+        self._add_adapter_to_model(train_dataset)
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         self.args.training_args.ref_model = self.args.ref_model
@@ -284,9 +284,6 @@ class SwiftRLHF(SwiftSft):
             template=self.template,
             **self._get_trainer_kwargs(),
         )
-    
-    def call_trainer(self, func, *args, **kwargs):
-        return getattr(self.trainer, func)(*args, **kwargs)
 
     @RayHelper.function(group='default')
     def run(self):

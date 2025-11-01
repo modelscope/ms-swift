@@ -1,17 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
-from contextlib import nullcontext, contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from accelerate.utils import gather_object
+from torch import autocast
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, pad_to_length
-from torch import autocast
+
 from swift.llm import to_device
 from swift.ray import RayHelper
 from swift.utils import get_logger
@@ -172,72 +173,62 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
-        aux_loss_enabled = model.model_info.is_moe_model and self.args.router_aux_loss_coef > 0
         if aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
 
-    @RayHelper.function(group='default')
     def training_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
 
-    @RayHelper.function(group='default')
     def prediction_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)
 
     @RayHelper.function(group='default')
-    def compute_log_probs_model(self, batch):
+    def _compute_log_probs(self, batch):
         compte_ref_context_manager = (
-            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
-        )
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with torch.no_grad(), compte_ref_context_manager, self.null_ref_context():
             ref_model_output = self.concatenated_forward(self.model, batch, is_ref_model=True)
-            return ref_model_output["chosen_logps"], ref_model_output["rejected_logps"]
+            return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
 
     @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
-    def compute_log_probs_ref_model(self, batch):
+    def _compute_ref_log_probs_ref(self, batch):
         compte_ref_context_manager = (
-            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
-        )
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with torch.no_grad(), compte_ref_context_manager:
             ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
-            return ref_model_output["chosen_logps"], ref_model_output["rejected_logps"]
+            return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
 
     def compute_ref_log_probs(self, batch: dict[str, torch.LongTensor]) -> dict:
         if self.args.ref_model is None:
-            return self.compute_log_probs_model(batch)
+            return self._compute_log_probs(batch)
         else:
-            return self.compute_log_probs_ref_model(batch)
+            return self._compute_ref_log_probs_ref(batch)
 
     def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
-        """Generate samples from the model and reference model for the given batch of inputs."""
-
-        # If one uses `generate_during_eval` with peft + bf16, we need to explicitly call generate with
-        # the torch amp context manager as some hidden states are silently casted to full precision.
         generate_context_manager = (
-            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
-        )
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
 
         with generate_context_manager:
             policy_output = model.generate(
-                input_ids=batch["prompt_input_ids"],
-                attention_mask=batch["prompt_attention_mask"],
+                input_ids=batch['prompt_input_ids'],
+                attention_mask=batch['prompt_attention_mask'],
                 max_length=self.max_length,
                 do_sample=True,
                 pad_token_id=self.padding_value,
             )
 
             # if ref_output in batch use that otherwise use the reference model
-            if "ref_output" in batch:
-                ref_output = batch["ref_output"]
+            if 'ref_output' in batch:
+                ref_output = batch['ref_output']
             else:
                 if self.args.ref_model is None:
                     with self.null_ref_context():
                         ref_output = model.generate(
-                            input_ids=batch["prompt_input_ids"],
-                            attention_mask=batch["prompt_attention_mask"],
+                            input_ids=batch['prompt_input_ids'],
+                            attention_mask=batch['prompt_attention_mask'],
                             max_length=self.max_length,
                             do_sample=True,
                             pad_token_id=self.padding_value,
@@ -256,8 +247,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     @RayHelper.function(group='ref', execute='peer', dispatch='slice', collect='flatten')
     def generate_from_ref(self, batch):
         return self.ref_model.generate(
-            input_ids=batch["prompt_input_ids"],
-            attention_mask=batch["prompt_attention_mask"],
+            input_ids=batch['prompt_input_ids'],
+            attention_mask=batch['prompt_attention_mask'],
             max_length=self.max_length,
             do_sample=True,
             pad_token_id=self.padding_value,

@@ -41,12 +41,12 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
+from swift.ray import RayHelper
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
-from swift.ray import RayHelper
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -183,7 +183,7 @@ class SwiftMixin:
         finally:
             trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
-    def get_use_logits_to_keep(self, default_value: bool = True, model = None):
+    def get_use_logits_to_keep(self, default_value: bool = True, model=None):
         use_logits_to_keep = self.args.use_logits_to_keep
         if model is None:
             model = self.model
