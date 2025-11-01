@@ -72,7 +72,10 @@ def _model_cpu_forward_context(modules,
                                compute_device=None,
                                share_embedding: bool = False,
                                target_device='cpu'):
-    origin_torch_dtype = next(modules[-1].parameters()).dtype
+    try:
+        origin_torch_dtype = next(modules[0].parameters()).dtype
+    except StopIteration:
+        origin_torch_dtype = next(modules[-1].parameters()).dtype
 
     def _to_cuda_hook(module, args):
         if compute_device is not None or torch_dtype is not None:

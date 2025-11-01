@@ -50,26 +50,37 @@ class GPTBridge:
 
     @staticmethod
     def _get_tp_split_dim(mg_key: str) -> Optional[int]:
+        # ColumnLinear
+        dim0_keys = {
+            'word_embeddings',
+            'output_layer',
+            'linear_qkv',
+            # mla
+            'linear_q_proj',
+            'linear_kv_down_proj',
+            'linear_kv_up_proj'
+        }
+        # RowLinear
+        dim1_keys = {'linear_proj', 'linear_fc2'}
         if 'lora_A' not in mg_key and 'lora_B' not in mg_key:
             key, suffix = mg_key.rsplit('.', 2)[-2:]
             if suffix == 'layer_norm_weight':
                 return
-            if key in {'word_embeddings', 'output_layer', 'linear_qkv'}:
+            if key in dim0_keys:
                 return 0
-            elif key in {'linear_proj', 'linear_fc1', 'linear_fc2'}:
+            elif key in {'linear_fc1'} | dim1_keys:
                 # linear_fc1 shape [2, X, Y]
                 return 1
         else:
             mg_key_splited = mg_key.rsplit('.', 3)
             key, lora_name = mg_key_splited[:2]
             if lora_name == 'lora_A':
-                if key in {'linear_proj', 'linear_fc2'}:
+                if key in dim1_keys:
                     return 1
             elif lora_name == 'lora_B':
-                if key in {'word_embeddings', 'output_layer', 'linear_qkv'}:
+                if key in dim0_keys:
                     return 0
                 elif key in {'linear_fc1'}:
-                    # linear_fc1 shape [2, X, Y]
                     return 1
 
     def _set_weight(
@@ -412,27 +423,61 @@ class GPTBridge:
         # linear_fc1
         if to_mcore:
             if isinstance(mg_mlp.linear_fc1, LoraParallelLinear):
-                if is_expert:
-                    print()
-                else:
-                    mg_lora_B = mg_mlp.linear_fc1.lora_B['default'].weight
-                    mg_lora_B = mg_lora_B.new_empty(2, mg_lora_B.shape[0] // 2, mg_lora_B.shape[-1])
-                    if hasattr(hf_mlp, 'gate_up_proj'):
+                mg_lora_B = mg_mlp.linear_fc1.lora_B['default'].weight0 if is_expert else mg_mlp.linear_fc1.lora_B[
+                    'default'].weight
+                mg_lora_B = mg_lora_B.new_empty(num_local_experts * 2, mg_lora_B.shape[0] // 2, mg_lora_B.shape[-1])
+                if hasattr(hf_mlp, 'gate_up_proj'):
+                    if is_expert:
+                        lora_A = torch.stack([
+                            hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.lora_A.weight'].load()
+                            for i in range(num_local_experts)
+                        ])
+                        lora_B = torch.concat([
+                            hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.lora_B.weight'].load()
+                            for i in range(num_local_experts)
+                        ])
+                    else:
                         lora_A = hf_state_dict['gate_up_proj.lora_A.weight'].load()
                         lora_B = hf_state_dict['gate_up_proj.lora_B.weight'].load()
+                else:
+                    if is_expert:
+                        lora_A = torch.concat([
+                            hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_proj.lora_A.weight'].load()
+                            for i in range(num_local_experts)
+                        ])
+                        up_lora_A = torch.concat([
+                            hf_state_dict[f'{i + ep_rank * num_local_experts}.up_proj.lora_A.weight'].load()
+                            for i in range(num_local_experts)
+                        ])
+                        weight_list = []
+                        for i in range(num_local_experts):
+                            gate_lora_B = hf_state_dict[
+                                f'{i + ep_rank * num_local_experts}.gate_proj.lora_B.weight'].load()
+                            up_lora_B = hf_state_dict[f'{i + ep_rank * num_local_experts}.up_proj.lora_B.weight'].load()
+                            weight_list.append(torch.stack([gate_lora_B, up_lora_B], dim=0))
+                        lora_B = torch.concat(weight_list, dim=0)
                     else:
                         lora_A = hf_state_dict['gate_proj.lora_A.weight'].load()
-                        assert (lora_A == hf_state_dict['up_proj.lora_A.weight'].load()
-                                ).all(), 'Need to ensure lora_A consistency between gate_proj and up_proj'
+                        up_lora_A = hf_state_dict['up_proj.lora_A.weight'].load()
                         gate_lora_B = hf_state_dict['gate_proj.lora_B.weight'].load()
                         up_lora_B = hf_state_dict['up_proj.lora_B.weight'].load()
                         lora_B = torch.stack([gate_lora_B, up_lora_B], dim=0)
-                    self._set_weight(
-                        mg_mlp.linear_fc1.lora_A['default'].weight,
-                        lora_A,
-                        'linear_fc1.lora_A.default.weight',
-                        is_expert=is_expert)
-                    self._set_weight(mg_lora_B, lora_B, 'linear_fc1.lora_B.default.weight', is_expert=is_expert)
+                    assert (
+                        lora_A == up_lora_A).all(), 'Need to ensure lora_A consistency between gate_proj and up_proj'
+                if is_expert:
+                    mg_lora_A = mg_mlp.linear_fc1.lora_A['default'].weight0
+                    mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
+                else:
+                    mg_lora_A = mg_mlp.linear_fc1.lora_A['default'].weight
+                self._set_weight(mg_lora_A, lora_A, 'linear_fc1.lora_A.default.weight', is_expert=is_expert)
+                self._set_weight(mg_lora_B, lora_B, 'linear_fc1.lora_B.default.weight', is_expert=is_expert)
+                if is_expert:
+                    mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
+                    mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
+                    for i in range(num_local_experts):
+                        getattr(mg_mlp.linear_fc1.lora_A['default'], f'weight{i}').data.copy_(mg_lora_A[i])
+                        getattr(mg_mlp.linear_fc1.lora_B['default'], f'weight{i}').data.copy_(mg_lora_B[i])
+                else:
                     mg_mlp.linear_fc1.lora_B['default'].weight.data.copy_(mg_lora_B.view(-1, mg_lora_B.shape[-1]))
             else:
                 fc1_weight = mg_mlp.linear_fc1.weight0 if is_expert else mg_mlp.linear_fc1.weight
@@ -568,7 +613,27 @@ class GPTBridge:
         if is_expert:
             if to_mcore:
                 if isinstance(mg_mlp.linear_fc2, LoraParallelLinear):
-                    print()
+                    mg_lora_A = mg_mlp.linear_fc2.lora_A.default.weight0
+                    mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
+                    mg_lora_B = mg_mlp.linear_fc2.lora_B.default.weight0
+                    mg_lora_B = mg_lora_B.new_empty(num_local_experts * mg_lora_B.shape[0], mg_lora_B.shape[1])
+                    lora_A = torch.concat([
+                        hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.lora_A.weight'].load()
+                        for i in range(num_local_experts)
+                    ],
+                                          dim=0)
+                    lora_B = torch.concat([
+                        hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.lora_B.weight'].load()
+                        for i in range(num_local_experts)
+                    ],
+                                          dim=0)
+                    self._set_weight(mg_lora_A, lora_A, 'linear_fc2.lora_A.default.weight', is_expert=is_expert)
+                    self._set_weight(mg_lora_B, lora_B, 'linear_fc2.lora_B.default.weight', is_expert=is_expert)
+                    mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
+                    mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
+                    for i in range(num_local_experts):
+                        getattr(mg_mlp.linear_fc2.lora_A['default'], f'weight{i}').data.copy_(mg_lora_A[i])
+                        getattr(mg_mlp.linear_fc2.lora_B['default'], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
                     fc2_weight = mg_mlp.linear_fc2.weight0
                     fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
