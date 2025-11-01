@@ -4,7 +4,7 @@ SWIFT already supports using Ray for multi-GPU or multi-node training. The suppo
 
 | Feature  | Ray Support | Example                                                                               | Assignable Roles |
 |----------|-------------|---------------------------------------------------------------------------------------|------------------|
-| pt       | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/sft.sh | pt:default       |
+| pt       | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/pt.sh  | pt:default       |
 | sft      | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/sft.sh | sft:default      |
 | dpo      | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/dpo.sh | rlhf:default/ref |
 | grpo     | ❎           |                                                                                       |                  |
@@ -13,7 +13,7 @@ SWIFT already supports using Ray for multi-GPU or multi-node training. The suppo
 | sampling | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill             | sampler/prm/orm  |
 | distill  | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample              | sampler/prm/orm  |
 
-## Technical Details
+## Technical Detailsp
 
 Before describing parameter settings, it's necessary to first explain the technical details. Since SWIFT currently uses many existing implementations from transformers and trl internally, decomposing into different Ray roles like veRL or ROLL is impractical, and decomposition would center around Ray, resulting in poor support for non-Ray scenarios.
 
