@@ -3,8 +3,8 @@ import argparse
 import functools
 import inspect
 import os
-from types import SimpleNamespace
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
 import json
@@ -61,6 +61,8 @@ class RayHelper:
             def register_workers(self, group: str, worker_handles: List):
                 if group == 'sft:default':
                     group = ['default', 'sft:default']
+                elif group == 'pt:default':
+                    group = ['default', 'pt:default']
                 elif group == 'rlhf:default':
                     group = ['default', 'rlhf:default']
                 else:
@@ -174,7 +176,7 @@ class RayHelper:
     @staticmethod
     def is_default():
         ray_groups = os.environ.get('RAY_SWIFT_GROUP', '').split(',')
-        default_names = ['default', 'sft:default', 'rlhf:default']
+        default_names = ['default', 'sft:default', 'rlhf:default', 'pt:default']
         return any(name in ray_groups for name in default_names)
 
     @staticmethod
@@ -267,9 +269,8 @@ class RayHelper:
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
                         # pass through env
-                        default_names = ['default', 'sft:default', 'rlhf:default']
                         groups = os.environ['RAY_SWIFT_GROUP'].split(',')
-                        if 'sft:default' in groups or 'rlhf:default' in groups:
+                        if 'sft:default' in groups or 'rlhf:default' in groups or 'pt:default' in groups:
                             groups.append('default')
                         self.group = groups
                     if group not in self.group:

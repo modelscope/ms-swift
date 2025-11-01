@@ -2,15 +2,16 @@
 
 SWIFT already supports using Ray for multi-GPU or multi-node training. The support status for Ray in existing features is as follows:
 
-| Feature  | Ray Support | Example                                                                        | Assignable Roles |
-|----------|-------------|--------------------------------------------------------------------------------|------------------|
-| pt/sft   | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray | default          |
-| dpo      | ❎           |                                                                                |                  |
-| grpo     | ❎           |                                                                                |                  |
-| ppo      | ❎           |                                                                                |                  |
-| megatron | ❎           |                                                                                |                  |
-| sampling | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill      | sampler/prm/orm  |
-| distill  | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample       | sampler/prm/orm  |
+| Feature  | Ray Support | Example                                                                               | Assignable Roles |
+|----------|-------------|---------------------------------------------------------------------------------------|------------------|
+| pt       | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/sft.sh | pt:default       |
+| sft      | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/sft.sh | sft:default      |
+| dpo      | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/ray/dpo.sh | rlhf:default/ref |
+| grpo     | ❎           |                                                                                       |                  |
+| ppo      | ❎           |                                                                                       |                  |
+| megatron | ❎           |                                                                                       |                  |
+| sampling | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill             | sampler/prm/orm  |
+| distill  | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample              | sampler/prm/orm  |
 
 ## Technical Details
 

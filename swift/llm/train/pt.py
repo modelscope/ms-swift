@@ -4,10 +4,12 @@ from typing import List, Optional, Union
 from swift.utils import get_logger
 from ..argument import TrainArguments
 from .sft import SwiftSft
+from swift.ray import RayHelper
 
 logger = get_logger()
 
 
+@RayHelper.worker(group=['pt:default'])
 class SwiftPt(SwiftSft):
     args_class = TrainArguments
     args: args_class

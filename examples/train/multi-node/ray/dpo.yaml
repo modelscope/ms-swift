@@ -14,7 +14,6 @@ lora_rank: 8
 lora_alpha: 32
 target_modules: all-linear
 gradient_accumulation_steps: 16
-# deepspeed: zero3
 eval_steps: 50
 save_steps: 50
 save_total_limit: 2
@@ -28,6 +27,7 @@ dataset_num_proc: 4
 
 use_ray: true
 
+# Ranks of rlhf:default and ref must equal
 device_groups:
   nproc_per_node: 4
   sample_group:

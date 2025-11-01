@@ -8,11 +8,12 @@ import torch.nn as nn
 from accelerate.utils import gather_object
 from torch import autocast
 from transformers import PreTrainedModel
+from transformers.modeling_utils import unwrap_model
 from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, pad_to_length
-from transformers.modeling_utils import unwrap_model
+
 from swift.llm import to_device
 from swift.ray import RayHelper
 from swift.utils import get_logger
