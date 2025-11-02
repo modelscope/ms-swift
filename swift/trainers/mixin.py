@@ -886,7 +886,7 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    def _compute_acc(self, outputs, labels) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
@@ -918,7 +918,8 @@ class SwiftMixin:
                     binary_preds,
                     labels.long(),
                     acc_strategy=args.acc_strategy,
-                    is_encoder_decoder=self.template.is_encoder_decoder)
+                    is_encoder_decoder=self.template.is_encoder_decoder,
+                    cu_seqlens=cu_seqlens)
         elif logits.dim() == 1 or (logits.dim() == 2 and logits.size(-1) == 1):
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
@@ -927,7 +928,8 @@ class SwiftMixin:
                 binary_preds,
                 labels.long(),
                 acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.template.is_encoder_decoder)
+                is_encoder_decoder=self.template.is_encoder_decoder,
+                cu_seqlens=cu_seqlens)
         else:
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:
@@ -952,7 +954,11 @@ class SwiftMixin:
                 labels = labels_output.int()
 
             metrics = compute_acc(
-                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+                preds,
+                labels,
+                acc_strategy=args.acc_strategy,
+                is_encoder_decoder=self.template.is_encoder_decoder,
+                cu_seqlens=cu_seqlens)
 
         if metrics:
             mode = 'train' if self.model.training else 'eval'
