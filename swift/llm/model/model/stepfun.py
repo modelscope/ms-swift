@@ -83,7 +83,7 @@ def _patch_step_audio2_mini(model):
         labels = kwargs.get('labels')
         output = self.origin_forward(*args, **kwargs)
         if labels is not None and output.loss is None:
-            output.loss = self.loss_function(
+            output['loss'] = self.loss_function(
                 logits=output.logits, labels=labels, vocab_size=self.config.get_text_config().vocab_size)
         return output
 
