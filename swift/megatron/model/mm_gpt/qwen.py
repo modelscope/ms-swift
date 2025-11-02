@@ -6,12 +6,8 @@ from PIL import Image
 from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
-from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
 def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
@@ -73,27 +69,18 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.qwen2_5_vl, [
-            ModelType.qwen2_5_vl,
-        ],
-        convert_hf2mcore=convert_hf2mcore_qwen2_5_vl,
-        convert_mcore2hf=convert_mcore2hf_qwen2_5_vl,
-        visual_cls=Qwen2_5VL_Vit))
+    MegatronModelMeta(MegatronModelType.qwen2_5_vl, [
+        ModelType.qwen2_5_vl,
+    ], visual_cls=Qwen2_5VL_Vit))
 
 
 class Qwen2VL_Vit(Qwen2_5VL_Vit):
     version = 'v2'
 
 
-register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.qwen2_vl, [
-            ModelType.qwen2_vl,
-        ],
-        convert_hf2mcore=convert_hf2mcore_qwen2_5_vl,
-        convert_mcore2hf=convert_mcore2hf_qwen2_5_vl,
-        visual_cls=Qwen2VL_Vit))
+register_megatron_model(MegatronModelMeta(MegatronModelType.qwen2_vl, [
+    ModelType.qwen2_vl,
+], visual_cls=Qwen2VL_Vit))
 
 
 class Qwen2_5Omni_Vit(HuggingFaceModule):
@@ -167,13 +154,9 @@ def convert_mcore2hf_qwen2_5_omni(hf_model, mg_model):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.qwen2_5_omni, [
-            ModelType.qwen2_5_omni,
-        ],
-        convert_hf2mcore=convert_hf2mcore_qwen2_5_omni,
-        convert_mcore2hf=convert_mcore2hf_qwen2_5_omni,
-        visual_cls=Qwen2_5Omni_Vit))
+    MegatronModelMeta(MegatronModelType.qwen2_5_omni, [
+        ModelType.qwen2_5_omni,
+    ], visual_cls=Qwen2_5Omni_Vit))
 
 
 def convert_hf2mcore_ovis2_5(hf_model, mg_model):
@@ -227,11 +210,6 @@ class Ovis2_5Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.ovis2_5, [
-            ModelType.ovis2_5,
-        ],
-        convert_hf2mcore=convert_hf2mcore_ovis2_5,
-        convert_mcore2hf=convert_mcore2hf_ovis2_5,
-        visual_cls=Ovis2_5Vit))
+register_megatron_model(MegatronModelMeta(MegatronModelType.ovis2_5, [
+    ModelType.ovis2_5,
+], visual_cls=Ovis2_5Vit))

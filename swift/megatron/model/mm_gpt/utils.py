@@ -13,7 +13,6 @@ from transformers.utils import ContextManagers
 
 from swift.llm import deep_getattr, get_model_tokenizer
 from swift.utils import disable_safe_ddp_context_use_barrier
-from ..gpt.config import convert_gpt_hf_config
 from ..mm_gpt_model import MultimodalGPTModel
 from ..register import MegatronModelMeta
 
@@ -47,12 +46,6 @@ def patch_device_map_meta(model_cls):
         yield
     finally:
         model_cls.__init__ = __origin_init__
-
-
-@dataclass
-class MMGPTMegatronModelMeta(MegatronModelMeta):
-    model_cls: Type[nn.Module] = MultimodalGPTModel
-    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
 
 
 class HuggingFaceModule(_HuggingFaceModule, ABC):

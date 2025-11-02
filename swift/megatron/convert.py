@@ -158,8 +158,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     _test_params_sum(mg_model)
 
     is_multimodal = template.model_meta.is_multimodal
-    inputs = get_examples(is_multimodal)
-    inputs = template.encode(inputs)
+    inputs = template.encode(get_examples(is_multimodal))
     hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
@@ -181,6 +180,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
 
     args = get_args()
     template.use_megatron = True
+    inputs = template.encode(get_examples(is_multimodal))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_torch_dtype = torch_dtype

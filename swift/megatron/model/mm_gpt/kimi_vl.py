@@ -6,10 +6,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
 def convert_hf2mcore_kimi_vl(hf_model, mg_model):
@@ -54,11 +52,6 @@ class KimiVLVit(HuggingFaceModule):
         return inputs_embeds
 
 
-register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.kimi_vl, [
-            ModelType.kimi_vl,
-        ],
-        convert_hf2mcore=convert_hf2mcore_kimi_vl,
-        convert_mcore2hf=convert_mcore2hf_kimi_vl,
-        visual_cls=KimiVLVit))
+register_megatron_model(MegatronModelMeta(MegatronModelType.kimi_vl, [
+    ModelType.kimi_vl,
+], visual_cls=KimiVLVit))

@@ -4,12 +4,8 @@ from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
-from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
 def convert_hf2mcore_internvl3(hf_model, mg_model):
@@ -63,14 +59,11 @@ class Internvl3Vit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
+    MegatronModelMeta(
         MegatronModelType.internvl3, [
             ModelType.internvl3,
             ModelType.internvl3_5,
-        ],
-        convert_hf2mcore=convert_hf2mcore_internvl3,
-        convert_mcore2hf=convert_mcore2hf_internvl3,
-        visual_cls=Internvl3Vit))
+        ], visual_cls=Internvl3Vit))
 
 
 def convert_hf2mcore_internvl_hf(hf_model, mg_model):
@@ -152,10 +145,6 @@ class InternvlHfVit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.internvl_hf, [
-            ModelType.internvl_hf,
-        ],
-        convert_hf2mcore=convert_hf2mcore_internvl_hf,
-        convert_mcore2hf=convert_mcore2hf_internvl_hf,
-        visual_cls=InternvlHfVit))
+    MegatronModelMeta(MegatronModelType.internvl_hf, [
+        ModelType.internvl_hf,
+    ], visual_cls=InternvlHfVit))

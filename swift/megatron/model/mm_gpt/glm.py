@@ -3,10 +3,8 @@ from megatron.training import get_args
 
 from swift.llm import ModelType, Template
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
 def convert_hf2mcore_glm4_5v(hf_model, mg_model):
@@ -49,11 +47,6 @@ class Glm4_5vVit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
-register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.glm4_5v, [
-            ModelType.glm4_5v,
-        ],
-        convert_hf2mcore=convert_hf2mcore_glm4_5v,
-        convert_mcore2hf=convert_mcore2hf_glm4_5v,
-        visual_cls=Glm4_5vVit))
+register_megatron_model(MegatronModelMeta(MegatronModelType.glm4_5v, [
+    ModelType.glm4_5v,
+], visual_cls=Glm4_5vVit))
