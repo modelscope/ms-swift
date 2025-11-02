@@ -375,11 +375,7 @@ class DeepseekOCR(Template):
         images_spatial_crop = self.concat_tensor(batch, 'images_spatial_crop', 0)
         if images_seq_mask:
             max_len = max([x.shape[1] for x in images_seq_mask])
-            new_images_seq_mask = []
-            for x in images_seq_mask:
-                new_images_seq_mask.append(F.pad(x, (0, max_len - x.shape[1])))
-            images_seq_mask = torch.concat(new_images_seq_mask)
-            res['images_seq_mask'] = images_seq_mask
+            res['images_seq_mask'] = torch.concat([F.pad(x, (0, max_len - x.shape[1])) for x in images_seq_mask])
         if images_spatial_crop is not None:
             res['images_spatial_crop'] = images_spatial_crop
         return res
