@@ -460,11 +460,20 @@ class Qwen3VLGPTModel(MultimodalGPTModel):
         super().__init__(*args, **kwargs)
 
 
+class Qwen3OmniBridge(MultimodalGPTBridge):
+    hf_layers_prefix = 'thinker.model.layers'
+    hf_embed_prefix = 'thinker.model.embed_tokens.weight'
+    hf_final_layernorm_prefix = 'thinker.model.norm.weight'
+    hf_lm_head_prefix = 'thinker.lm_head.weight'
+    hf_score_prefix = 'thinker.score.weight'
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_omni, [
             ModelType.qwen3_omni,
-        ], model_cls=Qwen3VLGPTModel, visual_cls=Qwen3Omni_Vit))
+        ], model_cls=Qwen3VLGPTModel,
+        bridge_cls=Qwen3OmniBridge,
+        visual_cls=Qwen3Omni_Vit))
 
 
 class Qwen3VL_Vit(HuggingFaceModule):

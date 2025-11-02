@@ -132,7 +132,8 @@ class GPTBridge:
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
-            mg_module.load_state_dict(hf_state_dict)
+            incompatible_keys = mg_module.load_state_dict(hf_state_dict, strict=False)
+            assert len(incompatible_keys.missing_keys) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
@@ -684,10 +685,9 @@ class GPTBridge:
                         getattr(mg_mlp.linear_fc2.lora_B['default'], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
                     fc2_weight = mg_mlp.linear_fc2.weight0
-                    fc2_weight = fc2_weight.new_empty(num_local_experts, fc2_weight.shape[0], fc2_weight.shape[1])
+                    fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
                     if hf_grouped:
                         down_proj_weight = hf_state_dict['down_proj'].load().transpose(1, 2)
-                        down_proj_weight = down_proj_weight.reshape(num_local_experts, -1, down_proj_weight.shape[-1])
                     else:
                         down_proj_weight = torch.concat([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight'].load()
