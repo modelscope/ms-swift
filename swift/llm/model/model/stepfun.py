@@ -85,7 +85,7 @@ def _patch_step_audio2_mini(model):
         if labels is not None and output.loss is None:
             output.loss = self.loss_function(
                 logits=output.logits, labels=labels, vocab_size=self.config.get_text_config().vocab_size)
-        return res
+        return output
 
     model.__class__.forward = _forward
 

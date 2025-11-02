@@ -346,7 +346,6 @@ The following parameters are supported:
 - load_function: Defaults to `DatasetLoader.load`. If a custom loading function is needed, it should return an `HfDataset` in the standard format, allowing users maximum flexibility while bypassing the ms-swift dataset loading mechanism. This parameter usually does not need to be modified.
 
 
-
 Below are examples of registering datasets:
 
 ```python
