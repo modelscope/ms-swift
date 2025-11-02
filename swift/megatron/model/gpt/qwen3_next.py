@@ -499,7 +499,8 @@ class Qwen3NextBridge(GPTBridge):
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         layer_type = self.args.layer_types[layer_idx]
         if layer_type == 'linear_attention':
-            hf_state_dict.update(self._set_module(None if mg_layer is None else mg_layer.self_attention, hf_state_dict, 'linear_attn.',
+            hf_state_dict.update(
+                self._set_module(None if mg_layer is None else mg_layer.self_attention, hf_state_dict, 'linear_attn.',
                                  to_mcore))
             self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
         elif layer_type == 'full_attention':
