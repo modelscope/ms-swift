@@ -4,7 +4,9 @@ GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swif
 
 [GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.
 
-### GRPO Objective Function
+## Algorithm Overview
+
+GRPO Objective Function is defined as
 $
 {\scriptstyle
 \begin{aligned}

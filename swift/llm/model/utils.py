@@ -214,7 +214,7 @@ class HfConfigFactory:
         if torch_dtype is None:
             return None
         if isinstance(torch_dtype, str):
-            torch_dtype = eval(f'torch.{torch_dtype}')
+            torch_dtype = getattr(torch, torch_dtype)
         return torch_dtype
 
     @staticmethod
@@ -383,13 +383,10 @@ def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
     else:
         llm_model = model
 
-    if 'CausalLM' not in llm_model.__class__.__name__:
-        llm_model = model
-
     if inner_backbone:
         if hasattr(llm_model, 'thinker'):
             llm_model = llm_model.thinker.model
-        else:
+        elif hasattr(llm_model, 'model'):
             llm_model = llm_model.model
     return llm_model
 

@@ -6,10 +6,11 @@ from openai import OpenAI
 
 from swift.llm.infer.protocol import InferRequest, RequestConfig
 from swift.llm.sampling.vanilla_sampler import VanillaSampler
+from swift.ray import RayHelper
 from .utils import get_messages_md5
 
 
-class OpenAI_Engine():
+class OpenAIEngine:
 
     def __init__(
         self,
@@ -38,6 +39,7 @@ class OpenAI_Engine():
                 max_tokens=request_config.max_tokens,
                 stream=self.stream,
             )
+            reasoning_content = None
             if self.stream:
                 reasoning_content = ''
                 content = ''
@@ -66,15 +68,19 @@ class OpenAI_Engine():
         return resp_contents
 
 
+@RayHelper.worker(group=['sampler', 'prm', 'orm'])
 class DistillSampler(VanillaSampler):
 
     def __init__(self, *args, **kwargs):
         super(VanillaSampler, self).__init__(*args, **kwargs)
         assert self.args.sampler_engine == 'client'
-        _Engine = OpenAI_Engine
-        self.infer_engine = _Engine(model=self.args.model, stream=self.args.stream, **self.args.engine_kwargs)
-        self.infer_engine.strict = False
+        self._prepare_sampler()
         self.caches = self.read_cache()
+
+    @RayHelper.function(group='sampler')
+    def _prepare_sampler(self):
+        self.infer_engine = OpenAIEngine(model=self.args.model, stream=self.args.stream, **self.args.engine_kwargs)
+        self.infer_engine.strict = False
 
     def _prepare_model_tokenizer(self):
         pass
@@ -90,6 +96,13 @@ class DistillSampler(VanillaSampler):
             reps_content = message.content
         return reps_content
 
+    @RayHelper.function(
+        group='sampler',
+        dispatch=lambda n, i, data:
+        ([{
+            'messages': data['messages'][i * len(data['messages']) // n:(i + 1) * len(data['messages']) // n]
+        }], {}),
+        collect='flatten')
     def generate(self, data):
         resp_all = []
         infer_requests = []

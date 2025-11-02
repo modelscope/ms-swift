@@ -113,6 +113,9 @@ class RolloutArguments(DeployArguments):
             else:
                 self.vllm_use_async_engine = False
 
+        if self.use_gym_env is None:
+            self.use_gym_env = self.gym_env is not None
+
     def _check_args(self):
         if self.vllm_pipeline_parallel_size > 1:
             raise ValueError('RolloutArguments does not support pipeline parallelism, '

@@ -23,8 +23,9 @@ class LazyTensor:
 
 class SafetensorLazyLoader:
 
-    def __init__(self, hf_model_dir: str):
+    def __init__(self, hf_model_dir: str, is_peft_format: bool = False):
         self.hf_model_dir = hf_model_dir
+        self.is_peft_format = is_peft_format
         self._weight_map = {}
         self._file_handles = {}
         self._load_index()
@@ -45,12 +46,16 @@ class SafetensorLazyLoader:
                 self._index_file = json.load(f)
                 self._weight_map = self._index_file.get('weight_map', {})
         else:
+            if self.is_peft_format:
+                safetensors_fname = 'adapter_model.safetensors'
+            else:
+                safetensors_fname = 'model.safetensors'
             # Single file model
-            safetensors_file = os.path.join(self.hf_model_dir, 'model.safetensors')
+            safetensors_file = os.path.join(self.hf_model_dir, safetensors_fname)
             if os.path.exists(safetensors_file):
                 with safe_open(safetensors_file, framework='pt') as f:
                     for key in f.keys():
-                        self._weight_map[key] = 'model.safetensors'
+                        self._weight_map[key] = safetensors_fname
 
     def get_state_dict(self):
         res = {}
@@ -75,8 +80,13 @@ class SafetensorLazyLoader:
 
 class StreamingSafetensorSaver:
 
-    def __init__(self, save_dir, max_shard_size='5GB', save_rank: Literal['master', 'last'] = 'last') -> None:
-        # max_shard_size: GiB
+    def __init__(
+        self,
+        save_dir,
+        max_shard_size: str = '5GB',
+        save_rank: Literal['master', 'last'] = 'last',
+        is_peft_format: bool = False,
+    ) -> None:
         self.save_dir = save_dir
         if isinstance(max_shard_size, str):
             if max_shard_size.endswith('GB'):
@@ -90,6 +100,7 @@ class StreamingSafetensorSaver:
         self.shard_index = 1
         self.weight_map = {}
         self.is_save_rank = is_last_rank() if save_rank == 'last' else is_master()
+        self.is_peft_format = is_peft_format
         if self.is_save_rank:
             os.makedirs(save_dir, exist_ok=True)
 
@@ -97,7 +108,8 @@ class StreamingSafetensorSaver:
         if not self.is_save_rank:
             return
         tensor_size = tensor.numel() * tensor.element_size()
-        if self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard:
+        if (self.current_shard_size + tensor_size > self.max_shard_size and self.current_shard
+                and not self.is_peft_format):
             self._save_current_shard()
 
         self.current_shard[name] = tensor.cpu().contiguous()
@@ -107,7 +119,10 @@ class StreamingSafetensorSaver:
         if not self.current_shard:
             return
         if shard_filename is None:
-            shard_filename = f'model-{self.shard_index:05d}-of-?????.safetensors'
+            if self.is_peft_format:
+                shard_filename = 'adapter_model.safetensors'
+            else:
+                shard_filename = f'model-{self.shard_index:05d}-of-?????.safetensors'
         shard_path = os.path.join(self.save_dir, shard_filename)
         save_file(self.current_shard, str(shard_path))
         for key in self.current_shard.keys():
@@ -123,6 +138,8 @@ class StreamingSafetensorSaver:
             return
         if self.current_shard:
             self._save_current_shard()
+        if self.is_peft_format:
+            return
         total_shards = self.shard_index - 1
         # rename `?????`
         for i in range(1, total_shards + 1):
@@ -135,12 +152,13 @@ class StreamingSafetensorSaver:
             if os.path.exists(old_path):
                 os.rename(old_path, new_path)
 
-        updated_weight_map = {}
-        for key, filename in self.weight_map.items():
-            new_filename = filename.replace('?????', f'{total_shards:05d}')
-            updated_weight_map[key] = new_filename
+        if total_shards > 1:
+            updated_weight_map = {}
+            for key, filename in self.weight_map.items():
+                new_filename = filename.replace('?????', f'{total_shards:05d}')
+                updated_weight_map[key] = new_filename
 
-        self._save_index(updated_weight_map)
+            self._save_index(updated_weight_map)
 
     def _save_index(self, weight_map):
         index = {'metadata': {'total_size': self.total_size}, 'weight_map': weight_map}

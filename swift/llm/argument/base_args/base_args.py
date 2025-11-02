@@ -15,6 +15,7 @@ from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
+from .ray_args import RayArguments
 from .template_args import TemplateArguments
 
 logger = get_logger()
@@ -52,7 +53,7 @@ class CompatArguments:
 
 @dataclass
 class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
-                    ModelArguments):
+                    ModelArguments, RayArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
@@ -173,6 +174,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
+        RayArguments.__post_init__(self)
         if self.max_length is None and self.model_info is not None:
             self.max_length = self.model_info.max_model_len
         if self.packing and self.packing_length is None:
@@ -218,7 +220,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None) or getattr(
+            self, 'adapter_load', None)
+        if isinstance(adapters, str):
+            adapters = [adapters]
         self.ckpt_dir = get_ckpt_dir(model, adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()

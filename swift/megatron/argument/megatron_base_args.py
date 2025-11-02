@@ -1,5 +1,8 @@
+import math
 import os
 from dataclasses import dataclass
+
+import json
 
 from swift.llm import BaseArguments
 from swift.utils import get_logger

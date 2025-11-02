@@ -191,9 +191,8 @@ def prepare_mcore_model(model):
 
 
 @contextmanager
-def adapter_state_dict_context():
-    args = get_args()
-    if args.train_type == 'full':
+def adapter_state_dict_context(is_peft_format: bool = True):
+    if not is_peft_format:
         yield
         return
     _origin_generate_state_dict = checkpointing.generate_state_dict

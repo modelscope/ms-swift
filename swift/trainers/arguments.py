@@ -314,7 +314,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     soft_cache_length: Optional[int] = None
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: bool = True
+    scale_rewards: Optional[Literal['group', 'batch', 'none']] = None
 
     # entropy
     log_entropy: bool = False
@@ -323,6 +323,11 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
 
     # GSPO https://www.arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+
+    # RLOO
+    advantage_estimator: Literal['grpo', 'rloo'] = 'grpo'
+    # If false, add KL into loss, otherwise add into reward
+    kl_in_reward: Optional[bool] = None  # rloo: true, grpo: false (default)
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

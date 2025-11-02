@@ -182,7 +182,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     def _init_deepspeed(self):
         if self.deepspeed:
             require_version('deepspeed')
-            if is_mp():
+            if is_mp() and not self.use_ray:
                 raise ValueError('DeepSpeed is not compatible with `device_map`. '
                                  f'n_gpu: {get_device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
