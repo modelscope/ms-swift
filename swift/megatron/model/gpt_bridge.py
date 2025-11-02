@@ -25,6 +25,7 @@ class GPTBridge:
     hf_lm_head_prefix = 'lm_head.weight'
     hf_score_prefix = 'score.weight'
     hf_final_layernorm_prefix = 'model.norm.weight'
+    hf_state_dict_mapping = {}
 
     def __init__(self, disable_tqmd: bool = False):
         self.args = get_args()
@@ -859,9 +860,22 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
+    def _convert_hf_state_dict(self, hf_state_dict, to_mcore):
+        res = {}
+        for k, v in hf_state_dict.items():
+            for old_key, new_key in self.hf_state_dict_mapping.items():
+                if not to_mcore:
+                    old_key, new_key = new_key, old_key
+                if k.startswith(old_key):
+                    k = k.replace(old_key, new_key)
+                    break
+            res[k] = v
+        return res
+
     def _convert(self, mg_models, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+            hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
         else:
             hf_state_dict = {}
         mg_models = iter(mg_models)
@@ -902,6 +916,7 @@ class GPTBridge:
         if to_mcore:
             yield
         else:
+            hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
 
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False):
