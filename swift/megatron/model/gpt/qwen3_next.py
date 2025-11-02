@@ -3,7 +3,7 @@ from copy import deepcopy
 from typing import Optional, Tuple, Union
 
 import torch
-from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm
+from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
@@ -378,6 +378,8 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
+        extra_kwargs = _get_extra_te_kwargs(config)
+        self.to(dtype=extra_kwargs['params_dtype'], device=extra_kwargs['device'])
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
         args = get_args()
@@ -473,24 +475,36 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
 
 class Qwen3NextBridge(GPTBridge):
 
-    def _set_state_dict(self, state_dict, res_state_dict, hf_key: str, mg_key: str, reverse: bool, offset: float = 0):
-        if hf_key in {
-                'model.norm.weight', 'q_norm.weight', 'k_norm.weight', 'input_layernorm.weight',
-                'post_attention_layernorm.weight'
-        }:
-            offset = -1 if reverse else 1
-        else:
-            assert 'norm' not in hf_key, f'hf_key: {hf_key}'  # just check
-        return super()._set_state_dict(state_dict, res_state_dict, hf_key, mg_key, reverse, offset)
+    def _set_state_dict(self,
+                        mg_module,
+                        mg_key: str,
+                        hf_state_dict,
+                        hf_key: str,
+                        to_mcore: bool,
+                        *,
+                        offset: float = 0,
+                        is_expert: bool = False):
+        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key:
+            offset = 1 if to_mcore else -1
+        return super()._set_state_dict(
+            mg_module,
+            mg_key,
+            hf_state_dict,
+            hf_key,
+            to_mcore,
+            offset=offset,
+            is_expert=is_expert,
+        )
 
-    def _set_layer_attn(self, state_dict, layer_idx: int, reverse: bool):
+    def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         layer_type = self.args.layer_types[layer_idx]
         if layer_type == 'linear_attention':
-            res = self._replace_prefix(state_dict, 'linear_attn.', 'self_attention.', reverse)
-            self._set_state_dict(state_dict, res, 'input_layernorm.weight', 'input_layernorm.weight', reverse)
+            hf_state_dict.update(self._set_module(None if mg_layer is None else mg_layer.self_attention, hf_state_dict, 'linear_attn.',
+                                 to_mcore))
+            self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
         elif layer_type == 'full_attention':
-            res = super()._set_layer_attn(state_dict, layer_idx, reverse)
-        return res
+            hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
+        return hf_state_dict
 
 
 register_megatron_model(

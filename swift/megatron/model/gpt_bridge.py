@@ -1,5 +1,5 @@
 from copy import copy
-from typing import Dict, Literal, Optional, Union
+from typing import Optional
 
 import torch
 import torch.distributed as dist
@@ -49,7 +49,9 @@ class GPTBridge:
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
     @staticmethod
-    def _get_tp_split_dim(mg_key: str) -> Optional[int]:
+    def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
+        if mg_key is None:
+            return
         # ColumnLinear
         dim0_keys = {
             'word_embeddings',
@@ -116,10 +118,31 @@ class GPTBridge:
             tensor = tensor + offset
         mg_param.data.copy_(tensor)
 
-    def _get_weight(self, mg_weight: torch.Tensor, mg_key: str, offset: int = 0, is_expert: bool = False):
+    def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
+        if to_mcore:
+            hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
+            mg_module.load_state_dict(hf_state_dict)
+            return {}
+        else:
+            hf_state_dict = None if mg_module is None else mg_module.state_dict()
+            if self.pp_size > 1:
+                src_rank = torch.tensor([0 if hf_state_dict is None else self.pp_rank],
+                                        dtype=torch.int64,
+                                        device='cuda')
+                dist.all_reduce(src_rank, group=self.pp_group)
+                src_rank = dist.get_global_rank(self.pp_group, src_rank.item())
+                meta_data = [None] if hf_state_dict is None else [list(hf_state_dict.keys())]
+                dist.broadcast_object_list(meta_data, src=src_rank, group=self.pp_group)
+                hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
+                for k, v in hf_state_dict.items():
+                    v = self._get_weight(deep_getattr(mg_module, k, None), None)
+                    hf_state_dict[k] = v
+            return self._add_prefix(hf_state_dict, hf_prefix)
+
+    def _get_weight(self, mg_weight: torch.Tensor, mg_key: Optional[str], offset: float = 0, is_expert: bool = False):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
-        tensor = mg_weight
+        tensor = None if mg_weight is None else mg_weight.to('cuda')
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_group = self.etp_group if is_expert else self.tp_group
         if tensor is not None and tp_dim is not None and tp_size > 1:
@@ -161,10 +184,11 @@ class GPTBridge:
             dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
             if tensor is None:
                 dist.broadcast(meta_data, src=src_rank, group=parallel_group)
-                shape = meta_data[1:1 + meta_data[0]].tolist()
-                dtype = dtype_mapping_r[meta_data[-1].item()]
-                tensor = torch.empty(shape, device='cuda', dtype=dtype)
-                dist.broadcast(tensor, src=src_rank, group=parallel_group)
+                if meta_data[0].item() > 0:
+                    shape = meta_data[1:1 + meta_data[0]].tolist()
+                    dtype = dtype_mapping_r[meta_data[-1].item()]
+                    tensor = torch.empty(shape, device='cuda', dtype=dtype)
+                    dist.broadcast(tensor, src=src_rank, group=parallel_group)
             else:
                 meta_data[0] = tensor.ndim
                 meta_data[1:1 + tensor.ndim] = torch.tensor(tensor.shape, dtype=torch.int64, device='cuda')
@@ -186,6 +210,7 @@ class GPTBridge:
                         hf_state_dict,
                         hf_key: str,
                         to_mcore: bool,
+                        *,
                         offset: float = 0,
                         is_expert: bool = False):
         module_key, param_key = mg_key.rsplit('.', 1)
@@ -294,6 +319,7 @@ class GPTBridge:
                 0] // num_query_groups
             is_lora = False if mg_attn is None else isinstance(mg_attn.linear_qkv,
                                                                LoraParallelLinear) and self._is_peft_format
+            is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
             if self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
@@ -348,7 +374,9 @@ class GPTBridge:
             hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
             self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
             self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
-        if not to_mcore:
+        if to_mcore:
+            hf_state_dict = {}
+        else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
@@ -378,7 +406,7 @@ class GPTBridge:
                     shared_expert = getattr(hf_mlp, key)
             hf_state_dict.update(
                 self._set_mlp_state(
-                    mg_mlp.shared_experts,
+                    None if mg_mlp is None else mg_mlp.shared_experts,
                     hf_state_dict,
                     hf_shared_expert_prefix,
                     layer_idx,
@@ -388,7 +416,7 @@ class GPTBridge:
                 self._set_state_dict(mg_mlp, 'shared_experts.gate_weight', hf_state_dict, 'shared_expert_gate.weight',
                                      to_mcore)
         for ep_rank in range(self.ep_size):
-            mg_experts = mg_mlp.experts
+            mg_experts = None if mg_mlp is None else mg_mlp.experts
             expert_available = ep_rank == self.ep_rank
             if not expert_available:
                 if to_mcore:
@@ -397,7 +425,9 @@ class GPTBridge:
                     mg_experts = None
             hf_state_dict.update(
                 self._set_mlp_state(mg_experts, hf_state_dict, 'experts.', layer_idx, to_mcore, ep_rank=ep_rank))
-        if not to_mcore:
+        if to_mcore:
+            hf_state_dict = {}
+        else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
@@ -693,7 +723,9 @@ class GPTBridge:
         else:
             self._set_state_dict(
                 mg_mlp, 'linear_fc2.weight', hf_state_dict, 'down_proj.weight', to_mcore, is_expert=is_expert)
-        if not to_mcore:
+        if to_mcore:
+            hf_state_dict = {}
+        else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
@@ -721,7 +753,9 @@ class GPTBridge:
         if self.args.qk_layernorm:
             self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict, 'kv_a_layernorm.weight',
                                  to_mcore)
-        if not to_mcore:
+        if to_mcore:
+            hf_state_dict = {}
+        else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
@@ -758,7 +792,9 @@ class GPTBridge:
             hf_state_dict = {}
         hf_state_dict.update(self._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore))
         hf_state_dict.update(self._set_layer_mlp(mg_layer, hf_state_dict, layer_idx, to_mcore))
-        if not to_mcore:
+        if to_mcore:
+            hf_state_dict = {}
+        else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
@@ -848,7 +884,7 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
-                # TODO: new_special_tokens
+                # TODO: new_special_tokens, vocab_size...
                 self.hf_model.config.save_pretrained(output_dir)
                 save_checkpoint(
                     None,

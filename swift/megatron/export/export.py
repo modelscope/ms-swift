@@ -31,7 +31,8 @@ class MegatronExport(SwiftPipeline):
 
     def convert_mcore2hf(self) -> None:
         args = self.args
-        _, template = prepare_model_template(args, load_model=False)
+        download_model = args.model is not None
+        _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         megatron_model_meta = args.megatron_model_meta
@@ -60,7 +61,7 @@ class MegatronExport(SwiftPipeline):
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         bridge.save_weights([mg_model], args.save, is_peft_format=save_peft_format)
         if is_last_rank():
-            args_path = os.path.join(args.adapter_load or args.load, 'args.json')
+            args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
             if os.path.exists(args_path):
                 shutil.copy(args_path, os.path.join(args.save, 'args.json'))
         if args.test_convert_precision:
@@ -75,7 +76,8 @@ class MegatronExport(SwiftPipeline):
 
     def convert_hf2mcore(self) -> None:
         args = self.args
-        _, template = prepare_model_template(args, load_model=False)
+        download_model = args.model is not None
+        _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         megatron_model_meta = args.megatron_model_meta

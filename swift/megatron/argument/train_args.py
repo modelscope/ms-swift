@@ -54,8 +54,3 @@ class MegatronTrainArguments(MegatronBaseArguments):
                              'to allow the model to initialize weights properly.')
         if self.cached_dataset and self.context_parallel_size > 1:
             raise ValueError('`cached_dataset` does not support context parallelism.')
-
-    def get_model_kwargs(self):
-        res = super().get_model_kwargs()
-        res['download_model'] = self.load_safetensors
-        return res
