@@ -75,7 +75,7 @@ def _convert_config(config, _internal_call=False) -> Dict[str, Any]:
                 break
     for key in ['text_config', 'llm_config', 'thinker_config']:
         if hasattr(config, key):
-            megatron_config.update(convert_hf_config(getattr(config, key), _internal_call=True))
+            megatron_config.update(_convert_config(getattr(config, key), _internal_call=True))
     # compat llama3
     if getattr(config, 'rope_scaling', None) is not None:
         if isinstance(config.rope_scaling, int):
