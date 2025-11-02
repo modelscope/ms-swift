@@ -6,6 +6,7 @@ from PIL import Image
 from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
+from ..gpt_bridge import MultimodalGPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
@@ -44,7 +45,7 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
-    module_mapping = {'visual': 'visual'}
+    module_mapping = {'model.visual': 'visual'}
     _vision_tower = ['visual']
     _aligner = ['visual.merger']
     version = 'v2_5'
@@ -68,19 +69,32 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
+class Qwen2_5VLBridge(MultimodalGPTBridge):
+    # Compatible with older versions of transformers
+    hf_state_dict_mapping = {
+        'model.layers': 'model.language_model.layers',
+        'model.embed_tokens': 'model.language_model.embed_tokens',
+        'model.norm': 'model.language_model.norm',
+        'visual': 'model.visual',
+    }
+
+
 register_megatron_model(
-    MegatronModelMeta(MegatronModelType.qwen2_5_vl, [
-        ModelType.qwen2_5_vl,
-    ], visual_cls=Qwen2_5VL_Vit))
+    MegatronModelMeta(
+        MegatronModelType.qwen2_5_vl, [
+            ModelType.qwen2_5_vl,
+        ], bridge_cls=Qwen2_5VLBridge, visual_cls=Qwen2_5VL_Vit))
 
 
 class Qwen2VL_Vit(Qwen2_5VL_Vit):
     version = 'v2'
 
 
-register_megatron_model(MegatronModelMeta(MegatronModelType.qwen2_vl, [
-    ModelType.qwen2_vl,
-], visual_cls=Qwen2VL_Vit))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen2_vl, [
+            ModelType.qwen2_vl,
+        ], bridge_cls=Qwen2_5VLBridge, visual_cls=Qwen2VL_Vit))
 
 
 class Qwen2_5Omni_Vit(HuggingFaceModule):
