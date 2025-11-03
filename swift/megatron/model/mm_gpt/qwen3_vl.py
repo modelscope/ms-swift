@@ -467,11 +467,13 @@ class Qwen3OmniBridge(MultimodalGPTBridge):
     hf_lm_head_prefix = 'thinker.lm_head.weight'
     hf_score_prefix = 'thinker.score.weight'
 
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_omni, [
             ModelType.qwen3_omni,
-        ], model_cls=Qwen3VLGPTModel,
+        ],
+        model_cls=Qwen3VLGPTModel,
         bridge_cls=Qwen3OmniBridge,
         visual_cls=Qwen3Omni_Vit))
 

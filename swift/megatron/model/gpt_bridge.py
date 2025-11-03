@@ -134,7 +134,8 @@ class GPTBridge:
         if to_mcore:
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
             incompatible_keys = mg_module.load_state_dict(hf_state_dict, strict=False)
-            assert len(incompatible_keys.missing_keys) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
+            assert len(incompatible_keys.missing_keys
+                       ) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
