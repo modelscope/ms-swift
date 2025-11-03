@@ -150,7 +150,8 @@ def compute_acc(preds,
                 labels,
                 *,
                 acc_strategy: Literal['token', 'seq'] = 'token',
-                is_encoder_decoder: bool = False) -> Dict[str, List[float]]:
+                is_encoder_decoder: bool = False,
+                cu_seqlens=None) -> Dict[str, List[float]]:
 
     if isinstance(preds, torch.Tensor):
         if torch.is_floating_point(labels):
@@ -168,8 +169,14 @@ def compute_acc(preds,
         acc_list = (preds[masks] == labels[masks]).tolist()
     else:
         acc_list = []
-        for i, m in enumerate(masks):
-            acc_list.append(np.all(preds[i, m] == labels[i, m]))
+        if cu_seqlens is not None and masks.shape[0] == 1:
+            # padding_free
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                acc_list.append(np.all(preds[0, start:end] == labels[0, start:end]))
+        else:
+            for i, m in enumerate(masks):
+                acc_list.append(np.all(preds[i, m] == labels[i, m]))
     return {f'{acc_strategy}_acc' if preds.ndim >= 2 else 'acc': acc_list}
 
 

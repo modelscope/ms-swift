@@ -25,9 +25,9 @@ class RewardModelArguments:
 class TeacherModelArguments:
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
-    teacher_model_type: Optional[List[str]] = field(
+    teacher_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    teacher_model_revision: Optional[List[str]] = None
+    teacher_model_revision: Optional[str] = None
     teacher_deepspeed: Optional[str] = field(
         default=None,
         metadata={

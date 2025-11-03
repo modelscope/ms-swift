@@ -399,9 +399,12 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss *= self.accelerator.num_processes
 
         if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):
+            cu_seqlens = None
+            if self.template.padding_free and self.args.acc_strategy == 'seq':
+                cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
             # Liger does not have logits
             # Unsloth has a bug with output logits
-            self._compute_acc(outputs, labels)
+            self._compute_acc(outputs, labels, cu_seqlens=cu_seqlens)
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):
