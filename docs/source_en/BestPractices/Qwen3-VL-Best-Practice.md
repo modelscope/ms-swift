@@ -167,7 +167,7 @@ If you need to fine-tune the model with a custom dataset, you can prepare the da
 Qwen3-VL's bbox output uses normalized 1000 relative coordinates. You can use the grounding dataset format provided by ms-swift, where the coordinates in "bbox" are absolute coordinates, and ms-swift will automatically convert absolute coordinates to normalized 1000 relative coordinates. For more information, please refer to the [Grounding Dataset Format Documentation](../Customization/Custom-dataset.md#grounding).
 
 ```jsonl
-{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```
 
 ### Dense Models
