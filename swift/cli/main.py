@@ -52,7 +52,7 @@ def prepare_config_args(argv):
         if argv[i] == '--config':
             if i + 1 >= len(argv):
                 raise ValueError('The `--config` argument requires a yaml file path.')
-            from omegaconf import OmegaConf, DictConfig
+            from omegaconf import OmegaConf, DictConfig, ListConfig
             config = OmegaConf.load(argv[i + 1])
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
