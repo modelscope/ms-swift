@@ -324,10 +324,10 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # GSPO https://www.arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
-    # RLOO
-    advantage_estimator: Literal['grpo', 'rloo'] = 'grpo'
+    # RLOO, REINFORCE++
+    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward
-    kl_in_reward: Optional[bool] = None  # rloo: true, grpo: false (default)
+    kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

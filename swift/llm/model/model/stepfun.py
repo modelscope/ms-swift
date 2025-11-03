@@ -2,6 +2,7 @@
 import os
 import shutil
 import sys
+from functools import wraps
 
 from transformers import AutoModel
 
@@ -79,6 +80,7 @@ def _patch_step_audio2_mini(model):
 
     model.__class__.origin_forward = model.__class__.forward
 
+    @wraps(model.__class__.origin_forward)
     def _forward(self, *args, **kwargs):
         labels = kwargs.get('labels')
         output = self.origin_forward(*args, **kwargs)

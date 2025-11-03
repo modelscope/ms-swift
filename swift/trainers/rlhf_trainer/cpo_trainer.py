@@ -22,6 +22,7 @@ class CPOTrainer(RLHFTrainerMixin, SwiftMixin, HFCPOTrainer):
         self.label_smoothing = args.label_smoothing
         self.loss_type = args.loss_type
         self.cpo_alpha = args.cpo_alpha
+        self.alpha = args.alpha
         if args.loss_type == 'simpo':
             self.simpo_gamma = args.simpo_gamma
             if self.cpo_alpha > 0:

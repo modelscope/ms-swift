@@ -8,4 +8,5 @@ Advanced Research
    deepeyes.md
    GSPO.md
    RLOO.md
+   REINFORCEPP.md
    CHORD.md

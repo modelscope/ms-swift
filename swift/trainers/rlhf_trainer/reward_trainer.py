@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import Any, Dict, Tuple, Union
 
 import pandas as pd
@@ -20,6 +21,18 @@ logger = get_logger()
 
 
 class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            from trl.models import get_act_offloading_ctx_manager
+            if self.args.activation_offloading:
+                self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
+            else:
+                self.maybe_activation_offload_context = nullcontext()
+        except ImportError:
+            self.maybe_activation_offload_context = nullcontext()
+        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
     def compute_loss(self,
                      model: Union[PreTrainedModel, nn.Module],
