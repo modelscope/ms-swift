@@ -108,6 +108,7 @@ class InternvlHfBridge(MultimodalGPTBridge):
         'multi_modal_projector': 'model.multi_modal_projector',
     }
 
+
 class InternvlHfVit(HuggingFaceModule):
     module_mapping = {'model.vision_tower': 'vision_tower', 'model.multi_modal_projector': 'multi_modal_projector'}
     _vision_tower = ['vision_tower']
