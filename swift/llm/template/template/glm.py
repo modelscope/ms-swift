@@ -318,11 +318,14 @@ class GLM4_5VTemplate(GLM4_5Template):
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
         base_model = self.get_base_model(self.model)
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
         position_ids, _ = base_model.model.get_rope_index(
             inputs['input_ids'],
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
-            attention_mask=inputs.get('attention_mask'))
+            attention_mask=attention_mask)
         return self._concat_text_position_ids(position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
