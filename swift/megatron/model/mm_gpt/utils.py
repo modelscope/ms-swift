@@ -1,20 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Type
 
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.training import get_args
-from torch import nn
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.utils import ContextManagers
 
 from swift.llm import deep_getattr, get_model_tokenizer
 from swift.utils import disable_safe_ddp_context_use_barrier
-from ..mm_gpt_model import MultimodalGPTModel
-from ..register import MegatronModelMeta
 
 
 @contextmanager

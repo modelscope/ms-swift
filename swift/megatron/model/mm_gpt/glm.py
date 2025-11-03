@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from megatron.training import get_args
-
 from swift.llm import ModelType, Template
 from ..constant import MegatronModelType
 from ..gpt_bridge import MultimodalGPTBridge

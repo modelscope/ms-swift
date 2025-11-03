@@ -14,8 +14,7 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 
-from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
-                       to_float_dtype)
+from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
 from swift.utils import get_logger, get_n_params_grads
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta

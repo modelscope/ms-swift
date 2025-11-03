@@ -1,10 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
-import torch
-import torch.nn
 from megatron.core import mpu
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
