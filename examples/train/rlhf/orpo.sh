@@ -1,7 +1,8 @@
 nproc_per_node=2
 
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=4,5 \
 NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29900 \
 swift rlhf \
     --rlhf_type orpo \
     --model Qwen/Qwen2.5-7B-Instruct \

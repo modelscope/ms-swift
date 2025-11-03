@@ -107,6 +107,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     loss_weights: Optional[List[float]] = None
     # CPO
     cpo_alpha: float = 1.
+    alpha: float = 1.
     # SimPO
     simpo_gamma: float = 1
     # KTO
