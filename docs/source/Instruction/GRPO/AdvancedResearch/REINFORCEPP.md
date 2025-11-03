@@ -6,6 +6,7 @@
 
 
 ## 算法原理
+为便于理解，我们基于 GRPO（Group Relative Policy Optimization）算法进行对比说明。
 
 GRPO 和 REINFORCE++ Baseline 都采用组内对比的方式来估计优势函数，主要区别在于：
 

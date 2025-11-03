@@ -5,6 +5,7 @@
 [REINFORCE++ Baseline](https://arxiv.org/abs/2501.03262) is a simplified version of the REINFORCE++ algorithm, designed for outcome rewards (response-level scalar rewards). Similar to GRPO, it samples multiple model outputs for each prompt and uses an intra-group baseline to estimate advantages. The key difference lies in the statistics used for normalization.
 
 ## Algorithm Overview
+For clarity, we explain REINFORCE++ Baseline by contrasting it with GRPO (Group Relative Policy Optimization).
 
 Both GRPO and REINFORCE++ Baseline estimate advantages via intra-group comparisons. Their main differences are:
 
@@ -84,4 +85,4 @@ For training examples, please refer to this [script](https://github.com/modelsco
 
 - **`--beta`**: KL divergence regularization coefficient ($\beta$)
 
-For other parameters, please refer to [GRPO Parameters](../../GetStarted/GRPO.md)
+For other parameters, please refer to [GRPO Parameters](../../Command-line-parameters.md#grpo-arguments)

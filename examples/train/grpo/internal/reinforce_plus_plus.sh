@@ -10,7 +10,7 @@ swift rlhf \
     --advantage_estimator reinforce_plus_plus \
     --scale_rewards batch \
     --kl_in_reward true \
-    --external_plugins swift/examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
     --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
