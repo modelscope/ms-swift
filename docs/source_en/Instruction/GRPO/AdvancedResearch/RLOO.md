@@ -8,11 +8,9 @@
 
 For clarity, we explain RLOO by contrasting it with GRPO (Group Relative Policy Optimization).
 
-### Key Differences Between GRPO and RLOO
-
 Both GRPO and RLOO estimate advantages via intra-group comparisons to avoid the high variance of a global baseline. Their core differences are mainly in the following aspects:
 
-#### Difference 1: How the Advantage Baseline Is Constructed
+### Difference 1: How the Advantage Baseline Is Constructed
 
 **1. GRPO (Group Relative Policy Optimization)**
 
@@ -49,7 +47,7 @@ where $\bar{R} = \frac{1}{K}\sum_{j=1}^K R_j$ is the group mean reward.
 
 The key advantage is unbiasedness. For the $i$-th sample, its reward $R_i$ is independent of the baseline $\frac{1}{K-1}\sum_{j \neq i} R_j$, hence the advantage estimate is unbiased. In contrast, using the mean including itself as the baseline introduces bias.
 
-#### Difference 2: How KL Regularization Is Applied
+### Difference 2: How KL Regularization Is Applied
 
 To prevent the policy from drifting too far from the reference policy, both algorithms introduce KL divergence regularization, but in different ways:
 
