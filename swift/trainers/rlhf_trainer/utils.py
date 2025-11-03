@@ -22,6 +22,7 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
 from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
+from swift.utils.torch_utils import get_torch_device
 
 if is_wandb_available():
     import wandb
@@ -48,6 +49,53 @@ if is_vllm_available():
         @property
         def embeddings(self):
             return self.lora_embeddings
+
+
+# code borrowed from verl/verl/utils/memory_utils.py
+def aggressive_empty_cache(force_sync: bool = True, max_retries: int = 3) -> None:
+    """
+    More aggressive GPU memory cleanup function, tries to release PyTorch reserved
+    but unallocated memory.
+
+    Args:
+        force_sync: Whether to force device synchronization
+        max_retries: Maximum number of retries
+    """
+    logger = get_logger()
+
+    device = get_torch_device()
+    if not hasattr(device, 'is_available') or not device.is_available():
+        return
+
+    for attempt in range(max_retries):
+        # Record memory status before cleanup
+        before_reserved = device.memory_reserved()
+        before_allocated = device.memory_allocated()
+
+        # Run garbage collection
+        gc_collect()
+
+        # Clear PyTorch cache
+        device.empty_cache()
+
+        # Force synchronization (optional)
+        if force_sync:
+            device.synchronize()
+
+        # Record memory status after cleanup
+        after_reserved = device.memory_reserved()
+        after_allocated = device.memory_allocated()
+
+        # Calculate freed memory
+        reserved_freed = before_reserved - after_reserved
+        allocated_freed = before_allocated - after_allocated
+
+        logger.info(f'Memory cleanup attempt {attempt + 1}: Freed {reserved_freed / 1024**3:.2f} GB reserved, '
+                    f'{allocated_freed / 1024**3:.2f} GB allocated')
+
+        # Stop retrying if little memory was freed
+        if reserved_freed < 1024**3:  # less than 1GB
+            break
 
 
 def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugin=None, training_args=None):

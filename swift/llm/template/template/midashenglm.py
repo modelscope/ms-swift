@@ -56,6 +56,7 @@ class MiDashengLMTemplate(Template):
         if input_values:
             res['audio_length'] = torch.concat(audio_lengths)
             for i in range(len(input_values)):
+                # TODO: check padding_side
                 pad_len = (res['audio_length'].max() - input_values[i].shape[1]).item()
                 input_values[i] = F.pad(input_values[i], (0, pad_len), 'constant', 0)
             res['input_values'] = torch.concat(input_values)

@@ -332,6 +332,17 @@ def get_current_device():
     return current_device
 
 
+def get_torch_device():
+    if is_torch_cuda_available():
+        return torch.cuda
+    elif is_torch_npu_available():
+        return torch.npu
+    elif is_torch_mps_available():
+        return torch.mps
+    else:
+        return torch.cpu
+
+
 def set_device(local_rank: Optional[Union[str, int]] = None):
     if local_rank is None:
         local_rank = max(0, get_dist_setting()[1])

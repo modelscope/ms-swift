@@ -89,12 +89,14 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
     all_supported_names = ('linear', )
     all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D, lora.Linear)
     target_modules = getattr(peft_config, 'target_modules', None)
+    target_parameters = getattr(peft_config, 'target_parameters', None)
     if target is None:
         return
 
     if isinstance(target_modules, str) and not any(
         [name in target.__class__.__name__.lower()
-         for name in all_supported_names]) and not any([isinstance(target, type_) for type_ in all_supported_types]):
+         for name in all_supported_names]) and not any([isinstance(target, type_)
+                                                        for type_ in all_supported_types]) and not target_parameters:
         return
 
     if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
@@ -105,7 +107,7 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
     if lora_dtype is not None:
-        torch_dtype = eval(f'torch.{lora_dtype}')
+        torch_dtype = getattr(torch, lora_dtype)
         if hasattr(target, 'lora_A') and adapter_name in target.lora_A:
             target.lora_A[adapter_name].to(torch_dtype)
             target.lora_B[adapter_name].to(torch_dtype)

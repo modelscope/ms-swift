@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
@@ -370,10 +371,15 @@ class DeepseekOCR(Template):
         images = self.gather_list(batch, 'images')
         if images:
             res['images'] = images
-        images_seq_mask = self.concat_tensor(batch, 'images_seq_mask', 0)
+        images_seq_mask = [x['images_seq_mask'] for x in batch if x.get('images_seq_mask') is not None]
         images_spatial_crop = self.concat_tensor(batch, 'images_spatial_crop', 0)
-        if images_seq_mask is not None:
-            res['images_seq_mask'] = images_seq_mask
+        padding_side = self.padding_side if self.is_training else 'left'
+        if images_seq_mask:
+            max_len = max([x.shape[1] for x in images_seq_mask])
+            res['images_seq_mask'] = torch.concat([
+                F.pad(x, (0, max_len - x.shape[1]) if padding_side == 'right' else (max_len - x.shape[1], 0))
+                for x in images_seq_mask
+            ])
         if images_spatial_crop is not None:
             res['images_spatial_crop'] = images_spatial_crop
         return res

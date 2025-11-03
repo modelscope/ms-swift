@@ -26,6 +26,7 @@ Swift DOCUMENTATION
    Instruction/采样.md
    Instruction/评测.md
    Instruction/导出与推送.md
+   Instruction/ray的支持.md
    Instruction/强化微调.md
    Instruction/Agent支持.md
    Instruction/支持的模型和数据集.md

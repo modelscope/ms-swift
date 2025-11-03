@@ -77,7 +77,7 @@ class CountdownORM(ORM):
                     continue
 
                 # Evaluate the equation with restricted globals and locals
-                result = eval(equation, {"__builti'ns__": None}, {})
+                result = eval(equation, {'__builtins__': None}, {})
                 # Check if the equation is correct and matches the ground truth
                 if abs(float(result) - float(gt)) < 1e-5:
                     rewards.append(1.0)

@@ -75,13 +75,13 @@ class LLMSample(BaseUI):
                 'en': 'The dataset(s) to train the models, support multi select and local folder/files'
             }
         },
-        'num_sampling_per_gpu_batch_size': {
+        'num_sampling_batch_size': {
             'label': {
                 'zh': '每次采样的批次大小',
                 'en': 'The batch size of sampling'
             }
         },
-        'num_sampling_per_gpu_batches': {
+        'num_sampling_batches': {
             'label': {
                 'zh': '采样批次数量',
                 'en': 'Num of Sampling batches'
@@ -136,9 +136,8 @@ class LLMSample(BaseUI):
                         choices=get_dataset_list(),
                         scale=20,
                         allow_custom_value=True)
-                    gr.Slider(
-                        elem_id='num_sampling_per_gpu_batch_size', minimum=1, maximum=128, step=1, value=1, scale=10)
-                    gr.Slider(elem_id='num_sampling_per_gpu_batches', minimum=1, maximum=128, step=1, value=1, scale=10)
+                    gr.Slider(elem_id='num_sampling_batch_size', minimum=1, maximum=128, step=1, value=1, scale=10)
+                    gr.Slider(elem_id='num_sampling_batches', minimum=1, maximum=128, step=1, value=1, scale=10)
                 SampleRuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
                     gr.Dropdown(

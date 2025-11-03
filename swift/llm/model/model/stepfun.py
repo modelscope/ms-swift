@@ -2,6 +2,7 @@
 import os
 import shutil
 import sys
+from functools import wraps
 
 from transformers import AutoModel
 
@@ -73,10 +74,29 @@ def get_model_tokenizer_step_audio(*args, **kwargs):
     return model, tokenizer
 
 
+def _patch_step_audio2_mini(model):
+    if hasattr(model.__class__, 'origin_forward'):
+        return
+
+    model.__class__.origin_forward = model.__class__.forward
+
+    @wraps(model.__class__.origin_forward)
+    def _forward(self, *args, **kwargs):
+        labels = kwargs.get('labels')
+        output = self.origin_forward(*args, **kwargs)
+        if labels is not None and output.loss is None:
+            output['loss'] = self.loss_function(
+                logits=output.logits, labels=labels, vocab_size=self.config.get_text_config().vocab_size)
+        return output
+
+    model.__class__.forward = _forward
+
+
 def get_model_tokenizer_step_audio2_mini(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
         patch_output_clone(model.model.embed_tokens)
+        _patch_step_audio2_mini(model)
     return model, tokenizer
 
 

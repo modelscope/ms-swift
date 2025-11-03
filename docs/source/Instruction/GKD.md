@@ -33,22 +33,22 @@ $$
 #### Forward KL（前向 KL）
 
 $$
-\text{KL}(P_{\text{student}} \| P_{\text{teacher}}) = \sum_v P_{\text{student}}(v) \log \frac{P_{\text{student}}(v)}{P_{\text{teacher}}(v)}
-$$
-
-**特性**：Mode-seeking（寻模）
-- 期望在学生分布下计算
-- 学生模型倾向于集中在教师模型的峰值区域（高概率区域）
-
-#### Reverse KL（反向 KL）
-
-$$
 \text{KL}(P_{\text{teacher}} \| P_{\text{student}}) = \sum_v P_{\text{teacher}}(v) \log \frac{P_{\text{teacher}}(v)}{P_{\text{student}}(v)}
 $$
 
-**特性**：Mode-covering（覆模）
+**特性**：Mode-covering
 - 期望在教师分布下计算
 - 学生模型倾向于覆盖教师的整个分布（包括低概率区域）
+
+
+#### Reverse KL（反向 KL）
+$$
+\text{KL}(P_{\text{student}} \| P_{\text{teacher}}) = \sum_v P_{\text{student}}(v) \log \frac{P_{\text{student}}(v)}{P_{\text{teacher}}(v)}
+$$
+
+**特性**：Mode-seeking
+- 期望在学生分布下计算
+- 学生模型倾向于集中在教师模型的峰值区域（高概率区域）
 
 ### 广义 Jensen-Shannon 散度（Generalized JSD）
 
@@ -78,8 +78,8 @@ $$
 其中 $M = \beta \cdot P_{\text{teacher}} + (1-\beta) \cdot P_{\text{student}}$
 
 > 对极端情况（$\beta = 0$ 或 $\beta = 1$），直接计算单个 KL 散度：
-> - 当 $\beta = 0$ 时：直接定义 $D = \text{KL}(P_{\text{teacher}} \| P_{\text{student}})$（Reverse KL，Mode-covering）
-> - 当 $\beta = 1$ 时：直接定义 $D = \text{KL}(P_{\text{student}} \| P_{\text{teacher}})$（Forward KL，Mode-seeking）
+> - 当 $\beta = 0$ 时：直接定义 $D = \text{KL}(P_{\text{teacher}} \| P_{\text{student}})$（Forward KL，Mode-covering）
+> - 当 $\beta = 1$ 时：直接定义 $D = \text{KL}(P_{\text{student}} \| P_{\text{teacher}})$（Reverse KL，Mode-seeking）
 > - 当 $0 < \beta < 1$ 时：使用上述混合分布公式进行插值
 
 通过调节 $\beta$ 参数，可以在不同的散度度量之间进行插值，当 $\beta = 0.5$ 时，散度为标准的对称 JSD。
@@ -142,8 +142,8 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 | 参数 | 类型 | 默认值 | 取值范围 | 说明 |
 |------|------|--------|---------|------|
 | `--teacher_model` | str | 必需 | - | 教师模型路径或模型 ID |
-| `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Reverse KL (覆模，更多样)<br>• 0.5: JSD (平衡，**推荐**)<br>• 1.0: Forward KL (寻模，更专注) |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 纯 Off-Policy<br>• 0.5: 混合策略 (**推荐**)<br>• 1.0: 纯 On-Policy |
+| `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 纯 Off-Policy<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
@@ -200,3 +200,13 @@ swift rlhf \
 ```
 
 训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/fast.sh)
+
+## On-Policy Distillation
+
+我们可以通过设置以下参数实现 Thinking Machine Lab blog 中的[On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/)训练。
+```bash
+--lmbda 1 # on-policy
+--beta 1 # reverse
+```
+
+相关脚本可以参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh)

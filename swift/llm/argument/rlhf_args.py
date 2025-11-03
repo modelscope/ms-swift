@@ -25,9 +25,9 @@ class RewardModelArguments:
 class TeacherModelArguments:
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
-    teacher_model_type: Optional[List[str]] = field(
+    teacher_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    teacher_model_revision: Optional[List[str]] = None
+    teacher_model_revision: Optional[str] = None
     teacher_deepspeed: Optional[str] = field(
         default=None,
         metadata={
@@ -193,33 +193,52 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                                  f'({loss_types}).')
 
     def _init_grpo(self):
-        if self.rlhf_type == 'grpo':
-            if self.cached_dataset:
-                raise ValueError('cached_dataset is not supported for GRPO.')
-            if self.use_vllm:
-                set_default_ddp_config()
-            if self.async_generate or not self.use_vllm:
-                self.sleep_level = 0
-            self.remove_unused_columns = False
-            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
-            if self.truncation_strategy is None:
-                self.truncation_strategy = 'left'
-            assert self.truncation_strategy in ['left', 'delete'], (
-                "GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")  # noqa
-            if self.beta is None:
-                self.beta = 0.04  # https://arxiv.org/abs/2402.03300
-            if self.async_generate:
-                logger.info('Using async mode. This is a approximate version which '
-                            'will use the old weights to generate responses to accelerate. '
-                            'This will ignore the `CLIP` of advantages, if you found the training '
-                            'is unstable, you may consider using --async_generate false.')
-            if 'soft_overlong' in self.reward_funcs:
-                assert self.soft_cache_length is not None, \
-                    'The soft_cache_length must be set when using soft overlong rewards.'
-                if self.soft_max_length is None:
-                    self.soft_max_length = self.max_completion_length
-                    logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+        if self.rlhf_type != 'grpo':
+            return
+        if self.cached_dataset:
+            raise ValueError('cached_dataset is not supported for GRPO.')
+        if self.use_vllm:
+            set_default_ddp_config()
+        if self.async_generate or not self.use_vllm:
+            self.sleep_level = 0
+        self.remove_unused_columns = False
+        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+        if self.truncation_strategy is None:
+            self.truncation_strategy = 'left'
+        assert self.truncation_strategy in ['left', 'delete'
+                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        if self.beta is None:
+            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+        if self.async_generate:
+            logger.info('Using async mode. This is a approximate version which '
+                        'will use the old weights to generate responses to accelerate. '
+                        'This will ignore the `CLIP` of advantages, if you found the training '
+                        'is unstable, you may consider using --async_generate false.')
+        if 'soft_overlong' in self.reward_funcs:
+            assert self.soft_cache_length is not None, \
+                'The soft_cache_length must be set when using soft overlong rewards.'
+            if self.soft_max_length is None:
+                self.soft_max_length = self.max_completion_length
+                logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+
+        if self.kl_in_reward is None:
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+        if self.scale_rewards is None:
+            if self.advantage_estimator == 'grpo':
+                self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
@@ -327,6 +346,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
+            import liger_kernel
+            liger_kernel_version = version.parse(liger_kernel.__version__)
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
@@ -339,8 +360,14 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             if self.log_entropy:
                 raise ValueError('Liger loss does not support log entropy yet.')
             if self.importance_sampling_level != 'token':
-                raise ValueError('Liger loss currently only support token-level importance sampling'
-                                 'Please set `importance_sampling_level` to `token`')
+                if liger_kernel_version < version.parse('0.6.3'):
+                    raise ValueError('Please update liger-kernel to 0.6.3 or later')
+                if self.importance_sampling_level == 'sequence_token':
+                    self.importance_sampling_level = 'sequence'
+                    logger.info('Remapping `importance_sampling_level` from `sequence_token` to `sequence` for '
+                                'liger-kernel compatibility. The two methods are computationally equivalent.')
+            if self.advantage_estimator != 'grpo':
+                raise ValueError('Liger loss currently only support grpo advantage estimator')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
