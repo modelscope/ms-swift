@@ -4,7 +4,7 @@ from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
-from ..gpt_bridge import GPTBridge
+from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
@@ -100,13 +100,13 @@ def convert_mcore2hf_internvl_hf(hf_model, mg_model):
     hf_model.multi_modal_projector.load_state_dict(mg_model.visual.multi_modal_projector.state_dict())
 
 
-class InternvlHfBridge(GPTBridge):
-    hf_layers_prefix = 'model.language_model.layers'
-    hf_embed_key = 'model.language_model.embed_tokens.weight'
-    hf_final_layernorm_key = 'model.language_model.norm.weight'
-    hf_lm_head_key = 'lm_head.weight'
-    hf_score_key = 'score.weight'
-
+class InternvlHfBridge(MultimodalGPTBridge):
+    hf_state_dict_mapping = {
+        'language_model.lm_head': 'lm_head',
+        'language_model.model': 'model.language_model',
+        'vision_tower': 'model.vision_tower',
+        'multi_modal_projector': 'model.multi_modal_projector',
+    }
 
 class InternvlHfVit(HuggingFaceModule):
     module_mapping = {'model.vision_tower': 'vision_tower', 'model.multi_modal_projector': 'multi_modal_projector'}

@@ -6,7 +6,7 @@ from PIL import Image
 from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
-from ..gpt_bridge import GPTBridge
+from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
@@ -36,7 +36,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
-class Qwen2_5VLBridge(GPTBridge):
+class Qwen2_5VLBridge(MultimodalGPTBridge):
     # Compatible with older versions of transformers
     hf_state_dict_mapping = {
         'model.layers': 'model.language_model.layers',

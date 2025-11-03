@@ -15,7 +15,7 @@ from PIL import Image
 
 from swift.llm import ModelType, to_device
 from ..constant import MegatronModelType
-from ..gpt_bridge import GPTBridge
+from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..mm_gpt_model import MultimodalGPTModel
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
@@ -491,15 +491,6 @@ class Qwen3VL_Vit(HuggingFaceModule):
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
-
-class Qwen3VLBridge(GPTBridge):
-    hf_layers_prefix = 'model.language_model.layers'
-    hf_embed_key = 'model.language_model.embed_tokens.weight'
-    hf_final_layernorm_key = 'model.language_model.norm.weight'
-    hf_lm_head_key = 'lm_head.weight'
-    hf_score_key = 'score.weight'
-
-
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_vl, [
@@ -507,5 +498,5 @@ register_megatron_model(
             ModelType.qwen3_moe_vl,
         ],
         model_cls=Qwen3VLGPTModel,
-        bridge_cls=Qwen3VLBridge,
+        bridge_cls=MultimodalGPTBridge,
         visual_cls=Qwen3VL_Vit))

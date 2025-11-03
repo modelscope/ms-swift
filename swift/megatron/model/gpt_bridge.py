@@ -963,3 +963,9 @@ class GPTBridge:
                     model_dirs=[self.hf_model.model_info.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
+
+
+class MultimodalGPTBridge(GPTBridge):
+    hf_layers_prefix = 'model.language_model.layers'
+    hf_embed_key = 'model.language_model.embed_tokens.weight'
+    hf_final_layernorm_key = 'model.language_model.norm.weight'
