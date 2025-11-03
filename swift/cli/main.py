@@ -6,7 +6,6 @@ import sys
 from typing import Any, Dict, List, Optional
 
 import json
-from omegaconf import ListConfig
 
 from swift.utils import get_logger
 
