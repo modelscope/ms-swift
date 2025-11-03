@@ -187,9 +187,10 @@ class VLLMClient:
             rank = vllm_world_size
             kwargs = {}
             if trl_verison >= version.parse('0.20.0'):
-                if not is_torch_cuda_available():
-                    raise NotImplementedError('trl >= 0.20.0 only support CUDA deivce. Please use trl < 0.20.0')
-                client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
+                try:
+                    client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
+                except Exception:
+                    client_device_uuid = '42'
                 kwargs['client_device_uuid'] = client_device_uuid
 
             response = self.sessions[i].post(

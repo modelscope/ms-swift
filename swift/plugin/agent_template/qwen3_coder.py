@@ -134,7 +134,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     def _format_tool_calls(self, tool_call_messages):
         result_parts = []
-        for message in tool_call_messages:
+        for idx, message in enumerate(tool_call_messages):
             tool_call = self._parse_tool_call(message['content'])
             result_parts.append(f"<tool_call>\n<function={tool_call['name']}>\n")
             # Processing parameters (if present)
@@ -151,6 +151,9 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
                     result_parts.append(f'{args_value}\n</parameter>\n')
             # Close tags
             result_parts.append('</function>\n</tool_call>')
+            # ref: https://github.com/QwenLM/Qwen3-Coder/blob/0ae30f55e9d6c47ff763c334f99c135ad68915dd/qwencoder-eval/tool_calling_eval/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py#L21  # noqa
+            if idx != len(tool_call_messages) - 1:
+                result_parts.append('\n')
         return ''.join(result_parts)
 
     def _get_tool_responses(self, tool_messages):
