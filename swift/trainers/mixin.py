@@ -76,7 +76,6 @@ class SwiftMixin:
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
-                # Collect basic trainer info for model compatibility checking
                 config_info = self._collect_config_info()
                 config_info.update({
                     'invoked_by': 'local_trainer',
