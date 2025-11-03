@@ -184,6 +184,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_torch_dtype = torch_dtype
+    mg_model.eval()
     # thd
     # from ..trainers.utils import get_packed_seq_params
     # mg_torch_dtype = None
