@@ -151,7 +151,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
                     result_parts.append(f'{args_value}\n</parameter>\n')
             # Close tags
             result_parts.append('</function>\n</tool_call>')
-            # ref: https://github.com/QwenLM/Qwen3-Coder/blob/0ae30f55e9d6c47ff763c334f99c135ad68915dd/qwencoder-eval/tool_calling_eval/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py#L21
+            # ref: https://github.com/QwenLM/Qwen3-Coder/blob/0ae30f55e9d6c47ff763c334f99c135ad68915dd/qwencoder-eval/tool_calling_eval/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py#L21  # noqa
             if idx != len(tool_call_messages) - 1:
                 result_parts.append('\n')
         return ''.join(result_parts)
