@@ -76,11 +76,14 @@ class SwiftMixin:
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
-                check_local_model_is_latest(
-                    model.model_dir, user_agent={
-                        'invoked_by': 'local_trainer',
-                        'third_party': 'swift',
-                    })
+                # Collect basic trainer info for model compatibility checking
+                config_info = self._collect_config_info()
+                config_info.update({
+                    'invoked_by': 'local_trainer',
+                    'third_party': 'swift',
+                    'trainer_class': self.__class__.__name__,
+                })
+                check_local_model_is_latest(model.model_dir, user_agent=config_info)
         if eval_dataset is None and args:
             if getattr(args, 'eval_dataset', None):
                 # Avoid trainer throwing errors.
@@ -149,6 +152,18 @@ class SwiftMixin:
             yield
         finally:
             HubApi.__init__ = __init__
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        """
+        Collects trainer-specific configuration details.
+
+        Subclasses can override this method to provide additional configuration
+        information for model compatibility verification.
+
+        Returns:
+            Dict[str, str]: Configuration parameters as key-value pairs.
+        """
+        return {}
 
     @property
     def tokenizer(self):
