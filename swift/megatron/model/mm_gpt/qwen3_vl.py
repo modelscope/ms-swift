@@ -15,7 +15,7 @@ from PIL import Image
 
 from swift.llm import ModelType, to_device
 from ..constant import MegatronModelType
-from ..gpt_bridge import MultimodalGPTBridge
+from ..gpt_bridge import GPTBridge
 from ..mm_gpt_model import MultimodalGPTModel
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
@@ -460,18 +460,20 @@ class Qwen3VLGPTModel(MultimodalGPTModel):
         super().__init__(*args, **kwargs)
 
 
-class Qwen3OmniBridge(MultimodalGPTBridge):
+class Qwen3OmniBridge(GPTBridge):
     hf_layers_prefix = 'thinker.model.layers'
     hf_embed_prefix = 'thinker.model.embed_tokens.weight'
     hf_final_layernorm_prefix = 'thinker.model.norm.weight'
     hf_lm_head_prefix = 'thinker.lm_head.weight'
     hf_score_prefix = 'thinker.score.weight'
 
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_omni, [
             ModelType.qwen3_omni,
-        ], model_cls=Qwen3VLGPTModel,
+        ],
+        model_cls=Qwen3VLGPTModel,
         bridge_cls=Qwen3OmniBridge,
         visual_cls=Qwen3Omni_Vit))
 
@@ -490,6 +492,14 @@ class Qwen3VL_Vit(HuggingFaceModule):
         return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
+class Qwen3VLBridge(GPTBridge):
+    hf_layers_prefix = 'model.language_model.layers'
+    hf_embed_prefix = 'model.language_model.embed_tokens.weight'
+    hf_final_layernorm_prefix = 'model.language_model.norm.weight'
+    hf_lm_head_prefix = 'lm_head.weight'
+    hf_score_prefix = 'score.weight'
+
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_vl, [
@@ -497,4 +507,5 @@ register_megatron_model(
             ModelType.qwen3_moe_vl,
         ],
         model_cls=Qwen3VLGPTModel,
+        bridge_cls=Qwen3VLBridge,
         visual_cls=Qwen3VL_Vit))

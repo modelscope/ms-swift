@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from swift.llm import MODEL_MAPPING
 from .constant import MLLMMegatronModelType
-from .gpt_bridge import GPTBridge, MultimodalGPTBridge
+from .gpt_bridge import GPTBridge
 from .gpt_model import GPTModel
 from .mm_gpt_model import MultimodalGPTModel
 from .model_provider import model_provider as model_provider_func
@@ -21,7 +21,7 @@ class MegatronModelMeta:
     model_types: List[str]
 
     is_multimodal: bool = False
-    bridge_cls: Optional[Type[GPTBridge]] = None
+    bridge_cls: Type[GPTBridge] = GPTBridge
     model_cls: Optional[Type[nn.Module]] = None
     get_transformer_layer_spec: Optional[Callable] = None
     model_provider: Callable[[], nn.Module] = model_provider_func
@@ -34,8 +34,6 @@ class MegatronModelMeta:
             self.is_multimodal = True
         if self.model_cls is None:
             self.model_cls = MultimodalGPTModel if self.is_multimodal else GPTModel
-        if self.bridge_cls is None:
-            self.bridge_cls = GPTBridge if not self.is_multimodal else MultimodalGPTBridge
 
 
 def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):

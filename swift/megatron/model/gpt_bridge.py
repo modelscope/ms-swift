@@ -134,7 +134,8 @@ class GPTBridge:
         if to_mcore:
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
             incompatible_keys = mg_module.load_state_dict(hf_state_dict, strict=False)
-            assert len(incompatible_keys.missing_keys) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
+            assert len(incompatible_keys.missing_keys
+                       ) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
@@ -960,11 +961,3 @@ class GPTBridge:
                     model_dirs=[self.hf_model.model_info.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
-
-
-class MultimodalGPTBridge(GPTBridge):
-    hf_layers_prefix = 'model.language_model.layers'
-    hf_embed_prefix = 'model.language_model.embed_tokens.weight'
-    hf_final_layernorm_prefix = 'model.language_model.norm.weight'
-    hf_lm_head_prefix = 'lm_head.weight'
-    hf_score_prefix = 'score.weight'

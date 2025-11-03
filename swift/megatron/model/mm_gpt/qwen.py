@@ -6,42 +6,9 @@ from PIL import Image
 from swift.llm import ModelType, Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
-from ..gpt_bridge import MultimodalGPTBridge
+from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
-
-
-def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
-    language_model = hf_model.model
-    if hasattr(language_model, 'language_model'):
-        language_model = language_model.language_model
-    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.visual.load_state_dict(visual.state_dict())
-
-
-def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
-    language_model = hf_model.model
-    if hasattr(language_model, 'language_model'):
-        language_model = language_model.language_model
-    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
-        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
-    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    visual.load_state_dict(mg_model.visual.visual.state_dict())
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
@@ -69,7 +36,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
-class Qwen2_5VLBridge(MultimodalGPTBridge):
+class Qwen2_5VLBridge(GPTBridge):
     # Compatible with older versions of transformers
     hf_state_dict_mapping = {
         'model.layers': 'model.language_model.layers',
@@ -95,6 +62,14 @@ register_megatron_model(
         MegatronModelType.qwen2_vl, [
             ModelType.qwen2_vl,
         ], bridge_cls=Qwen2_5VLBridge, visual_cls=Qwen2VL_Vit))
+
+
+class Qwen2_5OmniBridge(GPTBridge):
+    hf_layers_prefix = 'thinker.model.layers'
+    hf_embed_prefix = 'thinker.model.embed_tokens.weight'
+    hf_final_layernorm_prefix = 'thinker.model.norm.weight'
+    hf_lm_head_prefix = 'thinker.lm_head.weight'
+    hf_score_prefix = 'thinker.score.weight'
 
 
 class Qwen2_5Omni_Vit(HuggingFaceModule):
@@ -137,52 +112,21 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-def convert_hf2mcore_qwen2_5_omni(hf_model, mg_model):
-    language_model = hf_model.thinker.model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.thinker.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.thinker.visual.load_state_dict(hf_model.thinker.visual.state_dict())
-    mg_model.visual.thinker.audio_tower.load_state_dict(hf_model.thinker.audio_tower.state_dict())
-
-
-def convert_mcore2hf_qwen2_5_omni(hf_model, mg_model):
-    language_model = hf_model.thinker.model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = (
-            hf_model.thinker.score.weight if args.task_type == 'seq_cls' else hf_model.thinker.lm_head.weight)
-        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
-    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    hf_model.thinker.visual.load_state_dict(mg_model.visual.thinker.visual.state_dict())
-    hf_model.thinker.audio_tower.load_state_dict(mg_model.visual.thinker.audio_tower.state_dict())
-
-
 register_megatron_model(
-    MegatronModelMeta(MegatronModelType.qwen2_5_omni, [
-        ModelType.qwen2_5_omni,
-    ], visual_cls=Qwen2_5Omni_Vit))
+    MegatronModelMeta(
+        MegatronModelType.qwen2_5_omni, [
+            ModelType.qwen2_5_omni,
+        ],
+        bridge_cls=Qwen2_5OmniBridge,
+        visual_cls=Qwen2_5Omni_Vit))
 
 
-def convert_hf2mcore_ovis2_5(hf_model, mg_model):
-    convert_hf2mcore(hf_model.llm, mg_model.language_model)
-    mg_model.visual.visual_tokenizer.load_state_dict(hf_model.visual_tokenizer.state_dict())
-    mg_model.visual.vte.load_state_dict(hf_model.vte.state_dict())
-
-
-def convert_mcore2hf_ovis2_5(hf_model, mg_model):
-    convert_mcore2hf(hf_model.llm, mg_model.language_model)
-    hf_model.visual_tokenizer.load_state_dict(mg_model.visual.visual_tokenizer.state_dict())
-    hf_model.vte.load_state_dict(mg_model.visual.vte.state_dict())
+class Ovis2_5Bridge(GPTBridge):
+    hf_layers_prefix = 'llm.model.layers'
+    hf_embed_prefix = 'llm.model.embed_tokens.weight'
+    hf_final_layernorm_prefix = 'llm.model.norm.weight'
+    hf_lm_head_prefix = 'llm.lm_head.weight'
+    hf_score_prefix = 'llm.score.weight'
 
 
 class Ovis2_5Vit(HuggingFaceModule):
@@ -224,6 +168,8 @@ class Ovis2_5Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-register_megatron_model(MegatronModelMeta(MegatronModelType.ovis2_5, [
-    ModelType.ovis2_5,
-], visual_cls=Ovis2_5Vit))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.ovis2_5, [
+            ModelType.ovis2_5,
+        ], bridge_cls=Ovis2_5Bridge, visual_cls=Ovis2_5Vit))
