@@ -4,21 +4,23 @@ from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
+from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
-def convert_hf2mcore_internvl3(hf_model, mg_model):
+class Internvl3Bridge(GPTBridge):
+    hf_layers_prefix = 'language_model.model.layers'
+    hf_embed_key = 'language_model.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'language_model.model.norm.weight'
+    hf_lm_head_key = 'language_model.lm_head.weight'
+    hf_score_key = 'language_model.score.weight'
 
-    convert_hf2mcore(hf_model.language_model, mg_model.language_model)
-    mg_model.visual.vision_model.load_state_dict(hf_model.vision_model.state_dict())
-    mg_model.visual.mlp1.load_state_dict(hf_model.mlp1.state_dict())
-
-
-def convert_mcore2hf_internvl3(hf_model, mg_model):
-    convert_mcore2hf(hf_model.language_model, mg_model.language_model)
-    hf_model.vision_model.load_state_dict(mg_model.visual.vision_model.state_dict())
-    hf_model.mlp1.load_state_dict(mg_model.visual.mlp1.state_dict())
+    def _init_meta_hf_model(self):
+        internvl3_vit = Internvl3Vit(None)
+        self.hf_model = internvl3_vit._hf_model[0]
+        self.hf_model.vision_model = None
+        self.processor = internvl3_vit.processor
 
 
 class Internvl3Vit(HuggingFaceModule):
@@ -63,7 +65,9 @@ register_megatron_model(
         MegatronModelType.internvl3, [
             ModelType.internvl3,
             ModelType.internvl3_5,
-        ], visual_cls=Internvl3Vit))
+        ],
+        bridge_cls=Internvl3Bridge,
+        visual_cls=Internvl3Vit))
 
 
 def convert_hf2mcore_internvl_hf(hf_model, mg_model):
@@ -94,6 +98,14 @@ def convert_mcore2hf_internvl_hf(hf_model, mg_model):
 
     hf_model.vision_tower.load_state_dict(mg_model.visual.vision_tower.state_dict())
     hf_model.multi_modal_projector.load_state_dict(mg_model.visual.multi_modal_projector.state_dict())
+
+
+class InternvlHfBridge(GPTBridge):
+    hf_layers_prefix = 'model.language_model.layers'
+    hf_embed_key = 'model.language_model.embed_tokens.weight'
+    hf_final_layernorm_key = 'model.language_model.norm.weight'
+    hf_lm_head_key = 'lm_head.weight'
+    hf_score_key = 'score.weight'
 
 
 class InternvlHfVit(HuggingFaceModule):
@@ -145,6 +157,7 @@ class InternvlHfVit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MegatronModelMeta(MegatronModelType.internvl_hf, [
-        ModelType.internvl_hf,
-    ], visual_cls=InternvlHfVit))
+    MegatronModelMeta(
+        MegatronModelType.internvl_hf, [
+            ModelType.internvl_hf,
+        ], bridge_cls=InternvlHfBridge, visual_cls=InternvlHfVit))

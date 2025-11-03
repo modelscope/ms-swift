@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Type
 
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
-from megatron.training import get_args, get_tokenizer
+from megatron.training import get_args
 from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.utils import ContextManagers
@@ -64,9 +64,8 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         context_list.append(patch_hf_initialize_weight())
         kwargs['model_type'] = args.model_info.model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
-            model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
+            model, self.processor = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
-        self.processor = get_tokenizer()
         for hf_prefix, mg_prefix in self.module_mapping.items():
             setattr(self, mg_prefix, deep_getattr(model, hf_prefix))
         self._hf_model = [model]

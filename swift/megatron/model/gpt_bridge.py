@@ -21,10 +21,10 @@ logger = get_logger()
 
 class GPTBridge:
     hf_layers_prefix = 'model.layers'
-    hf_embed_prefix = 'model.embed_tokens.weight'
-    hf_lm_head_prefix = 'lm_head.weight'
-    hf_score_prefix = 'score.weight'
-    hf_final_layernorm_prefix = 'model.norm.weight'
+    hf_embed_key = 'model.embed_tokens.weight'
+    hf_final_layernorm_key = 'model.norm.weight'
+    hf_lm_head_key = 'lm_head.weight'
+    hf_score_key = 'score.weight'
     hf_state_dict_mapping = {}
 
     def __init__(self, disable_tqmd: bool = False):
@@ -35,10 +35,7 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         self._is_peft_format = False
-        model_info = self.args.model_info
-        with torch.device('meta'), disable_safe_ddp_context_use_barrier():
-            self.hf_model, self.processor = get_model_tokenizer(
-                model_info.model_dir, model_type=model_info.model_type, return_dummy_model=True)
+        self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
         megatron_model_meta = self.args.megatron_model_meta
@@ -59,6 +56,12 @@ class GPTBridge:
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
         self.ep_rank = mpu.get_expert_model_parallel_rank()
+
+    def _init_meta_hf_model(self):
+        model_info = self.args.model_info
+        with torch.device('meta'), disable_safe_ddp_context_use_barrier():
+            self.hf_model, self.processor = get_model_tokenizer(
+                model_info.model_dir, model_type=model_info.model_type, return_dummy_model=True)
 
     @staticmethod
     def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
@@ -828,8 +831,7 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
-        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, self.hf_embed_prefix,
-                             to_mcore)
+        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         if self.is_multimodal:
             for prefix, mg_prefix in self.module_mapping.items():
                 mg_module = deep_getattr(mg_model, f'visual.{mg_prefix}')
@@ -847,13 +849,13 @@ class GPTBridge:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
         if self.args.untie_embeddings_and_output_weights:
-            hf_lm_head_key = self.hf_lm_head_prefix
+            hf_lm_head_key = self.hf_lm_head_key
             if not to_mcore and self.args.task_type == 'seq_cls':
-                hf_lm_head_key = self.hf_score_prefix
+                hf_lm_head_key = self.hf_score_key
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
         elif lm_model.output_layer.weight is not None:
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_prefix, to_mcore)
-        self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_prefix,
+            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
+        self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
                              to_mcore)
         if to_mcore:
             hf_state_dict = {}

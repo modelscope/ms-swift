@@ -66,10 +66,10 @@ register_megatron_model(
 
 class Qwen2_5OmniBridge(GPTBridge):
     hf_layers_prefix = 'thinker.model.layers'
-    hf_embed_prefix = 'thinker.model.embed_tokens.weight'
-    hf_final_layernorm_prefix = 'thinker.model.norm.weight'
-    hf_lm_head_prefix = 'thinker.lm_head.weight'
-    hf_score_prefix = 'thinker.score.weight'
+    hf_embed_key = 'thinker.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'thinker.model.norm.weight'
+    hf_lm_head_key = 'thinker.lm_head.weight'
+    hf_score_key = 'thinker.score.weight'
 
 
 class Qwen2_5Omni_Vit(HuggingFaceModule):
@@ -123,10 +123,10 @@ register_megatron_model(
 
 class Ovis2_5Bridge(GPTBridge):
     hf_layers_prefix = 'llm.model.layers'
-    hf_embed_prefix = 'llm.model.embed_tokens.weight'
-    hf_final_layernorm_prefix = 'llm.model.norm.weight'
-    hf_lm_head_prefix = 'llm.lm_head.weight'
-    hf_score_prefix = 'llm.score.weight'
+    hf_embed_key = 'llm.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'llm.model.norm.weight'
+    hf_lm_head_key = 'llm.lm_head.weight'
+    hf_score_key = 'llm.score.weight'
 
 
 class Ovis2_5Vit(HuggingFaceModule):

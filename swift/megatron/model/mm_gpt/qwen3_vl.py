@@ -462,10 +462,10 @@ class Qwen3VLGPTModel(MultimodalGPTModel):
 
 class Qwen3OmniBridge(GPTBridge):
     hf_layers_prefix = 'thinker.model.layers'
-    hf_embed_prefix = 'thinker.model.embed_tokens.weight'
-    hf_final_layernorm_prefix = 'thinker.model.norm.weight'
-    hf_lm_head_prefix = 'thinker.lm_head.weight'
-    hf_score_prefix = 'thinker.score.weight'
+    hf_embed_key = 'thinker.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'thinker.model.norm.weight'
+    hf_lm_head_key = 'thinker.lm_head.weight'
+    hf_score_key = 'thinker.score.weight'
 
 
 register_megatron_model(
@@ -494,10 +494,10 @@ class Qwen3VL_Vit(HuggingFaceModule):
 
 class Qwen3VLBridge(GPTBridge):
     hf_layers_prefix = 'model.language_model.layers'
-    hf_embed_prefix = 'model.language_model.embed_tokens.weight'
-    hf_final_layernorm_prefix = 'model.language_model.norm.weight'
-    hf_lm_head_prefix = 'lm_head.weight'
-    hf_score_prefix = 'score.weight'
+    hf_embed_key = 'model.language_model.embed_tokens.weight'
+    hf_final_layernorm_key = 'model.language_model.norm.weight'
+    hf_lm_head_key = 'lm_head.weight'
+    hf_score_key = 'score.weight'
 
 
 register_megatron_model(
