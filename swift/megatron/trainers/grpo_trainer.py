@@ -24,18 +24,13 @@ from swift.llm.infer.protocol import RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
-from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
+from swift.utils import get_current_device, get_logger, is_master, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
                     offload_megatron_model_to_cpu, offload_megatron_optimizer, patch_model_for_lora_export,
                     profiling_context)
-
-try:
-    from mbridge import AutoBridge
-except ImportError:
-    pass
 
 logger = get_logger()
 
@@ -53,8 +48,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_rewards()
         self._prepare_scheduler()  # TODO
         self._prepare_rollout_engine()
-        # debug: use mbridge to convert mcore to hf
-        self.bridge = None
+
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
     def _prepare_template_data_collator(self):
@@ -77,7 +71,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # distributed params
         self.world_size = torch.distributed.get_world_size()
         self.process_index = torch.distributed.get_rank()
-        self.is_main_process = self.process_index == 0
+        self.is_main_process = is_master()
         self.device = get_current_device()
         # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
@@ -178,14 +172,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return engine
 
     def _move_model_to_vllm(self):
-        # TODO: server
-        if self.vllm_mode == 'server':
-            return  # TODO
-
-        if self.bridge is None:
-            self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
-            self._patch_mbridge(self.bridge)
-
         # Handle LoRA: merge adapters before exporting weights
         is_lora_training = self.args.train_type == 'lora'
         restore_funcs = []
@@ -197,9 +183,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     restore_func = patch_model_for_lora_export(model)
                     restore_funcs.append(restore_func)
 
-            per_tensor_params = self.bridge.export_weights(self.unwrapped_models)
-            # TODO: server mode
-            self.engine.inner_model.load_weights(per_tensor_params)
+            per_tensor_params = dict(self.bridge.export_weights(self.unwrapped_models))
+
+            if self.vllm_mode == 'server':
+                if self.is_main_process:
+                    for name, param in per_tensor_params.items():
+                        self.vllm_client.update_named_param(name, param)
+            elif self.vllm_mode == 'colocate':
+                self.engine.inner_model.load_weights(per_tensor_params)
         finally:
             for restore_func in restore_funcs:
                 restore_func()
@@ -295,25 +286,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 if isinstance(module, LoraParallelLinear):
                     # Unmerge to restore separate LoRA weights for training
                     module.unmerge()
-
-    def _patch_mbridge(self, bridge):
-        original_method = bridge._weight_to_hf_format
-
-        def _weight_to_hf_format_patched(mcore_weights_name, mcore_weights):
-            # skip ViT weights
-            if 'visual' in mcore_weights_name:
-                if 'visual.visual' in mcore_weights_name:
-                    mcore_weights_name = mcore_weights_name.replace('visual.visual', 'visual')
-                return [mcore_weights_name], [mcore_weights]
-
-            if '.base_layer.' in mcore_weights_name:
-                mcore_weights_name = mcore_weights_name.replace('.base_layer.', '.')
-
-            if '.modules_to_save.default.' in mcore_weights_name:
-                mcore_weights_name = mcore_weights_name.replace('.modules_to_save.default.', '.')
-            return original_method(mcore_weights_name, mcore_weights)
-
-        bridge._weight_to_hf_format = _weight_to_hf_format_patched
 
     def _get_rollout_group(self):
         """
