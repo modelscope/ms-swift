@@ -32,8 +32,9 @@ class MegatronSft(SwiftSft):
             kwargs = {'return_dummy_model': True}
         else:
             kwargs = {'load_model': False}
+        download_model = args.load_safetensors is not None
         with torch.device('meta'):
-            self.model, self.processor = args.get_model_processor(**kwargs)
+            self.model, self.processor = args.get_model_processor(**kwargs, download_model=download_model)
         self._prepare_template()
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         args.save_args(args.save)

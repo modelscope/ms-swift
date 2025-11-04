@@ -75,6 +75,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
 - 🎁 2025.10.28: Support [use yaml](examples/yaml) to configure command line parameters.
 - 🎁 2025.09.29: Support padding_free for embedding/reranker/seq_cls tasks, use `--padding_free true --task_type embedding/reranker/generative_reranker/seq_cls` to begin!

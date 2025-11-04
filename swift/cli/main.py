@@ -103,6 +103,8 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     if not is_megatron and (torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
+        if torchrun_args is None:
+            raise ValueError('Please set torchrun args: NPROC_PER_NODE, ...')
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
     result = subprocess.run(args)
