@@ -661,7 +661,7 @@ class GPTBridge:
                                 if 'gate_up_proj' in hf_state_dict:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
-                                hf_state_dict['gate_up_proj'] = gate_up_proj_weight
+                                hf_state_dict['gate_up_proj'] = gate_up_proj_weight.clone()
                             else:
                                 for i in range(num_local_experts):
                                     hf_i = i + ep_rank * num_local_experts
@@ -771,7 +771,7 @@ class GPTBridge:
                             down_proj_weight = down_proj_weight.transpose(1, 2)
                             if 'down_proj' in hf_state_dict:
                                 down_proj_weight = torch.concat([hf_state_dict['down_proj'], down_proj_weight], dim=0)
-                            hf_state_dict['down_proj'] = down_proj_weight
+                            hf_state_dict['down_proj'] = down_proj_weight.clone()
                         else:
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
