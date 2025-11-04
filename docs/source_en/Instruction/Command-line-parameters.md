@@ -730,6 +730,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - mcore_adapters: List of paths to mcore format model adapters, default is empty list.
 - thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
 - 🔥test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
+- test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.
@@ -797,6 +798,7 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 - SPATIAL_MERGE_SIZE: default 2.
 - IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
 - 🔥IMAGE_MAX_TOKEN_NUM: default `16384`, denotes the maximum number of image tokens per image. (used to avoid OOM)
+  - Note: The equivalent maximum image pixel count is `IMAGE_MAX_TOKEN_NUM * 32 * 32`.
 - VIDEO_MIN_TOKEN_NUM: default `128`, denotes the minimum number of video tokens per frame.
 - 🔥VIDEO_MAX_TOKEN_NUM: default `768`, denotes the maximum number of video tokens per frame. (used to avoid OOM)
 - MAX_RATIO: default 200.

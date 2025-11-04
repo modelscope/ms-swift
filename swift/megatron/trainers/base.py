@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os
+import shutil
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
@@ -11,7 +12,6 @@ import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu
-from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.pipeline_parallel import get_forward_backward_func
@@ -28,13 +28,15 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
 from torch.distributed.nn import all_reduce
+from tqdm.auto import tqdm
 from transformers.utils import ContextManagers
 
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
-from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
+from ..tuners import LoraParallelLinear
+from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
 
@@ -50,6 +52,7 @@ class BaseMegatronTrainer(ABC):
         self.unwrapped_models = []
         self.wrapped_models = []
         self.peft_models = []
+        self._bridge = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -63,6 +66,12 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
+    @property
+    def bridge(self):
+        if self._bridge is None:
+            self._bridge = self.args.megatron_model_meta.bridge_cls()
+        return self._bridge
 
     @contextmanager
     def _get_iters(self, train_dataset, val_dataset):
@@ -132,29 +141,6 @@ class BaseMegatronTrainer(ABC):
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
 
-    @staticmethod
-    def _patch_merge_fn(state_dict_model):
-        # https://github.com/NVIDIA/Megatron-LM/issues/1380
-
-        def sh_ten_merge_fn(sub_state_dict):
-            with torch.no_grad():
-                shared_storage = sub_state_dict[0].untyped_storage()
-                if all(shared_storage.data_ptr() == tensor.untyped_storage().data_ptr() for tensor in sub_state_dict):
-                    element_size = sub_state_dict[0].element_size()
-                    total_numel = sum(tensor.numel() for tensor in sub_state_dict)
-                    if shared_storage.nbytes() == total_numel * element_size:
-                        dim_0 = sum(tensor.shape[0] for tensor in sub_state_dict)
-                        shape = (dim_0, ) + sub_state_dict[0].shape[1:]
-                        combined_tensor = torch.empty(
-                            shape, dtype=sub_state_dict[0].dtype,
-                            device=sub_state_dict[0].device).set_(shared_storage, 0, shape)
-                        return combined_tensor
-                return torch.cat(sub_state_dict)
-
-        for v in state_dict_model.values():
-            if isinstance(v, ShardedTensorFactory) and 'apply_swiglu_sharded_factory' in v.merge_fn.__qualname__:
-                v.merge_fn = sh_ten_merge_fn
-
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
         sharded_state_dict = kwargs.get('sharded_state_dict')
@@ -175,7 +161,7 @@ class BaseMegatronTrainer(ABC):
                 v.key = v.key.replace(f'.{adapter_name}.', '.default.')
                 state_dict_model[k] = v
             sharded_state_dict[model_k] = state_dict_model
-            self._patch_merge_fn(state_dict_model)
+            patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         for model_k in model_keys:
             state_dict = res[0][model_k]
@@ -191,7 +177,7 @@ class BaseMegatronTrainer(ABC):
         model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
         if self.args.train_type == 'full':
             for k in model_keys:
-                self._patch_merge_fn(sharded_state_dict[k])
+                patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         mapping = {}
         for model_k in model_keys:
@@ -217,7 +203,7 @@ class BaseMegatronTrainer(ABC):
                     v.key = v.key.replace('.modules_to_save.default', '')
                 state_dict_model[k] = v
             sharded_state_dict[model_k] = state_dict_model
-            self._patch_merge_fn(state_dict_model)
+            patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         for model_k in model_keys:
             state_dict = res[0][model_k]
@@ -257,13 +243,20 @@ class BaseMegatronTrainer(ABC):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
-        def new_model_provider_func(*args, **kwargs):
-            model = model_provider_func(*args, **kwargs)
+        args = get_args()
+
+        def new_model_provider_func(*_args, **kwargs):
+            model = model_provider_func(*_args, **kwargs)
+            if args.load_safetensors:
+                self.bridge.load_weights(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
-            self.peft_models.append(prepare_mcore_model(model))
+            peft_model = prepare_mcore_model(model)
+            if args.load_safetensors and args.train_type == 'lora' and args.adapters:
+                assert len(args.adapters) == 1, 'Currently only support one adapter'
+                self.bridge.load_weights(model, args.adapters[0], is_peft_format=True)
+            self.peft_models.append(peft_model)
             return model
 
-        args = get_args()
         self._init_multimodal_full(args)
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
@@ -320,6 +313,8 @@ class BaseMegatronTrainer(ABC):
             logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
+            if hasattr(module.weight, 'main_param'):
+                module.weight.main_param.copy_(module.weight.view(-1))
 
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
@@ -366,12 +361,14 @@ class BaseMegatronTrainer(ABC):
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
-        with torch.no_grad():
+        with torch.no_grad(), tqdm(
+                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
                 print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
             while iteration < args.eval_iters:
                 iteration += 1
+                prog_bar.update()
                 if verbose:
                     print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
 
@@ -731,9 +728,39 @@ class BaseMegatronTrainer(ABC):
 
         return report_memory_flag
 
-    def save_checkpoint(self, *args, **kwargs):
-        with adapter_state_dict_context():
-            return self._origin_save_checkpoint(*args, **kwargs)
+    def merge_lora_adapters(self):
+        """Merge LoRA adapters into base model weights for vLLM inference."""
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Merge all active adapters
+                    module.merge()
+
+    def unmerge_lora_adapters(self):
+        """Unmerge LoRA adapters to restore training state."""
+        for model in self.unwrapped_models:
+            for module in model.modules():
+                if isinstance(module, LoraParallelLinear):
+                    # Unmerge to restore separate LoRA weights for training
+                    module.unmerge()
+
+    def save_checkpoint(self, iteration, *_args, **kwargs):
+        args = get_args()
+        if args.train_type == 'lora' and args.merge_lora:
+            self.merge_lora_adapters()
+        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        if args.save_safetensors:
+            output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
+            if is_last_rank():
+                args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+                if os.path.exists(args_path):
+                    shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+        else:
+            with adapter_state_dict_context(is_peft_format=save_peft_format):
+                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
+        if args.train_type == 'lora' and args.merge_lora:
+            self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
         # support max_epochs

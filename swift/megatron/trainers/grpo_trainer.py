@@ -26,6 +26,7 @@ from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
+from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
                     offload_megatron_model_to_cpu, offload_megatron_optimizer, patch_model_for_lora_export,
@@ -1001,7 +1002,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         labels = data.get('labels')
         context = torch.no_grad() if no_grad else nullcontext()
         with context:
-            output_tensor = self._forward_step_helper(model, data)
+            output_tensor = forward_step_helper(model, data)
         packed_seq_params = data['packed_seq_params']
         data['logps'] = None if labels is None else self.get_logps(
             output_tensor, labels, data['packed_seq_params'], packed_seq_params.num_samples, per_token=per_token)
