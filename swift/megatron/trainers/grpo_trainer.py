@@ -2,12 +2,14 @@
 import base64
 import gc
 import inspect
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
 from typing import Any, Dict, List, Union
 
+import json
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list
@@ -504,6 +506,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             batch: The input batch with rollout completion results merged in.
         """
         # TODO: server mode
+        # add prompt ids and system prompts
+        batch = self._preprocess_inputs(batch)
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
         if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
@@ -563,7 +567,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         request_config = self._get_request_config()
         # TODO: server mode
         if self.vllm_mode == 'server':
-            self._server_rollout(batch, request_config)
+            rollout_outputs = self._server_rollout(batch, request_config)
         elif self.vllm_mode == 'colocate':
             rollout_outputs = self._colocate_rollout(batch, request_config)
         return rollout_outputs
@@ -1079,3 +1083,32 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     request['images'], list) else _process_image_data(request['images']))
 
         return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+
+    def _preprocess_inputs(self, inputs: DataType) -> DataType:
+        """Preprocess inputs before inference"""
+        processed_inputs = self._add_prompt_id_to_inputs(inputs)
+        for input_item in processed_inputs:
+            remove_response(input_item['messages'])
+        return processed_inputs
+
+    def _add_prompt_id_to_inputs(self, inputs: DataType) -> DataType:
+        """Add unique prompt_id and request_id to each input"""
+        if not inputs:
+            return inputs
+
+        all_messages = gather_object([inp['messages'] for inp in inputs])
+        messages_to_prompt_id = {}
+        prompt_id_counter = 0
+
+        for messages in all_messages:
+            key = json.dumps(messages)
+            if key not in messages_to_prompt_id:
+                messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
+                prompt_id_counter += 1
+
+        for input_item in inputs:
+            messages = input_item.get('messages')
+            input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
+            input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
+
+        return inputs

@@ -175,7 +175,7 @@ class RLHFMegatronArgumentsMixin:
                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
                 f'must be divisible by the world size ({world_size})'
                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it divisible')
-            self.per_device_generation_batch_size = num_rollout_prompt // world_size
+            self.per_device_generation_batch_size = self.generation_batch_size // world_size
 
         _check_not_supported()
         _check_batch_params()
