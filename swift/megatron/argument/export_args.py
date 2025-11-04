@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 from swift.llm import HfConfigFactory
 from swift.llm.argument.base_args import to_abspath
