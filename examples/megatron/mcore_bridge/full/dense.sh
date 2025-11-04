@@ -38,12 +38,12 @@ megatron sft \
     --no_save_rng true \
     --dataset_num_proc 8
 
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-IMAGE_MAX_TOKEN_NUM=1024 \
-VIDEO_MAX_TOKEN_NUM=128 \
-FPS_MAX_FRAMES=16 \
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --model megatron_output/Qwen3-VL-8B-Instruct/vx-xxx \
-    --load_data_args true \
-    --stream true
+# PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+# IMAGE_MAX_TOKEN_NUM=1024 \
+# VIDEO_MAX_TOKEN_NUM=128 \
+# FPS_MAX_FRAMES=16 \
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#     --model megatron_output/Qwen3-VL-8B-Instruct/vx-xxx \
+#     --load_data_args true \
+#     --stream true

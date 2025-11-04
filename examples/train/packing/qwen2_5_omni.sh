@@ -1,5 +1,4 @@
 # 4 * 32GB
-# Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2_5/3
 # A demo for four modalities that can be run directly
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 NPROC_PER_NODE=4 \
