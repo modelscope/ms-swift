@@ -48,9 +48,8 @@ class MegatronTrainArguments(MegatronBaseArguments):
             self.tensorboard_dir = f'{self.save}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         if self.load is None and self.no_initialization and not self.load_safetensors:
-            raise ValueError(
-                'You did not pass `--load` or `--load_safetensors true` to read directly '
-                'from safetensors weights, so you need to set `--no_initialization false` '
-                'to allow the model to initialize weights properly.')
+            raise ValueError('You did not pass `--load` or `--load_safetensors true` to read directly '
+                             'from safetensors weights, so you need to set `--no_initialization false` '
+                             'to allow the model to initialize weights properly.')
         if self.cached_dataset and self.context_parallel_size > 1:
             raise ValueError('`cached_dataset` does not support context parallelism.')
