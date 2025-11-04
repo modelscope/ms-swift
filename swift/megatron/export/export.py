@@ -110,8 +110,7 @@ class MegatronExport(SwiftPipeline):
                 hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
             dist.barrier()
-        if is_last_rank():
-            args.save_args(args.save)
+        args.save_args(args.save)
         logger.info('Saving the model...')
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         with adapter_state_dict_context(is_peft_format=save_peft_format):
