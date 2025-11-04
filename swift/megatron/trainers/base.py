@@ -155,7 +155,7 @@ class BaseMegatronTrainer(ABC):
                 v.key = v.key.replace(f'.{adapter_name}.', '.default.')
                 state_dict_model[k] = v
             sharded_state_dict[model_k] = state_dict_model
-            patch_merge_fn(state_dict_model)  # TODO: check
+            patch_merge_fn(state_dict_model)
         res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         for model_k in model_keys:
             state_dict = res[0][model_k]
