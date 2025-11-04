@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
-from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType

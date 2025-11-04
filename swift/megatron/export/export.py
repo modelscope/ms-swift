@@ -98,7 +98,7 @@ class MegatronExport(SwiftPipeline):
             raise ValueError('Please specify `--load` or `--model`.')
         dist.barrier()
         if args.adapters:
-            prepare_mcore_model(mg_model)
+            peft_model = prepare_mcore_model(mg_model)
             assert len(args.adapters) == 1, 'Currently only support one adapter'
             bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
             if args.merge_lora:

@@ -6,9 +6,9 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
+from ..gpt_bridge import MultimodalGPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
-from ..gpt_bridge import MultimodalGPTBridge
 
 
 class KimiVLBridge(MultimodalGPTBridge):
@@ -17,6 +17,7 @@ class KimiVLBridge(MultimodalGPTBridge):
     hf_final_layernorm_key = 'language_model.model.norm.weight'
     hf_lm_head_key = 'language_model.lm_head.weight'
     hf_score_key = 'language_model.score.weight'
+
 
 class KimiVLVit(HuggingFaceModule):
     module_mapping = {'vision_tower': 'vision_tower', 'multi_modal_projector': 'multi_modal_projector'}
@@ -48,8 +49,7 @@ class KimiVLVit(HuggingFaceModule):
         return inputs_embeds
 
 
-register_megatron_model(MegatronModelMeta(MegatronModelType.kimi_vl, [
-    ModelType.kimi_vl,
-], 
-bridge_cls=KimiVLBridge,
-visual_cls=KimiVLVit))
+register_megatron_model(
+    MegatronModelMeta(MegatronModelType.kimi_vl, [
+        ModelType.kimi_vl,
+    ], bridge_cls=KimiVLBridge, visual_cls=KimiVLVit))

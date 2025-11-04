@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 from copy import copy
 from typing import Optional
 
@@ -14,11 +13,12 @@ from tqdm import tqdm
 from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
 
+# Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
     hf_layers_prefix = 'model.layers'
     hf_embed_key = 'model.embed_tokens.weight'
