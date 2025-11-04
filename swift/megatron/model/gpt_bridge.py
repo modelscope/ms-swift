@@ -904,7 +904,7 @@ class GPTBridge:
             res[k] = v
         return res
 
-    def _convert(self, mg_models, hf_state_dict, hf_prefix: str, to_mcore: bool):
+    def _convert(self, mg_models, hf_state_dict, hf_prefix: str, to_mcore: bool, tqdm_desc: str = 'Converting: '):
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
@@ -920,7 +920,7 @@ class GPTBridge:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
         for layer_idx in tqdm(
-                range(self.args.num_layers), dynamic_ncols=True, desc='Converting: ', disable=self.disable_tqmd):
+                range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd):
             lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
             start_idx = lm_model.decoder.layers[0].layer_number - 1
             mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
@@ -956,9 +956,14 @@ class GPTBridge:
         with SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
-            list(self._convert([mg_model], state_dict, hf_prefix, True))
+            list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
 
-    def export_weights(self, mg_models, target_device=None, only_last_rank: bool = False, is_peft_format: bool = False):
+    def export_weights(self,
+                       mg_models,
+                       target_device=None,
+                       only_last_rank: bool = False,
+                       is_peft_format: bool = False,
+                       tqdm_desc: str = 'Exporting: '):
         # TODO: modules_to_save
         self._target_device = target_device
         self._only_last_rank = only_last_rank
@@ -966,14 +971,15 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
-        yield from self._convert(mg_models, {}, hf_prefix, False)
+        yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
-                mg_models, target_device='cpu', only_last_rank=True, is_peft_format=is_peft_format):
+                mg_models, target_device='cpu', only_last_rank=True, is_peft_format=is_peft_format,
+                tqdm_desc='Saving: '):
             saver.add_tensor(k, v)
         saver.finalize()
         if is_last_rank():
