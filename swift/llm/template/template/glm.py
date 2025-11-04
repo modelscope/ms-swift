@@ -317,7 +317,7 @@ class GLM4_5VTemplate(GLM4_5Template):
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
-        base_model = self.get_base_model(self.model)
+        base_model = self.get_base_model(self._get_model())
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
