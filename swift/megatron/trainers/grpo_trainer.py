@@ -39,7 +39,8 @@ logger = get_logger()
 
 class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
-    def __init__(self, args: MegatronRLHFArguments, template: Template):
+    def __init__(self, args: MegatronRLHFArguments, template: Template, **kwargs):
+        self.vllm_client = kwargs.pop('vllm_client')
         super().__init__(args, template)
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
@@ -126,7 +127,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
         if self.vllm_mode == 'server':
-            self.vllm_client = self.args.vllm_client
+            pass
         elif self.vllm_mode == 'colocate':
             if not self.world_size % self.vllm_tensor_parallel_size == 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -175,6 +176,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _move_model_to_vllm(self):
         # TODO: server
+        if self.vllm_mode == 'server':
+            return  # TODO
+
         if self.bridge is None:
             self.bridge = AutoBridge.from_pretrained(self.hf_model_dir)
             self._patch_mbridge(self.bridge)
@@ -368,7 +372,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if self._step % self.steps_per_generation == 0:
             # each rollout DP group will generate generation_batch_size / world_size completions
-            completions_to_rollout = self.generation_batch_size // mpu.get_data_parallel_world_size()
+            dp_size = mpu.get_data_parallel_world_size()
+            completions_to_rollout = self.generation_batch_size // dp_size
             # completions will be repeated num_generations times after
             # so we need to divide num_iters_per_step by num_generations to get prompt batch size
             prompts_to_rollout = completions_to_rollout // self.num_generations

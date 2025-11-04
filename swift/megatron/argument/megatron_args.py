@@ -67,7 +67,6 @@ class RLHFMegatronArgumentsMixin:
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
-    vllm_client: Optional[object] = field(init=False, default=None)
 
     # ───────────────────────────  Reward  ───────────────────────────
     reward_funcs: List[str] = field(default_factory=list)
@@ -151,20 +150,6 @@ class RLHFMegatronArgumentsMixin:
 
     def _init_grpo(self):
 
-        def _init_external_vllm():
-            if self.rlhf_type != 'grpo' or (self.vllm_server_host is None and self.vllm_server_base_url is None):
-                return
-            from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
-            if is_master():
-                logger.info('Start connecting to vLLM server')
-                self.vllm_client = VLLMClient(
-                    base_urls=self.vllm_server_base_url,
-                    hosts=self.vllm_server_host,
-                    server_ports=self.vllm_server_port,
-                    connection_timeout=self.vllm_server_timeout)
-                self.vllm_client.init_communicator(device=get_current_device())
-                logger.info('Connected to vLLM server')
-
         def _check_not_supported():
             pass
 
@@ -184,12 +169,14 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError(
                     "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
             world_size = torch.distributed.get_world_size()
-            assert self.generation_batch_size % world_size == 0, \
-                f'generation_batch_size ({self.generation_batch_size}) ' \
+            num_rollout_prompt = self.generation_batch_size // self.num_generations
+            assert num_rollout_prompt % world_size == 0, (
+                f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
+                f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
                 f'must be divisible by the world size ({world_size})'
-            self.per_device_generation_batch_size = self.generation_batch_size // world_size
+                f'please adjust generation_batch_size/steps_per_generation/num_generations to make it divisible')
+            self.per_device_generation_batch_size = num_rollout_prompt // world_size
 
-        _init_external_vllm()
         _check_not_supported()
         _check_batch_params()
         # default loss_type if no loss_type is provided

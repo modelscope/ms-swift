@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 
 from swift.llm.train.kto import prepare_kto_dataset
 from swift.trainers.rlhf_trainer.utils import identity_data_collator
-from swift.utils import get_logger
+from swift.utils import get_current_device, get_logger, is_master
 from ..argument import MegatronRLHFArguments
 from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer, MegatronRewardTrainer
 from .sft import MegatronSft
@@ -26,8 +26,10 @@ class MegatronRLHF(MegatronSft):
         trainer_cls = trainer_mapping.get(args.rlhf_type)
         if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
-
-        return trainer_cls(args, self.template)
+        kwargs = {}
+        if args.rlhf_type == 'grpo':
+            kwargs['vllm_client'] = self._prepare_vllm_client()
+        return trainer_cls(args, self.template, **kwargs)
 
     def _prepare_template(self) -> None:
         super()._prepare_template()
@@ -45,6 +47,23 @@ class MegatronRLHF(MegatronSft):
         if args.rlhf_type == 'kto':
             train_dataset, val_dataset = prepare_kto_dataset(args, train_dataset, val_dataset)
         return train_dataset, val_dataset
+
+    def _prepare_vllm_client(self):
+        if self.args.rlhf_type != 'grpo' or (self.args.vllm_mode != 'server'):
+            return
+        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        vllm_client = None
+        if is_master():
+            logger.info('Start connecting to vLLM server')
+            vllm_client = VLLMClient(
+                base_urls=self.args.vllm_server_base_url,
+                hosts=self.args.vllm_server_host,
+                server_ports=self.args.vllm_server_port,
+                connection_timeout=self.args.vllm_server_timeout)
+            vllm_client.close_communicator()
+            vllm_client.init_communicator(device=get_current_device())
+            logger.info('Connected to vLLM server')
+        return vllm_client
 
 
 def megatron_rlhf_main(args: Optional[Union[List[str], MegatronRLHFArguments]] = None):
