@@ -233,7 +233,16 @@ class GPTBridge:
         module_key, param_key = mg_key.rsplit('.', 1)
         hf_module_key, hf_param_key = hf_key.rsplit('.', 1)
         sub_module = deep_getattr(mg_module, module_key)
-        if isinstance(sub_module, LoraParallelLinear) and self._is_peft_format and param_key != 'layer_norm_weight':
+        is_lora = isinstance(sub_module, LoraParallelLinear)
+        is_modules_to_save = isinstance(sub_module, ModulesToSaveWrapper)
+        if not to_mcore:
+            state = torch.tensor([is_lora, is_modules_to_save], dtype=torch.bool, device='cuda')
+            if self.pp_size > 1:
+                dist.all_reduce(state, group=self.pp_group)
+            if is_expert and self.ep_size > 1:
+                dist.all_reduce(state, group=self.ep_group)
+            is_lora, is_modules_to_save = state
+        if is_lora and self._is_peft_format and param_key != 'layer_norm_weight':
             if to_mcore:
                 lora_A_key = f'{module_key}.lora_A.default.{param_key}'
                 lora_B_key = f'{module_key}.lora_B.default.{param_key}'
@@ -256,8 +265,8 @@ class GPTBridge:
                     self._peft_target_modules.add(hf_module_key)
                     hf_state_dict[hf_lora_A_key] = lora_A
                     hf_state_dict[hf_lora_B_key] = lora_B
-        elif not self._is_peft_format or isinstance(sub_module, ModulesToSaveWrapper):
-            if isinstance(sub_module, LoraParallelLinear):
+        elif not self._is_peft_format or is_modules_to_save:
+            if is_lora:
                 mg_param = deep_getattr(sub_module, f'base_layer.{param_key}')
             else:
                 mg_param = deep_getattr(sub_module, param_key)
@@ -269,7 +278,7 @@ class GPTBridge:
                     hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
                 self._set_weight(mg_param, hf_weight, mg_key, offset, is_expert)
             else:
-                if isinstance(sub_module, ModulesToSaveWrapper):
+                if is_modules_to_save:
                     self._peft_modules_to_save.add(hf_module_key)
                 weight = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset, is_expert)
                 if weight is not None:

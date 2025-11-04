@@ -1,4 +1,5 @@
 import math
+import os
 from dataclasses import dataclass
 
 from swift.llm import BaseArguments
@@ -14,6 +15,7 @@ logger = get_logger()
 class MegatronBaseArguments(MegatronArguments, BaseArguments):
 
     def __post_init__(self):
+        os.environ['SWIFT_USE_MEGATRON'] = '1'
         self.sequence_parallel_size = self.context_parallel_size
         if self.packing:
             self.padding_free = True
