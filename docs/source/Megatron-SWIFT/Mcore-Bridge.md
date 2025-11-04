@@ -254,6 +254,6 @@ megatron export \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
-    --pipine_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2 \
     --test_convert_precision true
 ```
