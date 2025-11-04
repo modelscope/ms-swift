@@ -238,7 +238,7 @@ The format will automatically convert the dataset format to the corresponding mo
 
 For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`, requires "ms-swift>=3.9.1") to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
 ```jsonl
-{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```
 
 Testing the final format of the grounding data in ms-swift format:
@@ -344,3 +344,41 @@ The following parameters are supported:
 - split: Defaults to `['train']`.
 - preprocess_func: A preprocessing function or callable object, default is `AutoPreprocessor()`. This preprocessing function takes an `HfDataset` as input and returns an `HfDataset` in the standard format.
 - load_function: Defaults to `DatasetLoader.load`. If a custom loading function is needed, it should return an `HfDataset` in the standard format, allowing users maximum flexibility while bypassing the ms-swift dataset loading mechanism. This parameter usually does not need to be modified.
+
+
+Below are examples of registering datasets:
+
+```python
+from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from typing import Dict, Any
+
+class CustomPreprocessor(ResponsePreprocessor):
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = f"""Task: Judge whether the two sentences below are semantically similar.
+Sentence 1: {row['text1']}
+Sentence 2: {row['text2']}
+Output the category [0/1]: 0 for different meanings, 1 for similar meanings.
+"""
+        response = str(row['label'])
+        row = {
+            'query': query,
+            'response': response
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/financial_classification',
+        subsets=[SubsetDataset('train', split=['train']), SubsetDataset('test', split=['test'])],
+        preprocess_func=CustomPreprocessor(),
+    ))
+
+if __name__ == '__main__':
+    # load_dataset returns train_dataset and val_dataset based on `split_dataset_ratio`
+    # Here, since we didn't pass `split_dataset_ratio` (defaults to 0), we take the first one (index 0)
+    dataset = load_dataset('swift/financial_classification:train')[0]
+    test_dataset = load_dataset('swift/financial_classification:test')[0]
+    print(f'dataset[0]: {dataset[0]}')
+    print(f'test_dataset[0]: {test_dataset[0]}')
+```

@@ -46,7 +46,7 @@ class ResourceManager:
                 ranks = list(range(last_rank + 1, last_rank + 1 + ranks))
             except Exception:  # noqa
                 if isinstance(ranks, str):
-                    ranks = ast.literal_eval(ranks)
+                    ranks = eval(ranks, {'__builtins__': {'list': list, 'range': range}})
             finally:
                 all_ranks.extend(ranks)
                 group['ranks'] = ranks

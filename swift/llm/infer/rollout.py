@@ -72,7 +72,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             shape (`Sequence[int]`):
                 Shape of the weight tensor.
         """
-        if self.pynccl_comm is None:
+        if self._comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
         dtype = getattr(torch, dtype.split('.')[-1])
@@ -80,8 +80,8 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         weight = torch.empty(shape, dtype=dtype, device=self.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        self.pynccl_comm.broadcast(weight, src=self.client_rank)
-        self.pynccl_comm.group.barrier()
+        self._comm.broadcast(weight, src=self.client_rank)
+        self._comm.group.barrier()
 
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
@@ -91,13 +91,13 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         Receives and applies a flattened LoRA adapter to the model.
         """
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
-        if self.pynccl_comm is None:
+        if self._comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
-        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
-        self.pynccl_comm.group.barrier()
+        self._comm.broadcast(flatten_tensor, src=self.client_rank)
+        self._comm.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
         lora_request = TensorLoRARequest(
@@ -116,21 +116,39 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             metadatas (list[Dict]): List of metadata dictionaries for the flattened tensors.
         """
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
-        if self.pynccl_comm is None:
+        if self._comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
 
-        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
-        self.pynccl_comm.group.barrier()
+        self._comm.broadcast(flatten_tensor, src=self.client_rank)
+        self._comm.group.barrier()
 
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
 
         # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
+
+    @property
+    def _comm(self):
+        """
+        Compatibility wrapper for communicator access across TRL versions.
+
+        Returns the appropriate communicator attribute based on the TRL version:
+        - trl < 0.24.0: self.pynccl_comm
+        - trl >= 0.24.0: self.communicator
+        """
+        # Try new version first
+        if hasattr(self, 'communicator'):
+            return self.communicator
+        # Fall back to old version
+        elif hasattr(self, 'pynccl_comm'):
+            return self.pynccl_comm
+        else:
+            return None
 
 
 logger = get_logger()
@@ -450,7 +468,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         The returned object contains three keys:
         - engine_type (str): Either 'AsyncLLMEngine' or 'LLMEngine', indicating
         whether the asynchronous or synchronous engine is in use.
-        - gym_env (bool, optional): Present and True **only when**
+        - use_gym_env (bool, optional): Present and True **only when**
         ``use_async_engine`` and ``use_gym_env`` are both True.
         - enable_multi_turn (bool): True if multi-turn scheduling is enabled
         via ``args.multi_turn_scheduler``, otherwise False.

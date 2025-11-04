@@ -192,9 +192,10 @@ class VLLMClient:
             rank = vllm_world_size
             kwargs = {}
             if trl_verison >= version.parse('0.20.0'):
-                if not is_torch_cuda_available():
-                    raise NotImplementedError('trl >= 0.20.0 only support CUDA deivce. Please use trl < 0.20.0')
-                client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
+                try:
+                    client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
+                except Exception:
+                    client_device_uuid = '42'
                 kwargs['client_device_uuid'] = client_device_uuid
 
             response = self.sessions[i].post(
@@ -363,7 +364,7 @@ class VLLMClient:
         result = response.json()
         self.use_async_engine = result['engine_type'] == 'AsyncLLMEngine'
         self.enable_multi_turn = result.get('enable_multi_turn', False)
-        self.use_gym_env = result.get('gym_env', False)
+        self.use_gym_env = result.get('use_gym_env', False)
         self.enable_lora = result.get('enable_lora', False)
         return result
 
