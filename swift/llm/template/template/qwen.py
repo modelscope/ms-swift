@@ -426,7 +426,7 @@ class Qwen2VLTemplate(Template):
         kwargs = {}
         if self.version == 'v2_5':
             kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
-        base_model = self.get_base_model(self.model)
+        base_model = self.get_base_model(self._get_model())
         if hasattr(base_model, 'get_rope_index'):
             get_rope_index = base_model.get_rope_index
         else:
