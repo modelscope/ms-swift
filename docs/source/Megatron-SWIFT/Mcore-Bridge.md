@@ -257,3 +257,20 @@ megatron export \
     --pipeline_model_parallel_size 2 \
     --test_convert_precision true
 ```
+
+Merge-LoRA:
+```shell
+# torch_dist -> torch_dist
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
+megatron export \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-merged \
+    --merge_lora true \
+    --to_mcore true \
+    --tensor_model_parallel_size 2 \
+    --expert_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2 \
+    --test_convert_precision true
+```
