@@ -90,7 +90,10 @@ InfoNCE loss supports the following environment variables:
 1. `INFONCE_TEMPERATURE`: The temperature parameter. If not set, the default value is 0.01.
 2. `INFONCE_USE_BATCH`: Use `negative_messages` within the sample (hard negatives) or use other samples in the batch as in-batch negatives. The default is `True`, which means using in-batch negatives.
 3. `INFONCE_HARD_NEGATIVES`: The number of hard negatives. If not set, all provided `negative_messages` will be used. Since the lengths may vary, a for loop will be used to compute the loss (slower). If set to a specific number, missing items will be randomly sampled, and excess items will be truncated to the first `INFONCE_HARD_NEGATIVES`.
-4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is `False`. When enabled, it checks `positive_similarity + 0.1`; any sample with similarity larger than this threshold will have its similarity set to `-inf` to prevent positive leakage.
+4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is `False`. When enabled, it checks `positive_similarity + INFONCE_FAKE_NEG_MARGIN`; any sample with similarity larger than this threshold will have its similarity set to `-inf` to prevent positive leakage.
+5. `INFONCE_FAKE_NEG_MARGIN`: Margin used by the fake-negative mask. Default: `0.1`.
+6. `INFONCE_INCLUDE_QQ`: Include the q–q block (similarities among queries) in the denominator as additional negatives. Default: `False`.
+7. `INFONCE_INCLUDE_DD`: Include the d–d block (similarities of the positive doc to all in-batch docs) in the denominator as additional negatives. Default: `False`.
 
 > You can also make the number of hard negatives equal across samples in the dataset, which avoids the for-loop computation and speeds up training even if `INFONCE_HARD_NEGATIVES` is not set.
 >

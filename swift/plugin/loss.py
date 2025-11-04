@@ -323,6 +323,11 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
     # mask out fake negatives
     infonce_mask_fake_negative = strtobool(os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', 'False'))
+    fake_neg_margin = float(os.environ.get('INFONCE_FAKE_NEG_MARGIN', '0.1'))
+    # enhanced components to align with Qwen3-Embedding denominator; controlled individually
+    # defaults set to False for backward compatibility
+    infonce_include_qq = strtobool(os.environ.get('INFONCE_INCLUDE_QQ', 'False'))
+    infonce_include_dd = strtobool(os.environ.get('INFONCE_INCLUDE_DD', 'False'))
     if hard_negatives is not None:
         hard_negatives = int(hard_negatives)
     from swift.utils import get_dist_setting
@@ -376,26 +381,70 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
             # avg between all batches in one gpu
             loss /= len(split_tensors)
     else:
-
-        def mask_fake_negative(sim_matrix, sim_labels):
-            thresholds = sim_matrix[torch.arange(sim_matrix.size(0)), sim_labels].view(-1, 1) + 0.1
-            thresholds = thresholds.detach()
-            mask = sim_matrix > thresholds
-            sim_matrix[mask] = float('-inf')
-
         if can_batched:
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
-            # [B, D] * [B*(neg+1), D]
-            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:,
-                                                                                   1:].reshape(-1, sentences.size(2)).T)
+            # base q->d similarities (includes own positive and all in-batch documents)
+            queries = sentences[:, 0].squeeze(1)  # [B, D]
+            docs_all = sentences[:, 1:].reshape(-1, sentences.size(2))  # [B*(neg+1), D]
+            qd_matrix = torch.matmul(queries, docs_all.T)  # [B, B*(neg+1)]
+            # target indices: start of each group's document block (its positive)
             labels = torch.tensor(range(0,
                                         sentences.size(0) * (sentences.size(1) - 1),
                                         sentences.size(1) - 1)).view(-1).to(sentences.device)
+
+            logits_list = [qd_matrix]
+
+            if infonce_include_qq:
+                # q->q similarities; exclude self via -inf on diagonal to avoid accidental positives
+                qq_matrix = torch.matmul(queries, queries.T)  # [B, B]
+                qq_matrix = qq_matrix.clone()
+                qq_matrix.fill_diagonal_(float('-inf'))
+                logits_list.append(qq_matrix)
+
+            if infonce_include_dd:
+                # d+ -> d (doc-doc) similarities; exclude self-positive column per row
+                pos_docs = sentences[:, 1].squeeze(1)  # [B, D]
+                dd_matrix = torch.matmul(pos_docs, docs_all.T)  # [B, B*(neg+1)]
+                # mask self positive per row: column index = row_idx * (neg+1)
+                block = sentences.size(1) - 1  # (neg+1)
+                if block > 0:
+                    row_idx = torch.arange(dd_matrix.size(0), device=dd_matrix.device)
+                    col_idx = row_idx * block
+                    dd_matrix[row_idx, col_idx] = float('-inf')
+                logits_list.append(dd_matrix)
+
             if infonce_mask_fake_negative:
-                mask_fake_negative(similarity_matrix, labels)
+                # thresholds derived from positive q->d scores per row
+                row_idx = torch.arange(qd_matrix.size(0), device=qd_matrix.device)
+                pos_scores = qd_matrix[row_idx, labels]
+                thresholds = pos_scores.view(-1, 1).detach() + fake_neg_margin
+
+                # qd block mask
+                qd_block = qd_matrix.clone()
+                qd_mask = qd_block > thresholds
+                qd_block[qd_mask] = float('-inf')
+
+                components = [qd_block]
+
+                # qq block mask (if present)
+                if infonce_include_qq:
+                    qq_block = qq_matrix.clone()
+                    qq_mask = qq_block > thresholds
+                    qq_block[qq_mask] = float('-inf')
+                    # diagonal already masked unconditionally at construction time
+                    components.append(qq_block)
+
+                # dd block (if present): self-positive column already masked unconditionally
+                if infonce_include_dd:
+                    components.append(dd_matrix)
+
+                similarity_matrix = torch.cat(components, dim=1)
+            else:
+                # concatenate all components without masking
+                similarity_matrix = torch.cat(logits_list, dim=1)
+            # temperature scaling and CE
             similarity_matrix = similarity_matrix / temperature
-            # every neg+1 is positive start from 0
             loss = nn.CrossEntropyLoss()(similarity_matrix, labels) / world_size  # avoid duplicate
         else:
             all_tensors = []
@@ -403,12 +452,49 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
                 all_tensors.append(tensor[1:])
             # cat all neg+1 tensors
             sentences = torch.cat(all_tensors, dim=0)
+            # prepare query anchors list if q-q is included
+            if infonce_include_qq:
+                queries_all = torch.stack([t[0] for t in split_tensors], dim=0)  # [B, D]
             length = 0
             for idx, tensor in enumerate(split_tensors):
                 # [D] * [B*(neg+1), D], neg numbers are different
-                similarity_matrix = torch.matmul(tensor[0], sentences.T) / temperature
-                labels = torch.tensor(length).to(tensor.device)
-                loss += nn.CrossEntropyLoss()(similarity_matrix, labels)
+                qd_vec = torch.matmul(tensor[0], sentences.T)
+                target = torch.tensor(length).to(tensor.device)
+                logits_parts = []
+
+                # compute threshold from positive q->d score
+                threshold = (qd_vec[target].detach() + fake_neg_margin)
+
+                # qd part with masking
+                if infonce_mask_fake_negative:
+                    qd_masked = torch.where(qd_vec > threshold, torch.tensor(float('-inf'), device=qd_vec.device),
+                                            qd_vec)
+                else:
+                    qd_masked = qd_vec
+                logits_parts.append(qd_masked)
+
+                # qq part
+                if infonce_include_qq:
+                    qq_vec = torch.matmul(tensor[0], queries_all.T)  # [B]
+                    # exclude self
+                    qq_vec = qq_vec.clone()
+                    qq_vec[idx] = float('-inf')
+                    if infonce_mask_fake_negative:
+                        qq_vec = torch.where(qq_vec > threshold, torch.tensor(float('-inf'), device=qq_vec.device),
+                                             qq_vec)
+                    logits_parts.append(qq_vec)
+
+                # dd part
+                if infonce_include_dd:
+                    dd_vec = torch.matmul(tensor[1], sentences.T)  # [B*(neg+1)]
+                    # mask self positive column for this row only (no threshold masking for d-d)
+                    block = split_tensors[idx].size(0) - 1  # (neg+1) for this group
+                    dd_vec[length] = float('-inf')
+                    logits_parts.append(dd_vec)
+
+                logits_row = torch.cat(logits_parts, dim=-1)
+                logits_row = logits_row / temperature
+                loss += nn.CrossEntropyLoss()(logits_row.unsqueeze(0), target.unsqueeze(0))
                 # next positive is neg+1
                 length += tensor.size(0) - 1
             loss /= len(split_tensors)
