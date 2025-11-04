@@ -770,7 +770,9 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths = None
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
         input_ids = inputs['input_ids']
-        attention_mask = inputs.get('attention_mask')
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         position_ids, _ = self.model.thinker.get_rope_index(

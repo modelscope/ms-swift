@@ -82,10 +82,18 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
+        from .constant import MLLMModelType, RMModelType, RerankerModelType
         if self.template is None:
             self.template = 'dummy'
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
+
+        if self.model_type in MLLMModelType.__dict__:
+            self.is_multimodal = True
+        if self.model_type in RMModelType.__dict__:
+            self.is_reward = True
+        if self.model_type in RerankerModelType.__dict__:
+            self.is_reranker = True
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
@@ -124,13 +132,6 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType, RMModelType, RerankerModelType
-    if model_type in MLLMModelType.__dict__:
-        model_meta.is_multimodal = True
-    if model_type in RMModelType.__dict__:
-        model_meta.is_reward = True
-    if model_type in RerankerModelType.__dict__:
-        model_meta.is_reranker = True
     if model_meta.model_arch:
         model_meta.model_arch = get_model_arch(model_meta.model_arch)
     MODEL_MAPPING[model_type] = model_meta

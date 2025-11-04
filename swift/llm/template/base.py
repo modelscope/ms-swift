@@ -1687,6 +1687,7 @@ class Template(ProcessorMixin):
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
                 for i, seq_len in enumerate(seq_lens):
                     res['attention_mask'][i, :, seq_len:] = 0
+                res['attention_mask'] = ~res['attention_mask']
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
