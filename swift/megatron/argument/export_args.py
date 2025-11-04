@@ -18,7 +18,7 @@ class MegatronExportArguments(MegatronBaseArguments):
     test_convert_precision: bool = False
     test_convert_dtype: str = 'float32'
     exist_ok: bool = False
-    merge_lora: bool = True
+    merge_lora: Optional[bool] = None
 
     def _init_save(self):
         if self.save is None:
@@ -49,7 +49,7 @@ class MegatronExportArguments(MegatronBaseArguments):
                 self.sequence_parallel = True
                 logger.info('Settting args.sequence_parallel: True')
             if self.merge_lora is None:
-                self.merge_lora = True
+                self.merge_lora = self.to_hf
 
     def _init_convert(self):
         convert_kwargs = {

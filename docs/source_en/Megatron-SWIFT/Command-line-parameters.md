@@ -331,8 +331,8 @@ In addition to inheriting the training parameters, the following parameters are 
 
 This section introduces the parameters for `megatron export` (requires "ms-swift>=3.10"). To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
 - 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
-- to_hf: Convert Megatron format weights to HF format. Defaults to False.
-- merge_lora: Defaults to True, meaning if `--load` and `--adapter_load` are set, merge-lora will be performed by default and the merged weights will be stored in the `--save` directory. To only convert and store LoRA incremental weights, set `--merge_lora false`.
+- 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
+- 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.
   - Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot be converted (though Qwen3-VL-Moe can be converted if only linear_proj and linear_qkv are set for LoRA training). However, most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
 - 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
 - test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
