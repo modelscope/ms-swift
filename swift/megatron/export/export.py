@@ -70,7 +70,7 @@ class MegatronExport(SwiftPipeline):
                     kwargs = {'adapters': [args.save]}
                 else:
                     kwargs = {'model': args.save}
-                hf_model = prepare_model_template(args, device_map='cpu', **kwargs)[0] if is_last_rank() else None
+                hf_model, template = prepare_model_template(args, device_map='cpu', **kwargs) if is_last_rank() else (None, None)
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
             dist.barrier()
 
@@ -111,7 +111,7 @@ class MegatronExport(SwiftPipeline):
         logger.info('Successfully transferred HF model weights to MG model.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
-                hf_model = prepare_model_template(args, device_map='cpu')[0] if is_last_rank() else None
+                hf_model, template = prepare_model_template(args, device_map='cpu') if is_last_rank() else (None, None)
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
             dist.barrier()
         args.save_args(args.save)

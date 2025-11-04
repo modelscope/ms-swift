@@ -544,6 +544,7 @@ class GPTBridge:
                     if is_expert:
                         if hf_grouped:
                             gate_up_proj_weight = hf_state_dict['gate_up_proj'].load().transpose(1, 2)
+                            gate_up_proj_weight = gate_up_proj_weight[:num_local_experts]
                             gate_up_proj_weight = gate_up_proj_weight.reshape(num_local_experts * 2, -1,
                                                                               gate_up_proj_weight.shape[-1])
                         else:
@@ -702,6 +703,7 @@ class GPTBridge:
                     fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
                     if hf_grouped:
                         down_proj_weight = hf_state_dict['down_proj'].load().transpose(1, 2)
+                        down_proj_weight = down_proj_weight[:num_local_experts].reshape(-1, down_proj_weight.shape[-1])
                     else:
                         down_proj_weight = torch.concat([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight'].load()
