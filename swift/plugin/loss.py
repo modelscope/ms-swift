@@ -437,6 +437,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
 
                 # dd block (if present): self-positive column already masked unconditionally
                 if infonce_include_dd:
+                    # align with Qwen3-Embedding, no threshold masking for d-d
                     components.append(dd_matrix)
 
                 similarity_matrix = torch.cat(components, dim=1)
