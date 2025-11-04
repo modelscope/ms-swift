@@ -465,10 +465,6 @@ class GPTBridge:
                        to_mcore: bool,
                        ep_rank: Optional[int] = None,
                        hf_mlp=None):
-        if to_mcore:
-            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
-        else:
-            hf_state_dict = {}
         if hf_mlp is None:
             hf_mlp = self.hf_layers[layer_idx].mlp
         is_expert = ep_rank is not None
@@ -478,6 +474,10 @@ class GPTBridge:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = self.args.num_experts // self.ep_size
+        if to_mcore or hf_grouped:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        else:
+            hf_state_dict = {}
         # linear_fc1
         if to_mcore:
             if isinstance(mg_mlp.linear_fc1, LoraParallelLinear):
@@ -589,6 +589,7 @@ class GPTBridge:
             if is_expert and self.ep_size > 1:
                 dist.all_reduce(is_lora, group=self.ep_group)
             if is_lora:
+                assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                 if mg_mlp is None:
                     lora_A = None
                     lora_B = None
@@ -655,9 +656,16 @@ class GPTBridge:
                         if is_expert:
                             gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, -1,
                                                                            gate_up_proj_weight.shape[-1])
-                            for i in range(num_local_experts):
-                                hf_i = i + ep_rank * num_local_experts
-                                hf_state_dict[f'{hf_i}.gate_up_proj.weight'] = gate_up_proj_weight[i].clone()
+                            if hf_grouped:
+                                gate_up_proj_weight = gate_up_proj_weight.transpose(1, 2)
+                                if 'gate_up_proj' in hf_state_dict:
+                                    gate_up_proj_weight = torch.concat(
+                                        [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
+                                hf_state_dict['gate_up_proj'] = gate_up_proj_weight
+                            else:
+                                for i in range(num_local_experts):
+                                    hf_i = i + ep_rank * num_local_experts
+                                    hf_state_dict[f'{hf_i}.gate_up_proj.weight'] = gate_up_proj_weight[i].clone()
                             del gate_up_proj_weight
                         else:
                             hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.view(
@@ -726,6 +734,7 @@ class GPTBridge:
                 if is_expert and self.ep_size > 1:
                     dist.all_reduce(is_lora, group=self.ep_group)
                 if is_lora:
+                    assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                     if mg_mlp is None:
                         lora_A = None
                         lora_B = None
@@ -758,9 +767,15 @@ class GPTBridge:
                     del fc2_weight
                     if down_proj_weight is not None:
                         down_proj_weight = down_proj_weight.view(num_local_experts, -1, down_proj_weight.shape[-1])
-                        for i in range(num_local_experts):
-                            hf_i = i + ep_rank * num_local_experts
-                            hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].clone()
+                        if hf_grouped:
+                            down_proj_weight = down_proj_weight.transpose(1, 2)
+                            if 'down_proj' in hf_state_dict:
+                                down_proj_weight = torch.concat([hf_state_dict['down_proj'], down_proj_weight], dim=0)
+                            hf_state_dict['down_proj'] = down_proj_weight
+                        else:
+                            for i in range(num_local_experts):
+                                hf_i = i + ep_rank * num_local_experts
+                                hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].clone()
         else:
             self._set_state_dict(
                 mg_mlp, 'linear_fc2.weight', hf_state_dict, 'down_proj.weight', to_mcore, is_expert=is_expert)
