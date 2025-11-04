@@ -46,10 +46,6 @@ def is_local_master():
 
 
 def is_master():
-    use_megatron = strtobool(os.environ.get('SWIFT_USE_MEGATRON', '0'))
-    if use_megatron:
-        # patch
-        return is_last_rank()
     rank = get_dist_setting()[0]
     return rank in {-1, 0}
 
