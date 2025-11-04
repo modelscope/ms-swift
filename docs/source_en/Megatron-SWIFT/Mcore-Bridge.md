@@ -285,3 +285,99 @@ megatron export \
     --expert_model_parallel_size 2 \
     --pipeline_model_parallel_size 2
 ```
+
+
+## Using Code
+
+You need to create the following file (test.py), then run `CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 test.py`. Below is sample code for loading, exporting, and saving weights using Mcore-Bridge.
+
+```python
+import torch
+
+from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
+from swift.llm import get_model_tokenizer
+from megatron.training.initialize import initialize_megatron
+
+_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_info = processor.model_info
+megatron_model_meta = get_megatron_model_meta(model_info.model_type)
+config_kwargs = convert_hf_config(model_info.config)
+megatron_args = MegatronArguments(
+    tensor_model_parallel_size=2,
+    torch_dtype=torch.bfloat16,
+    **config_kwargs,
+)
+extra_args = megatron_args.parse_to_megatron()
+extra_args['model_info'] = model_info
+extra_args['megatron_model_meta'] = megatron_model_meta
+initialize_megatron(args_defaults=extra_args)
+mg_model = megatron_model_meta.model_provider()
+bridge = megatron_model_meta.bridge_cls()
+# Load weights
+bridge.load_weights(mg_model, model_info.model_dir)
+# Export weights
+for name, parameters in bridge.export_weights([mg_model]):
+    pass
+# Save weights
+bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-new')
+```
+
+Inference with the newly generated weights:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model output/Qwen3-4B-Instruct-2507-new \
+    --model_type qwen3_nothinking \
+    --stream true
+```
+
+Loading, exporting, and saving LoRA weights follows the same pattern:
+
+```python
+import torch
+
+from swift.megatron import (
+    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
+)
+from swift.llm import get_model_tokenizer
+from megatron.training.initialize import initialize_megatron
+
+_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_info = processor.model_info
+megatron_model_meta = get_megatron_model_meta(model_info.model_type)
+config_kwargs = convert_hf_config(model_info.config)
+megatron_args = MegatronArguments(
+    tensor_model_parallel_size=2,
+    torch_dtype=torch.bfloat16,
+    train_type='lora',
+    **config_kwargs,
+)
+extra_args = megatron_args.parse_to_megatron()
+extra_args['model_info'] = model_info
+extra_args['megatron_model_meta'] = megatron_model_meta
+initialize_megatron(args_defaults=extra_args)
+mg_model = megatron_model_meta.model_provider()
+# Load weights
+bridge = megatron_model_meta.bridge_cls()
+bridge.load_weights(mg_model, model_info.model_dir)
+# Prepare LoRA and load
+peft_model = prepare_mcore_model(mg_model)
+print(f'peft_model: {peft_model}')
+# bridge.load_weights(mg_model, 'adapter-path', is_peft_format=True)
+# Export weights
+for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
+    pass
+# Save weights
+bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-lora', is_peft_format=True)
+```
+
+Inference with the newly generated weights:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --adapters output/Qwen3-4B-Instruct-2507-lora \
+    --stream true
+```

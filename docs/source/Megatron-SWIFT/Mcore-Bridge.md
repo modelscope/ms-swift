@@ -273,3 +273,96 @@ megatron export \
     --expert_model_parallel_size 2 \
     --pipeline_model_parallel_size 2
 ```
+
+
+## 使用代码
+
+你需要创建以下文件（test.py），然后运行`CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 test.py`。以下为使用Mcore-Bridge进行权重加载、导出、保存的示例代码。
+
+```python
+import torch
+
+from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
+from swift.llm import get_model_tokenizer
+from megatron.training.initialize import initialize_megatron
+
+_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_info = processor.model_info
+megatron_model_meta = get_megatron_model_meta(model_info.model_type)
+config_kwargs = convert_hf_config(model_info.config)
+megatron_args = MegatronArguments(
+    tensor_model_parallel_size=2,
+    torch_dtype=torch.bfloat16,
+    **config_kwargs,
+)
+extra_args = megatron_args.parse_to_megatron()
+extra_args['model_info'] = model_info
+extra_args['megatron_model_meta'] = megatron_model_meta
+initialize_megatron(args_defaults=extra_args)
+mg_model = megatron_model_meta.model_provider()
+bridge = megatron_model_meta.bridge_cls()
+# 加载权重
+bridge.load_weights(mg_model, model_info.model_dir)
+# 导出权重
+for name, parameters in bridge.export_weights([mg_model]):
+    pass
+# 保存权重
+bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-new')
+```
+
+推理新产生的权重：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model output/Qwen3-4B-Instruct-2507-new \
+    --model_type qwen3_nothinking \
+    --stream true
+```
+
+LoRA权重的加载、导出和存储同理：
+```python
+import torch
+
+from swift.megatron import (
+    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
+)
+from swift.llm import get_model_tokenizer
+from megatron.training.initialize import initialize_megatron
+
+_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_info = processor.model_info
+megatron_model_meta = get_megatron_model_meta(model_info.model_type)
+config_kwargs = convert_hf_config(model_info.config)
+megatron_args = MegatronArguments(
+    tensor_model_parallel_size=2,
+    torch_dtype=torch.bfloat16,
+    train_type='lora',
+    **config_kwargs,
+)
+extra_args = megatron_args.parse_to_megatron()
+extra_args['model_info'] = model_info
+extra_args['megatron_model_meta'] = megatron_model_meta
+initialize_megatron(args_defaults=extra_args)
+mg_model = megatron_model_meta.model_provider()
+# 加载权重
+bridge = megatron_model_meta.bridge_cls()
+bridge.load_weights(mg_model, model_info.model_dir)
+# 准备LoRA并加载
+peft_model = prepare_mcore_model(mg_model)
+print(f'peft_model: {peft_model}')
+# bridge.load_weights(mg_model, 'adapter-path', is_peft_format=True)
+# 导出权重
+for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
+    pass
+# 保存权重
+bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-lora', is_peft_format=True)
+```
+
+推理新产生的权重：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --adapters output/Qwen3-4B-Instruct-2507-lora \
+    --stream true
+```
