@@ -93,12 +93,13 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     torch_dtype: Optional[torch.dtype] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
-    # safetensors
+    # mcore-bridge
     load_safetensors: bool = False
     save_safetensors: bool = False
     model: Optional[str] = None
     adapters: List[str] = field(default_factory=list)
     merge_lora: Optional[bool] = None
+    max_shard_size: str = '5GB'
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
@@ -128,8 +129,6 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     layer_types: Optional[List[str]] = None
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
-    # hf saver
-    max_shard_size: str = '5GB'
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:

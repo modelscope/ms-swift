@@ -13,11 +13,12 @@ logger = get_logger()
 
 @dataclass
 class MegatronExportArguments(MegatronBaseArguments):
-    to_hf: bool = False
     to_mcore: bool = False
+    to_hf: bool = False
     test_convert_precision: bool = False
     test_convert_dtype: str = 'float32'
     exist_ok: bool = False
+    merge_lora: bool = True
 
     def _init_save(self):
         if self.save is None:

@@ -41,6 +41,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/Command-line-parameters.md
    Megatron-SWIFT/LoRA-Training.md
    Megatron-SWIFT/Multimodal-Model.md
+   Megatron-SWIFT/Mcore-Bridge.md
 
 
 .. toctree::

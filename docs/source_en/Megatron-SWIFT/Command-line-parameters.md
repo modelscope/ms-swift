@@ -248,6 +248,7 @@ LoRA Training:
 - 🔥target_modules: Specifies the suffixes of modules to apply LoRA to. For example, you can set it as `--target_modules linear_qkv linear_proj`. The default is `['all-linear']`, which means all linear layers will be set as target modules.
   - Note: The behavior of `'all-linear'` differs between LLMs and multimodal LLMs. For standard LLMs, it automatically finds all linear layers except `lm_head` and attaches tuners. **For multimodal LLMs, tuners are by default only attached to the LLM component; this behavior can be controlled via `freeze_llm`, `freeze_vit`, and `freeze_aligner`**.
   - Note: If you want to set all router layers as target modules, you can specify `--target_modules all-router ...`. For example: `--target_modules all-router all-linear`.
+  - The suffix names of Linear layers differ between transformers and Megatron. In Megatron, `linear_proj` represents `o_proj`, `linear_qkv` represents the concatenation of `q_proj, k_proj, v_proj`, `linear_fc1` represents the concatenation of `gate_proj` and `up_proj`, and `linear_fc2` represents `down_proj`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`. For example, setting `--modules_to_save word_embeddings output_layer` will unfreeze the `word_embeddings` and `output_layer` layers during LoRA training, and the weights of these modules will be saved in the final checkpoint.
 - 🔥lora_rank: Default is `8`.
@@ -277,6 +278,15 @@ LoRA Training:
 
 **RM Parameters**:
 - center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
+
+**Mcore-Bridge Parameters**
+
+- 🔥load_safetensors: Defaults to False. Whether to load weights directly from safetensors.
+- 🔥save_safetensors: Defaults to False. Whether to save directly as safetensors weights. Note: if this parameter is set to True, optimizer weights, random number states, and other checkpoint resumption contents will not be stored.
+- model: The model_id or model_path of safetensors weights. Defaults to None.
+- adapters: The adapter_id or adapter_path of LoRA incremental weights in safetensors format. Defaults to `[]`.
+- merge_lora: Whether to store merged weights. Defaults to None. If `save_safetensors` is set to True, this parameter defaults to `True`; otherwise, it defaults to False. That is, by default, LoRA will be merged when storing in safetensors format; LoRA will not be merged when storing in torch_dist format.
+- max_shard_size: Maximum file size for safetensors format storage, defaults to '5GB'.
 
 
 ## Training Parameters
@@ -315,3 +325,15 @@ In addition to inheriting the training parameters, the following parameters are 
 - 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'kto', and 'rm' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
+
+
+## Export Parameters
+
+This section introduces the parameters for `megatron export` (requires "ms-swift>=3.10"). To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
+- 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
+- to_hf: Convert Megatron format weights to HF format. Defaults to False.
+- merge_lora: Defaults to True, meaning if `--load` and `--adapter_load` are set, merge-lora will be performed by default and the merged weights will be stored in the `--save` directory. To only convert and store LoRA incremental weights, set `--merge_lora false`.
+  - Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot be converted (though Qwen3-VL-Moe can be converted if only linear_proj and linear_qkv are set for LoRA training). However, most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+- 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
+- test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
+- exist_ok: If `args.save` exists, do not throw an exception and perform overwriting. Defaults to False.
