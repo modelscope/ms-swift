@@ -988,7 +988,6 @@ class GPTBridge:
                        only_last_rank: bool = False,
                        is_peft_format: bool = False,
                        tqdm_desc: str = 'Exporting: '):
-        # TODO: modules_to_save
         self._target_device = target_device
         self._only_last_rank = only_last_rank
         self._is_peft_format = is_peft_format
