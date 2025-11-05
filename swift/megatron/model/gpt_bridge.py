@@ -644,8 +644,11 @@ class GPTBridge:
                     fc1_weight = None
                 else:
                     if is_expert:
-                        fc1_weight = torch.concat(
-                            [getattr(mg_mlp.linear_fc1, f'weight{i}') for i in range(num_local_experts)], dim=0)
+                        linear_fc1 = mg_mlp.linear_fc1
+                        if isinstance(linear_fc1, LoraParallelLinear):
+                            linear_fc1 = linear_fc1.base_layer
+                        fc1_weight = torch.concat([getattr(linear_fc1, f'weight{i}') for i in range(num_local_experts)],
+                                                  dim=0)
                     else:
                         fc1_weight = mg_mlp.linear_fc1.weight
                     fc1_weight = fc1_weight.view(num_local_experts * 2, -1, fc1_weight.shape[1])
@@ -761,8 +764,11 @@ class GPTBridge:
                     if mg_mlp is None:
                         fc2_weight = None
                     else:
-                        fc2_weight = torch.concat(
-                            [getattr(mg_mlp.linear_fc2, f'weight{i}') for i in range(num_local_experts)], dim=0)
+                        linear_fc2 = mg_mlp.linear_fc2
+                        if isinstance(linear_fc2, LoraParallelLinear):
+                            linear_fc2 = linear_fc2.base_layer
+                        fc2_weight = torch.concat([getattr(linear_fc2, f'weight{i}') for i in range(num_local_experts)],
+                                                  dim=0)
                     down_proj_weight = self._get_weight(fc2_weight, 'linear_fc2.weight', is_expert=is_expert)
                     del fc2_weight
                     if down_proj_weight is not None:
