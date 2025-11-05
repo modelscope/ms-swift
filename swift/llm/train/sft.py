@@ -8,7 +8,7 @@ from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks
-from swift.ray import RayHelper
+from swift.ray import RayHelper, RayMixin
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -20,20 +20,21 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
-@RayHelper.worker(group=['default'])
-class SwiftSft(SwiftPipeline, TunerMixin):
+@RayHelper.worker(group=['sft:default'])
+class SwiftSft(SwiftPipeline, TunerMixin, RayMixin):
     args_class = TrainArguments
     args: args_class
 
     def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
+        self._prepare_processor()
         self._prepare_model_tokenizer()
         self._prepare_template()
+        self._patch_model_to_template()
         self._prepare_callbacks()
         self._prepare_flash_ckpt()
 
-    @RayHelper.function(group='default')
     def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
@@ -48,10 +49,15 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
+    def _prepare_processor(self, **kwargs):
+        """Prepare processor only."""
+        _, self.processor = self.args.get_model_processor(load_model=False, **kwargs)
+
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
+        """Prepare model and tokenizer."""
         args = self.args
-        self.model, self.processor = args.get_model_processor(**kwargs)
+        self.model, _ = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare(
@@ -65,16 +71,19 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
-    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
         args = self.args
         template = args.get_template(self.processor)
         template.set_mode('train')
-        if template.use_model:
-            template.model = self.model
         if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
+
+    @RayHelper.function(group='default')
+    def _patch_model_to_template(self):
+        """Some template need model to do preprocess, especially for mllm models."""
+        if self.template.use_model:
+            self.template.model = self.model
 
     def _get_dataset(self):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
@@ -119,7 +128,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(load_from_disk(val_path))
         return train_datasets, val_datasets
 
-    @RayHelper.function(group='default')
     def _prepare_dataset(self):
         args = self.args
         # Defer encoding to the training phase

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
+from swift.ray import RayHelper
 from swift.utils import get_logger
 from ..argument import TrainArguments
 from .sft import SwiftSft
@@ -8,6 +9,7 @@ from .sft import SwiftSft
 logger = get_logger()
 
 
+@RayHelper.worker(group=['pt:default'])
 class SwiftPt(SwiftSft):
     args_class = TrainArguments
     args: args_class

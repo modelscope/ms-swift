@@ -41,6 +41,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
+from swift.ray import RayHelper
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
@@ -74,7 +75,7 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
 
-        if args.check_model and hasattr(model, 'model_dir'):
+        if model is not None and args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
                 config_info = self._collect_config_info()
                 config_info.update({
@@ -101,13 +102,11 @@ class SwiftMixin:
         self.template = template
         self.hub = get_hub()
 
-        self.model_meta = model.model_meta
-
         kwargs.update(self.create_loss_and_metric(args))
         trainer_parameters = inspect.signature(Trainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), RayHelper.patch_init():
             super().__init__(
                 model=model,
                 args=args,
@@ -119,20 +118,26 @@ class SwiftMixin:
                 optimizers=optimizers,
                 **kwargs)
 
-        if get_function(model.__class__.forward) is not get_function(model.forward):
-            self.label_names = find_labels(model)
-            self.can_return_loss = can_return_loss(model)
-        self.label_names = self.label_names or ['labels']
+        self._prepare_model_info(model)
+        if not getattr(self, 'label_names', []):
+            self.label_names = ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
         self._patch_tasks()
-        update_generation_config_eos_token(self.model.generation_config, self.template)
-        if getattr(self.model, 'origin_generation_config', None):
-            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
         if self.args.resume_only_model and self.args.ignore_data_skip:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    @RayHelper.function(group='default')
+    def _prepare_model_info(self, model):
+        self.model_meta = model.model_meta
+        if get_function(model.__class__.forward) is not get_function(model.forward):
+            self.label_names = find_labels(model)
+            self.can_return_loss = can_return_loss(model)
+        update_generation_config_eos_token(self.model.generation_config, self.template)
+        if getattr(self.model, 'origin_generation_config', None):
+            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
 
     @contextmanager
     def _patch_timeout(self):
@@ -192,11 +197,14 @@ class SwiftMixin:
         finally:
             trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
-    def get_use_logits_to_keep(self, default_value: bool = True):
+    def get_use_logits_to_keep(self, default_value: bool = True, model=None):
         use_logits_to_keep = self.args.use_logits_to_keep
+        if model is None:
+            model = self.model
+        model = unwrap_model(model)
         if use_logits_to_keep is None:
-            base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_meta.is_multimodal
+            base_model = self.template.get_base_model(model)
+            use_logits_to_keep = (not model.model_meta.is_multimodal
                                   and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
                                   and default_value)
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
@@ -625,6 +633,7 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    @RayHelper.function(group='default')
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
             model = self.model.model

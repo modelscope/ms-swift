@@ -3,6 +3,8 @@ import argparse
 import functools
 import inspect
 import os
+from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
 import json
@@ -22,6 +24,12 @@ def get_args():
     return json.dumps(unknown)
 
 
+class RayMixin:
+
+    def call_inner_function(self, func, *args, **kwargs):
+        return getattr(self.trainer, func)(*args, **kwargs)
+
+
 class RayHelper:
     resource_manager: Optional[ResourceManager] = None
 
@@ -34,6 +42,53 @@ class RayHelper:
     initialized = False
 
     device_groups: Dict[str, Any] = None
+
+    _registry = None
+
+    @staticmethod
+    def init_registry():
+        if RayHelper._registry is not None:
+            return
+
+        import ray
+
+        @ray.remote
+        class WorkerRegistry:
+
+            def __init__(self):
+                self.workers = {}
+
+            def register_workers(self, group: str, worker_handles: List):
+                if group == 'sft:default':
+                    group = ['default', 'sft:default']
+                elif group == 'pt:default':
+                    group = ['default', 'pt:default']
+                elif group == 'rlhf:default':
+                    group = ['default', 'rlhf:default']
+                else:
+                    group = [group]
+                for _group in group:
+                    self.workers[_group] = worker_handles
+
+            def get_workers(self, group: Optional[str] = None):
+                if group:
+                    return self.workers.get(group, [])
+                return self.workers
+
+            def clear(self):
+                self.workers.clear()
+
+        try:
+            RayHelper._registry = ray.get_actor('swift_worker_registry')
+        except ValueError:
+            try:
+                RayHelper._registry = WorkerRegistry.options(
+                    name='swift_worker_registry',
+                    lifetime='detached',
+                ).remote()
+            except ValueError:
+                RayHelper._registry = ray.get_actor('swift_worker_registry')
+        assert RayHelper._registry is not None
 
     @staticmethod
     def initialize(device_groups: Dict[str, Any]):
@@ -53,12 +108,46 @@ class RayHelper:
         if RayHelper.resource_manager is None:
             # Resource manager initialize only once in the pipeline process.
             RayHelper.resource_manager = ResourceManager(device_groups)
+        RayHelper.init_registry()
 
     @staticmethod
     def teardown():
         if RayHelper.resource_manager is not None:
             RayHelper.resource_manager.destroy_placement_group()
             RayHelper.resource_manager = None
+
+        if RayHelper._registry is not None:
+            import ray
+            try:
+                ray.get(RayHelper._registry.clear.remote())
+                ray.kill(RayHelper._registry)
+            except:  # noqa
+                pass
+            RayHelper._registry = None
+
+    @staticmethod
+    @contextmanager
+    def patch_init():
+        if RayHelper.ray_inited() and not RayHelper.is_default():
+            from transformers import Trainer
+            init_method = Trainer.__init__
+
+            @functools.wraps(init_method)
+            def new_init(self, *args, **kwargs):
+                from transformers import Trainer, enable_full_determinism, set_seed
+                self: Trainer
+                self.processing_class = kwargs['processing_class']
+                args = kwargs['args']
+                self.args = args
+                enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
+                self.model = SimpleNamespace(tp_size=1)
+                self.create_accelerator_and_postprocess()
+                self.args._setup_devices
+
+            Trainer.__init__ = new_init
+        yield
+        if RayHelper.ray_inited() and not RayHelper.is_default():
+            Trainer.__init__ = init_method
 
     @staticmethod
     def is_called_from_init():
@@ -83,6 +172,12 @@ class RayHelper:
             # not installed, not inited
             return False
         return ray.is_initialized()
+
+    @staticmethod
+    def is_default():
+        ray_groups = os.environ.get('RAY_SWIFT_GROUP', '').split(',')
+        default_names = ['default', 'sft:default', 'rlhf:default', 'pt:default']
+        return any(name in ray_groups for name in default_names)
 
     @staticmethod
     def is_worker():
@@ -121,6 +216,8 @@ class RayHelper:
 
     @staticmethod
     def collect_func(method: Union[Literal['none', 'flatten'], Callable], result):
+        if not result:
+            return result
         if isinstance(result[0], tuple):
             output = []
             for i in range(len(result[0])):
@@ -143,7 +240,7 @@ class RayHelper:
     @staticmethod
     def function(group: str,
                  dispatch: Union[Literal['slice', 'all'], Callable] = 'all',
-                 execute: Literal['first', 'all'] = 'all',
+                 execute: Literal['first', 'peer', 'all'] = 'all',
                  collect: Union[Literal['none', 'flatten'], Callable] = 'none'):
         """Remote execution function.
 
@@ -168,17 +265,22 @@ class RayHelper:
             def wrapper(self, *args, **kwargs) -> T:
                 if not RayHelper.ray_inited():
                     return func(self, *args, **kwargs)
+                RayHelper.init_registry()
                 if RayHelper.is_worker():
                     if not hasattr(self, 'group'):
                         # pass through env
-                        self.group = os.environ['RAY_SWIFT_GROUP'].split(',')
+                        groups = os.environ['RAY_SWIFT_GROUP'].split(',')
+                        if 'sft:default' in groups or 'rlhf:default' in groups or 'pt:default' in groups:
+                            groups.append('default')
+                        self.group = groups
                     if group not in self.group:
                         if RayHelper.is_called_from_init():
                             # Functions in init of different group, do nothing
                             return None
                         else:
-                            # Should not happen
-                            raise ValueError()
+                            result = RayHelper.execute_all_sync(group, dispatch, execute, func.__name__, *args,
+                                                                **kwargs)
+                            return RayHelper.collect_func(collect, result)
                     else:
                         return func(self, *args, **kwargs)
                 else:
@@ -198,13 +300,52 @@ class RayHelper:
         return ray.get(RayHelper.execute_all_async(group, dispatch, execute, method_name, *args, **kwargs))
 
     @staticmethod
-    def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
-        workers = RayHelper.worker_instance[group]
-        length = len(workers)
+    def get_workers(group, execute):
+        import ray
+        if group in RayHelper.worker_instance:
+            workers = RayHelper.worker_instance[group]
+        else:
+            workers = ray.get(RayHelper._registry.get_workers.remote(group))
         if execute == 'first':
-            return getattr(workers[0], method_name).remote(*args, **kwargs)
+            return [workers[0]]
+        elif execute == 'all':
+            return workers
+        elif execute == 'peer':
+            return workers[RayHelper.get_peer_index(len(workers))]
+        else:
+            raise ValueError(f'Unsupported execute method: {execute}')
+
+    @staticmethod
+    def get_peer_index(target_size):
+        rank = int(os.environ.get('RANK', '0'))
+        world_size = int(os.environ.get('WORLD_SIZE', '1'))
+
+        k, m = divmod(target_size, world_size)
+        start_idx = rank * k + min(rank, m)
+        end_idx = (rank + 1) * k + min(rank + 1, m)
+        if target_size < world_size:
+            start_idx = rank % target_size
+            end_idx = start_idx + 1
+
+        return slice(start_idx, end_idx)
+
+    @staticmethod
+    def execute_all_async(group, dispatch, execute, method_name: str, *args, **kwargs):
+        workers = RayHelper.get_workers(group, execute)
+        length = len(workers)
+
+        def remote_func(worker, *args, **kwargs):
+            if hasattr(worker, method_name):
+                remote_call = getattr(worker, method_name)
+                return remote_call.remote(*args, **kwargs)
+            else:
+                remote_call = getattr(worker, 'call_inner_function')
+                return remote_call.remote(method_name, *args, **kwargs)
+
+        if execute == 'first':
+            return remote_func(workers[0], *args, **kwargs)
         elif dispatch == 'all':
-            return [getattr(worker, method_name).remote(*args, **kwargs) for worker in workers]
+            return [remote_func(worker, *args, **kwargs) for worker in workers]
         elif dispatch == 'slice':
             result = []
 
@@ -221,17 +362,15 @@ class RayHelper:
                 sliced_args = tuple(arg[i] for arg in args)
                 sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                 if (sliced_args and sliced_args[0]) or (kwargs and list(kwargs.values())):
-                    # skip empty input
-                    remote_call = getattr(workers[i], method_name)
-                    result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                    result.append(remote_func(workers[i], *sliced_args, **sliced_kwargs))
+
             return result
         elif isinstance(dispatch, Callable):
             # dispatch is Callable
             result = []
             for i in range(length):
                 sliced_args, sliced_kwargs = dispatch(length, i, *args, **kwargs)
-                remote_call = getattr(workers[i], method_name)
-                result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+                result.append(remote_func(workers[i], *sliced_args, **sliced_kwargs))
             return result
         else:
             raise ValueError(f'Invalid dispatch method: {dispatch}')
@@ -265,7 +404,8 @@ class RayHelper:
                     _config = config
                     break
 
-            assert _config is not None
+            if _config is None:
+                continue
             local_groups = _config['workers']
 
             VISIBLE_ENV_MAPPING = {
@@ -368,3 +508,4 @@ class RayHelper:
 
             for g in local_groups:
                 RayHelper.worker_instance[g] = workers
+                ray.get(RayHelper._registry.register_workers.remote(g, workers))

@@ -1,0 +1,39 @@
+rlhf_type: dpo
+model: Qwen/Qwen2.5-VL-3B-Instruct
+ref_model: Qwen/Qwen2.5-VL-3B-Instruct
+train_type: full
+dataset: swift/RLAIF-V-Dataset#1000
+load_from_cache_file: true
+split_dataset_ratio: 0.01
+torch_dtype: bfloat16
+num_train_epochs: 1
+per_device_train_batch_size: 4
+per_device_eval_batch_size: 4
+learning_rate: 1e-4
+gradient_accumulation_steps: 2
+eval_steps: 1
+save_steps: 1
+save_total_limit: 2
+logging_steps: 5
+max_length: 2048
+output_dir: output
+warmup_ratio: 0.05
+dataloader_num_workers: 4
+rpo_alpha: 0.1
+dataset_num_proc: 4
+
+use_ray: true
+
+# Ranks of rlhf:default and ref must equal
+device_groups:
+  nproc_per_node: 4
+  sample_group:
+    device: GPU
+    ranks: list(range(0, 2))
+    workers:
+      - rlhf:default
+  rm_group:
+    device: GPU
+    ranks: list(range(2, 4))
+    workers:
+      - ref
