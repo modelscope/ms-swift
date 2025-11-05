@@ -165,7 +165,7 @@ def prepare_adapter(model):
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
-    if args.ref_adapter_load:
+    if args.ref_adapter_load or args.ref_adapters:
         lora_config = deepcopy(lora_config)
         lora_config.inference_mode = True
         with _patch_deepcopy():
