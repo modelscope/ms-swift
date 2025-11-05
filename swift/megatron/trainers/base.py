@@ -766,6 +766,7 @@ class BaseMegatronTrainer(ABC):
         # support max_epochs
         self._origin_train_step = training.train_step
         training.train_step = self.train_step
+        self._origin_cyclic_iter = training.cyclic_iter
         training.cyclic_iter = self.new_cyclic_iter
         # patch training_log
         self._origin_training_log = training.training_log

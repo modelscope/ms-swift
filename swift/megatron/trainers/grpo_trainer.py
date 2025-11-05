@@ -404,6 +404,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         """
         from megatron.training.training import build_train_valid_test_data_iterators
         from megatron.training.initialize import _set_random_seed
+        from megatron.training import training
+        training.cyclic_iter = self._origin_cyclic_iter
         args = get_args()
 
         train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
@@ -462,8 +464,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Dynamic sampling for std=0 groups (DAPO)
         if self.dynamic_sample:
-            rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func, rollout_group,
-                                                                     batch)
+            rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
 
         advantages = self._compute_advantages(rollout_batch, rewards_per_func)
 
@@ -873,8 +874,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Lazy initialization of resample_data_iterator
             # Only initialize when needed, after pretrain() has set up args
             if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-                assert hasattr(self, '_train_valid_test_dataset_provider'), \
-                    'Dataset provider not set. Make sure dynamic_sample is enabled.'
                 self.resample_data_iterator = self._init_resample_data_iterator()
             num_iters_per_step = self.get_num_iters_per_step()
             next_rollout_prompt_batch = []
@@ -893,7 +892,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Get local slice of valid samples
             rank = self.process_index
             per_device_batch_size = self.per_device_generation_batch_size
-            assert self.world_size * per_device_batch_size == len(valid_samples)
             data_slice = slice(rank * per_device_batch_size, (rank + 1) * per_device_batch_size)
             rollout_batch = valid_samples[:self.generation_batch_size][data_slice]
             rewards_per_func = torch.cat(valid_rewards_per_func)[:self.generation_batch_size][data_slice]
