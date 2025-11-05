@@ -119,6 +119,7 @@ class StdTemplateInputs:
         self.image_idx = 0
         self.audio_idx = 0
         self.video_idx = 0
+        self.tensor_idx = 0
         self.ref_idx = 0
         self.bbox_idx = 0
         if self.images and not isinstance(self.images, (list, tuple)):
@@ -127,6 +128,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
+        if self.tensors and not isinstance(self.tensors, (list, tuple)):
+            self.tensors = [self.tensors]
         if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
             self.rejected_images = [self.rejected_images]
 

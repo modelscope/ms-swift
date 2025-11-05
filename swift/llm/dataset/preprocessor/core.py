@@ -21,7 +21,7 @@ logger = get_logger()
 
 class RowPreprocessor:
     standard_keys = [
-        'messages', 'rejected_response', 'rejected_images', 'label', 'images', 'videos', 'audios', 'tools', 'objects',
+        'messages', 'rejected_response', 'rejected_images', 'label', 'images', 'videos', 'audios', 'tensors', 'tools', 'objects',
         'channel', 'margin'
     ]
 
@@ -36,7 +36,8 @@ class RowPreprocessor:
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
-        for mm_type in ['images', 'audios', 'videos']:
+        tensors_keys = ['tensors', 'tensor']
+        for mm_type in ['images', 'audios', 'videos', 'tensors']:
             keys = locals()[f'{mm_type}_keys']
             for key in keys:
                 self.columns[key] = mm_type
