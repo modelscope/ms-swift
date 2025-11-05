@@ -308,7 +308,7 @@ class BaseMegatronTrainer(ABC):
             logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
-            if hasattr(module.weight, 'main_param'):
+            if getattr(module.weight, 'main_param', None) is not None:
                 module.weight.main_param.copy_(module.weight.view(-1))
 
     def _all_reduce_metric(self,

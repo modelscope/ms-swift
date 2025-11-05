@@ -41,3 +41,9 @@ megatron sft \
     --moe_expert_capacity_factor 2 \
     --sequence_parallel true \
     --attention_backend flash
+
+# CUDA_VISIBLE_DEVICES=0,1 \
+# swift infer \
+#     --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+#     --load_data_args true \
+#     --stream true
