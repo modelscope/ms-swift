@@ -2,6 +2,7 @@
 import base64
 import gc
 import inspect
+import os
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
@@ -23,7 +24,9 @@ from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Templ
 from swift.llm.infer.protocol import RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import replace_assistant_response_with_ids
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, _create_parameter_buckets,
+                                               _process_bucket_with_flattened_tensor,
+                                               replace_assistant_response_with_ids)
 from swift.utils import get_current_device, get_logger, is_master, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
@@ -183,14 +186,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     restore_func = patch_model_for_lora_export(model)
                     restore_funcs.append(restore_func)
 
+            # Export weights from megatron models using bridge
             per_tensor_params = dict(self.bridge.export_weights(self.unwrapped_models))
 
-            if self.vllm_mode == 'server':
-                if self.is_main_process:
-                    for name, param in per_tensor_params.items():
-                        self.vllm_client.update_named_param(name, param)
-            elif self.vllm_mode == 'colocate':
-                self.engine.inner_model.load_weights(per_tensor_params)
+            # Load weights to vLLM engine
+            self._load_weights_to_vllm(per_tensor_params)
+
         finally:
             for restore_func in restore_funcs:
                 restore_func()
@@ -200,10 +201,38 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 logger.info('Unmerging LoRA adapters to restore training state...')
                 self._unmerge_lora_adapters()
 
+        # Reset prefix cache
         if self.vllm_mode == 'server' and self.is_main_process:
             self.vllm_client.reset_prefix_cache()
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
+
+    def _load_weights_to_vllm(self, state_dict: Dict[str, torch.Tensor]):
+        """
+        Load state_dict to vLLM engine using flattened tensor optimization.
+
+        For server mode: Uses FlattenedTensorBucket to batch parameters and reduce communication overhead.
+        For colocate mode: Directly loads weights to the inner model.
+        """
+        if self.vllm_mode == 'server' and self.is_main_process:
+            # Use flattened tensor optimization for efficient weight transfer
+            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+            named_params = list(state_dict.items())
+
+            # Create parameter buckets for efficient processing
+            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
+
+            # Process each bucket with flattened tensor
+            for bucket in parameter_buckets:
+                _process_bucket_with_flattened_tensor(self, bucket)
+
+            del named_params, parameter_buckets
+        elif self.vllm_mode == 'colocate':
+            # Colocate mode: direct weight loading
+            llm_model = self.engine.inner_model
+            llm_model.load_weights(state_dict.items())
+
+        del state_dict
 
     def _prepare_rewards(self):
         # TODO: reward model

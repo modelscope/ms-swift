@@ -100,7 +100,7 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     if cp_size > 1:
         args = get_args()
         keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
-        if args.model_meta.is_multimodal:
+        if args.megatron_model_meta.is_multimodal:
             keys.append('decoder_input')
         else:
             keys.append('input_ids')
