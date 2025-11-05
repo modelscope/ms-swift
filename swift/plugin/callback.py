@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
-from swift.utils import get_current_device, get_device_count, get_logger
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -35,13 +35,12 @@ class PerfMetricsLogCallback(TrainerCallback):
     """An callback for perf metrics (MFU etc) log implementation"""
 
     def __init__(self):
-        self.start_time = None
         self.device_tflops = None
         self.elapsed = 0.0
         self.step_start_time = None
 
     def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        from swift.utils import get_env_args
+        from swift.utils import get_current_device, get_device_count, get_env_args
 
         # Top priority. Specify by ENV
         tflops = get_env_args('DEVICE_TFLOPS', int, None)
@@ -65,9 +64,6 @@ class PerfMetricsLogCallback(TrainerCallback):
     def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         self.elapsed += time.time() - self.step_start_time
 
-    def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        self.start_time = time.time()
-
     def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, logs=None, **kwargs):
         total_flos = getattr(state, 'total_flos', 0)
         actual_flops = total_flos / self.elapsed
@@ -78,6 +74,16 @@ class PerfMetricsLogCallback(TrainerCallback):
 
     @staticmethod
     def _estimate_device_tflops_by_dtype(device: torch.device, dtype: torch.dtype, repeats: int = 60, dim: int = 8192):
+        from swift.utils.torch_utils import empty_cache
+
+        def device_synchronize(sync_device):
+            if backend == 'cuda':
+                torch.cuda.synchronize(sync_device)
+            elif backend == 'npu':
+                torch.npu.synchronize(sync_device)
+            elif backend == 'cpu':
+                torch.cpu.synchronize(sync_device)
+
         # 默认矩阵规模
         shape = (dim, dim)
         backend = device.type
@@ -91,23 +97,13 @@ class PerfMetricsLogCallback(TrainerCallback):
         # 预热
         for _ in range(5):
             c = torch.matmul(a, b)
-        if backend == 'cuda':
-            torch.cuda.synchronize(device)
-        elif backend == 'npu':
-            torch.npu.synchronize(device)
-        elif backend == 'cpu':
-            torch.cpu.synchronize(device)
+        device_synchronize(device)
 
         # 进行测试
         start = time.time()
         for _ in range(repeats):
             c = torch.matmul(a, b)
-        if backend == 'cuda':
-            torch.cuda.synchronize(device)
-        elif backend == 'npu':
-            torch.npu.synchronize(device)
-        elif backend == 'cpu':
-            torch.cpu.synchronize(device)
+        device_synchronize(device)
         end = time.time()
         total_time = end - start
         avg_time = total_time / repeats
@@ -118,25 +114,16 @@ class PerfMetricsLogCallback(TrainerCallback):
             start = time.time()
             for _ in range(repeats):
                 c = torch.matmul(a, b)
-            if backend == 'cuda':
-                torch.cuda.synchronize(device)
-            elif backend == 'npu':
-                torch.npu.synchronize(device)
-            elif backend == 'cpu':
-                torch.cpu.synchronize(device)
+            device_synchronize(device)
             end = time.time()
             total_time = end - start
             avg_time = total_time / repeats
 
         del a, b, c
-        if backend == 'cuda':
-            torch.cuda.empty_cache()
-        elif backend == 'npu':
-            torch.npu.empty_cache()
+        empty_cache()
 
         tflops = (2 * dim**3 / avg_time) / 1e12
-        print(f'[设备 {device}] 测试总耗时：{total_time:.4f}s，平均耗时: {avg_time:.4f} s，dtype：{dtype}，性能: {tflops:.4f} TFLOPS')
-
+        logger.info(f'[Device {device}] Total time: {total_time:.4f}s, dtype: {dtype}, Perf: {tflops:.4f} TFLOPS')
         return tflops
 
     @staticmethod
@@ -145,7 +132,7 @@ class PerfMetricsLogCallback(TrainerCallback):
 
         device_name = device.get_device_name()
         flops = None
-        for name, value in device_flops_map:
+        for name, value in device_flops_map.items():
             if name in device_name:
                 flops = value
                 break
