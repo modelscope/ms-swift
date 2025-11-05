@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
-from swift.utils import get_logger, get_current_device, get_device_count
+from swift.utils import get_current_device, get_device_count, get_logger
 
 logger = get_logger()
 
@@ -32,7 +32,7 @@ class EarlyStopCallback(TrainerCallback):
 
 
 class PerfMetricsLogCallback(TrainerCallback):
-    """A callback for perf metrics (MFU etc) log implementation"""
+    """An callback for perf metrics (MFU etc) log implementation"""
 
     def __init__(self):
         self.start_time = None
@@ -50,11 +50,12 @@ class PerfMetricsLogCallback(TrainerCallback):
             logger.info(f"Specify theoretical max TFLOPS through ENV 'DEVICE_TFLOPS'. [{tflops} TFLOPS]")
         else:
             # Run a estimating test.
-            dtype = kwargs.get("model").dtype
+            dtype = kwargs.get('model').dtype
             device = torch.device(get_current_device())
-            logger.info(f"Estimating device TFLOPS baseline. Device: [{device}] dtype: [{dtype}]")
+            logger.info(f'Estimating device TFLOPS baseline. Device: [{device}] dtype: [{dtype}]')
             tflops = self._estimate_device_tflops_by_dtype(device, dtype)
-            logger.info(f"Estimate test finished. [{tflops} TFLOPS] Device count: [{device_count}]")
+            logger.info(f'Estimate test finished. [{tflops} TFLOPS] Device count: [{device_count}]')
+        # TODO Collect comprehensive TFLOPS data. Then provide a fallback strategy based on lookup tables.
 
         self.device_tflops = tflops * device_count
 
@@ -72,16 +73,15 @@ class PerfMetricsLogCallback(TrainerCallback):
         actual_flops = total_flos / self.elapsed
         theoretical_max_flops = self.device_tflops * 1e12
         mfu = actual_flops / theoretical_max_flops
-        logger.debug(f"Total_flos[{total_flos}] elapsed_time[{self.elapsed}]sec Average MFU[{mfu}]")
+        logger.debug(f'Total_flos[{total_flos}] elapsed_time[{self.elapsed}]sec Average MFU[{mfu}]')
         logs['MFU'] = round(mfu, 6)
 
     @staticmethod
-    def _estimate_device_tflops_by_dtype(device: torch.device, dtype: torch.dtype, repeats: int = 60,
-                                         dim: int = 8192):
+    def _estimate_device_tflops_by_dtype(device: torch.device, dtype: torch.dtype, repeats: int = 60, dim: int = 8192):
         # 默认矩阵规模
         shape = (dim, dim)
         backend = device.type
-        if backend == "npu":
+        if backend == 'npu':
             import torch_npu
 
         # 创建矩阵
@@ -134,9 +134,8 @@ class PerfMetricsLogCallback(TrainerCallback):
         elif backend == 'npu':
             torch.npu.empty_cache()
 
-        tflops = (2 * dim ** 3 / avg_time) / 1e12
-        print(
-            f"[设备 {device}] 测试总耗时：{total_time:.4f}s，平均耗时: {avg_time:.4f} s，dtype：{dtype}，性能: {tflops:.4f} TFLOPS")
+        tflops = (2 * dim**3 / avg_time) / 1e12
+        print(f'[设备 {device}] 测试总耗时：{total_time:.4f}s，平均耗时: {avg_time:.4f} s，dtype：{dtype}，性能: {tflops:.4f} TFLOPS')
 
         return tflops
 
@@ -155,22 +154,22 @@ class PerfMetricsLogCallback(TrainerCallback):
 
 
 device_flops_map = {
-    "GB200": 2.5e15,
-    "B200": 2.25e15,
-    "MI300X": 1336e12,
-    "H100": 312e12,
-    "H800": 312e12,
-    "H200": 989e12,
-    "A100": 312e12,
-    "A800": 312e12,
-    "L40S": 362.05e12,
-    "L40": 181.05e12,
-    "A40": 149.7e12,
-    "L20": 119.5e12,
-    "H20": 148e12,
-    "910B": 354e12,
-    "Ascend910": 354e12,
-    "RTX 3070 Ti": 21.75e12
+    'GB200': 2.5e15,
+    'B200': 2.25e15,
+    'MI300X': 1336e12,
+    'H100': 312e12,
+    'H800': 312e12,
+    'H200': 989e12,
+    'A100': 312e12,
+    'A800': 312e12,
+    'L40S': 362.05e12,
+    'L40': 181.05e12,
+    'A40': 149.7e12,
+    'L20': 119.5e12,
+    'H20': 148e12,
+    '910B': 354e12,
+    'Ascend910': 354e12,
+    'RTX 3070 Ti': 21.75e12
 }
 
 extra_callbacks = [PerfMetricsLogCallback()]
