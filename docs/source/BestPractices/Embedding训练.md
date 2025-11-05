@@ -85,7 +85,7 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 {"messages": [{"role": "user", "content": "<image>sentence1"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "user", "content": "<image>sentence2"}]], "positive_images": [["/some/positive_images.jpg"]], "negative_messages": [[{"role": "user", "content": "<image><image>sentence3"}], [{"role": "user", "content": "<image>sentence4"}]], "negative_images": [["/some/negative_images1.jpg", "/some/negative_images2.jpg"], ["/some/negative_images3.jpg"]]}
 ```
 
-infonce loss 支持以下环境变量：
+infonce loss支持几个环境变量：
 1. INFONCE_TEMPERATURE temperature参数，不设置的话默认值是0.01
 2. INFONCE_USE_BATCH 使用sample内部的`negative_messages`（hard negative样例）还是使用一个batch内其他样本作为in-batch negatives；默认为True，表示使用batch内部的样本作为负例
 3. INFONCE_HARD_NEGATIVES hard negatives的数量；如果不设置会使用数据中提供的所有`negative_messages`。由于长度未必一致，因此会采用for循环计算loss（计算会慢）。若设置为某个数值，则不足会随机采样补齐，超长会选用前`INFONCE_HARD_NEGATIVES`个
