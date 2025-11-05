@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code borrowed from huggingface/peft
 import math
+import warnings
 from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
@@ -49,7 +50,9 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
     ):
         config = base_layer.config
         super().__init__(config=config)
-        LoraLayer.__init__(self, base_layer=base_layer)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            LoraLayer.__init__(self, base_layer=base_layer)
 
         if use_dora:
             raise ValueError(f'{self.__class__.__name__} does not support DoRA yet, please set it to False')
@@ -419,6 +422,39 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     for orig_weight, delta_weight in zip(orig_weights, delta_weights):
                         orig_weight.data += delta_weight
                 self.merged_adapters.append(active_adapter)
+        if origin_device.type == 'cpu':
+            self.to(device=origin_device)
+
+    def unmerge(self) -> None:
+        """
+        Unmerge all merged adapter weights from the base weights.
+        This method reverses the merge operation by subtracting the LoRA delta weights
+        from the base layer weights, restoring the original base weights.
+        """
+        if not self.merged:
+            # No adapters to unmerge
+            return
+
+        base_layer = self.get_base_layer()
+        origin_device = base_layer.weight0.device if self.is_grouped else base_layer.weight.device
+        if origin_device.type == 'cpu':
+            self.to(device=get_current_device())
+
+        for active_adapter in self.merged_adapters:
+            if active_adapter in self.lora_A.keys():
+                if self.is_grouped:
+                    orig_weights = [getattr(base_layer, f'weight{i}') for i in range(base_layer.num_gemms)]
+                else:
+                    orig_weights = [base_layer.weight]
+
+                delta_weights = self.get_delta_weights(active_adapter)
+                for orig_weight, delta_weight in zip(orig_weights, delta_weights):
+                    # Subtract the delta weight to unmerge
+                    orig_weight.data -= delta_weight
+
+        # Clear the merged adapters list
+        self.merged_adapters = []
+
         if origin_device.type == 'cpu':
             self.to(device=origin_device)
 

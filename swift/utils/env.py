@@ -2,8 +2,6 @@
 import os
 from typing import Optional, Tuple
 
-import torch
-import torch.distributed as dist
 from transformers.utils import strtobool
 
 from .logger import get_logger

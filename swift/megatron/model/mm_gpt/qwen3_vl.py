@@ -15,11 +15,10 @@ from PIL import Image
 
 from swift.llm import ModelType, to_device
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
+from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..mm_gpt_model import MultimodalGPTModel
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 te_checkpoint = None
 
@@ -32,36 +31,6 @@ except ImportError:
 
 if HAVE_TE:
     from megatron.core.extensions.transformer_engine import te_checkpoint
-
-
-def convert_hf2mcore_qwen3_omni(hf_model, mg_model):
-    language_model = hf_model.thinker.model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.thinker.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.thinker.visual.load_state_dict(hf_model.thinker.visual.state_dict())
-    mg_model.visual.thinker.audio_tower.load_state_dict(hf_model.thinker.audio_tower.state_dict())
-
-
-def convert_mcore2hf_qwen3_omni(hf_model, mg_model):
-    language_model = hf_model.thinker.model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = (
-            hf_model.thinker.score.weight if args.task_type == 'seq_cls' else hf_model.thinker.lm_head.weight)
-        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
-    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    hf_model.thinker.visual.load_state_dict(mg_model.visual.thinker.visual.state_dict())
-    hf_model.thinker.audio_tower.load_state_dict(mg_model.visual.thinker.audio_tower.state_dict())
 
 
 class Qwen3Omni_Vit(HuggingFaceModule):
@@ -491,46 +460,26 @@ class Qwen3VLGPTModel(MultimodalGPTModel):
         super().__init__(*args, **kwargs)
 
 
+class Qwen3OmniBridge(GPTBridge):
+    hf_layers_prefix = 'thinker.model.layers'
+    hf_embed_key = 'thinker.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'thinker.model.norm.weight'
+    hf_lm_head_key = 'thinker.lm_head.weight'
+    hf_score_key = 'thinker.score.weight'
+
+
 register_megatron_model(
-    MMGPTMegatronModelMeta(
+    MegatronModelMeta(
         MegatronModelType.qwen3_omni, [
             ModelType.qwen3_omni,
         ],
-        convert_hf2mcore=convert_hf2mcore_qwen3_omni,
-        convert_mcore2hf=convert_mcore2hf_qwen3_omni,
         model_cls=Qwen3VLGPTModel,
+        bridge_cls=Qwen3OmniBridge,
         visual_cls=Qwen3Omni_Vit))
 
 
-def convert_hf2mcore_qwen3_vl(hf_model, mg_model):
-    language_model = hf_model.model.language_model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.visual.load_state_dict(hf_model.model.visual.state_dict())
-
-
-def convert_mcore2hf_qwen3_vl(hf_model, mg_model):
-    language_model = hf_model.model.language_model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
-        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
-    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    hf_model.model.visual.load_state_dict(mg_model.visual.visual.state_dict())
-
-
 class Qwen3VL_Vit(HuggingFaceModule):
-    module_mapping = {'visual': 'visual'}
+    module_mapping = {'model.visual': 'visual'}
     _vision_tower = ['visual']
     _aligner = ['visual.merger', 'visual.deepstack_merger_list']
 
@@ -544,12 +493,11 @@ class Qwen3VL_Vit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
+    MegatronModelMeta(
         MegatronModelType.qwen3_vl, [
             ModelType.qwen3_vl,
             ModelType.qwen3_moe_vl,
         ],
-        convert_hf2mcore=convert_hf2mcore_qwen3_vl,
-        convert_mcore2hf=convert_mcore2hf_qwen3_vl,
         model_cls=Qwen3VLGPTModel,
+        bridge_cls=MultimodalGPTBridge,
         visual_cls=Qwen3VL_Vit))
