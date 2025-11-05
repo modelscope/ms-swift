@@ -6,19 +6,20 @@ from dataclasses import fields
 from typing import Any, Dict
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from megatron.core import mpu
 from megatron.training import get_args
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
-from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import (ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device,
-                       to_float_dtype)
+from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
 from swift.utils import get_logger, get_n_params_grads
-from ..argument import MegatronArguments
-from ..model import get_megatron_model_meta
-from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
+from .argument import MegatronArguments
+from .model import get_megatron_model_meta
+from .utils import (convert_hf_config, forward_step_helper, get_padding_to, patch_load_base_checkpoint,
+                    patch_torch_dist_shard)
 
 logger = get_logger()
 
@@ -29,7 +30,7 @@ def _test_params_sum(model):
     n_parameter = 0
     for n, p in model.named_parameters():
         n_parameter += 1
-        sum_ = p.cuda().float().abs().sum().cpu().item()
+        sum_ = p.to(device='cuda', dtype=torch.float32).abs().sum().cpu().item()
         if sum_ == 0:
             zero_count += 1
             logger.warning(f'n: {n}, sum: {sum_}')
@@ -37,9 +38,10 @@ def _test_params_sum(model):
             logger.warning(f'n: {n}, sum: {sum_}')
         else:
             total_sum += sum_
-    logger.info(f'n_parameter: {n_parameter}')
-    logger.info(f'total_sum: {total_sum}')
-    logger.info(f'zero_count: {zero_count}')
+    cond = mpu.get_data_parallel_rank() == 0
+    logger.info_if(f'n_parameter: {n_parameter}', cond=cond)
+    logger.info_if(f'total_sum: {total_sum}', cond=cond)
+    logger.info_if(f'zero_count: {zero_count}', cond=cond)
 
 
 def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
@@ -64,19 +66,26 @@ def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
 
 
 @contextmanager
-def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_embedding: bool = False):
-    origin_torch_dtype = next(modules[0].parameters()).dtype
+def _model_cpu_forward_context(modules,
+                               torch_dtype=None,
+                               compute_device=None,
+                               share_embedding: bool = False,
+                               target_device='cpu'):
+    try:
+        origin_torch_dtype = next(modules[0].parameters()).dtype
+    except StopIteration:
+        origin_torch_dtype = next(modules[-1].parameters()).dtype
 
     def _to_cuda_hook(module, args):
-        if device is not None or torch_dtype is not None:
-            module.to(device=device, dtype=torch_dtype)
+        if compute_device is not None or torch_dtype is not None:
+            module.to(device=compute_device, dtype=torch_dtype)
             args = to_float_dtype(args, dtype=torch_dtype)
         return args
 
     def _to_cpu_hook(module, args, output):
         if share_embedding and module is modules[0]:
             return
-        module.to(device='cpu', dtype=origin_torch_dtype)
+        module.to(device=target_device, dtype=origin_torch_dtype)
 
     hooks = []
     for module in modules:
@@ -144,34 +153,37 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
 
 
 def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
-    hf_model.eval()
-    mg_model.eval()
-    _test_params_sum(hf_model)
+    template.set_mode('train')
     _test_params_sum(mg_model)
 
-    template.set_mode('train')
-    template.register_post_encode_hook([hf_model])
     is_multimodal = template.model_meta.is_multimodal
-    inputs = get_examples(is_multimodal)
-    inputs = template.encode(inputs)
-    inputs = to_device(template.data_collator([inputs]), 'cuda')
-
-    HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
+    inputs = template.encode(get_examples(is_multimodal))
+    hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
-    model_arch = hf_model.model_meta.model_arch
-    ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
+    if hf_model is not None:
+        hf_model.eval()
+        if dist.get_world_size() == 1:
+            _test_params_sum(hf_model)
+        template.register_post_encode_hook([hf_model])
+        HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
+        model_arch = hf_model.model_meta.model_arch
+        ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
+        hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
+        with torch.inference_mode(), _model_cpu_forward_context(
+                hf_modules, torch_dtype, share_embedding=share_embedding):
+            hf_inputs.pop('text_position_ids', None)
+            hf_logits = hf_model(**hf_inputs).logits
+            hf_logits = hf_logits.to('cuda')
+        hf_model.to('cpu')
 
-    hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
-    with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
-        inputs.pop('text_position_ids', None)
-        hf_logits = hf_model(**inputs).logits
-    hf_model.to('cpu')
-
-    input_ids = inputs['input_ids']
-    attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
+    args = get_args()
+    template.use_megatron = True
+    inputs = template.encode(get_examples(is_multimodal))
+    mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_torch_dtype = torch_dtype
+    mg_model.eval()
     # thd
     # from ..trainers.utils import get_packed_seq_params
     # mg_torch_dtype = None
@@ -179,24 +191,31 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # attention_mask = None
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
-    if 'position_ids' not in kwargs:
-        kwargs['position_ids'] = position_ids
+    for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
+        mg_inputs.pop(key, None)
+    mg_inputs.update({'packed_seq_params': packed_seq_params})
+    mg_device = next(mg_language_model.parameters()).device
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
-        mg_logits = mg_model(
-            input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
-    args = get_args()
+            mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+        # TODO: test pp tie_weights
+        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
+        if args.tensor_model_parallel_size > 1:
+            from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
+            if mg_logits is not None:
+                mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
+    if hf_model is None:
+        return
     if args.task_type == 'seq_cls':
         mg_logits = mg_logits[:, -1]
         mean_diff = (mg_logits - hf_logits).abs().mean().item()
         max_diff = (mg_logits - hf_logits).abs().max().item()
         print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
     else:
+        mg_logits = mg_logits[:, :hf_logits.shape[1]]
         token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
         mean_diff = token_mean_diff.mean().item()
         max_diff = (mg_logits - hf_logits).abs().max().item()
-        loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+        loss_mask = (torch.roll(hf_inputs['labels'], -1) != -100)
         mean_diff_with_loss = token_mean_diff[loss_mask].mean().item()
         max_diff_with_loss = (mg_logits - hf_logits)[loss_mask].abs().max().item()
         print(f'token_mean_diff: {token_mean_diff}')
@@ -238,7 +257,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -246,7 +265,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args['model_info'] = args.model_info
     extra_args['model_meta'] = args.model_meta
@@ -256,11 +274,11 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
-    megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
+    bridge = megatron_model_meta.bridge_cls()
+    bridge.load_weights(mg_model, args.model_info.model_dir)
+    logger.info('Successfully transferred HF model weights to MG model.')
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-    del hf_model
-    logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
     logger.info('Saving the model...')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
@@ -274,7 +292,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -291,7 +309,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args['model_info'] = args.model_info
     extra_args['model_meta'] = args.model_meta
@@ -302,7 +319,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     if megatron_args.load is None:
         raise ValueError('Please specify `--mcore_model`.')
-    load_checkpoint([mg_model], None, None, strict=True)
+    with patch_load_base_checkpoint():
+        load_checkpoint([mg_model], None, None, strict=True)
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
@@ -311,23 +329,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
-        megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
-        if args.test_convert_precision:
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-        del mg_model
-        logger.info('Successfully transferred MG model weights to HF model.')
-        ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
-        logger.info('Saving the model...')
-        save_checkpoint(
-            hf_model,
-            processor,
-            args.output_dir,
-            safe_serialization=args.safe_serialization,
-            model_dirs=[ckpt_dir, args.model_dir],
-            max_shard_size=args.max_shard_size,
-            additional_saved_files=hf_model.model_meta.additional_saved_files)
+        bridge = megatron_model_meta.bridge_cls()
+        logger.info('Converting weights and saving the model...')
+        bridge.save_weights([mg_model], args.output_dir)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
+        if args.test_convert_precision:
+            hf_model, template = prepare_model_template(args, model=args.output_dir)
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     elif args.to_mcore:
         if args.thread_count is None:
             checkpoint_size = sum(get_n_params_grads(mg_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9

@@ -467,7 +467,7 @@ def patch_tp_plan(load_model: bool):
             transformers.__version__) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
         yield
         return
-    logger.info('Patch tp_plan.')
+    logger.info_once('Patch tp_plan.')
     WORLD_SIZE = os.environ.get('WORLD_SIZE')
     os.environ['_PATCH_WORLD_SIZE'] = WORLD_SIZE
     os.environ.pop('WORLD_SIZE')

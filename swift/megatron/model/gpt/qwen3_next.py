@@ -3,8 +3,7 @@ from copy import deepcopy
 from typing import Optional, Tuple, Union
 
 import torch
-from megatron.core import mpu
-from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm
+from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
@@ -22,9 +21,8 @@ from megatron.training import get_args
 from swift.llm import ModelType
 from swift.utils import get_logger
 from ..constant import MegatronModelType
-from ..gpt_model import GPTModel
+from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
-from .config import convert_gpt_hf_config
 
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
@@ -380,6 +378,8 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
+        extra_kwargs = _get_extra_te_kwargs(config)
+        self.to(dtype=extra_kwargs['params_dtype'], device=extra_kwargs['device'])
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
         args = get_args()
@@ -473,61 +473,39 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     return block_spec
 
 
-def convert_mcore2hf_qwen3_next(hf_model, mg_model):
-    from .mcore2hf import set_mlp_state, set_attn_state
-    args = get_args()
-    hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
-        lm_head_weight.data.copy_(mg_model.output_layer.weight)
-    hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight - 1)
-    for layer_idx in range(args.num_layers):
-        layer_type = args.layer_types[layer_idx]
-        mg_layer = mg_model.decoder.layers[layer_idx]
-        hf_layer = hf_model.model.layers[layer_idx]
-        mg_attn = mg_layer.self_attention
+class Qwen3NextBridge(GPTBridge):
 
+    def _set_state_dict(self,
+                        mg_module,
+                        mg_key: str,
+                        hf_state_dict,
+                        hf_key: str,
+                        to_mcore: bool,
+                        *,
+                        offset: float = 0,
+                        is_expert: bool = False):
+        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key:
+            offset = 1 if to_mcore else -1
+        return super()._set_state_dict(
+            mg_module,
+            mg_key,
+            hf_state_dict,
+            hf_key,
+            to_mcore,
+            offset=offset,
+            is_expert=is_expert,
+        )
+
+    def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
+        layer_type = self.args.layer_types[layer_idx]
         if layer_type == 'linear_attention':
-            hf_layer.linear_attn.load_state_dict(mg_attn.state_dict(), strict=False)
-            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight - 1)
+            hf_state_dict.update(
+                self._set_module(None if mg_layer is None else mg_layer.self_attention, hf_state_dict, 'linear_attn.',
+                                 to_mcore))
+            self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
         elif layer_type == 'full_attention':
-            hf_attn = hf_layer.self_attn
-            set_attn_state(args, mg_attn, hf_attn)
-            hf_layer.input_layernorm.weight.data.copy_(mg_attn.linear_qkv.layer_norm_weight - 1)
-            if args.qk_layernorm:
-                hf_attn.q_norm.weight.data.copy_(mg_attn.q_layernorm.weight - 1)
-                hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight - 1)
-
-        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-        hf_layer.post_attention_layernorm.weight.data.copy_(mg_layer.pre_mlp_layernorm.weight - 1)
-
-
-def convert_hf2mcore_qwen3_next(hf_model, mg_model):
-    from .hf2mcore import set_mlp_state, set_attn_state
-    args = get_args()
-    mg_model.embedding.word_embeddings.weight.data.copy_(hf_model.model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight + 1)
-    for layer_idx in range(args.num_layers):
-        layer_type = args.layer_types[layer_idx]
-        mg_layer = mg_model.decoder.layers[layer_idx]
-        hf_layer = hf_model.model.layers[layer_idx]
-        mg_attn = mg_layer.self_attention
-
-        if layer_type == 'linear_attention':
-            mg_attn.load_state_dict(hf_layer.linear_attn.state_dict(), strict=False)
-            mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight + 1)
-        elif layer_type == 'full_attention':
-            hf_attn = hf_layer.self_attn
-            set_attn_state(args, mg_attn, hf_attn)
-            mg_attn.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight + 1)
-            if args.qk_layernorm:
-                mg_attn.q_layernorm.weight.data.copy_(hf_attn.q_norm.weight + 1)
-                mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight + 1)
-
-        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-        mg_layer.pre_mlp_layernorm.weight.data.copy_(hf_layer.post_attention_layernorm.weight + 1)
+            hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
+        return hf_state_dict
 
 
 register_megatron_model(
@@ -537,9 +515,6 @@ register_megatron_model(
             ModelType.qwen3_next,
             ModelType.qwen3_next_thinking,
         ],
-        model_cls=GPTModel,
-        convert_hf_config=convert_gpt_hf_config,
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
-        convert_mcore2hf=convert_mcore2hf_qwen3_next,
-        convert_hf2mcore=convert_hf2mcore_qwen3_next,
+        bridge_cls=Qwen3NextBridge,
     ))

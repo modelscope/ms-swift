@@ -1,10 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
-import torch
-import torch.nn
 from megatron.core import mpu
-from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
@@ -52,35 +49,6 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             if args.ref_adapter_load:
                 for m in self.peft_models:
                     m.set_adapter('default')
-
-    @staticmethod
-    def _forward_step_helper(model, inputs):
-        args = get_args()
-        if mpu.is_pipeline_first_stage():
-            micro_batch_size = 1  # use qkv_format 'thd'
-            seq_length = inputs['input_ids'].shape[1]
-            if args.sequence_parallel:
-                seq_length //= mpu.get_tensor_model_parallel_world_size()
-            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
-                                             device=torch.cuda.current_device(),
-                                             dtype=torch.int64)
-        else:
-            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
-            recv_from_prev_pipeline_rank_(recv_shape_buffer)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(recv_shape_buffer)
-        shape = recv_shape_buffer.tolist()
-
-        if not mpu.is_pipeline_first_stage():
-            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
-            recv_from_prev_pipeline_rank_(recv_buffer)
-            model.set_input_tensor(recv_buffer)
-        output_tensor = model(**inputs)
-        if not mpu.is_pipeline_last_stage():
-            send_to_next_pipeline_rank(output_tensor)
-            output_tensor = None
-
-        return output_tensor
 
     def get_logps(self, output_tensor, labels, packed_seq_params, num_samples=None):
         args = get_args()
