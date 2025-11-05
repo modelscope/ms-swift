@@ -286,7 +286,7 @@ class MegatronArguments(ExtraMegatronArguments):
     expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
-    moe_grouped_gemm: bool = False
+    moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
     moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
