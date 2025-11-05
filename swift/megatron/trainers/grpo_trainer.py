@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import json
 import torch
@@ -31,9 +31,9 @@ from swift.utils import get_current_device, get_logger, is_master, is_vllm_avail
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
-from .utils import (gather, gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, log_gpu_memory,
-                    offload_megatron_model_to_cpu, offload_megatron_optimizer, patch_model_for_lora_export,
-                    profiling_context)
+from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
+                    load_megatron_optimizer, log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
+                    patch_model_for_lora_export, profiling_context)
 
 logger = get_logger()
 
@@ -53,6 +53,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_rollout_engine()
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
+
+    def train(self, train_dataset, val_dataset, data_collator):
+        # Store dataset provider for lazy resample iterator initialization
+        if self.dynamic_sample:
+            self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
+            self._train_valid_test_dataset_provider.is_distributed = True
+        super().train(train_dataset, val_dataset, data_collator)
 
     def _prepare_template_data_collator(self):
         template = self.template
@@ -87,6 +94,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.top_entropy_quantile = args.top_entropy_quantile
         self.importance_sampling_level = args.importance_sampling_level
         self.enable_offload = False
+
+        # DAPO, https://arxiv.org/abs/2503.14476
+        self.dynamic_sample = args.dynamic_sample
+        self.max_resample_times = args.max_resample_times
+        self.overlong_filter = args.overlong_filter
+
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
         self.steps_per_generation = args.steps_per_generation
@@ -372,26 +385,57 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return self._rollout_group
 
-    def _replace_data_iterator(self, data_iterator, model):
+    def _init_resample_data_iterator(self):
+        """
+        Initialize an independent data iterator for dynamic resampling (lazy initialization).
 
+        This method is called lazily during the first dynamic resampling, ensuring that
+        pretrain() has already called initialize_megatron() to properly set up all args.
+        Uses a different seed (args.seed + 1) to avoid overlapping with training samples.
+
+        Note: pretrain() will automatically reset the random seed back to args.seed
+        after this method completes, so we don't need manual state restoration.
+
+        Args:
+            train_valid_test_dataset_provider: Dataset provider function
+
+        Returns:
+            train_data_iterator: Independent data iterator with different random seed
+        """
+        from megatron.training.training import build_train_valid_test_data_iterators
+        from megatron.training.initialize import _set_random_seed
+        args = get_args()
+
+        train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
+        # Use different seed for resample iterator (offset by 1 to avoid overlap)
+        resample_seed = getattr(args, 'seed', 42) + 1
+        try:
+            # Set new seed for resample iterator creation
+            _set_random_seed(
+                resample_seed,
+                args.data_parallel_random_init,
+                args.te_rng_tracker,
+                args.inference_rng_tracker,
+                use_cudagraphable_rng=args.enable_cuda_graph,
+            )
+
+            # Build data iterators with new seed
+            # TODO: VPP (Virtual Pipeline Parallelism)
+            resample_data_iterator, _, _ = (build_train_valid_test_data_iterators(train_valid_test_dataset_provider))
+        finally:
+            # Restore original random states to avoid affecting training
+            _set_random_seed(
+                args.seed,
+                args.data_parallel_random_init,
+                args.te_rng_tracker,
+                args.inference_rng_tracker,
+                use_cudagraphable_rng=args.enable_cuda_graph,
+            )
+        return resample_data_iterator
+
+    def _replace_data_iterator(self, data_iterator, model):
         if self._step % self.steps_per_generation == 0:
-            # each rollout DP group will generate generation_batch_size / world_size completions
-            dp_size = mpu.get_data_parallel_world_size()
-            completions_to_rollout = self.generation_batch_size // dp_size
-            # completions will be repeated num_generations times after
-            # so we need to divide num_iters_per_step by num_generations to get prompt batch size
-            prompts_to_rollout = completions_to_rollout // self.num_generations
-            # every iter will generate micro_batch_size prompts
-            num_iters_per_step = prompts_to_rollout // self.micro_batch_size
-            assert num_iters_per_step > 0, (
-                f'num_iters_per_step={num_iters_per_step} <= 0. '
-                f'This means no prompts will be generated'
-                f'generation_batch_size={self.generation_batch_size}, '
-                f'data_parallel_world_size={mpu.get_data_parallel_world_size()}, '
-                f'num_generations={self.num_generations}, '
-                f'micro_batch_size={self.micro_batch_size}. '
-                'Please adjust these parameters so that '
-                'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
+            num_iters_per_step = self.get_num_iters_per_step()
             rollout_batch = []
             for _ in range(num_iters_per_step):
                 rollout_batch.extend(next(data_iterator))
@@ -410,27 +454,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Get or create the rollout group (TP×PP×CP)
         rollout_group = self._get_rollout_group()
 
-        # batch : same across DP groups
-        def get_local_rollout_batch(batch):
-            # repeat num_generations times
-            global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
-            # get local rollout data
-            rollout_rank = torch.distributed.get_rank(group=rollout_group)
-            rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
-
-            per_device_batch_size = self.per_device_generation_batch_size
-            assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
-            data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
-            rollout_batch = global_rollout_batch[data_slice]
-            return rollout_batch
-
-        # Step1: Rollout / Reward / Advantage
-
-        rollout_batch = get_local_rollout_batch(batch)
+        rollout_batch = self.get_local_rollout_batch(batch)
 
         rollout_batch = self._generate_completions(rollout_batch)
 
         rewards_per_func = self._score_completions(rollout_batch)
+
+        # Dynamic sampling for std=0 groups (DAPO)
+        if self.dynamic_sample:
+            rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func, rollout_group,
+                                                                     batch)
 
         advantages = self._compute_advantages(rollout_batch, rewards_per_func)
 
@@ -797,6 +830,79 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return advantages
 
+    def _dynamic_sampling(self, rollout_batch: DataType,
+                          rewards_per_func: torch.Tensor) -> Tuple[DataType, torch.Tensor]:
+        """
+        Perform dynamic sampling to replace samples with zero-reward-variance groups.
+
+        This method implements DAPO (https://arxiv.org/abs/2503.14476) by replacing
+        samples from groups with zero reward variance (std=0) through resampling.
+
+        Args:
+            rollout_batch: local rollout data samples
+            rewards_per_func: reward per function for local data samples
+            rollout_group: rollout communication group
+
+        Returns:
+            tuple: (rollout_batch, rewards_per_func) with zero-variance groups replaced by resampled data
+        """
+        resample_count = 0
+        valid_samples = []
+        valid_rewards_per_func = []
+        origin_data = (rollout_batch, rewards_per_func)
+
+        while resample_count < self.max_resample_times:
+            # Gather all samples and rewards across rollout group first
+            global_rollout_batch = gather_object(rollout_batch)
+            global_rewards_per_func = gather(rewards_per_func)
+
+            # Compute reward std for the entire global batch
+            # We need to compute std on the gathered data to get a global mask
+            global_rewards = (global_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+            grouped_rewards = global_rewards.view(-1, self.num_generations)
+            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            global_valid_mask = (group_rewards_std > 0)
+
+            # Filter valid samples based on std > 0
+            valid_samples.extend([sample for sample, mask in zip(global_rollout_batch, global_valid_mask) if mask])
+            valid_rewards_per_func.append(global_rewards_per_func[global_valid_mask])
+
+            if len(valid_samples) >= self.generation_batch_size:
+                break
+
+            # Lazy initialization of resample_data_iterator
+            # Only initialize when needed, after pretrain() has set up args
+            if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
+                assert hasattr(self, '_train_valid_test_dataset_provider'), \
+                    'Dataset provider not set. Make sure dynamic_sample is enabled.'
+                self.resample_data_iterator = self._init_resample_data_iterator()
+            num_iters_per_step = self.get_num_iters_per_step()
+            next_rollout_prompt_batch = []
+            for _ in range(num_iters_per_step):
+                next_rollout_prompt_batch.extend(next(self.resample_data_iterator))
+
+            # Repeat num_generations times and get local slice
+            rollout_batch = self.get_local_rollout_batch(next_rollout_prompt_batch)
+
+            # Generate and score new completions
+            rollout_batch = self._generate_completions(rollout_batch)
+            rewards_per_func = self._score_completions(rollout_batch)
+            resample_count += 1
+
+        if len(valid_samples) >= self.generation_batch_size:
+            # Get local slice of valid samples
+            rank = self.process_index
+            per_device_batch_size = self.per_device_generation_batch_size
+            assert self.world_size * per_device_batch_size == len(valid_samples)
+            data_slice = slice(rank * per_device_batch_size, (rank + 1) * per_device_batch_size)
+            rollout_batch = valid_samples[:self.generation_batch_size][data_slice]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.generation_batch_size][data_slice]
+        else:
+            logger.warning(f'There are still std=0 groups present after {self.max_resample_times} retries.')
+            rollout_batch, rewards_per_func = origin_data
+
+        return rollout_batch, rewards_per_func
+
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
         inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
@@ -1114,3 +1220,40 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
 
         return inputs
+
+    def get_num_iters_per_step(self):
+        if hasattr(self, '_num_iters_per_step'):
+            return self._num_iters_per_step
+        # each rollout DP group will generate generation_batch_size / world_size completions
+        dp_size = mpu.get_data_parallel_world_size()
+        completions_to_rollout = self.generation_batch_size // dp_size
+        # completions will be repeated num_generations times after
+        # so we need to divide num_iters_per_step by num_generations to get prompt batch size
+        prompts_to_rollout = completions_to_rollout // self.num_generations
+        # every iter will generate micro_batch_size prompts
+        num_iters_per_step = prompts_to_rollout // self.micro_batch_size
+        assert num_iters_per_step > 0, (
+            f'num_iters_per_step={num_iters_per_step} <= 0. '
+            f'This means no prompts will be generated'
+            f'generation_batch_size={self.generation_batch_size}, '
+            f'data_parallel_world_size={mpu.get_data_parallel_world_size()}, '
+            f'num_generations={self.num_generations}, '
+            f'micro_batch_size={self.micro_batch_size}. '
+            'Please adjust these parameters so that '
+            'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
+        self._num_iters_per_step = num_iters_per_step
+        return num_iters_per_step
+
+    def get_local_rollout_batch(self, batch):
+        # repeat num_generations times
+        rollout_group = self._get_rollout_group()
+        global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
+        # get local rollout data
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
+
+        per_device_batch_size = self.per_device_generation_batch_size
+        assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
+        data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
+        rollout_batch = global_rollout_batch[data_slice]
+        return rollout_batch
