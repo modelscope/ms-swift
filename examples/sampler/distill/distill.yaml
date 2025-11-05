@@ -1,0 +1,34 @@
+use_ray: false
+sampler_type: distill
+sampler_engine: client
+model: qwen-max
+stream: true
+dataset: modelscope/competition_math#16
+num_return_sequences: 4
+max_length: 2048
+system: "You are a math model, you should **think step by step** carefully, and always consider the basic math principles to avoid making calculating mistakes. Give the final answer wrapped with \\boxed{{}}"
+load_args: false
+max_new_tokens: 768
+orm_model: math
+prm_model: Qwen/Qwen2.5-Math-PRM-7B
+override_exist_file: true
+num_sampling_batch_size: 4
+top_p: 1.0
+temperature: 1.0
+prm_threshold: 0.8
+output_file: sampling.jsonl
+engine_kwargs: '{"base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1"}'
+
+device_groups:
+  nproc_per_node: 4
+  sample_group:
+    device: CPU
+    ranks: 2
+    workers:
+      - sampler
+  rm_group:
+    device: GPU
+    ranks: list(range(0, 4))
+    workers:
+      - prm
+      - orm

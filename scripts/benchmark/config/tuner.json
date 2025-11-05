@@ -1,0 +1,301 @@
+{
+    "cmd": "sft",
+    "requirements":{
+        "gpu": "1",
+        "ddp": "1"
+    },
+    "eval_requirements": {
+      "gpu": "1"
+    },
+    "eval_dataset": ["ceval", "gsm8k", "arc"],
+    "args": {
+      "model": "Qwen/Qwen-7B-Chat",
+      "dataset": "iic/ms_agent",
+      "per_device_train_batch_size": 1,
+      "max_length": 2048,
+      "loss_scale": "react",
+      "gradient_accumulation_steps": 16,
+      "learning_rate": 5e-5,
+      "attn_impl": "flash_attn",
+      "eval_steps": 2000,
+      "save_steps": 2000,
+      "num_train_epochs": 2,
+      "gradient_checkpointing": true,
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.03,
+      "save_total_limit": 2,
+      "logging_steps": 10
+    },
+    "experiment": [
+      {
+        "name": "lora",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "lora+packing",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "eval_steps": 200,
+          "save_steps": 200
+        }
+      },
+      {
+        "name": "lora+packing+ddp",
+        "requirements":{
+          "gpu": "2",
+          "ddp": "2"
+        },
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "eval_steps": 100,
+          "save_steps": 100
+        }
+      },
+      {
+        "name": "lora+packing+lazytokenize",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "lazy_tokenize": true,
+          "eval_steps": 200,
+          "save_steps": 200
+        }
+      },
+      {
+        "name": "lora+",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "lorap_lr_ratio": 16.0
+        }
+      },
+      {
+        "name": "rslora",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "use_rslora": true
+        }
+      },
+      {
+        "name": "dora",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "use_dora": true
+        }
+      },
+      {
+        "name": "lora+neftune",
+        "args": {
+          "train_type": "lora",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "neftune_noise_alpha": 15.0
+        }
+      },
+      {
+        "name": "llamapro",
+        "args": {
+          "train_type": "llamapro",
+          "llamapro_num_new_blocks": "4"
+        }
+      },
+      {
+        "name": "full",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full"
+        }
+      },
+      {
+        "name": "reft",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "reft",
+          "gradient_checkpointing": "false",
+          "loss_scale": "default"
+        }
+      },
+      {
+        "name": "full+galore128+quantize",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false",
+          "galore_quantization": "true"
+        }
+      },
+      {
+        "name": "full+galore128+quantize+proj_quant",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false",
+          "galore_quantization": "true",
+          "galore_proj_quant": "true"
+        }
+      },
+      {
+        "name": "full+galore128",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore64",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "64",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore32",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "32",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore_emb",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "true"
+        }
+      },
+      {
+        "name": "full+galore_perparam",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "train_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "true",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "adalora",
+        "args": {
+          "train_type": "adalora",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "adapter",
+        "args": {
+          "train_type": "adapter"
+        }
+      },
+      {
+        "name": "full+lisa_2",
+        "info": "lisa 2layers + full",
+        "args": {
+          "train_type": "full",
+          "lisa_activated_layers": 2,
+          "lisa_step_interval": 20
+        }
+      },
+      {
+        "name": "full+lisa_4",
+        "info": "lisa 4layers + full",
+        "args": {
+          "train_type": "full",
+          "lisa_activated_layers": 4,
+          "lisa_step_interval": 20
+        }
+      },
+      {
+        "name": "unsloth+lora+q4",
+        "info": "unsloth lora quantization bit 4",
+        "args": {
+          "train_type": "lora",
+          "tuner_backend": "unsloth",
+          "quantization_bit": 4,
+          "model": "LLM-Research/Meta-Llama-3-8B-Instruct"
+        }
+      },
+      {
+        "name": "unsloth+full",
+        "info": "unsloth full",
+        "args": {
+          "train_type": "full",
+          "tuner_backend": "unsloth",
+          "model_type": "LLM-Research/Meta-Llama-3-8B-Instruct"
+        }
+      }
+    ]
+}

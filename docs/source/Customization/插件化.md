@@ -1,0 +1,216 @@
+# 插件化
+
+插件化是SWIFT3.0中新增的重要能力。我们希望通过插件化的方式，让开发者对开发流程的定制更加自然。
+
+## callback回调
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py).
+
+`callback`机制是transformers Trainer中的一种训练定制化机制。开发者可以在callback中控制训练流程。通常来说，callback的定制化类似下面的样子：
+```python
+class CustomCallback(TrainerCallback):
+
+    def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        # Doing something when the training begins.
+        pass
+
+    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        # Doing something when save checkpoint
+        pass
+```
+callback会在trainer构造前注册进trainer中，example中给出了一个简单版本的EarlyStop方案。注册你自己的callback的方式比较简单：
+```python
+extra_callbacks = [CustomCallback()]
+```
+开发者可以在plugin/callback.py中增加新的callback，并定制自己的训练流程。callback的具体参数可以查看[这里](https://huggingface.co/docs/transformers/main_classes/callback)。
+
+
+## 定制化loss
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+
+SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后trainer会自动使用你定制的loss方法。
+例如在plugin/loss.py中添加下面的代码：
+```python
+def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    # Write your own loss calculating here
+    return loss
+
+loss_mapping['custom_loss'] = custom_loss_func
+```
+需要注意的是，loss和trainer训练的任务是强相关的，目前的loss定制针对pt和sft任务，如果是人类对齐任务（例如DPO、PPO等）或分类任务（seq_cls）任务在插件中是无法定制的。
+
+## 定制化loss_scale
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py).
+
+loss_scale机制在SWIFT中是非常重要的机制之一。在pt和sft任务中，可训练token的loss是均匀的，即每个token平等的进行bp。但在某些情况下，某些token的权重比较大，需要被额外关注，
+在这种情况下就需要更高的权重。loss_scale可以让开发者自由地定义自己的token权重。
+```python
+class LastRoundLossScale(LossScale):
+
+    def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool, **kwargs):
+        if context_type == ContextType.RESPONSE:
+            return [context], [float(is_last_round)]
+        return super().get_loss_scale(context, context_type, is_last_round)
+```
+在上面的代码中，返回了一个Tuple，第一个返回是context（或拆解后的context），第二个参数是context对应的loss_scale，float值代表了权重。例如下面的权重设置：
+```text
+["学习", "好", "数学", "是", "重要", "的"]
+[1.0, 0.5, 2.0, 0.5, 2.0, 0.1]
+```
+我们更看重数学和重要两个词，因此我们把它们的权重提升到2.0。
+回到上面的代码，我们判断了传入的context是否是response，如果是response且如果是多轮对话的最后一轮才返回[1]，在其他情况下使用基类的实现（在本场景下loss_scale时[0]）。使用这种方案，
+我们做到了只有最后一轮的response参与训练，其他response不参与训练。使用这种方式，可以让所有token（prompt、response）参与训练，或针对agent某些特殊字符重点训练等。
+在pt和sft中，loss_scale是整体支持（是否参与训练，以及权重大小）的，而人类对齐中只能支持某些token是否参与训练，无法支持权重大小。
+
+## 定制化metric
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/metric.py).
+
+metric可以定制训练时使用的评测参数：
+```python
+METRIC_MAPPING = {
+    'acc': (compute_acc_metrics, preprocess_logits_for_acc),
+    'nlg': (compute_nlg_metrics, None),
+    'custom': (custom_metric, custom_preprocess),
+}
+
+
+def get_metric(metric: str):
+    return METRIC_MAPPING[metric]
+```
+在上面的定义中，我们添加了新的custom metric，它的value有两个值，第一个值是计算metric的过程，返回一个包含metric key-value对的dict，第二个值是针对logits做前处理，返回实际的predictions。
+
+## 定制化optimizer
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
+- 对模型不同部分采用不同的学习率，例如：ViT和LLM分别使用不同的学习率，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py)。
+
+用户可以在这里增加自己的optimizer和lr_scheduler实现：
+```python
+def create_custom_optimizers(args, model, dataset):
+    # 创建自己的optimizer
+    return CustomOptimizer(optimizer_grouped_parameters, **optimizer_kwargs), CustomScheduler(...)
+
+optimizers_map = {
+    'custom': create_custom_optimizers,
+    ...
+}
+```
+
+当开发者需要使用其他optimizer，例如某些新论文中定义的optimizer时，可以在这里定义其创建过程，并在参数中使用：
+```shell
+--optimizer custom
+```
+就可以实际调用了。
+
+## 定制化agent template
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template).
+
+## 定制化tuner
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/tuner.py).
+- 多模态模型对ViT部分使用全参数训练，LLM部分使用LoRA训练，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit)。
+- Phi4-multimodal，直接对其已有LoRA进行训练而不额外附加LoRA，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh)。
+
+tuner定制也是swift中有特色的能力之一，开发者可以无视复杂的tuner初始化流程和代码整合成本，将新的tuner注册在这里：
+```python
+class IA3(Tuner):
+
+    @staticmethod
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+        model_arch: ModelKeys = model.model_meta.model_arch
+        ia3_config = IA3Config(
+            target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
+        return get_peft_model(model, ia3_config)
+
+    @staticmethod
+    def save_pretrained(
+        model: torch.nn.Module,
+        save_directory: str,
+        state_dict: Optional[dict] = None,
+        safe_serialization: bool = True,
+        **kwargs,
+    ) -> None:
+        model: PeftModel
+        model.save_pretrained(save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
+
+    @staticmethod
+    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
+        return PeftModel.from_pretrained(model, model_id, **kwargs)
+```
+
+上面的例子中，我们将peft的IA3应用于模型训练中，在这个类中包含了三个方法：
+- prepare_model: 如何将原始模型使用tuner进行封装，并设置好可训练参数
+- save_pretrained: 如何在训练中保存模型
+- from_pretrained: 如何在后续训练和推理中将之前存下来的checkpoint重新拉起
+
+上面的三个方法会在swift训练流程中被调用，这样就做到了开发者可以不阅读复杂的训练代码而使用自己的tuner。
+
+## PRM
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/prm.py)。
+
+PRM是过程奖励模型，PRM会在`swift sample`命令中使用。PRM需要支持的接口比较简单：
+```python
+class PRM:
+
+    def __init__(self):
+        # init here
+        pass
+
+    def __call__(self, infer_requests: List[InferRequest], **kwargs) -> List[Union[float, List[float]]]:
+        raise NotImplementedError
+```
+
+其中的InferRequest来自于`swift.llm`，返回的`List[Union[float, List[float]]]`，列表中可能是reward也可能是若干reward。开发者可以在infer_requests中拿到queries和responses，并按照自己的方式进行切分，例如：
+```text
+Let's think step by step.
+
+Step1: xxx
+
+Step2: xxx
+
+So, the answer is ...
+```
+开发者可以在这里对过程进行切分，并按batch传入PRM中进行推理并返回rewards。更通用来说，开发者可以在这里调用一个远端URL，例如一个闭源PRM大模型并返回rewards。
+
+## ORM
+
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/orm.py)。
+
+ORM是结果奖励模型。ORM一般使用正则表达式来进行，ORM决定了response是否是正确的。例如：
+
+```python
+class MathORM(ORM):
+
+    @staticmethod
+    def extract_boxed_result(text):
+        pattern = r'\\boxed{([^}]*)}'
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+        else:
+            return None
+
+    def __call__(self, infer_requests: List[InferRequest], ground_truths: List[str],
+                **kwargs) -> List[float]:
+        rewards = []
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        for prediction, ground_truth in zip(predictions, ground_truths):
+            res1 = MathORM.extract_boxed_result(prediction) or ''
+            res2 = MathORM.extract_boxed_result(ground_truth) or ''
+            rewards.append(float(res1.strip() == res2.strip()))
+
+        return rewards
+
+
+orms = {
+    'math': MathORM,
+}
+```
+
+在上面的代码中，我们定义了一个对数学response进行解析的过程，如果结果相同则返回score为1.0，否则为0.0。和PRM不同，这个类的infer中有一个额外参数`ground_truths`，
+该参数是对应的infer_requests的实际label（数据集中定义的标准response）。

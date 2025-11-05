@@ -1,0 +1,7 @@
+{
+    "model_type": "qwen-1_8b-chat",
+    "dataset": "jd-sentiment-zh",
+    "output_dir": "output/pai_test",
+    "train_dataset_sample": 100,
+    "eval_steps": 5
+}

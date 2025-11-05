@@ -1,0 +1,3 @@
+{"messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
