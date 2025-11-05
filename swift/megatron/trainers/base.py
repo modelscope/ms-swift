@@ -246,13 +246,10 @@ class BaseMegatronTrainer(ABC):
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
             if args.load_safetensors and args.train_type == 'lora':
-                if args.adapters:
-                    assert len(args.adapters) == 1, 'Currently only support one adapter'
-                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True)
-                if args.ref_adapters:
-                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter'
-                    self.bridge.load_weights(
-                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+                for adapters, name in [(args.adapters, 'default'), (args.ref_adapters, 'ref_adapter')]:
+                    if adapters:
+                        assert len(adapters) == 1, f'Currently only support one adapter for {name}'
+                        self.bridge.load_weights(model, adapters[0], is_peft_format=True, adapter_name=name)
             self.peft_models.append(peft_model)
             return model
 

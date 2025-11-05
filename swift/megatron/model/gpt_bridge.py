@@ -1014,7 +1014,7 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
-                # TODO: new_special_tokens, vocab_size...
+                self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
                 save_checkpoint(
                     None,
