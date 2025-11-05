@@ -91,7 +91,7 @@ class InferStreamer(InferTools):
         if self.first_token:
             raw_tokens = []
         response = self.template.decode(
-            raw_tokens, is_finished=is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
+            raw_tokens, is_finished=is_finished, first_token=self.first_token, **self.decode_kwargs)
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished, len(raw_tokens))
 
@@ -380,7 +380,13 @@ def patch_vllm_memory_leak():
     # fix vllm 0.7.3 memory leak
     # https://github.com/vllm-project/vllm/pull/14326
     import vllm
-    if version.parse(vllm.__version__) != version.parse('0.7.3'):
+    try:
+        vllm_version = version.parse(vllm.__version__)
+        needs_patch = (vllm_version == version.parse('0.7.3'))
+    except version.InvalidVersion:
+        needs_patch = False
+
+    if not needs_patch:
         return
 
     def patch_vllm_abort_seq_group():

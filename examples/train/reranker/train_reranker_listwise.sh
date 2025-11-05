@@ -6,6 +6,7 @@ swift sft \
     --loss_type listwise_reranker \
     --train_type full \
     --dataset MTEB/scidocs-reranking \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \
     --output_dir output \
@@ -15,6 +16,7 @@ swift sft \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
     --gradient_accumulation_steps 1 \
+    --dataset_num_proc 8 \
     --learning_rate 6e-6 \
     --label_names labels \
     --dataloader_drop_last true \

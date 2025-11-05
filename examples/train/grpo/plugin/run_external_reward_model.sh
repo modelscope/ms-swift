@@ -7,6 +7,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --dataset AI-MO/NuminaMath-TIR#5000 \
+    --load_from_cache_file true \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \

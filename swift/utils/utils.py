@@ -11,15 +11,18 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
+import json
+import json_repair
 import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
-from .env import is_dist, is_dist_ta
+from .env import is_dist, is_master
 from .logger import get_logger
 from .np_utils import stat_array
 
@@ -127,7 +130,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
-    if (dist.is_initialized() and is_dist()) or is_dist_ta():
+    if dist.is_initialized() and is_dist():
         obj_list = [sub_folder]
         dist.broadcast_object_list(obj_list)
         sub_folder = obj_list[0]
@@ -141,7 +144,10 @@ _T = TypeVar('_T')
 
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     parser = HfArgumentParser([class_type])
-    if argv is None:
+    _ray_args = os.environ.get('RAY_SWIFT_ARGS')
+    if _ray_args:
+        argv = json.loads(_ray_args)
+    elif argv is None:
         argv = sys.argv[1:]
     if len(argv) > 0 and argv[0].endswith('.json'):
         json_path = os.path.abspath(os.path.expanduser(argv[0]))
@@ -215,6 +221,9 @@ def read_multi_line(addi_prompt: str = '') -> str:
 
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
+    import shlex
+    command_str = ' '.join(shlex.quote(a) for a in command)
+    logger.info_if(f'Run the command: `{command_str}`', is_master())
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
@@ -234,6 +243,12 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
         log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     logger.info_once(log_info)
     return value
+
+
+def find_node_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    return s.getsockname()[0]
 
 
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
@@ -312,11 +327,16 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
                         shutil.copy2(file_path, destination)
 
 
-def split_list(ori_list, num_shards):
-    idx_list = np.linspace(0, len(ori_list), num_shards + 1)
+def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[List[_T]]:
     shard = []
-    for i in range(len(idx_list) - 1):
-        shard.append(ori_list[int(idx_list[i]):int(idx_list[i + 1])])
+    if contiguous:
+        idx_list = np.linspace(0, len(ori_list), num_shards + 1, dtype=np.int64)
+        for i in range(len(idx_list) - 1):
+            shard.append(ori_list[idx_list[i]:idx_list[i + 1]])
+    else:
+        ori_list = np.array(ori_list)
+        for i in range(num_shards):
+            shard.append(ori_list[np.arange(i, len(ori_list), num_shards)].tolist())
     return shard
 
 
@@ -343,3 +363,59 @@ def import_external_file(file_path: str):
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
     return importlib.import_module(py_file.split('.', 1)[0])
+
+
+def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
+    """Convert a JSON string or JSON file into a dict"""
+    # If the value could potentially be a string, it is generally advisable to set strict to False.
+    if value is None:
+        value = {}
+    elif isinstance(value, str):
+        if os.path.exists(value):  # local path
+            with open(value, 'r', encoding='utf-8') as f:
+                value = json.load(f)
+        else:  # json str
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                if strict:
+                    try:
+                        # fix malformed json string, e.g., incorrect quotation marks
+                        old_value = value
+                        value = json_repair.repair_json(value)
+                        logger.warning(f'Unable to parse json string, try to repair it, '
+                                       f"the string before and after repair are '{old_value}' | '{value}'")
+                        value = json.loads(value)
+                    except Exception:
+                        logger.error(f"Unable to parse json string: '{value}', and try to repair failed")
+                        raise
+    return value
+
+
+def remove_response(messages) -> Optional[str]:
+    """
+    Removes and returns the content of the last message if its role is 'assistant'.
+
+    Args:
+        messages (List[Dict]):
+            A list of message dictionaries, each typically containing a 'role' and 'content' key.
+
+    Returns:
+        Optional[str]:
+            The content of the removed 'assistant' message if present;
+            otherwise, returns None. The original messages list is modified in place.
+    """
+    last_role = messages[-1]['role'] if messages else None
+    if last_role == 'assistant':
+        return messages.pop()['content']
+
+
+@contextmanager
+def disable_deepspeed_zero3():
+    import transformers.integrations.deepspeed as ds_module
+    orig_weak_ref = ds_module._hf_deepspeed_config_weak_ref
+    ds_module._hf_deepspeed_config_weak_ref = None
+    try:
+        yield
+    finally:
+        ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref

@@ -37,8 +37,7 @@ You can refer to the CLI script for pre-training [here](https://github.com/model
 
 Tips:
 
-- `swift pt` is equivalent to `swift sft --use_chat_template false`.
-- `swift pt` typically uses large datasets, and it is recommended to combine it with `--streaming` for streaming datasets.
+- `swift pt` is equivalent to `swift sft --use_chat_template false --loss_scale all`.
 
 ## Fine-tuning
 
@@ -62,7 +61,7 @@ Additionally, we offer a series of scripts to help you understand the training c
   - For examples of using full-parameter training for ViT/Aligner, LoRA training for LLM, and employing different learning rates, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
   - For multimodal model packing to increase training speed, refer to the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/packing).
 - RLHF Training: Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf). For multi-modal models, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf). For GRPO training, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal). For reinforcement fine-tuning, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft).
-- Megatron Training: Supports the use of Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, and context parallelism. Refer to the [Megatron-SWIFT Training Documentation](./Megatron-SWIFT-Training.md).
+- Megatron Training: Supports the use of Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, and context parallelism. Refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 - Sequence Classification Model Training: Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - Embedding Model Training: Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - Agent Training: Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent).

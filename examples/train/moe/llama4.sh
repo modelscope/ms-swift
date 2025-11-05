@@ -1,10 +1,12 @@
-# Manually select `target_modules` to avoid 'all-linear' selecting 'router'
+# If you don't want to train the router, set:
+# `--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'`
 NPROC_PER_NODE=4 \
 USE_HF=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model meta-llama/Llama-4-Scout-17B-16E-Instruct \
     --dataset 'linxy/LaTeX_OCR:full#5000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
@@ -14,7 +16,7 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$' \
+    --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \

@@ -30,6 +30,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_dir = self.model_info.model_dir
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
+        self.task_type = self.model_info.task_type
         self.config = self.model_info.config
         if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
@@ -58,6 +59,25 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 stop.append(stop_word)
         return stop
 
+    def _get_stop_token_ids(self, stop_words: List[Union[str, List[int], None]]) -> List[int]:
+        stop_token_ids: List[int] = []
+        for stop_word in stop_words:
+            if stop_word is None:
+                continue
+            if isinstance(stop_word, str):
+                stop_word = self.tokenizer.encode(stop_word, add_special_tokens=False)
+            if isinstance(stop_word, list):
+                if len(stop_word) != 1:
+                    continue
+                else:
+                    stop_token = stop_word[0]
+            elif isinstance(stop_word, int):
+                stop_token = stop_word
+            assert isinstance(stop_token, int)
+            if stop_token not in stop_token_ids:
+                stop_token_ids.append(stop_token)
+        return stop_token_ids
+
     def async_iter_to_iter(self, async_iter, prog_bar, metrics) -> Iterator:
         queue = Queue()
 
@@ -72,7 +92,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
@@ -114,7 +138,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
-            return self.safe_asyncio_run(self.batch_run(new_tasks))
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            return loop.run_until_complete(self.batch_run(new_tasks))
 
     @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:
@@ -183,12 +212,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
         max_model_len = self.max_model_len
-        if isinstance(inputs, dict):
-            inputs = [inputs]
+        assert isinstance(inputs, dict)
         # The num_tokens takes the maximum value from inputs_list.
-        num_tokens = 0
-        for inp in inputs:
-            num_tokens = max(num_tokens, self._get_num_tokens(inp))
+        num_tokens = self._get_num_tokens(inputs)
         max_tokens = request_config.max_tokens
         if max_model_len is None:
             max_model_len = 8192
@@ -227,9 +253,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return {'content': res}
 
     @staticmethod
-    def _get_finish_reason(max_tokens: int, num_prompt_tokens: int, is_finished: bool):
+    def _get_finish_reason(max_tokens: int, completion_tokens: int, is_finished: bool):
         if is_finished:
-            if num_prompt_tokens >= max_tokens:
+            if completion_tokens >= max_tokens:
                 finish_reason = 'length'
             else:
                 finish_reason = 'stop'
@@ -258,10 +284,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        loop = asyncio.get_event_loop()
 
         def asyncio_run(core):
-            return loop.run_until_complete(core)
+            return asyncio.run(core)
 
         return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
@@ -285,3 +310,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                     error_list.append((i, e))
                     continue
         return batched_inputs, error_list
+
+    @staticmethod
+    def _add_error_list(outputs, error_list):
+        for i, error in error_list:
+            outputs.insert(i, error)
+        return outputs

@@ -6,6 +6,7 @@ from typing import List, Literal, Optional
 import torch
 import torch.distributed as dist
 
+from swift.llm import HfConfigFactory
 from swift.utils import get_logger, init_process_group, set_default_ddp_config
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
@@ -34,11 +35,14 @@ class ExportArguments(MergeArguments, BaseArguments):
     output_dir: Optional[str] = None
 
     # awq/gptq
-    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8'] = None
+    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
     quant_n_samples: int = 256
     max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
+
+    # cached_dataset
+    to_cached_dataset: bool = False
 
     # ollama
     to_ollama: bool = False
@@ -50,6 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
+    test_convert_dtype: str = 'float32'
 
     # push to ms hub
     push_to_hub: bool = False
@@ -79,6 +84,8 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'mcore'
             elif self.to_hf:
                 suffix = 'hf'
+            elif self.to_cached_dataset:
+                suffix = 'cached_dataset'
             else:
                 return
 
@@ -108,5 +115,12 @@ class ExportArguments(MergeArguments, BaseArguments):
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
+        self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
+        if self.to_cached_dataset:
+            self.lazy_tokenize = False
+            if self.packing:
+                raise ValueError('Packing will be handled during training; here we only perform tokenization '
+                                 'in advance, so you do not need to set up packing separately.')
+            assert not self.streaming, 'not supported'

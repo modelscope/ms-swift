@@ -14,6 +14,7 @@ from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as hf_load_dataset
 from modelscope.hub.api import ModelScopeConfig
+from modelscope.hub.utils.utils import get_cache_dir
 from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import get_hub
@@ -99,10 +100,10 @@ class DatasetSyntax:
         dataset_meta_mapping = self._get_dataset_meta_mapping()
         dataset_type = self.dataset_type
         if dataset_type == 'path':
-            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset))
         else:
             dataset_type = 'repo' if os.path.isdir(self.dataset) else {True: 'hf', False: 'ms'}[use_hf]
-            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset))
         return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
     @staticmethod
@@ -114,11 +115,11 @@ class DatasetSyntax:
         for dataset_meta in DATASET_MAPPING.values():
             if dataset_meta.dataset_path is not None:
                 dataset_type = 'repo' if os.path.isdir(dataset_meta.dataset_path) else 'path'
-                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path.lower())] = dataset_meta
+                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path)] = dataset_meta
             if dataset_meta.ms_dataset_id is not None:
-                _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
+                _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id)] = dataset_meta
             if dataset_meta.hf_dataset_id is not None:
-                _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
+                _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id)] = dataset_meta
         return _dataset_meta_mapping
 
     @staticmethod
@@ -137,9 +138,9 @@ class DatasetSyntax:
     def _get_matched_dataset_meta(self, dataset_meta_mapping):
         suffix_dataset_meta_mapping = {}
         for dataset_name, dataset_meta in dataset_meta_mapping.items():
-            dataset_name = self.get_dataset_name(dataset_name[1]).lower()
+            dataset_name = self.get_dataset_name(dataset_name[1])
             suffix_dataset_meta_mapping[dataset_name] = dataset_meta
-        dataset_name = self.get_dataset_name(self.dataset).lower()
+        dataset_name = self.get_dataset_name(self.dataset)
         dataset_meta = suffix_dataset_meta_mapping.get(dataset_name)
         return dataset_meta
 
@@ -210,6 +211,7 @@ class DatasetLoader:
         if file_type == 'csv':
             kwargs['na_filter'] = False
         with safe_ddp_context(None, True):
+            kwargs['cache_dir'] = os.path.join(get_cache_dir(), 'datasets')
             dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
@@ -242,9 +244,10 @@ class DatasetLoader:
             use_hf = True
             dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
-            dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
-            if os.path.isfile(dataset_infos_path):
-                os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
+            with safe_ddp_context('dataset_infos_rename'):
+                dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
+                if os.path.isfile(dataset_infos_path):
+                    os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
         elif dataset_id.startswith('/'):
             raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
@@ -426,8 +429,8 @@ class DatasetLoader:
 
 def init_self_cognition_preprocessor(
     dataset_meta: Optional[DatasetMeta],
-    model_name: Union[Tuple[str, str], List[str], None] = None,
-    model_author: Union[Tuple[str, str], List[str], None] = None,
+    model_name: Optional[Union[Tuple[str, str], List[str]]] = None,
+    model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
 ) -> None:
     if dataset_meta is None or model_name is None and model_author is None:
         return
@@ -470,8 +473,8 @@ def load_dataset(
     columns: Optional[Dict[str, str]] = None,  # columns_mapping
     remove_unused_columns: bool = True,
     # self-cognition
-    model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
-    model_author: Union[Tuple[str, str], List[str], None] = None,
+    model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
+    model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """The interface to load any registered dataset
 

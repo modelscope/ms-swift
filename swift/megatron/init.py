@@ -1,17 +1,23 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import concurrent.futures
+import logging
 import os
+import subprocess
 import sys
-from datetime import datetime
+from contextlib import contextmanager
+from copy import copy
 from typing import List, Optional, Tuple
 
-import megatron.core
+import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
+from tqdm import tqdm
 
 from swift.llm import git_clone_github
-from swift.utils import JsonlWriter, get_logger, is_master, is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
+                         subprocess_run)
 
 logger = get_logger()
 
@@ -49,269 +55,9 @@ def _patch__batched_p2p_ops():
     p2p_communication._batched_p2p_ops = _batched_p2p_ops
 
 
-def _patch_training_log():
-    # TODO: support swanlab
-    from megatron.core import mpu
-    from megatron.core.transformer.moe.moe_utils import track_moe_metrics
-    from megatron.training.theoretical_memory_usage import report_theoretical_memory
-    from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
-    from megatron.training import (training, get_args, get_timers, get_tensorboard_writer, get_wandb_writer,
-                                   get_one_logger, one_logger_utils, is_last_rank, print_rank_last)
-    from megatron.training.training import num_floating_point_operations
-    from megatron.core.num_microbatches_calculator import get_num_microbatches
-    from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
-    jsonl_writer = None
-
-    # Code borrowed from NVIDIA/Megatron-LM
-    def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
-                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
-        """Log training information such as losses, timing, ...."""
-        nonlocal jsonl_writer
-        args = get_args()
-        if is_master() and jsonl_writer is None:
-            logging_path = os.path.join(args.save, 'logging.jsonl')
-            logger.info(f'logging_path: {logging_path}')
-            jsonl_writer = JsonlWriter(logging_path, enable_async=True)
-        timers = get_timers()
-        writer = get_tensorboard_writer()
-        wandb_writer = get_wandb_writer()
-
-        # Advanced, skipped, and Nan iterations.
-        advanced_iters_key = 'advanced iterations'
-        skipped_iters_key = 'skipped iterations'
-        nan_iters_key = 'nan iterations'
-        # Advanced iterations.
-        if not skipped_iter:
-            total_loss_dict[advanced_iters_key] = total_loss_dict.get(advanced_iters_key, 0) + 1
-        else:
-            if advanced_iters_key not in total_loss_dict:
-                total_loss_dict[advanced_iters_key] = 0
-        # Skipped iterations.
-        total_loss_dict[skipped_iters_key] = total_loss_dict.get(skipped_iters_key, 0) + skipped_iter
-        # Update losses and set nan iterations
-        got_nan = False
-        for key in loss_dict:
-            if not skipped_iter:
-                total_loss_dict[key] = total_loss_dict.get(key, torch.tensor([0.0], dtype=torch.float,
-                                                                             device='cuda')) + loss_dict[key]
-            else:
-                value = loss_dict[key].float().sum().item()
-                is_nan = value == float('inf') or value == -float('inf') or value != value
-                got_nan = got_nan or is_nan
-        total_loss_dict[nan_iters_key] = total_loss_dict.get(nan_iters_key, 0) + int(got_nan)
-
-        # Logging.
-        timers_to_log = [
-            'forward-backward', 'forward-compute', 'backward-compute', 'batch-generator', 'forward-recv',
-            'forward-send', 'backward-recv', 'backward-send', 'forward-send-forward-recv', 'forward-send-backward-recv',
-            'backward-send-forward-recv', 'backward-send-backward-recv', 'forward-backward-send-forward-backward-recv',
-            'layernorm-grads-all-reduce', 'embedding-grads-all-reduce', 'all-grads-sync', 'params-all-gather',
-            'optimizer-copy-to-main-grad', 'optimizer-unscale-and-check-inf', 'optimizer-clip-main-grad',
-            'optimizer-count-zeros', 'optimizer-inner-step', 'optimizer-copy-main-to-model-params', 'optimizer'
-        ]
-
-        # Calculate batch size.
-        batch_size = args.micro_batch_size * args.data_parallel_size * get_num_microbatches()
-
-        # Track app tag & app tag ID
-        one_logger_utils.track_app_tag(batch_size, args.world_size, args.seq_length)
-
-        total_iterations = total_loss_dict[advanced_iters_key] + total_loss_dict[skipped_iters_key]
-
-        # learning rate will be None on ranks without trainable params, so we must gather across mp ranks
-        learning_rate = reduce_max_stat_across_model_parallel_group(learning_rate)
-        # Tensorboard values.
-        # Timer requires all the ranks to call.
-        if args.log_timers_to_tensorboard and (iteration % args.tensorboard_log_interval == 0):
-            timers.write(timers_to_log, writer, iteration, normalizer=total_iterations)
-        if writer and (iteration % args.tensorboard_log_interval == 0):
-            if wandb_writer:
-                wandb_writer.log({'samples vs steps': args.consumed_train_samples}, iteration)
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate, args.consumed_train_samples)
-            if wandb_writer:
-                wandb_writer.log({'learning-rate': learning_rate}, iteration)
-            if args.decoupled_lr is not None:
-                writer.add_scalar('decoupled-learning-rate', decoupled_learning_rate, iteration)
-            if args.skipped_train_samples > 0:
-                writer.add_scalar('skipped-train-samples', args.skipped_train_samples, iteration)
-                if wandb_writer:
-                    wandb_writer.log({'skipped-train-samples': args.skipped_train_samples}, iteration)
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size, args.consumed_train_samples)
-            if wandb_writer:
-                wandb_writer.log({'batch-size': batch_size}, iteration)
-            for key in loss_dict:
-                writer.add_scalar(key, loss_dict[key], iteration)
-                writer.add_scalar(key + ' vs samples', loss_dict[key], args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({key: loss_dict[key]}, iteration)
-            if args.log_loss_scale_to_tensorboard:
-                writer.add_scalar('loss-scale', loss_scale, iteration)
-                writer.add_scalar('loss-scale vs samples', loss_scale, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'loss-scale': loss_scale}, iteration)
-            if args.log_world_size_to_tensorboard:
-                writer.add_scalar('world-size', args.world_size, iteration)
-                writer.add_scalar('world-size vs samples', args.world_size, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'world-size': args.world_size}, iteration)
-            if grad_norm is not None:
-                writer.add_scalar('grad-norm', grad_norm, iteration)
-                writer.add_scalar('grad-norm vs samples', grad_norm, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'grad-norm': grad_norm}, iteration)
-            if num_zeros_in_grad is not None:
-                writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-                writer.add_scalar('num-zeros vs samples', num_zeros_in_grad, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
-            if params_norm is not None:
-                writer.add_scalar('params-norm', params_norm, iteration)
-                writer.add_scalar('params-norm vs samples', params_norm, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'params-norm': params_norm}, iteration)
-            if args.log_memory_to_tensorboard:
-                mem_stats = torch.cuda.memory_stats()
-                writer.add_scalar(
-                    'mem-reserved-bytes',
-                    mem_stats['reserved_bytes.all.current'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-allocated-bytes',
-                    mem_stats['allocated_bytes.all.current'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-max-allocated-bytes',
-                    mem_stats['allocated_bytes.all.peak'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-allocated-count',
-                    mem_stats['allocation.all.current'],
-                    iteration,
-                )
-        if args.num_experts is not None:
-            moe_loss_scale = 1 / get_num_microbatches()
-            track_names = []
-            if args.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
-                track_names.append('load_balancing_loss')
-            if args.moe_z_loss_coeff is not None:
-                track_names.append('z_loss')
-            track_moe_metrics(
-                loss_scale=moe_loss_scale,
-                iteration=iteration,
-                writer=writer,
-                wandb_writer=wandb_writer,
-                total_loss_dict=total_loss_dict,
-                per_layer_logging=args.moe_per_layer_logging,
-                force_initialize=True,
-                track_names=track_names,
-                num_layers=args.num_layers,
-                moe_layer_freq=args.moe_layer_freq)
-        if args.mtp_num_layers is not None:
-            mtp_loss_scale = 1 / get_num_microbatches()
-            MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
-        if iteration % args.log_interval == 0 or iteration == 1:
-            origin_total_loss_dict = total_loss_dict.copy()
-
-            if args.record_memory_history and is_last_rank():
-                snapshot = torch.cuda.memory._snapshot()
-                from pickle import dump
-                with open(args.memory_snapshot_path, 'wb') as f:
-                    dump(snapshot, f)
-
-            elapsed_time = timers('interval-time').elapsed(barrier=True)
-            elapsed_time_per_iteration = elapsed_time / total_iterations
-
-            throughput = num_floating_point_operations(args, batch_size) / (
-                elapsed_time_per_iteration * 10**12 * args.world_size)
-
-            one_logger_utils.track_e2e_metrics(args.log_throughput, throughput)
-
-            if args.log_timers_to_tensorboard:
-                if writer:
-                    writer.add_scalar('iteration-time', elapsed_time_per_iteration, iteration)
-                if wandb_writer:
-                    wandb_writer.log({'iteration-time': elapsed_time_per_iteration}, iteration)
-            log_string = f" [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-            log_string += ' iteration {:8d}/{:8d} |'.format(iteration, args.train_iters)
-            log_string += ' consumed samples: {:12d} |'.format(args.consumed_train_samples)
-            if args.skipped_train_samples > 0:
-                log_string += ' skipped samples: {:12d} |'.format(args.skipped_train_samples)
-            log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time_per_iteration * 1000.0)
-            if args.log_throughput:
-                log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
-                if args.log_timers_to_tensorboard:
-                    if writer:
-                        writer.add_scalar('throughput', throughput, iteration)
-                    if wandb_writer:
-                        wandb_writer.log({'throughput': throughput}, iteration)
-            # Decoupled_learning_rate should be not None only on first and last pipeline stage.
-            log_string += f' learning rate: {learning_rate:.6E} |'
-            if args.decoupled_lr is not None and (mpu.is_pipeline_first_stage(ignore_virtual=True)
-                                                  or mpu.is_pipeline_last_stage(ignore_virtual=True)):
-                assert decoupled_learning_rate is not None
-                log_string += f' decoupled learning rate: {decoupled_learning_rate:.6E} |'
-            else:
-                assert decoupled_learning_rate is None
-            log_string += f' global batch size: {batch_size:5d} |'
-            for key in total_loss_dict:
-                if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
-                    avg = total_loss_dict[key].item() / float(max(1, total_loss_dict[advanced_iters_key]))
-                    log_string += ' {}: {:.6E} |'.format(key, avg)
-                    total_loss_dict[key] = torch.tensor([0.0], dtype=torch.float, device='cuda')
-            log_string += f' loss scale: {loss_scale:.1f} |'
-            if grad_norm is not None:
-                log_string += f' grad norm: {grad_norm:.3f} |'
-            if num_zeros_in_grad is not None:
-                log_string += f' num zeros: {num_zeros_in_grad} |'
-            if params_norm is not None:
-                log_string += f' params norm: {params_norm:.3f} |'
-            log_string += ' number of skipped iterations: {:3d} |'.format(total_loss_dict[skipped_iters_key])
-            log_string += ' number of nan iterations: {:3d} |'.format(total_loss_dict[nan_iters_key])
-            total_loss_dict[advanced_iters_key] = 0
-            total_loss_dict[skipped_iters_key] = 0
-            total_loss_dict[nan_iters_key] = 0
-            print_rank_last(log_string)
-            if report_memory_flag:
-                # Report memory after optimizer state has been initialized.
-                if torch.distributed.get_rank() == 0:
-                    num_microbatches = get_num_microbatches()
-                    report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
-                report_memory(f'(after {iteration} iterations)')
-                report_memory_flag = False
-            timers.log(timers_to_log, normalizer=args.log_interval)
-
-            if is_master():
-                logs = {}
-                for key in origin_total_loss_dict:
-                    if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
-                        avg = origin_total_loss_dict[key].item() / float(
-                            max(1, origin_total_loss_dict[advanced_iters_key]))
-                        logs[key] = round(avg, 8)
-                if grad_norm is not None:
-                    logs['grad_norm'] = round(grad_norm, 8)
-                if params_norm is not None:
-                    logs['params_norm'] = round(params_norm, 8)
-                logs['learning_rate'] = round(learning_rate, 8)
-                logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
-                if args.log_throughput:
-                    logs['throughput'] = round(throughput, 8)
-                logs['loss_scale'] = round(loss_scale, 8)
-                logs['consumed_samples'] = args.consumed_train_samples
-                logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
-                jsonl_writer.append(logs)
-
-        return report_memory_flag
-
-    training.training_log = training_log
-
-
 def _patch_mla_attention():
     # support thd
+    import megatron.core
     from megatron.core.utils import deprecate_inference_params
     from megatron.core import parallel_state, tensor_parallel
     from megatron.core.transformer.multi_latent_attention import MultiLatentAttention, MLASelfAttention
@@ -320,6 +66,7 @@ def _patch_mla_attention():
         gather_from_tensor_model_parallel_region,
         scatter_to_sequence_parallel_region,
     )
+    megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     # Code borrowed from NVIDIA/Megatron-LM
     def forward(
@@ -365,7 +112,6 @@ def _patch_mla_attention():
         # Adjust key, value for inference
         # ===================================================
         # rotary_pos_emb = None
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if megatron_core_013:
             query, key, value, _, attn_mask_type, _ = self._adjust_key_value_for_inference(
                 inference_context, query, key, value, rotary_pos_emb=None)
@@ -421,7 +167,6 @@ def _patch_mla_attention():
         output, bias = self.linear_proj(core_attn_out)
 
         return output, bias
-        pass
 
     MultiLatentAttention.forward = forward
 
@@ -537,12 +282,7 @@ def _patch_mla_attention():
                 sequence_start = inference_context.sequence_len_offset
                 sequence_end = sequence_start + q_len
                 rotary_pos_emb = rotary_pos_emb[sequence_start:sequence_end]
-            else:
-                # Shorten rotary_pos_emb to the sequence length when inference_params
-                # is not provided. This makes sure we can run forward directly with
-                # any sequence length. During training, the sequence length is always
-                # the full rotary_pos_emb length.
-                rotary_pos_emb = rotary_pos_emb[0:q_len]
+            # Remove the else branch to fix cp.
 
             # [num_tokens, qk_pos_emb_head_dim] -> [num_tokens, 1, qk_pos_emb_head_dim]
             k_pos_emb = torch.unsqueeze(k_pos_emb, -2)
@@ -639,24 +379,26 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_megatron_tokenizer():
+    from megatron.training import global_vars
+
+    def build_tokenizer(args):
+        return 'dummy_tokenizer'
+
+    global_vars.build_tokenizer = build_tokenizer
+
+
 def _patch_peft_ModulesToSaveWrapper():
-    from peft.tuners import tuners_utils
+    if version.parse(peft.__version__) >= version.parse('0.16'):
+        from peft.utils import other as peft_module
+    else:
+        from peft.tuners import tuners_utils as peft_module
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+    OriginModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
 
-    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
-
-        def __init__(self, module_to_save, *args, **kwargs):
-            tp_group = getattr(module_to_save, 'tp_group', None)
-            if tp_group is not None:
-                module_to_save.tp_group = None
-            super().__init__(module_to_save, *args, **kwargs)
-            if tp_group is not None:
-                module_to_save.tp_group = tp_group
-                for module in self.modules_to_save.values():
-                    module.tp_group = tp_group
+    class ModulesToSaveWrapper(OriginModulesToSaveWrapper):
 
         def sharded_state_dict(
                 self,
@@ -665,44 +407,310 @@ def _patch_peft_ModulesToSaveWrapper():
                 metadata: Optional[dict] = None,
         ) -> ShardedStateDict:
             sharded_state_dict = tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
-            if prefix == 'output_layer.':
-                output_layer_extra_state_key = f'{prefix}modules_to_save.default._extra_state'
-
-                # Old GPT checkpoints only stored the output layer weight key. So we remove the
-                # _extra_state key but check that it doesn't contain any data anyway
-                output_extra_state = sharded_state_dict.pop(output_layer_extra_state_key, None)
-                assert not (output_extra_state and output_extra_state.data
-                            ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
+            if prefix in {'output_layer.', 'language_model.output_layer.'}:
+                for k in list(sharded_state_dict.keys()):
+                    if '_extra_state' in k:
+                        # Old GPT checkpoints only stored the output layer weight key. So we remove the
+                        # _extra_state key but check that it doesn't contain any data anyway
+                        output_extra_state = sharded_state_dict.pop(k, None)
+                        assert not (output_extra_state and output_extra_state.data
+                                    ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
                 # fix error
                 if f'{prefix}modules_to_save.default.weight' in sharded_state_dict:
                     sharded_state_dict[f'{prefix}weight'] = sharded_state_dict[
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    peft_module.ModulesToSaveWrapper = ModulesToSaveWrapper
+    peft_module.OriginModulesToSaveWrapper = OriginModulesToSaveWrapper
+
+
+def _patch_TransformerLayer():
+    import megatron.core
+    from megatron.training import get_args
+    from megatron.core.transformer import TransformerLayer
+    _origin_forward = TransformerLayer.forward
+    megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
+    def forward(self, *_args, **kwargs):
+        """
+        Perform a forward pass through the transformer layer.
+
+        This method calls the core computation of a transformer layer, including
+        self-attention, cross-attention (if applicable), and feed-forward operations.
+        """
+        if not megatron_core_013:
+            return _origin_forward(self, *_args, **kwargs)
+        hidden_states, context = self._forward_attention(*_args, **kwargs)
+        args = get_args()
+        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
+        if mlp_padding_free:
+            mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+            hidden_states = hidden_states[mask][:, None]
+        output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
+        if mlp_padding_free:
+            new_output = hidden_states.new_zeros((*mask.shape, output.shape[-1]))
+            new_output[mask] = output.squeeze(1)
+            output = new_output
+        return output, context
+
+    TransformerLayer.forward = forward
+
+
+def _patch_compile_helpers():
+    from megatron.core.datasets import utils
+
+    def compile_helpers():
+        command = ['make', '-C', os.path.abspath(os.path.dirname(utils.__file__))]
+        if subprocess.run(command).returncode != 0:
+            logger.warning('Failed to compile the C++ dataset helper functions')
+
+    utils.compile_helpers = compile_helpers
+
+
+def _patch_flash_attn():
+    # flash_attention_3
+    if is_flash_attn_3_available():
+        import flash_attn_interface
+        sys.modules['flash_attn_3.flash_attn_interface'] = flash_attn_interface
+
+
+def _patch_torch_FileSystemReader():
+    from torch.distributed.checkpoint.filesystem import FileSystemReader
+    from torch.futures import Future
+    _origin_read_data = FileSystemReader.read_data
+    _origin__slice_file = FileSystemReader._slice_file
+    READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '16'))
+
+    @contextmanager
+    def _patch__slice_file(prog_bar):
+
+        def _slice_file(self, *args, **kwargs):
+            prog_bar.update()
+            return _origin__slice_file(self, *args, **kwargs)
+
+        FileSystemReader._slice_file = _slice_file
+        try:
+            yield
+        finally:
+            FileSystemReader._slice_file = _origin__slice_file
+
+    def read_data(self, plan, planner):
+
+        def _worker(plan_shard):
+            _origin_read_data(self, plan_shard, planner)
+
+        prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Loading: ')
+        plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
+        with _patch__slice_file(prog_bar):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
+                futures = []
+                for i in range(READER_MAX_WORKERS):
+                    plan_shard = copy(plan)
+                    plan_shard.items = plan_shards[i]
+                    futures.append(pool.submit(_worker, plan_shard))
+                concurrent.futures.wait(futures)
+        prog_bar.close()
+        fut: Future = Future()
+        fut.set_result(None)
+        return fut
+
+    FileSystemReader.read_data = read_data
+
+
+def _patch_validate_non_overlapping_shards_metadata():
+    # too slow
+    from torch.distributed._shard.sharded_tensor import api
+
+    def validate_non_overlapping_shards_metadata(*args, **kwargs):
+        pass
+
+    api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
+
+
+def _patch_TELinear():
+    from megatron.core.extensions.transformer_engine import TELinear
+
+    def __repr__(self):
+        return (f'{type(self).__name__}(in_features={self.in_features}, '
+                f'out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})')
+
+    TELinear.__repr__ = __repr__
+
+
+def _patch_build_train_valid_test_datasets():
+    from megatron.training import training
+
+    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
+        train_valid_test_num_samples = training.get_train_valid_test_num_samples()
+        return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
+
+    training.build_train_valid_test_datasets = build_train_valid_test_datasets
+
+
+def _patch_mrope():
+    from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
+    from megatron.core import parallel_state
+    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
+                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings import rope_utils
+    from megatron.training import get_args
+
+    # Code borrowed from huggingface/transformers
+    def apply_interleaved_mrope(freqs, mrope_section):
+        """Apply interleaved MRoPE to 3D rotary embeddings.
+        Reorganizes frequency layout from chunked [TTT...HHH...WWW] to
+        interleaved [THTHWHTHW...TT], preserving frequency continuity.
+        args:
+            x: (3, bs, seq_len, head_dim // 2)
+            mrope_section: (3,)
+        returns:
+            x_t: (bs, seq_len, head_dim // 2)
+        """
+        freqs_t = freqs[0]  # just overwrite the first dimension T
+        for dim, offset in enumerate((1, 2), start=1):  # H, W
+            length = mrope_section[dim] * 3
+            idx = slice(offset, length, 3)
+            freqs_t[..., idx] = freqs[dim, ..., idx]
+        return freqs_t
+
+    # Code borrowed from NVIDIA/Megatron-LM
+    def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
+        seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+
+        if self.seq_len_interpolation_factor is not None:
+            seq *= 1 / self.seq_len_interpolation_factor
+
+        # shape (3, bs, dim, 1)
+        inv_freq_expanded = self.inv_freq[None, None, :, None].expand(3, seq.shape[1], -1, 1)
+        # shape (3, bs, 1, seq_length)
+        seq_expanded = seq[:, :, None, :].float()
+        # shape (3, bs, seq_length, dim)
+        freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
+        args = get_args()
+        if args.mrope_interleaved:
+            freqs = apply_interleaved_mrope(freqs, mrope_section)
+            emb = torch.cat((freqs, freqs), dim=-1)
+        else:
+            # first part even vector components, second part odd vector components,
+            #  2 * dim in dimension size
+            if not self.rotary_interleaved:
+                emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+            else:
+                bs = freqs.shape[1]
+                emb = torch.stack((freqs.reshape(3, bs, -1, 1), freqs.reshape(3, bs, -1, 1)),
+                                  dim=-1).view(3, bs, freqs.shape[2], -1)
+
+            # generate freqs with mrope_section
+            # shape (bs, seq_length, 2 * dim)
+            mrope_section = mrope_section * 2
+            emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
+
+        # shape (seq_length, bs, 1, 2 * dim)
+        emb = emb[..., None, :].transpose(0, 1).contiguous()
+        if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
+            # slice rotary_pos_emb along sequence dimension and select the parition of the current
+            # CP rank
+            emb = get_pos_emb_on_this_cp_rank(emb, 0, parallel_state.get_context_parallel_group())
+        return emb
+
+    MultimodalRotaryEmbedding.forward = forward
+    _origin_apply_rotary_pos_emb_thd = rope_utils._apply_rotary_pos_emb_thd
+
+    def _apply_rotary_pos_emb_thd(
+        t: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        freqs: torch.Tensor,
+        rotary_interleaved: bool = False,
+        multi_latent_attention: bool = False,
+        mscale: float = 1.0,
+        cp_group: torch.distributed.ProcessGroup = None,
+    ) -> torch.Tensor:
+        """A baseline implementation of applying RoPE for `thd` format.
+
+        Args:
+            t (Tensor): Input tensor T is of shape [t, h, d]
+            cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
+            with shape [b + 1] and dtype torch.int32.
+            freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
+            cp_group (torch.distributed.ProcessGroup): The context parallel group
+
+        Returns:
+            Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
+        """
+        args = get_args()
+        cu_seqlens_for_batched = cu_seqlens
+        use_batched_mrope = False
+        if cp_group is not None:
+            cp_size = cp_group.size()
+            cu_seqlens_for_batched = cu_seqlens // cp_size
+            use_batched_mrope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
+        if args.position_embedding_type != 'mrope' and not use_batched_mrope:
+            logger.warning_once('Using non-batched RoPE, which may affect performance.')
+            return _origin_apply_rotary_pos_emb_thd(
+                t,
+                cu_seqlens_for_batched,
+                freqs,
+                rotary_interleaved=rotary_interleaved,
+                multi_latent_attention=multi_latent_attention,
+                mscale=mscale,
+                cp_group=cp_group,
+            )
+
+        if cp_group is None:
+            raise ValueError('cp_group must be provided for THD format RoPE')
+
+        return _apply_rotary_pos_emb_bshd(
+            t.unsqueeze(1),
+            freqs,
+            rotary_interleaved=rotary_interleaved,
+            multi_latent_attention=multi_latent_attention,
+            mscale=mscale,
+        ).squeeze(1)
+
+    rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
 def _patch_megatron():
+    logging_level = logging.root.level
+    _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
+    _patch_TransformerLayer()
+    _patch_compile_helpers()
+    _patch_build_train_valid_test_datasets()
+    _patch_mrope()
+    _patch_megatron_tokenizer()
+    logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
+    try:
+        _patch_torch_FileSystemReader()
+        logger.info('Patch FileSystemReader successfully applied.')
+    except Exception:
+        pass
+    try:
+        _patch_validate_non_overlapping_shards_metadata()
+    except Exception:
+        logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
+        pass
     try:
         _patch_peft_BaseTuner()
         _patch_peft_ModulesToSaveWrapper()
         logger.info('Patch peft successfully applied.')
     except Exception:
         pass
-    try:
-        _patch_training_log()
-        logger.info('Patch training_log successfully applied.')
-    except Exception:
-        pass
+
+    import megatron.core
+    logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
 
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
+        # TODO: Synchronization issues may occur in DDP scenarios
+        # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
             'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
     with safe_ddp_context(hash_id='megatron-lm'):

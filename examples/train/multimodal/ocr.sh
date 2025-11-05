@@ -4,6 +4,7 @@ MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
@@ -20,7 +21,7 @@ swift sft \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --max_length 2048 \
+    --max_length 4096 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4

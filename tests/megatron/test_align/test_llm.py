@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 def _test_model(model_id, **kwargs):
     from swift.llm import export_main, ExportArguments
-    if model_id.endswith('mcore'):
+    if model_id.endswith('mcore') or 'megatron_output' in model_id and 'hf' not in model_id:
         export_main(
             ExportArguments(
                 mcore_model=model_id,
@@ -123,6 +123,18 @@ def test_ernie():
     _test_model('PaddlePaddle/ERNIE-4.5-21B-A3B-PT')
 
 
+def test_glm4_5():
+    _test_model('ZhipuAI/GLM-4.5-Air')
+
+
+def test_qwen3_next():
+    _test_model('Qwen/Qwen3-Next-80B-A3B-Instruct')
+
+
+def test_tongyi_deepresearch():
+    _test_model('iic/Tongyi-DeepResearch-30B-A3B')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -146,4 +158,8 @@ if __name__ == '__main__':
     # test_dots()
     # test_kimi_dev()
     # test_hunyuan()
-    test_ernie()
+    # test_ernie()
+    # test_glm4_5()
+    # test_qwen3_next()
+    # test_ernie_thinking()
+    test_tongyi_deepresearch()

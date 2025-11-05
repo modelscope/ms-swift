@@ -5,6 +5,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
     --dataset AI-ModelScope/chartqa_digit_r1v_format \
+    --load_from_cache_file true \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \

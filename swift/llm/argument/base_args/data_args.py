@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
 from swift.llm import DATASET_MAPPING, register_dataset_info
-from swift.utils import get_logger
+from swift.utils import get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -27,15 +27,13 @@ class DataArguments:
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
-    dataset: List[str] = field(
-        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(
-        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    dataset: List[str] = field(default_factory=list)
+    val_dataset: List[str] = field(default_factory=list)
     split_dataset_ratio: float = 0.
 
     data_seed: int = 42
     dataset_num_proc: int = 1
-    load_from_cache_file: bool = True
+    load_from_cache_file: bool = False
     dataset_shuffle: bool = True
     val_dataset_shuffle: bool = False
     streaming: bool = False
@@ -61,7 +59,7 @@ class DataArguments:
             register_dataset_info(path)
 
     def __post_init__(self):
-        self.columns = self.parse_to_dict(self.columns)
+        self.columns = json_parse_to_dict(self.columns)
         if len(self.val_dataset) > 0 or self.streaming and self.split_dataset_ratio > 0:
             self.split_dataset_ratio = 0.
             if len(self.val_dataset) > 0:

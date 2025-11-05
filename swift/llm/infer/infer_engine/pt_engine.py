@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import inspect
+import os
 import pickle
 import time
 from copy import deepcopy
@@ -11,6 +12,8 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
+import torch.nn.functional as F
+from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
@@ -52,26 +55,30 @@ class PtEngine(InferEngine):
             hub_token: Optional[str] = None,
             load_model: bool = True,
             # model kwargs
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+            attn_impl: Optional[str] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
+            task_type: Optional[str] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
             **kwargs):
+        download_model = kwargs.pop('download_model', True)
         self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,
             model_type=model_type,
-            download_model=True,
+            download_model=download_model,
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
             device_map=device_map,
             quantization_config=quantization_config,
             attn_impl=attn_impl,
+            task_type=task_type,
             model_kwargs=model_kwargs,
             **kwargs)
+        self.reranker_use_activation = kwargs.pop('reranker_use_activation', True)
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
             adapters = [adapters]
@@ -83,7 +90,7 @@ class PtEngine(InferEngine):
     def _post_init(self, template=None):
         super()._post_init(template)
         self.engine = self.model  # dummy
-        self.generation_config = self.model.generation_config
+        self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
         self._task_pool = {}
         self._task_thread = None
@@ -156,7 +163,6 @@ class PtEngine(InferEngine):
         generation_config.return_dict_in_generate = True
         if request_config.logprobs:
             generation_config.output_logits = True
-        generation_config.top_logprobs = request_config.top_logprobs
         generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
@@ -198,12 +204,8 @@ class PtEngine(InferEngine):
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 
-    def _infer_stream(self,
-                      template: Template,
-                      inputs: Dict[str, Any],
-                      *,
-                      generation_config: GenerationConfig,
-                      adapter_request: Optional[AdapterRequest] = None,
+    def _infer_stream(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+                      adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
         if generation_config.num_beams != 1:
@@ -256,7 +258,7 @@ class PtEngine(InferEngine):
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
-                                          generation_config.top_logprobs)
+                                          request_config.top_logprobs)
 
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -279,15 +281,14 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
-                                              generation_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:], request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(template.decode(generate_ids), template)
-                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens,
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
 
                 choices = [
@@ -314,13 +315,10 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
-    def _infer_forward(self,
-                       template: Template,
-                       inputs: Dict[str, Any],
-                       adapter_request: Optional[AdapterRequest] = None,
-                       **kwargs):
+    def _infer_forward(self, template: Template, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
+                       request_config: RequestConfig, **kwargs):
         call_kwargs = {}
-        top_logprobs = getattr(kwargs.get('generation_config'), 'top_logprobs', None) or 20
+        top_logprobs = request_config.top_logprobs or 20
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
@@ -332,21 +330,51 @@ class PtEngine(InferEngine):
         elif 'last_hidden_state' in output:
             # embeddings
             logits = output['last_hidden_state']
-        if template.mode == 'seq_cls':
+        else:
+            raise NotImplementedError('Only support `logits` or `hidden_state` in output.')
+
+        if template.task_type == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
-        elif template.mode == 'prm':
+        elif template.task_type == 'prm':
             preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
-        elif template.mode == 'embedding':
+        elif template.task_type == 'embedding':
             preds = logits
             logprobs = [None] * len(preds)
+        elif template.task_type in ('reranker', 'generative_reranker'):
+            if template.task_type == 'generative_reranker':
+                # Qwen3-reranker like
+                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+                token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
+                token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
+                batch_scores = logits[:, -1, :]
+                true_vector = batch_scores[:, token_true_id]
+                false_vector = batch_scores[:, token_false_id]
+                batch_scores = torch.stack([false_vector, true_vector], dim=1)
+                batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
+                preds = batch_scores[:, 1].exp()
+            else:
+                preds = logits
+                if self.reranker_use_activation:
+                    preds = F.sigmoid(preds)
+            preds = preds.tolist()
+            if not isinstance(preds[0], list):
+                preds = [preds]
+            logprobs = [None] * len(preds)
         else:
-            raise ValueError(f'Unsupported mode: {template.mode}')
+            raise ValueError(f'Unsupported task_type: {template.task_type}')
 
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
-            if template.mode != 'embedding':
+            if template.task_type == 'embedding':
+                res.append(
+                    EmbeddingResponse(
+                        model=self.model_name,
+                        usage=usage_info,
+                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
+            else:
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
@@ -355,22 +383,11 @@ class PtEngine(InferEngine):
                         logprobs=logprobs[i])
                 ]
                 res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
-            else:
-                res.append(
-                    EmbeddingResponse(
-                        model=self.model_name,
-                        usage=usage_info,
-                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
-
         return res
 
-    def _infer_full(self,
-                    template: Template,
-                    inputs: Dict[str, Any],
-                    *,
-                    generation_config: GenerationConfig,
-                    adapter_request: Optional[AdapterRequest] = None,
-                    template_inputs=None) -> List[ChatCompletionResponse]:
+    def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+                    adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
+                    template_inputs) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
@@ -384,7 +401,7 @@ class PtEngine(InferEngine):
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         template.debug_logger({'generate_ids': batched_generate_ids})  # debug
         batched_logprobs = self.preprocess_logits(
-            output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
+            output.get('logits'), batched_generate_ids, request_config.top_logprobs)
 
         res = []
         num_return_sequences = generation_config.num_return_sequences
@@ -404,18 +421,36 @@ class PtEngine(InferEngine):
                         logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
                     ]
 
-                logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
-                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response, template)
+                token_ids = template.skip_stop_tokens(generate_ids) if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,
                         message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                         finish_reason=finish_reason,
-                        logprobs=logprobs))
-            res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
+                        logprobs=logprobs,
+                        token_ids=token_ids))
+            prompt_token_ids = None
+            images_size = None
+            if request_config.return_details:
+                if 'input_ids' in inputs:
+                    non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()
+                    if non_pad_indices.numel() > 0:
+                        idx = non_pad_indices.min().item()
+                        prompt_token_ids = inputs['input_ids'][i][idx:].tolist()
+                if all(isinstance(image, Image.Image) for image in template_inputs[i].images):
+                    images_size = [image.size for image in template_inputs[i].images]
+            res.append(
+                ChatCompletionResponse(
+                    model=self.model_name,
+                    choices=choices,
+                    usage=usage_info,
+                    prompt_token_ids=prompt_token_ids,
+                    images_size=images_size))
         return res
 
     async def infer_async(
@@ -453,12 +488,6 @@ class PtEngine(InferEngine):
         else:
             return await queue.get()
 
-    @staticmethod
-    def _add_error_list(outputs, error_list):
-        for i, error in error_list:
-            outputs.insert(i, error)
-        return outputs
-
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()
     def _infer(
@@ -477,7 +506,6 @@ class PtEngine(InferEngine):
         if template.use_model:
             template.model = self.model
 
-        generation_config = None
         if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
 
@@ -501,7 +529,8 @@ class PtEngine(InferEngine):
                 'inputs': inputs,
                 'generation_config': generation_config,
                 'adapter_request': adapter_request,
-                'template_inputs': template_inputs
+                'request_config': request_config,
+                'template_inputs': template_inputs,
             }
             if pre_infer_hook:
                 kwargs = pre_infer_hook(kwargs)
@@ -519,8 +548,9 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm',
-                                                                      'embedding') else self._infer_full
+                infer_func = self._infer_forward if template.task_type in {
+                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
+                } else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []
@@ -562,5 +592,6 @@ class PtEngine(InferEngine):
                 infer_requests_samples, request_config, template=template, adapter_request=adapter_request)
             i += max_batch_size
             prog_bar.update(len(infer_requests_samples))
+        prog_bar.close()
         self._update_metrics(res, metrics)
         return res

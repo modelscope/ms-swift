@@ -574,7 +574,7 @@
     {
         "ms_dataset_id": "ZhipuAI/LongWriter-6k",
         "tags": ["long", "chat", "sft", "🔥"],
-        "hf_dataset_id": "THUDM/LongWriter-6k"
+        "hf_dataset_id": "zai-org/LongWriter-6k"
     },
     {
         "ms_dataset_id": "swift/longwriter-6k-filtered",
@@ -716,5 +716,13 @@
             "prompt": "messages"
         },
         "tags": ["docqa", "rl", "long-sequence"]
+    },
+    {
+        "ms_dataset_id": "swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT",
+        "tags": ["🔥", "distill", "sft"]
+    },
+    {
+        "ms_dataset_id": "swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT",
+        "tags": ["🔥", "distill", "sft", "cot", "r1", "thinking"]
     }
 ]

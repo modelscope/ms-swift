@@ -37,10 +37,11 @@ SWIFT supports customizing the loss function through plugins. If this feature is
 For example, adding the following code in `plugin/loss.py`:
 
 ```python
-@register_loss_func("custom_loss")
-def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     # Write your own loss calculation here
     return loss
+
+loss_mapping['custom_loss'] = custom_loss_func
 ```
 
 It is important to note that the loss function is strongly related to the training task. Currently, loss customization supports PT and SFT tasks. For human alignment tasks (e.g., DPO, PPO) or classification tasks (seq_cls), loss customization through plugins is not supported.
@@ -136,7 +137,7 @@ class IA3(Tuner):
 
     @staticmethod
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
-        model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
+        model_arch: ModelKeys = model.model_meta.model_arch
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
         return get_peft_model(model, ia3_config)

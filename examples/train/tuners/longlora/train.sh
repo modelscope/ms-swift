@@ -3,6 +3,7 @@ swift sft \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
     --train_type longlora \
     --dataset 'AI-ModelScope/LongAlpaca-12k#1000' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 1 \
     --learning_rate 1e-4 \

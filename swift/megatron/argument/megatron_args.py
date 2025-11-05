@@ -9,27 +9,55 @@ import json
 import torch
 from transformers.utils.versions import require_version
 
-from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_logger
+from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
+    rlhf_type: Literal['dpo', 'kto', 'rm'] = None
     ref_load: Optional[str] = None
+    ref_adapter_load: Optional[str] = None
 
     beta: float = 0.1
-    rpo_alpha: float = 1.
+    rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
-    loss_type: str = 'sigmoid'
+    loss_type: Optional[str] = None
+
+    # kto
+    desirable_weight: float = 1.
+    undesirable_weight: float = 1.
+    calculate_KL: Optional[bool] = None
+
+    # rm
+    center_rewards_coefficient: Optional[float] = None
+
+    def _init_kto(self):
+        if self.calculate_KL is None:
+            # Not all losses require a KL calculation
+            self.calculate_KL = True
+            if self.loss_type in ['apo_zero_unpaired']:
+                self.calculate_KL = False
+
+    def __post_init__(self):
+        if self.rlhf_type is None:
+            return
+        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid'}
+        if self.loss_type is None:
+            self.loss_type = default_loss_type.get(self.rlhf_type)
+        if self.rlhf_type == 'kto':
+            self._init_kto()
 
 
 @dataclass
 class MegatronTunerMixin:
     train_type: Literal['lora', 'full'] = 'full'
+    freeze_llm: bool = False
+    freeze_vit: bool = True
+    freeze_aligner: bool = True
     # full
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_parameters_regex: Optional[str] = None
@@ -53,21 +81,8 @@ class MegatronTunerMixin:
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
-
-        if self.adapter_load:
-            args_path = os.path.join(self.adapter_load, 'args.json')
-            if os.path.exists(args_path):
-                with open(args_path, 'r', encoding='utf-8') as f:
-                    old_args = json.load(f)
-                tuner_keys = list(f.name for f in fields(MegatronTunerMixin))
-                for key in tuner_keys:
-                    old_value = old_args.get(key)
-                    if old_value is not None:
-                        setattr(self, key, old_value)
-                if self.adapter_load is not None and hasattr(self, 'load'):
-                    old_value = old_args.get('load')
-                    if self.load is None and old_value is not None:
-                        self.load = old_value
+        if self.target_regex:
+            self.target_modules = self.target_regex
 
 
 @dataclass
@@ -76,16 +91,70 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
+    padding_free: bool = True
+    mlp_padding_free: bool = False
+    # mcore-bridge
+    load_safetensors: bool = False
+    save_safetensors: bool = False
+    model: Optional[str] = None
+    adapters: List[str] = field(default_factory=list)
+    ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
+    use_hf: bool = False
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
+    merge_lora: Optional[bool] = None
+    max_shard_size: str = '5GB'
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
 
     architectures: Optional[str] = None
+    llm_architectures: Optional[str] = None
     max_epochs: Optional[int] = None
+    enable_dft_loss: bool = False
+    enable_channel_loss: bool = False
+    task_type: Literal['causal_lm', 'seq_cls'] = None
+    num_labels: Optional[int] = None
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
+
+    # visual
+    vit_gradient_checkpointing: bool = True
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    # qwen3_next
+    linear_num_value_heads: Optional[int] = None
+    linear_num_key_heads: Optional[int] = None
+    linear_key_head_dim: Optional[int] = None
+    linear_value_head_dim: Optional[int] = None
+    linear_conv_kernel_dim: Optional[int] = None
+    layer_types: Optional[List[str]] = None
+    # qwen3_vl, qwen3_omni
+    mrope_interleaved: Optional[bool] = None
+
+    @staticmethod
+    def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
+        res = {}
+        if ckpt_dir is None:
+            return res
+        args_path = os.path.join(ckpt_dir, 'args.json')
+        if os.path.exists(args_path):
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            keys = list(f.name for f in fields(MegatronTunerMixin))
+            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']
+            for key in keys:
+                old_value = old_args.get(key)
+                if old_value is not None:
+                    res[key] = old_value
+            res.pop('adapter_load', None)
+            if res['train_type'] != 'lora':
+                res.pop('load', None)
+        return res
 
 
 @dataclass
@@ -109,9 +178,9 @@ class MegatronArguments(ExtraMegatronArguments):
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
-    calculate_per_token_loss: bool = True
+    calculate_per_token_loss: Optional[bool] = None
     use_flash_attn: bool = False
-    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
+    attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
@@ -144,6 +213,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # checkpoint
     save: Optional[str] = None
     save_interval: int = 500
+    save_retain_interval: Optional[int] = None
     no_save_optim: bool = False
     no_save_rng: bool = False
     load: Optional[str] = None
@@ -154,9 +224,14 @@ class MegatronArguments(ExtraMegatronArguments):
     no_initialization: bool = True
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
+    async_save: bool = False
+    use_persistent_ckpt_worker: bool = False
+    ckpt_fully_parallel_load: bool = False
+    ckpt_assume_constant_structure: bool = False
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
+    local_rank: Optional[int] = None
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
@@ -168,6 +243,10 @@ class MegatronArguments(ExtraMegatronArguments):
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
     distributed_timeout_minutes: int = 300000
+    num_layers_per_virtual_pipeline_stage: Optional[int] = None
+    num_virtual_stages_per_pipeline_rank: Optional[int] = None
+    microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
+    pipeline_model_parallel_layout: Optional[str] = None
 
     # model
     num_layers: Optional[int] = None
@@ -177,7 +256,8 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
-    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
+    position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
+    mrope_section: Optional[List[int]] = None
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     rotary_interleaved: Optional[bool] = None
@@ -209,15 +289,17 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
-    moe_grouped_gemm: bool = False
+    moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
-    moe_aux_loss_coeff: Optional[float] = None
+    moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
-    moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
     moe_layer_recompute: bool = False
+    moe_expert_capacity_factor: Optional[float] = None
+    moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
     # mla
@@ -262,12 +344,15 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
-    no_create_attention_mask_in_dataloader: bool = True
 
     # extra_args for megatron
-    extra_megatron_kwargs: Optional[Union[dict, str]] = None
+    megatron_extra_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
+        if self.mlp_padding_free and self.sequence_parallel:
+            raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.local_rank is None:
+            self.local_rank = get_dist_setting()[1]
         if self.lr is None:
             if self.train_type == 'full':
                 self.lr = 1e-5
@@ -301,6 +386,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_head_dim = 128
         if self.qk_pos_emb_head_dim is None:
             self.qk_pos_emb_head_dim = 64
+        if self.task_type is None:
+            self.task_type = 'causal_lm'
+        if self.calculate_per_token_loss is None:
+            self.calculate_per_token_loss = self.task_type == 'causal_lm'
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
@@ -310,14 +399,14 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_topk = 2
         if self.moe_router_pre_softmax is None:
             self.moe_router_pre_softmax = False
-        if self.moe_aux_loss_coeff is None:
-            self.moe_aux_loss_coeff = 0.
         if self.moe_router_load_balancing_type is None:
             self.moe_router_load_balancing_type = 'aux_loss'
         if self.moe_router_enable_expert_bias is None:
             self.moe_router_enable_expert_bias = False
         if self.moe_layer_freq is None:
             self.moe_layer_freq = '1'
+        if self.mrope_interleaved is None:
+            self.mrope_interleaved = False
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -349,12 +438,14 @@ class MegatronArguments(ExtraMegatronArguments):
         parallel_state.create_group = create_group
 
     def __post_init__(self):
+        require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.train_type == 'lora':
-            require_version('peft>=0.12')
+            if self.num_experts is not None:
+                require_version('peft>=0.15')
+            else:
+                require_version('peft>=0.12')
+        RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        from swift.llm.argument.base_args.model_args import ModelArguments
-        if self.use_flash_attn or self.attention_backend == 'flash':
-            require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         if hasattr(self, 'ddp_timeout'):
@@ -362,20 +453,29 @@ class MegatronArguments(ExtraMegatronArguments):
         self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
-            self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+            self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+        if self.gradient_checkpointing_kwargs is not None:
+            self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
-        if self.tensorboard_dir is None and self.save is not None:
-            self.tensorboard_dir = f'{self.save}/runs'
+        if self.position_embedding_type is None:
+            self.position_embedding_type = 'rope'
+        if self.merge_lora is None:
+            self.merge_lora = self.save_safetensors
+        if self.adapters or self.adapter_load or self.ref_adapter_load:
+            if self.train_type == 'full':
+                self.train_type = 'lora'
+                logger.info('Setting args.train_type: lora')
+        if self.adapters:
+            self._load_adapter_config()
         self._init_moe()
         self._init_mixed_precision()
 
-        self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
+        self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         self._init_no_rope_fusion()
 
     def _init_no_rope_fusion(self):
@@ -392,10 +492,10 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
-        extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
-        args_dict.update(extra_megatron_kwargs)
+        megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')
+        args_dict.update(megatron_extra_kwargs)
         for k, value in args_dict.items():
-            if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
+            if k not in MegatronArguments.__annotations__ and k not in megatron_extra_kwargs:
                 extra_args[k] = value
                 continue
             if value is None or value is False:
@@ -415,3 +515,22 @@ class MegatronArguments(ExtraMegatronArguments):
         # parameter conflict
         extra_args.pop('loss_scale', None)
         return extra_args
+
+    def _load_adapter_config(self):
+        assert len(self.adapters) == 1, 'Currently only support one adapter'
+        adapter_path = self.adapters[0]
+        adapter_config_path = os.path.join(adapter_path, 'adapter_config.json')
+        adapter_config = {}
+        if os.path.exists(adapter_config_path):
+            with open(adapter_config_path, 'r') as f:
+                adapter_config = json.load(f)
+        mapping = {'r': 'lora_rank', 'bias': 'lora_bias'}
+        for k in ['lora_alpha', 'lora_dropout', 'use_rslora']:
+            mapping[k] = k
+        for k, v in adapter_config.items():
+            if k not in mapping:
+                continue
+            k = mapping[k]
+            if v != getattr(self, k):
+                setattr(self, k, v)
+                logger.info(f'Setting {k}: {v}')

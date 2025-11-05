@@ -26,13 +26,16 @@ pip install autoawq -U
 # The versions of auto_gptq and CUDA are correlated; please choose the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`.
 pip install auto_gptq optimum -U
 
+# For GPTQ v2 quantization:
+pip install gptqmodel optimum -U
+
 # For BNB quantization:
 pip install bitsandbytes -U
 ```
 
 We provide a series of scripts to demonstrate SWIFT's quantization export capabilities:
 
-- Supports [AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh) quantization exports.
+- Supports [AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[GPTQ v2](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq_v2.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh) quantization exports.
 - Multimodal quantization: Supports quantizing multimodal models using GPTQ and AWQ, with limited multimodal models supported by AWQ. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
 - Support for more model series: Supports quantization exports for [BERT](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert) and [Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model).
 - Models exported with SWIFT's quantization support inference acceleration using vllm/sglang/lmdeploy; they also support further SFT/RLHF using QLoRA.

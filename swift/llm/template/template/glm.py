@@ -4,12 +4,14 @@ from typing import Any, Dict, List, Literal, Optional
 
 import torch
 
+from swift.llm import get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import load_batch, load_video_cogvlm2
+from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
+from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -33,13 +35,8 @@ class GLM4Template(Template):
         return response.lstrip('\n')
 
 
-class GLM4_0414Template(GLM4Template):
-
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                message['content'] = message['content'].split('</think>')[-1].strip()
+class GLM4_0414Template(ThinkingTemplate, GLM4Template):
+    pass
 
 
 register_template(
@@ -67,6 +64,11 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
     agent_template: str = 'glm4_0414'
+
+
+@dataclass
+class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
+    agent_template: str = 'glm4_5'
 
 
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
@@ -115,10 +117,16 @@ class GLM4VTemplate(Template):
 class GLM4_1VTemplate(Template):
     begin_of_image_token = 151339
     end_of_image_token = 151340
-    image_token = 151343
     begin_of_video_token = 151341
     end_of_video_token = 151342
-    video_token = 151344
+    placeholder_tokens = ['<|image|>', '<|video|>']
+
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
+        self.image_token = self._tokenize('<|image|>')[0]
+        self.video_token = self._tokenize('<|video|>')[0]
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -226,13 +234,14 @@ class GLM4_1VTemplate(Template):
         encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
-        return res
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # TODO: check video
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        inputs_embeds = model.get_input_embeddings()(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
 
 
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
@@ -241,7 +250,108 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Templa
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
+
+class GLM4_5Template(ThinkingTemplate):
+    no_think_prefix = '<think></think>\n'
+    history_think_prefix = '<think></think>\n'
+
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        for message in inputs.messages:
+            if message['role'] == 'assistant' and isinstance(message['content'],
+                                                             str) and message['content'].endswith('<|observation|>'):
+                message['content'] = message['content'][:-len('<|observation|>')]
+        return super()._jinja_encode(inputs)
+
+
+register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
+
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
+
+
+class GLM4_5VTemplate(GLM4_5Template):
+    placeholder_tokens = ['<|image|>']
+    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+    use_model = True
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<|begin_of_image|><|image|><|end_of_image|>']
+        elif media_type == 'video':
+            return ['<|begin_of_video|><|video|><|end_of_video|>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        for mm_type in ['image', 'video']:
+            mm_token = f'<|{mm_type}|>'
+            mm_token_id = self._tokenize(mm_token)[0]
+
+            idx_list = findall(input_ids, mm_token_id)
+            if idx_list:
+                split_token = self._tokenize('\n')[0]
+                mm_data = getattr(inputs, f'{mm_type}s')
+                if mm_type == 'image':
+                    kwargs = {'images': mm_data}
+                else:
+                    videos, video_metadata = load_video_hf(mm_data)
+                    kwargs = {'videos': [videos], 'video_metadata': [video_metadata]}
+                mm_inputs = self.processor(text='\n'.join([mm_token] * len(mm_data)), return_tensors='pt', **kwargs)
+                splited_tokens = self._split_list(mm_inputs['input_ids'][0].tolist(), split_token)
+                for key in ['input_ids', 'token_type_ids', 'attention_mask']:
+                    mm_inputs.pop(key, None)
+                input_ids, encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                    input_ids, encoded['labels'], encoded['loss_scale'], idx_list, lambda i: splited_tokens[i])
+                encoded.update(mm_inputs)
+        encoded['input_ids'] = input_ids
+        return encoded
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        position_ids = []
+        for r in row:
+            r = r.copy()
+            r['input_ids'] = torch.tensor(r['input_ids'])[None]
+            position_ids.append(self._get_position_ids(r))
+        packed = super().packing_row(row)
+        packed['position_ids'] = torch.concat(position_ids, dim=-1)
+        return packed
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        base_model = self.get_base_model(self._get_model())
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
+        position_ids, _ = base_model.model.get_rope_index(
+            inputs['input_ids'],
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask=attention_mask)
+        return self._concat_text_position_ids(position_ids)
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if not self.padding_free and self.is_training:
+            res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            # https://github.com/huggingface/transformers/pull/40194
+            if text_position_ids.shape[0] == 1:
+                res.update(get_packed_seq_params(text_position_ids))
+        return res
+
+
+register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'

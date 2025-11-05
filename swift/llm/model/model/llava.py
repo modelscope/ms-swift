@@ -5,6 +5,7 @@ from functools import partial, wraps
 from typing import Any, Dict
 
 from transformers import AutoConfig
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
@@ -389,3 +390,32 @@ register_model(
         requires=['transformers>=4.42', 'av'],
         tags=['vision'],
         model_arch=None))
+
+
+def get_model_tokenizer_llava_onevision1_5(model_dir, *args, **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_llavaonevision1_5.LLaVAOneVision1_5_ForConditionalGeneration',
+                                              model_dir)
+    model_cls._no_split_modules = ['LLaVAOneVision1_5_DecoderLayer', 'RiceBlock']
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    model.config.vision_start_token_id = 151652
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llava_onevision1_5,
+        [
+            ModelGroup([
+                Model('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct', 'lmms-lab/LLaVA-OneVision-1.5-4B-Instruct'),
+                Model('lmms-lab/LLaVA-OneVision-1.5-8B-Instruct', 'lmms-lab/LLaVA-OneVision-1.5-8B-Instruct'),
+                Model('lmms-lab/LLaVA-OneVision-1.5-4B-Base', 'lmms-lab/LLaVA-OneVision-1.5-4B-Base'),
+                Model('lmms-lab/LLaVA-OneVision-1.5-8B-Base', 'lmms-lab/LLaVA-OneVision-1.5-8B-Base'),
+            ], ),
+        ],
+        TemplateType.llava_onevision1_5,
+        get_model_tokenizer_llava_onevision1_5,
+        architectures=['LLaVAOneVision1_5_ForConditionalGeneration'],
+        model_arch=ModelArch.llava_onevision1_5,
+        requires=['transformers>=4.53.0', 'qwen_vl_utils'],
+        tags=['vision'],
+    ))

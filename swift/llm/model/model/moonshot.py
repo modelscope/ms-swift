@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone
+from ..patcher import patch_get_input_embeddings, patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 
@@ -18,6 +20,9 @@ register_model(
                 Model('moonshotai/Kimi-K2-Base', 'moonshotai/Kimi-K2-Base'),
                 Model('moonshotai/Kimi-K2-Instruct', 'moonshotai/Kimi-K2-Instruct'),
             ]),
+            ModelGroup([
+                Model('moonshotai/Kimi-K2-Instruct-0905', 'moonshotai/Kimi-K2-Instruct-0905'),
+            ]),
         ],
         TemplateType.moonlight,
         get_model_tokenizer_with_flash_attn,
@@ -27,10 +32,15 @@ register_model(
     ))
 
 
-def get_model_tokenizer_kimi_vl(*args, **kwargs):
-    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+def get_model_tokenizer_kimi_vl(model_dir, *args, **kwargs):
+    KimiVLPreTrainedModel = get_class_from_dynamic_module('modeling_kimi_vl.KimiVLPreTrainedModel', model_dir)
+    try:
+        del KimiVLPreTrainedModel._supports_sdpa
+    except AttributeError:
+        pass
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     if model is not None:
-        patch_output_clone(model.language_model.model.embed_tokens)
+        patch_get_input_embeddings(model.vision_tower, 'patch_embed')
     return model, processor
 
 
@@ -47,6 +57,6 @@ register_model(
         TemplateType.kimi_vl,
         get_model_tokenizer_kimi_vl,
         architectures=['KimiVLForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf,
+        model_arch=ModelArch.llava_hf_legacy,
         requires=['transformers<4.49'],
     ))

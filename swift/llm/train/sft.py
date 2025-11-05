@@ -1,14 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
+from datasets import load_from_disk
 
-from swift.plugin import extra_callbacks, get_loss_func, get_metric
+from swift.llm.dataset.loader import DatasetLoader
+from swift.plugin import extra_callbacks
+from swift.ray import RayHelper
 from swift.trainers import TrainerFactory
-from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
-                         use_torchacc)
+from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
@@ -18,16 +20,26 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
+@RayHelper.worker(group=['default'])
 class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        self._prepare_flash_ckpt()
+
+    @RayHelper.function(group='default')
+    def _prepare_flash_ckpt(self):
+        if self.args.use_flash_ckpt:
+            try:
+                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
+            except ImportError:
+                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
 
     def _prepare_generation_config(self):
         args = self.args
@@ -36,13 +48,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _prepare_model_tokenizer(self):
+    @RayHelper.function(group='default')
+    def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
+        self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(args.sequence_parallel_size)
-        self.model, self.processor = args.get_model_processor()
-
+            sequence_parallel.prepare(
+                args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
+        if self.model is None:
+            return
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
 
@@ -50,12 +65,15 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         self._prepare_generation_config()
 
+    @RayHelper.function(group='default')
     def _prepare_template(self) -> None:
-        template = self.args.get_template(self.processor)
-        if self.args.task_type == 'causal_lm':
-            template.set_mode('train')
+        args = self.args
+        template = args.get_template(self.processor)
+        template.set_mode('train')
         if template.use_model:
             template.model = self.model
+        if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
+            raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
 
     def _get_dataset(self):
@@ -89,11 +107,77 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
             logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
 
+    def _get_cached_dataset(self):
+        args = self.args
+        assert not args.streaming and not args.lazy_tokenize
+        train_datasets, val_datasets = [], []
+        for cached_dataset in args.cached_dataset:
+            train_path = os.path.join(cached_dataset, 'train')
+            val_path = os.path.join(cached_dataset, 'val')
+            train_datasets.append(load_from_disk(train_path))
+            if os.path.exists(val_path):
+                val_datasets.append(load_from_disk(val_path))
+        return train_datasets, val_datasets
+
+    @RayHelper.function(group='default')
+    def _prepare_dataset(self):
+        args = self.args
+        # Defer encoding to the training phase
+        pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
+        if args.cached_dataset:
+            train_datasets, val_datasets = self._get_cached_dataset()
+        else:
+            train_datasets, val_datasets = [], []
+        if args.dataset:
+            train_dataset, val_dataset = self._get_dataset()
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
+            train_datasets.append(train_dataset)
+            val_datasets.append(val_dataset)
+        train_dataset = DatasetLoader._concat_datasets(train_datasets)
+        val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        datasets = [train_dataset, val_dataset]
+        if not pre_process:
+            return datasets
+        datasets = self._post_process_datasets(datasets)
+
+        return datasets
+
+    def _post_process_datasets(self, datasets: List) -> List:
+        args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+
+        template = self.template
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if (args.model_meta.is_multimodal or args.lazy_tokenize) and not args.streaming:
+                dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+            if args.packing:
+                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
+                dataset = packing_dataset_cls(
+                    template,
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
+            elif args.streaming:
+                preprocessor = EncodePreprocessor(template=template)
+                dataset = preprocessor(
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
+            datasets[i] = dataset
+        self._show_dataset(*datasets)
+        return datasets
+
+    @RayHelper.function(group='default')
     def run(self):
         args = self.args
-
-        train_dataset, val_dataset = self._get_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+        train_dataset, val_dataset = self._prepare_dataset()
 
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
@@ -122,20 +206,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
-        args = self.args
-        if args.metric is not None:
-            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
-        elif args.predict_with_generate:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
-        else:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
-            compute_metrics = partial(
-                compute_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-        return {
-            'compute_metrics': compute_metrics,
-            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': get_loss_func(args.loss_type)
-        }
+        return {}
 
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
@@ -155,7 +226,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
         # Visualization
-        if is_master() and not use_torchacc():
+        if is_master():
             if 'tensorboard' in training_args.report_to:
                 images_dir = os.path.join(training_args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
@@ -169,11 +240,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             'best_metric': state.best_metric,
             'global_step': state.global_step,
             'log_history': state.log_history,
-            'memory': trainer.max_memory,
+            'memory': getattr(state, 'max_memory', None),
         })
         if is_master():
             jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')
-            append_to_jsonl(jsonl_path, self.train_msg)
+            append_to_jsonl(jsonl_path, self.train_msg, strict=False)
         return self.train_msg
 
     def train(self, trainer):
@@ -183,8 +254,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
+            if self.args.use_flash_ckpt:
+                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT)
+
         return res
 
+    @RayHelper.function(group='default')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args
@@ -203,72 +278,75 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
-    def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
+        if args.early_stop_interval is not None and args.early_stop_interval > 0:
+            from swift.plugin.callback import EarlyStopCallback
+            self.callbacks.append(EarlyStopCallback(args.early_stop_interval))
+            logger.info('You are using the default early stop callback, this is a implementation of '
+                        'stopping training when the best metric showing no improvement within {} steps, '
+                        'you can write a new implementation in the plugin/callback.py.')
+
+    @staticmethod
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
+        if isinstance(dataset, LazyLLMDataset):
+            dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:
-            length = dataset.packed_dataset.length_list
+            length = dataset.packed_length
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
 
-    def _encode_dataset(self, train_dataset, val_dataset):
+    def _show_dataset(self, train_dataset, val_dataset):
+        args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+        if is_master():
+            inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+            if isinstance(inputs, list):
+                inputs = inputs[0]
+            self.template.print_inputs(inputs)
+        elif hasattr(train_dataset, '__len__'):
+            # Avoid the random mismatch issue in LazyLLMDataset.
+            inputs = train_dataset[0]
+        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
+            val_dataset = None
+        if not args.lazy_tokenize and not args.streaming:
+            self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
+            if val_dataset is not None and not predict_with_generate:
+                self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
+
+    def _encode_dataset(self, train_dataset, val_dataset, pre_process=True):
         template = self.template
         args = self.args
         self._save_val_dataset(val_dataset)
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+
         predict_with_generate = getattr(args, 'predict_with_generate', False)
-        if not is_grpo:
-            if args.packing:
-                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                train_dataset = packing_dataset_cls(
-                    self.template,
-                    train_dataset,
-                    num_proc=args.dataset_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = packing_dataset_cls(
-                        self.template,
-                        val_dataset,
-                        num_proc=args.dataset_num_proc,
-                        strict=args.strict,
-                        load_from_cache_file=args.load_from_cache_file)
-            elif args.lazy_tokenize:
-                train_dataset = LazyLLMDataset(
-                    train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = LazyLLMDataset(
-                        val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            else:
-                preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(
-                    train_dataset,
+        datasets = [train_dataset, val_dataset]
+        if not pre_process:
+            return datasets
+
+        origin_template_model = template.model
+        template.model = None  # Avoid serializing the model.
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if not args.lazy_tokenize and not args.streaming:
+                preprocessor = EncodePreprocessor(template=template, pre_tokenize=args.model_meta.is_multimodal)
+                batch_size = 100 if args.model_meta.is_multimodal else 1000
+                dataset = preprocessor(
+                    dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
-                    strict=args.strict)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(
-                        val_dataset,
-                        num_proc=args.dataset_num_proc,
-                        load_from_cache_file=args.load_from_cache_file,
-                        strict=args.strict)
+                    strict=args.strict,
+                    batch_size=batch_size)
+            datasets[i] = dataset
+        template.model = origin_template_model
 
-            if is_master():
-                inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-                template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-            elif hasattr(train_dataset, '__len__'):
-                # Avoid the random mismatch issue in LazyLLMDataset.
-                inputs = train_dataset[0]
-            if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
-                val_dataset = None
-            if isinstance(train_dataset, (HfDataset, PackingDataset)):
-                self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-                if val_dataset is not None and not predict_with_generate:
-                    self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
-
-        return train_dataset, val_dataset
+        return datasets
 
 
-def sft_main(args: Union[List[str], TrainArguments, None] = None):
+def sft_main(args: Optional[Union[List[str], TrainArguments]] = None):
     return SwiftSft(args).main()

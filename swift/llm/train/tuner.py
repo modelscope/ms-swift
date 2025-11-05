@@ -9,44 +9,81 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, deep_getattr, get_model_arch
+from swift.llm import TrainArguments, deep_getattr
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
-                         get_logger, use_torchacc)
+from swift.utils import activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters, get_logger
 
 logger = get_logger()
 
 
 def apply_liger(model_type: str):
-    from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
-                                           apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
-                                           apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
-                                           apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
-    from swift.llm import ModelType
-    if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
-        apply_liger_kernel_to_llama()
-    elif model_type in (ModelType.mistral):
-        apply_liger_kernel_to_mistral()
-    elif model_type in (ModelType.mixtral):
-        apply_liger_kernel_to_mixtral()
-    elif model_type in (ModelType.gemma, ModelType.gemma2):
-        apply_liger_kernel_to_gemma()
-    elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
-        apply_liger_kernel_to_qwen2()
-    elif model_type in (ModelType.qwen3):
-        apply_liger_kernel_to_qwen3()
-    elif model_type in (ModelType.phi3):
-        apply_liger_kernel_to_phi3()
-    elif model_type in (ModelType.llama3_2_vision):
-        apply_liger_kernel_to_mllama()
-    elif model_type in (ModelType.qwen2_vl):
-        apply_liger_kernel_to_qwen2_vl()
-    elif model_type in (ModelType.qwen2_5_vl):
-        apply_liger_kernel_to_qwen2_5_vl()
-    else:
-        raise ValueError(f'Unsupported liger model_type: {model_type}')
+    try:
+        from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
+                                               apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
+                                               apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                               apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
+                                               apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
+        from swift.llm import ModelType
+        if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
+            apply_liger_kernel_to_llama()
+        elif model_type in (ModelType.mistral):
+            apply_liger_kernel_to_mistral()
+        elif model_type in (ModelType.mixtral):
+            apply_liger_kernel_to_mixtral()
+        elif model_type in (ModelType.gemma, ModelType.gemma2):
+            apply_liger_kernel_to_gemma()
+        elif model_type in (ModelType.gemma3_text):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3_text
+            apply_liger_kernel_to_gemma3_text()
+        elif model_type in (ModelType.gemma3_vision, ModelType.gemma3n):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3
+            apply_liger_kernel_to_gemma3()
+        elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
+            apply_liger_kernel_to_qwen2()
+        elif model_type in (ModelType.qwen3, ModelType.qwen3_guard, ModelType.qwen3_thinking,
+                            ModelType.qwen3_nothinking, ModelType.qwen3_coder):
+            apply_liger_kernel_to_qwen3()
+        elif model_type in (ModelType.qwen3_moe, ModelType.qwen3_moe_thinking, ModelType.qwen3_coder):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_moe
+            apply_liger_kernel_to_qwen3_moe()
+        elif model_type in (ModelType.qwen3_next, ModelType.qwen3_next_thinking):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_next
+            apply_liger_kernel_to_qwen3_next()
+        elif model_type in (ModelType.phi3):
+            apply_liger_kernel_to_phi3()
+        elif model_type in (ModelType.llama3_2_vision):
+            apply_liger_kernel_to_mllama()
+        elif model_type in (ModelType.qwen2_vl):
+            apply_liger_kernel_to_qwen2_vl()
+        elif model_type in (ModelType.qwen2_5_vl, ModelType.qwen3_vl, ModelType.qwen3_moe_vl, ModelType.qvq):
+            apply_liger_kernel_to_qwen2_5_vl()
+        elif model_type in (ModelType.glm4, ModelType.glm4_0414, ModelType.glm4_z1_rumination):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4
+            apply_liger_kernel_to_glm4()
+        elif model_type in (ModelType.glm4v, ModelType.glm4_1v):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v
+            apply_liger_kernel_to_glm4v()
+        elif model_type in (ModelType.glm4_5v):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v_moe
+            apply_liger_kernel_to_glm4v_moe()
+        elif model_type in (ModelType.internvl_hf, ModelType.internvl_gpt_hf):
+            from liger_kernel.transformers import apply_liger_kernel_to_internvl
+            apply_liger_kernel_to_internvl()
+        elif model_type in (ModelType.llama4):
+            from liger_kernel.transformers import apply_liger_kernel_to_llama4
+            apply_liger_kernel_to_llama4()
+        elif model_type in (ModelType.llava1_5_hf, ModelType.llava_llama3_hf, ModelType.pixtral):
+            from liger_kernel.transformers import apply_liger_kernel_to_llava
+            apply_liger_kernel_to_llava()
+        elif model_type in (ModelType.paligemma):
+            from liger_kernel.transformers import apply_liger_kernel_to_paligemma
+            apply_liger_kernel_to_paligemma()
+        else:
+            raise ValueError(f'Unsupported liger model_type: {model_type}')
+    except ImportError:
+        raise ImportError('Please upgrade liger-kernel to apply liger kernel to this model '
+                          'by running `pip install -U liger-kernel`')
 
 
 def get_multimodal_target_regex(
@@ -57,7 +94,7 @@ def get_multimodal_target_regex(
     freeze_aligner: bool = True,
     include_embedding: bool = False,
 ) -> str:
-    model_arch = get_model_arch(model.model_meta.model_arch)
+    model_arch = model.model_meta.model_arch
     modules = []
     if not freeze_llm:
         modules += model_arch.language_model
@@ -80,6 +117,8 @@ def get_multimodal_target_regex(
 
         sub_module = deep_getattr(model, module)
         target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        if not target_modules:
+            continue
         target_modules = [tm for tm in target_modules if tm]
         target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
@@ -174,6 +213,8 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 task_type = 'SEQ_CLS'
             elif task_type == 'GENERATIVE_RERANKER':
                 task_type = 'CAUSAL_LM'
+            if args.target_parameters is not None:
+                lora_kwargs['target_parameters'] = args.target_parameters
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
@@ -242,13 +283,13 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         logger.info(f'adalora_config: {adalora_config}')
     elif args.train_type == 'llamapro':
         llamapro_config = LLaMAProConfig(
-            model_type=model.model_meta.model_arch,
+            model_type=model.model_meta.model_arch.arch_name,
             num_new_blocks=args.llamapro_num_new_blocks,
             num_groups=args.llamapro_num_groups)
         model = Swift.prepare_model(model, llamapro_config)
         logger.info(f'llamapro_config: {llamapro_config}')
     elif args.train_type == 'adapter':
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         mlp_key = model_arch.mlp
         mlp_key = mlp_key.split('.{}.')[1]
         adapter_config = AdapterConfig(
@@ -313,39 +354,17 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         )
         logger.info(f'bone config: {bone_config}')
         model = Swift.prepare_model(model, bone_config)
-    return model
-
-
-def torchacc_resume_from_checkpoint(args, model):
-    import safetensors
-    weights_file = os.path.join(args.resume_from_checkpoint, 'pytorch_model.bin')
-    safe_weights_file = os.path.join(args.resume_from_checkpoint, 'model.safetensors')
-    if os.path.isfile(weights_file) or os.path.isfile(safe_weights_file):
-        if args.save_safetensors and os.path.isfile(safe_weights_file):
-            state_dict = safetensors.torch.load_file(safe_weights_file, device='cpu')
-        else:
-            state_dict = torch.load(weights_file, map_location='cpu')
-        model.load_state_dict(state_dict, False)
-        del state_dict
     else:
-        from transformers.modeling_utils import load_sharded_checkpoint
-        # We load the sharded checkpoint
-        load_result = load_sharded_checkpoint(
-            model, args.resume_from_checkpoint, strict=False, prefer_safe=args.save_safetensors)
-        if len(load_result.missing_keys) != 0:
-            if model._keys_to_ignore_on_save is not None and set(load_result.missing_keys) == set(
-                    model._keys_to_ignore_on_save):
-                model.tie_weights()
-            else:
-                logger.warning(f'There were missing keys in the checkpoint model loaded: {load_result.missing_keys}.')
-        if len(load_result.unexpected_keys) != 0:
-            logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
+        raise ValueError(f'Unknown train_type: {args.train_type}')
+    return model
 
 
 class TunerMixin:
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
+        # transformers >= 4.45.0, apply liger in transformers https://github.com/huggingface/transformers/pull/32860
+        # transformers < 4.45.0, apply liger in here
         if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
@@ -356,15 +375,13 @@ class TunerMixin:
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
                 model.requires_grad_(False)
-            if args.resume_from_checkpoint:
+            if args.resume_from_checkpoint or args.adapters:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
                     tuner = Swift
-                kwargs = {}
-                if use_torchacc():
-                    kwargs = {'adapter_name': 'default'}
-                model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
@@ -385,13 +402,9 @@ class TunerMixin:
             freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
             if args.trainable_parameters or args.trainable_parameters_regex:
                 activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-            if use_torchacc() and args.resume_from_checkpoint:
-                torchacc_resume_from_checkpoint(args, model)
         else:
             raise ValueError(f'args.train_type: {args.train_type}')
 
-        if args.resume_only_model:
-            args.training_args.resume_from_checkpoint = None
         if args.use_galore:
             from swift.trainers.optimizers.galore import GaLoreConfig
             if args.galore_target_modules is None:
@@ -414,9 +427,4 @@ class TunerMixin:
                 queue_size=args.galore_queue_size,
             )
             args.training_args.galore_config = args.galore_config
-
-        if args.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_model(model, template.tokenizer)
-
         return model

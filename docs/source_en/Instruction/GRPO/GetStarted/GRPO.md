@@ -1,20 +1,12 @@
 # GRPO
 
-**Changelog**
-- **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).
-- **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).
-- **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.
-- **2025-05-22** — Swift rollout now supports the `data_parallel_size` parameter.
-- **2025-05-16** - Added ref_model synchronization logic. Refer to the `sync_ref_model` parameter.
-- **2025-05-13** — Refactored GRPOTrainer code for better readability and maintainability. Internal mode now supports vLLM>=0.8.
-- **2025-05-11** — Added support for generative reward models. Custom reward model logic can be implemented via `reward_model_plugin`. For more details, refer to the [documentation](../DeveloperGuide/Reward Model) section.
-- **2025-04-30** — The startup command for the external vLLM server has been changed to `swift rollout`.
-
 GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swift version < 3.5, please refer to the [stable documentation](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md).
 
 [GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.
 
-### GRPO Objective Function
+## Algorithm Overview
+
+GRPO Objective Function is defined as
 $
 {\scriptstyle
 \begin{aligned}
@@ -176,24 +168,24 @@ Use the `swift rollout` command to deploy the vLLM server (currently only suppor
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 2
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 2
 ```
-For more rollout parameters, refer to the [documentation](../../../Instruction/Command-line-parameters.md#vllm-arguments).
+For more rollout parameters, refer to the [vllm arguments](../../../Instruction/Command-line-parameters.md#vllm-arguments) and [rollout arguments](../../../Instruction/Command-line-parameters.md#rollout-arguments)
 
-Note: When set `use_async_engine`, enabling only DP (Data Parallelism) may cause errors. [Related issue](https://github.com/vllm-project/vllm/issues/18567). If errors occur, try enabling both TP (Tensor Parallelism) and DP.
+Note: When set `use_async_engine`, enabling only DP (Data Parallelism) may cause errors. [Related issue](https://github.com/vllm-project/vllm/issues/18567). If errors occur, try enabling both TP (Tensor Parallelism) and DP or upgrading vLLM.
 
 To configure the external vLLM server during training, use the following parameters:
 
@@ -204,6 +196,75 @@ To configure the external vLLM server during training, use the following paramet
 --vllm_server_port <service_port> \
 --vllm_server_timeout <timeout> \
 ```
+
+#### Weight-Sync Acceleration
+Swift 3.10 optimizes weight synchronization, and setting the following parameters can further improve the weight synchronization speed for LoRA training:
+
+```bash
+# rollout(server mode)
+swift rollout \
+    --vllm_enable_lora true \
+    --vllm_max_lora_rank xxx # match the lora_rank in the training script
+    ...
+
+# grpo(colocate mode)
+swift rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --vllm_enable_lora true \
+    ...
+```
+Note: This optimization cannot be used in the following cases:
+
+- Training the ViT layers of multimodal models (freeze_vit set to false)
+- MoE models
+
+For implementation details, please refer to the [PR](https://github.com/modelscope/ms-swift/pull/5773)
+
+## logged metrics
+- completions/mean_length: The average length of generated completions.
+- completions/min_length: The minimum length among generated completions.
+- completions/max_length: The maximum length among generated completions.
+- completions/clipped_ratio: The proportion of completions that were truncated due to length limits.
+- reward/{reward_func_name}/mean: The average reward value for a specific reward function.
+- reward/{reward_func_name}/std: The standard deviation of the reward for a specific reward function.
+> Note: These two metrics are calculated across all completions.
+- reward: The overall average reward after applying reward_weights.
+- reward_std: The standard deviation of the overall reward within each batch after applying reward_weights.
+> Note: These two metrics are first computed within each group and then averaged (for mean/std) across groups.
+- frac_reward_zero_std: The proportion of samples in a generation batch where the reward standard deviation is zero, meaning there is almost no diversity in answers for that prompt (i.e., the rewards of all completions are same).
+- kl: The average KL divergence between the model and the reference model on completions. This is logged only if beta is nonzero.
+- clip_ratio/region_mean: The average proportion of tokens clipped by the CLIP operator across different sentences.
+- clip_ratio/low_mean: The average proportion of tokens clipped by the lower CLIP bound across different sentences.
+- clip_ratio/low_min: The minimum proportion of tokens clipped by the lower CLIP bound across different sentences.
+- clip_ratio/high_mean: The average proportion of tokens clipped by the upper CLIP bound across different sentences.
+- clip_ratio/high_max: The maximum proportion of tokens clipped by the upper CLIP bound across different sentences.
+> Note: If `overlong_filter` is enabled, the kl and clip_ratio metrics will exclude overlength samples.
+
+If the `log_entropy` parameter is set, additional entropy-related metrics will be logged, including:
+- entropy/mean: the average entropy across different sentences
+- entropy/max: the maximum entropy among different sentences
+- entropy/min: the minimum entropy among different sentences
+> Note: Here, sentence entropy refers to the mean entropy of tokens in each completion.
+
+If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
+- entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.
+
+If `log_completions` is set, the training dynamics will be saved in the output directory, including:
+- step: The training step at the time of logging.
+- prompt: The model input.
+- completion: The model's sampled answer.
+- {reward_func_name}: The specific reward(s).
+- entropy: The average token entropy (recorded if `log_entropy` is set).
+
+Setting `report_to wandb/swanlab` will send training dynamics table to the respective platform.
+
+If you want to log extra columns in the Table, populate the `metrics_to_gather` dictionary inside `GRPOTrainer._generate_and_score_completions`.
+
+The trainer automatically detects and logs the following keys:
+
+- image: image inputs for vision models(wandb only).
+- solution: the solution column from the dataset.
 
 ## FAQ
 
@@ -297,3 +358,13 @@ In GRPO training, we can configure mini-batch updates in the following two ways:
    gradient_accumulation_steps = 8
 
    The results from one rollout will be split into two mini-batch updates.
+
+**8. Difference between swift deploy and swift rollout**
+
+- swift deploy is primarily used for model deployment and inference. It supports various engines such as PT, vLLM, and SGLang, and is compatible with streaming inference as well as the OpenAI API format.
+
+- swift rollout, on the other hand, is dedicated to GRPO rollout acceleration. Currently, it only supports the vLLM engine and comes with built-in automatic weight synchronization.
+
+**9. How to disable the KL loss term**
+
+Set the parameter `--beta 0` to disable KL loss calculation. The reference model (ref model) will not be loaded in this case.

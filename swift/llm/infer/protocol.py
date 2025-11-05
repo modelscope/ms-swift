@@ -10,8 +10,10 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
+from swift.trainers.rlhf_trainer.utils import FlattenedTensorMetadata
+from swift.tuners.lora import LoraConfig
 from ..template import InferRequest
 from ..utils import Messages, Tool
 
@@ -63,6 +65,8 @@ class RequestConfig:
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
     length_penalty: float = 1.
+    # Return token_ids additionally (non-stream)
+    return_details: bool = False
 
     def __post_init__(self):
         if self.stop is None:
@@ -263,6 +267,7 @@ class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: Union[str, List[Dict[str, Any]], int, float]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
+    reasoning_content: Optional[str] = None
 
 
 @dataclass
@@ -271,6 +276,7 @@ class ChatCompletionResponseChoice:
     message: ChatMessage
     finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    token_ids: Optional[List[int]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseChoice':
         self = deepcopy(self)
@@ -296,11 +302,6 @@ class EmbeddingResponse:
 
 
 @dataclass
-class RolloutResponseChoice(ChatCompletionResponseChoice):
-    messages: Optional[Messages] = None
-
-
-@dataclass
 class CompletionResponseChoice:
     index: int
     text: str
@@ -311,17 +312,77 @@ class CompletionResponseChoice:
 @dataclass
 class ChatCompletionResponse:
     model: str
-    choices: List[Union[ChatCompletionResponseChoice, RolloutResponseChoice]]
+    choices: List[ChatCompletionResponseChoice]
     usage: UsageInfo
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
+    prompt_token_ids: Optional[List[int]] = None
+    images_size: Optional[List[Tuple[int, int]]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
+
+
+class RolloutOutput(BaseModel):
+    """
+    Output structure for rollout.
+
+    Attributes:
+        response (ChatCompletionResponse):
+            The model's response
+
+        messages (Optional[Messages]):
+            (Optional) Conversation history for the final rollout; required for multi-turn scenarios.
+            NOTE:
+                - If provided, this messages sequence will overwrite the original messages.
+                - If not provided, 'response' will be appended as the latest turn in the original messages.
+                - For multi-turn training, you need to manually return the updated messages, including the full history.
+                - The messages should include the latest assistant response as the final message.
+
+        response_token_ids (Optional[List[List[int]]]):
+            (Optional) Token IDs generated at each rollout turn.
+            If provided, the training process will skip tokenizing the response.
+
+        response_loss_mask (Optional[List[List[int]]]):
+            (Optional) Loss masks corresponding to each rollout turn.
+            If provided, the training process will skip computing loss masks for the response (as controlled by the `loss_scale` parameter). # noqa
+
+        rollout_infos (Dict[str, Any]):
+            (Optional) Additional rollout information. This must be JSON-serializable.
+    """
+    response: ChatCompletionResponse
+    # multi turn
+    messages: Optional[Messages] = None
+    response_token_ids: List[List[int]] = Field(default_factory=list)
+    response_loss_mask: List[List[int]] = Field(default_factory=list)
+    rollout_infos: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('response_token_ids', 'response_loss_mask', mode='before')
+    @classmethod
+    def _wrap_flat_list(cls, v):
+        if isinstance(v, list) and v and isinstance(v[0], int):
+            return [v]
+        return v
+
+    def model_post_init(self, __context):
+        # Ensure multimodal data in rollout_infos is serializable (e.g., images to base64)
+        super().model_post_init(__context)
+        self.mminfo_to_serializable()
+
+    def mminfo_to_serializable(self):
+        mm_keys = ['images', 'audios', 'videos']
+
+        for key, values in self.rollout_infos.items():
+            if key in mm_keys:
+                if not isinstance(values, list):
+                    values = [values]
+                for i, value in enumerate(values):
+                    values[i] = MultiModalRequestMixin.to_base64(value)
+                self.rollout_infos[key] = values
 
 
 @dataclass
@@ -339,6 +400,7 @@ class DeltaMessage:
     role: Literal['system', 'user', 'assistant', None] = None
     content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
+    reasoning_content: Optional[str] = None
 
 
 @dataclass
@@ -392,9 +454,20 @@ class InitCommunicatorRequest(BaseModel):
     host: str
     port: int
     world_size: int
+    client_device_uuid: Optional[str] = None
 
 
 class UpdateWeightsRequest(BaseModel):
     name: str
     dtype: str
     shape: list[int]
+
+
+class UpdateFlattenedAdapterRequest(BaseModel):
+    lora_int_id: int
+    peft_config: LoraConfig
+    metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateFlattenedParamsRequest(BaseModel):
+    metadatas: List[FlattenedTensorMetadata]

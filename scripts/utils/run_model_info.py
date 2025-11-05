@@ -22,7 +22,7 @@ def get_cache_mapping(fpath):
             continue
         items = text.split('|')
         if len(items) < 6:
-            break
+            continue
         cache_mapping[items[1]] = items[5]
     return cache_mapping
 
@@ -39,7 +39,8 @@ def get_model_info_table():
     ] * 2
     res_llm: List[Any] = []
     res_mllm: List[Any] = []
-    mg_count = 0
+    mg_count_llm = 0
+    mg_count_mllm = 0
     for template in TemplateType.get_template_name_list():
         assert template in TEMPLATE_MAPPING
 
@@ -71,13 +72,17 @@ def get_model_info_table():
                 else:
                     support_megatron = cache_mapping.get(ms_model_id, '&#x2718;')
                 if support_megatron == '&#x2714;':
-                    mg_count += 1
+                    if model_meta.is_multimodal:
+                        mg_count_mllm += 1
+                    else:
+                        mg_count_llm += 1
                 r = f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n'
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
                     res_llm.append(r)
-    print(f'LLM总数: {len(res_llm)}, MLLM总数: {len(res_mllm)}, Megatron支持模型: {mg_count}')
+    print(f'LLM总数: {len(res_llm)}, MLLM总数: {len(res_mllm)}')
+    print(f'[Megatron] LLM总数: {mg_count_llm}, MLLM总数: {mg_count_mllm}')
     text = ['', '']  # llm, mllm
     for i, res in enumerate([res_llm, res_mllm]):
         for r in res:

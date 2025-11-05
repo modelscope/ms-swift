@@ -8,7 +8,8 @@ os.environ['SWIFT_DEBUG'] = '1'
 
 def _infer_model(pt_engine, system=None, messages=None, images=None, **kwargs):
     seed_everything(42)
-    request_config = RequestConfig(max_tokens=128, temperature=0, repetition_penalty=1)
+    max_tokens = kwargs.get('max_tokens', 128)
+    request_config = RequestConfig(max_tokens=max_tokens, temperature=0, repetition_penalty=1)
     if messages is None:
         messages = []
         if system is not None:
@@ -36,18 +37,76 @@ def test_qwen2_vl():
     assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
 
-def test_qwen2_5_vl():
-    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
-    messages = [{'role': 'user', 'content': '<image>What kind of dog is this?'}]
-    images = ['https://qianwen-res.oss-accelerate-overseas.aliyuncs.com/Qwen2-VL/demo_small.jpg']
-    response = _infer_model(pt_engine, messages=messages, images=images)
-    pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, images=images)
-    assert response == response2 == (
-        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their '
-        'friendly and energetic nature, which is evident in the image where the dog seems to be '
-        "interacting playfully with the person. The dog's size, coat color, and build are "
-        'characteristic of the Labrador Retriever breed.')
+def test_qwen2_5_vl_batch_infer():
+    from qwen_vl_utils import process_vision_info
+    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct', max_batch_size=2)
+    request_config = RequestConfig(max_tokens=128, temperature=0)
+    resp = pt_engine.infer([{
+        'messages': [{
+            'role': 'user',
+            'content': '<image>What kind of dog is this?'
+        }],
+        'images': ['https://qianwen-res.oss-accelerate-overseas.aliyuncs.com/Qwen2-VL/demo_small.jpg']
+    }, {
+        'messages': [{
+            'role': 'user',
+            'content': '<video>describe the video.'
+        }],
+        'videos': ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    }],
+                           request_config=request_config)
+    response_list = [resp[0].choices[0].message.content, resp[1].choices[0].message.content]
+    model = pt_engine.model
+    template = pt_engine.default_template
+    processor = template.processor
+    messages1 = [{
+        'role':
+        'user',
+        'content': [
+            {
+                'type': 'image',
+                'image': 'https://qianwen-res.oss-accelerate-overseas.aliyuncs.com/Qwen2-VL/demo_small.jpg'
+            },
+            {
+                'type': 'text',
+                'text': 'What kind of dog is this?'
+            },
+        ],
+    }]
+    messages2 = [{
+        'role':
+        'user',
+        'content': [
+            {
+                'type': 'video',
+                'video': 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+            },
+            {
+                'type': 'text',
+                'text': 'describe the video.'
+            },
+        ],
+    }]
+    messages = [messages1, messages2]
+
+    texts = [processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(
+        text=texts,
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors='pt',
+        padding_side='left',
+    )
+    inputs = inputs.to('cuda')
+
+    # Batch Inference
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+    output_texts = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    assert output_texts == response_list
 
 
 def test_qwen2_5_omni():
@@ -56,6 +115,68 @@ def test_qwen2_5_omni():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
     assert response == response2
+
+
+def _run_qwen3_omni_hf(model, processor, messages):
+    from qwen_omni_utils import process_mm_info
+    text = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+    audios, images, videos = process_mm_info(messages, use_audio_in_video=False)
+    inputs = processor(text=text, audio=audios, images=images, videos=videos, return_tensors='pt', padding=True)
+    inputs = inputs.to(device=model.device, dtype=model.dtype)
+    text_ids = model.generate(**inputs, use_audio_in_video=False, do_sample=False, max_new_tokens=128)
+    text = processor.decode(
+        text_ids[0][len(inputs['input_ids'][0]):], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return text
+
+
+def test_qwen3_omni():
+    query = 'describe the image.'
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Thinking')
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image',
+                    'image': images[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response2 = _run_qwen3_omni_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
+def test_qwen3_omni_audio():
+    query = 'describe the audio.'
+    audios = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
+    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Instruct')
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=[], audios=audios)
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'audio',
+                    'audio': audios[0]
+                },
+                {
+                    'type': 'text',
+                    'text': query
+                },
+            ],
+        },
+    ]
+    response2 = _run_qwen3_omni_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2[:len(response)]
 
 
 def test_qvq():
@@ -142,10 +263,12 @@ Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', elemen
 
 
 def test_minicpmv():
-    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    # pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    messages = [{'role': 'user', 'content': '<image>descibe the picture?'}]
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4')
+    response = _infer_model(pt_engine, messages=messages)
+    assert response[:100] == ('The image features a close-up of a kitten with a soft and fluffy appearance. '
+                              'The kitten has a striki')
 
 
 def test_minicpmo():
@@ -217,13 +340,14 @@ def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'who are you?'}], images=[])
 
-    _infer_model(
+    response = _infer_model(
         pt_engine,
         messages=[{
             'role': 'user',
             'content': '<OD>'
         }],
         images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'])
+    print(f'response: {response}')
 
 
 def test_phi3_vision():
@@ -319,6 +443,14 @@ def test_ovis2():
     assert response[:200] == ('The image features a close-up portrait of a young kitten with striking blue eyes. '
                               'The kitten has a distinctive coat pattern with a mix of gray, black, and white fur, '
                               'typical of a tabby pattern. Its ea')
+
+
+def test_ovis2_5():
+    pt_engine = PtEngine('AIDC-AI/Ovis2.5-2B')  # with flash_attn
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Describe the image.'}])
+    assert response[:100] == ('<think>\n用户现在需要描述这张图片。首先看主体是一只小猫，风格是卡通或艺术化处理，'
+                              '毛发有模糊效果，显得柔和。颜色方面，小猫的毛色是灰白相间，有深色条纹，耳朵内侧粉色，'
+                              '眼睛大而圆，蓝色，瞳孔黑色，')
 
 
 def test_paligemma():
@@ -578,17 +710,35 @@ def test_glm4_1v():
         assert response == response2
 
 
-def test_gemma3n():
-    pt_engine = PtEngine('google/gemma-3n-E2B-it')
+def test_glyph():
     messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
     images = [
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
+    pt_engine = PtEngine('ZhipuAI/Glyph')
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2
+
+
+def test_gemma3n():
+    pt_engine = PtEngine('google/gemma-3n-E2B-it')
+    messages = [{
+        'role': 'system',
+        'content': 'You are a helpful assistant.'
+    }, {
+        'role': 'user',
+        'content': 'Describe this image in detail.'
+    }]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:200] == (
+        'The image is a close-up portrait of an adorable kitten, filling the frame with its captivating presence.'
+        ' The kitten is the clear focal point, positioned slightly off-center, looking directly at the vi')
 
 
 def test_keye_vl():
@@ -598,10 +748,277 @@ def test_keye_vl():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
+    pt_engine.default_template.template_backend = 'swift'
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2
+
+
+def test_keye_vl_1_5():
+    pt_engine = PtEngine('Kwai-Keye/Keye-VL-1_5-8B')
+    messages = [{'role': 'user', 'content': 'Describe this image.'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+    ]
+    pt_engine.default_template.template_backend = 'swift'
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:200] == ('<analysis>This question is straightforward and asks for a description of the image. '
+                              'Therefore, /no_think mode is more appropriate.</analysis>'
+                              'This image features a close-up of an adorable kitten with s')
+
+
+def test_dots_ocr():
+    # https://github.com/modelscope/ms-swift/issues/2122
+    pt_engine = PtEngine('rednote-hilab/dots.ocr')
+    messages = [{'role': 'user', 'content': '<image>Extract the text content from this image.'}]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_glm4_5v():
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5V')
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def run_hf(model, processor, messages):
+    inputs = processor.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors='pt').to(
+            model.device, dtype=torch.bfloat16)
+    generate_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    decoded_output = processor.decode(generate_ids[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
+    return decoded_output
+
+
+def test_interns1():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
+    images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == '<think>' + response2
+
+
+def test_internvl3_5():
+    models = [
+        'OpenGVLab/InternVL3_5-1B', 'OpenGVLab/InternVL3_5-2B', 'OpenGVLab/InternVL3_5-4B', 'OpenGVLab/InternVL3_5-8B',
+        'OpenGVLab/InternVL3_5-14B', 'OpenGVLab/InternVL3_5-38B', 'OpenGVLab/InternVL3_5-30B-A3B',
+        'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'
+    ]
+    for model in models:
+        pt_engine = PtEngine(model)
+        images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+        messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+        response = _infer_model(pt_engine, messages=messages, images=images)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine, messages=messages, images=images)
+        assert response == response2
+
+
+def test_internvl3_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-1B-hf')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
+def test_internvl3_5_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3_5-1B-HF')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
+def test_internvl_gpt_hf():
+    pt_engine = PtEngine('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF')
+    query = 'Please describe the image explicitly.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'url': images[0]
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    response2 = run_hf(pt_engine.model, pt_engine.processor, messages)
+    assert response == response2
+
+
+def test_minicpmv4_5():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
+    images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def _run_qwen3_vl_hf(messages, model, processor):
+    from qwen_vl_utils import process_vision_info
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    images, videos = process_vision_info(messages, image_patch_size=16)
+
+    inputs = processor(text=text, images=images, videos=videos, do_resize=False, return_tensors='pt')
+    inputs = inputs.to(model.device)
+
+    generated_ids = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+    generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+    output_text = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    return output_text[0]
+
+
+def test_qwen3_vl():
+    pt_engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    query = 'describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role': 'user',
+        'content': [
+            {
+                'type': 'image',
+                'image': images[0],
+            },
+            {
+                'type': 'text',
+                'text': query
+            },
+        ],
+    }]
+    pt_engine.model.generation_config.repetition_penalty = 1
+    response3 = _run_qwen3_vl_hf(messages, pt_engine.model, pt_engine.processor)
+    assert response == response2 == response3
+
+
+def test_sailvl2():
+    pt_engine = PtEngine('BytedanceDouyinContent/SAIL-VL2-2B')
+    query = 'describe the image'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    ans = ("The image showcases a stunning close-up of a kitten's face, "
+           'capturing its delicate features in exquisite detail. '
+           "The kitten's fur is a beautiful blend of white and gray, "
+           'with distinctive black stripes adorning its head and face. '
+           'Its large, expressive eyes are a captivating blue-green color, framed by a soft white muzzle. '
+           "The kitten's pink nose and delicate whiskers add to its charming appearance.")
+    assert ans in response
+
+
+def test_deepseek_ocr():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-OCR', attn_impl='flash_attention_2')
+    query = 'Free OCR.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images, max_tokens=256)
+    assert response == ('# 简介\n\nSWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接'
+                        '将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了PEFT提'
+                        '供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、'
+                        'LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。\n\n为方便不熟悉深度学习的用'
+                        '户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手'
+                        '入门。\n\n此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。\n'
+                        '\nSWIFT具有丰富的文档体系，如有使用问题请查看这里。\n\n可以在Huggingface space 和 ModelScope'
+                        '创空间 中体验SWIFT web-ui功能了。')
+
+
+def test_llava_onevision1_5():
+    pt_engine = PtEngine('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct')
+    query = 'Describe this image.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_paddle_ocr():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    pt_engine = PtEngine('PaddlePaddle/PaddleOCR-VL')
+    query = 'OCR:'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images, max_tokens=1024)
+    assert response == ('SWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架'
+                        '应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了PEFT提供的轻量训练'
+                        '方案外，也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适'
+                        '配器库可以脱离训练脚本直接使用在自己的自定流程中。\n\n为方便不熟悉深度学习的用户使用，我们提供了一个'
+                        'Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。\n\n此外，我们也'
+                        '在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。\n\nSWIFT具有丰富的文档体'
+                        '系，如有使用问题请请查看这里。\n\n可以在Huggingface space 和 ModelScope创空间 中体验SWIFT web'
+                        '-ui功能了。')
 
 
 if __name__ == '__main__':
@@ -610,14 +1027,17 @@ if __name__ == '__main__':
 
     logger = get_logger()
     # test_qwen2_vl()
-    # test_qwen2_5_vl()
+    # test_qwen2_5_vl_batch_infer()
     # test_qwen2_5_omni()
+    # test_qwen3_omni()
+    # test_qwen3_omni_audio()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
     # test_ovis1_6()
     # test_ovis1_6_llama3()
     # test_ovis2()
+    # test_ovis2_5()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -659,5 +1079,20 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
+    test_glyph()
     # test_gemma3n()
-    test_keye_vl()
+    # test_keye_vl()
+    # test_dots_ocr()
+    # test_glm4_5v()
+    # test_interns1()
+    # test_internvl3_5()
+    # test_minicpmv4_5()
+    # test_qwen3_vl()
+    # test_keye_vl_1_5()
+    # test_internvl3_hf()
+    # test_internvl3_5_hf()
+    # test_internvl_gpt_hf()
+    # test_sailvl2()
+    # test_deepseek_ocr()
+    # test_llava_onevision1_5()
+    # test_paddle_ocr()

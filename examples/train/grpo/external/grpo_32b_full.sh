@@ -2,7 +2,7 @@
 # CUDA_VISIBLE_DEVICES=0,1 \
 # swift rollout \
 #     --model Qwen/Qwen2.5-32B-Instruct \
-#     --tensor_parallel_size 2
+#     --vllm_tensor_parallel_size 2
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
@@ -17,6 +17,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
+    --load_from_cache_file true \
     --split_dataset_ratio 0 \
     --max_completion_length 2048 \
     --num_train_epochs 3 \

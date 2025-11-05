@@ -3,7 +3,9 @@ import hashlib
 import inspect
 import math
 import os
+import random
 import re
+from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict
@@ -21,7 +23,8 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
+from swift.llm import to_device
+from swift.utils import get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -50,6 +53,7 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
+    support_padding_free = False  # It only takes effect for multimodal models.
 
     is_encoder_decoder = False
 
@@ -84,11 +88,14 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
+        from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v1'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v3'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
+        self.model = None
+        self.dummy_model = None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -107,21 +114,22 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
-        self.padding_free = padding_free
+        self.padding_free = padding_free  # padding_free/packing
+        self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-        self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto', 'gkd',  # train
-                           'seq_cls', 'embedding', 'prm'] = 'pt'
-        self._packing = self.padding_free
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
+                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
+                                'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -129,15 +137,20 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def init_env_args(self):
+        if self.model_meta.is_multimodal:
+            self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
+        else:
+            self.root_image_dir = None
+
     def init_processor(self, processor: Processor) -> None:
-        if processor is None:
+        if processor is None or self._processor_inited:
             return
         self._processor_inited = True
         self.processor = processor
         self.model_info = processor.model_info
         self.config = self.model_info.config
-        if self.model_info.task_type != 'causal_lm':
-            self.mode = self.model_info.task_type
+        self.task_type = self.model_info.task_type
 
         self.model_meta = processor.model_meta
         if self.max_length is None:
@@ -154,6 +167,16 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+        self.init_env_args()
+
+    def _get_model(self):
+        if self.model is not None:
+            return self.model
+        if self.dummy_model is None:
+            from swift.llm import get_model_tokenizer
+            with torch.device('meta'):
+                self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
+        return self.dummy_model
 
     @staticmethod
     def _load_image(image, load_images: bool):
@@ -231,6 +254,9 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        return {}
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
@@ -240,31 +266,31 @@ class Template(ProcessorMixin):
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
 
-        for img_field in ['images', 'rejected_images']:
-            images = getattr(inputs, img_field, None)
-            if not images:
-                continue
-            load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
-            load_images_origin = load_images
-            if self.max_pixels is not None or inputs.objects:
-                load_images = True
-            if images:
-                for i, image in enumerate(images):
-                    images[i] = self._load_image(image, load_images)
-            if inputs.objects:
-                self._get_height_width(inputs)
-            if self.max_pixels is not None and images:
-                images = [rescale_image(img, self.max_pixels) for img in images]
-            if images and not load_images_origin:  # fix pt & qwen-vl
-                for i, image in enumerate(images):
-                    if isinstance(image, Image.Image):
-                        images[i] = self._save_pil_image(image)
-            setattr(inputs, img_field, images)
+        images = inputs.images
+        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
+        load_images_origin = load_images
+        if self.max_pixels is not None or inputs.objects:
+            load_images = True
+        if images:
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
+        if inputs.objects:
+            self._get_height_width(inputs)
+        if self.max_pixels is not None:
+            # Scale the image proportionally without affecting the scaled objects.
+            images = [rescale_image(img, self.max_pixels) for img in images]
+        if images and not load_images_origin:  # fix pt & qwen-vl
+            for i, image in enumerate(images):
+                if isinstance(image, Image.Image):
+                    images[i] = self._save_pil_image(image)
+        inputs.images = images
 
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
+        if inputs.is_multimodal:
+            self._add_default_tags(inputs)
 
     @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
@@ -298,33 +324,31 @@ class Template(ProcessorMixin):
         inputs.generate_mode = generate_mode
 
     @staticmethod
-    def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
-                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
+    def _extend_tokens(
+            input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
+            replace_idx_list: List[int],
+            get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
-            new_tokens = get_new_tokens(i)
+            try:
+                new_tokens = get_new_tokens(i)
+            except IndexError as e:
+                logger.warning(f'IndexError occurs in the _extend_tokens function: {e}.')
+                continue
             token_len = len(new_tokens)
             input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
             if labels:
                 labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
-            added_tokens_len += token_len - 1
-        return input_ids, labels
-
-    @staticmethod
-    def _extend_loss_scale(loss_scale: Optional[List[float]], replace_idx_list: List[int],
-                           get_new_tokens: Callable[[int], List[int]]) -> Optional[List[float]]:
-        if loss_scale:
-            added_tokens_len = 0
-            for i, idx in enumerate(replace_idx_list):
-                new_tokens = get_new_tokens(i)
-                token_len = len(new_tokens)
+            if loss_scale:
                 scale_idx = loss_scale[idx + added_tokens_len]
                 loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
                                                                                                         + idx + 1:]
-                added_tokens_len += token_len - 1
-        return loss_scale
+            added_tokens_len += token_len - 1
+        return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
+        # This function is only used to handle scenarios where the model needs
+        # to be patched during the forward pass.
         return nullcontext()
 
     @staticmethod
@@ -334,31 +358,24 @@ class Template(ProcessorMixin):
         else:
             return model
 
-    def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        margin = inputs.margin
-        chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
-
-        assert chosen_inputs.rejected_response or chosen_inputs.rejected_images, f'inputs: {inputs}'
-        if chosen_inputs.rejected_response:
-            rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
-        if chosen_inputs.rejected_images:
-            rejected_inputs.images = chosen_inputs.rejected_images
-        chosen_encoded = self._encode_truncated(chosen_inputs)
-        rejected_encoded = self._encode_truncated(rejected_inputs)
+    def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        chosen = inputs.chosen
+        margin = chosen.margin
+        chosen_encoded = self._encode_truncated(chosen)
+        rejected_encoded = self._encode_truncated(inputs.rejected)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
-        if margin:
+        if margin is not None:
             encoded['margin'] = float(margin)
         return encoded
 
-    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        label, inputs.label = inputs.label, None
+    def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = bool(label)
+        encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -369,109 +386,82 @@ class Template(ProcessorMixin):
                 encoded.pop(k, None)
         return encoded
 
-    def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
-        inference = len(inputs.messages) == 1
-        if inference:
-            inputs.messages.append({'role': 'assistant', 'content': ''})
 
-        def split_multi_medias(_inputs):
-            _content = _inputs.messages[-2]['content']
-            image_size = len(re.findall('<image>', _content))
-            video_size = len(re.findall('<video>', _content))
-            audio_size = len(re.findall('<audio>', _content))
-            _inputs.images = inputs.images[:image_size]
-            assert len(_inputs.images) == image_size
-            inputs.images = inputs.images[image_size:]
-            _inputs.videos = inputs.videos[:video_size]
-            assert len(_inputs.videos) == video_size
-            inputs.videos = inputs.videos[video_size:]
-            _inputs.audios = inputs.audios[:audio_size]
-            assert len(_inputs.audios) == audio_size
-            inputs.audios = inputs.audios[audio_size:]
-
-        if not inference:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
+        if self.is_training:
+            anchor = inputs.chosen
             anchor_encoded = self._encode_truncated(anchor)
             for key in anchor_encoded:
                 _encoded[f'anchor_{key}'] = anchor_encoded[key]
-            positive = deepcopy(inputs)
-            positive.messages[-2]['content'] = positive.messages[-1]['content']
-            positive.messages[-1]['content'] = ''
-            positive.rejected_response = []
-            split_multi_medias(positive)
+            positive = inputs.positive
+            if isinstance(positive, list):
+                positive = positive[0]
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
-                _encoded[f'negative_{key}'] = []
-            labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+            labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-            for i in range(rejected_len):
-                negative = deepcopy(inputs)
-                negative.messages[-2]['content'] = negative.rejected_response[i]
-                negative.messages[-1]['content'] = ''
-                negative.rejected_response = []
-                split_multi_medias(negative)
+            _all_negative_keys = set()
+            for idx, negative in enumerate(inputs.negative):
+                _tmp_negative_keys = set()
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
-                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                    negative_key = f'negative_{key}'
+                    _all_negative_keys.add(negative_key)
+                    _tmp_negative_keys.add(negative_key)
+                    if negative_key not in _encoded:
+                        _encoded[negative_key] = [None] * idx
+                    _encoded[negative_key].append(negative_encoded[key])
+                for miss_key in (_all_negative_keys - _tmp_negative_keys):
+                    _encoded[miss_key].append(None)
                 labels.append(0.0)
 
             _encoded['labels'] = labels
         else:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
-            infer_backend = getattr(self, 'infer_backend', 'pt')
-            mode = self.mode
-            # infer_backend comes from vllm-engine, sglang-engine, etc.
-            # TODO Refactor me
-            if infer_backend in ('vllm', 'sglang'):
-                self.mode = infer_backend
+            anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
-            if infer_backend in ('vllm', 'sglang'):
-                self.mode = mode
             _encoded.pop('labels', None)
         return _encoded
 
-    def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        _encoded = {}
-        labels = []
+    def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        if self.is_training:
+            chosen = inputs.chosen
+            instruction = chosen.system
 
-        positive = deepcopy(inputs)
-        positive.rejected_response = []
-        if '{doc}' in positive.messages[-2]['content']:
-            positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
-                '{doc}', inputs.messages[-1]['content'])
-            positive.messages.pop(-1)
-        positive_encoded = self._encode_truncated(positive)
-        for key in positive_encoded:
-            _encoded[f'positive_{key}'] = positive_encoded[key]
-            _encoded[f'negative_{key}'] = []
-        labels.append(1)
+            _encoded = defaultdict(list)
+            labels = []
 
-        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-        for i in range(rejected_len):
-            negative = deepcopy(inputs)
-            if '{doc}' in negative.messages[-2]['content']:
-                negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
-                    '{doc}', negative.rejected_response[i])
-                negative.messages.pop(-1)
-            else:
-                negative.messages[-1]['content'] = negative.rejected_response[i]
-            negative.rejected_response = []
-            negative_encoded = self._encode_truncated(negative)
-            for key in negative_encoded:
-                _encoded[f'negative_{key}'].append(negative_encoded[key])
-            labels.append(0)
+            for positive in inputs.positive:
+                if instruction is not None and positive.system is None:
+                    positive.system = instruction
+                positive.messages = chosen.messages + positive.messages
+                positive.images = chosen.images + positive.images
+                positive.audios = chosen.audios + positive.audios
+                positive.videos = chosen.videos + positive.videos
+                positive_encoded = self._encode_truncated(positive)
+                labels.append(1)
+                for key in positive_encoded:
+                    _encoded[key].append(positive_encoded[key])
 
-        _encoded['labels'] = labels
+            for negative in inputs.negative:
+                if instruction is not None and negative.system is None:
+                    negative.system = instruction
+                negative.messages = chosen.messages + negative.messages
+                negative.images = chosen.images + negative.images
+                negative.audios = chosen.audios + negative.audios
+                negative.videos = chosen.videos + negative.videos
+                negative_encoded = self._encode_truncated(negative)
+                labels.append(0)
+                for key in negative_encoded:
+                    _encoded[key].append(negative_encoded[key])
+
+            _encoded['labels'] = labels
+        else:
+            anchor = inputs.chosen
+            _encoded = self._encode_truncated(anchor)
+            _encoded.pop('labels', None)
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -479,7 +469,7 @@ class Template(ProcessorMixin):
         encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
-            problem_type = self._get_problem_type(self.config, labels=labels)
+            problem_type = self.config.problem_type
             if problem_type == 'single_label_classification':
                 labels = int(labels)
             encoded['labels'] = labels
@@ -488,7 +478,8 @@ class Template(ProcessorMixin):
     @torch.inference_mode()
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
-               return_template_inputs: bool = False) -> Dict[str, Any]:
+               return_template_inputs: bool = False,
+               return_length: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Returns:
@@ -496,38 +487,48 @@ class Template(ProcessorMixin):
         """
         assert self._processor_inited, ('Please initialize the processor before calling the template.encode method: '
                                         'template.init_processor(processor).')
-        if isinstance(inputs, (InferRequest, TemplateInputs)):
+        if isinstance(inputs, InferRequest):
             inputs = asdict(inputs)
 
-        extra_kwargs = {}
         if isinstance(inputs, dict):
-            inputs = deepcopy(inputs)
-            if not self.is_training:
+            if self.task_type == 'causal_lm' and not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
-        elif isinstance(inputs, StdTemplateInputs):
+            inputs = TemplateInputs.from_dict(inputs)
+        elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
-        assert isinstance(inputs, StdTemplateInputs)
-        self._preprocess_inputs(inputs)
+        assert isinstance(inputs, TemplateInputs)
 
-        if self.mode in {'pt', 'train', 'prm', 'vllm', 'lmdeploy'}:
-            encoded = self._encode_truncated(inputs)
-        elif self.mode == 'seq_cls':
-            encoded = self._seq_cls_encode(inputs)
-        elif self.mode == 'rlhf':
-            encoded = self._rlhf_encode(inputs)
-        elif self.mode == 'kto':
-            encoded = self._kto_encode(inputs)
-        elif self.mode == 'gkd':
-            encoded = self._gkd_encode(inputs)
-        elif self.mode == 'embedding':
+        chosen = inputs.chosen
+        if self.task_type == 'causal_lm':
+            if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
+                encoded = self._encode_truncated(chosen)
+            elif self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+            elif self.mode == 'kto':
+                encoded = self._kto_encode(inputs)
+            elif self.mode == 'gkd':
+                encoded = self._gkd_encode(chosen)
+        elif self.task_type == 'seq_cls':
+            if self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+                for prefix in ['chosen', 'rejected']:
+                    encoded.pop(f'{prefix}_labels', None)
+                    encoded.pop(f'{prefix}_loss_scale', None)
+            else:
+                encoded = self._seq_cls_encode(chosen)
+        elif self.task_type == 'prm':
+            encoded = self._encode_truncated(chosen)
+        elif self.task_type == 'embedding':
             encoded = self._embedding_encode(inputs)
-        elif self.mode in ['reranker', 'generative_reranker']:
+        elif self.task_type in {'reranker', 'generative_reranker'}:
             encoded = self._reranker_encode(inputs)
-        if inputs.channel is not None:
-            encoded['channel'] = inputs.channel
+        else:
+            raise ValueError(f'task_type: {self.task_type} is not supported.')
 
-        lengths = [0]
+        if chosen.channel is not None:
+            encoded['channel'] = chosen.channel
+
+        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -537,47 +538,41 @@ class Template(ProcessorMixin):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
-        if self.is_training:
-            encoded['length'] = max(lengths)
+        if return_length:
+            if self.task_type in {'reranker', 'generative_reranker'}:
+                encoded['length'] = lengths
+            else:
+                encoded['length'] = sum(lengths)
         else:
             encoded.pop('length', None)
         if return_template_inputs:
-            encoded['template_inputs'] = inputs
+            encoded['template_inputs'] = chosen
         if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = extra_kwargs
+            encoded['_extra_kwargs'] = chosen.extra_kwargs
         return encoded
 
-    def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         packed = {}
         keys = set()
+        length = []
         for r in row:
-            keys.update(r[0].keys())
+            keys.update(r.keys())
+            length.append(r['length'])
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
-                packed[key] = sum((x[0][key] for x in row), start=[])
+                packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'length':
-                packed[key] = sum((x[0][key] for x in row))
+                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
-                packed[key] = [x[0][key] for x in row]
+                packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
-            packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+            packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
-        packed.update(self._data_collator_mm_data([r[0] for r in row]))
+        packed.update(self._data_collator_mm_data(row))
         return packed
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
-
-    @staticmethod
-    def _skip_stop_tokens(generate_ids: List[int], stop_tokens: List[int], is_finished: bool) -> List[int]:
-        len_tokens = len(stop_tokens)
-        if is_finished and generate_ids[-len_tokens:] == stop_tokens:
-            return generate_ids[:-len_tokens]
-        if not is_finished:
-            for i in range(len_tokens, 0, -1):
-                if generate_ids[-i:] == stop_tokens[:i]:
-                    return generate_ids[:-i]
-        return generate_ids
 
     @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
@@ -594,32 +589,9 @@ class Template(ProcessorMixin):
             }]
         }
 
-    @staticmethod
-    def _get_problem_type(config, labels=None, logits=None) -> str:
-        problem_type = config.problem_type
-        if problem_type is not None:
-            return problem_type
-        if labels is not None:
-            if isinstance(labels, (list, tuple)):
-                if labels and isinstance(labels[0], float):
-                    problem_type = 'regression'
-                else:
-                    problem_type = 'multi_label_classification'
-            else:
-                problem_type = 'single_label_classification'
-                assert config.num_labels >= labels + 1
-        if logits is not None:
-            if logits.shape[-1] == 1:
-                problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'  # compatible with older versions
-        assert problem_type is not None
-        config.problem_type = problem_type
-        return problem_type
-
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        problem_type = self._get_problem_type(self.config, logits=logits)
+        problem_type = self.config.problem_type
         if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -633,15 +605,11 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self,
-               generate_ids: List[int],
-               *,
-               is_finished: bool = True,
-               tokenizer_kwargs=None,
-               first_token=True,
-               **kwargs) -> Any:
-        tokenizer_kwargs = tokenizer_kwargs or {}
-        response = self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+    def decode(self, generate_ids: List[int], *, is_finished: bool = True, first_token=True, **kwargs) -> Any:
+        if kwargs.get('spaces_between_special_tokens') is None:
+            kwargs['spaces_between_special_tokens'] = False
+        generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
+        response = self.tokenizer.decode(generate_ids, **kwargs)
         if first_token and self.template_meta.response_prefix:
             response = self.template_meta.response_prefix + response
         return response
@@ -671,7 +639,7 @@ class Template(ProcessorMixin):
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
-    def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix[-1] and eos_token.
         # However, other stop_words will be printed.
         tokenizer = self.tokenizer
@@ -683,10 +651,16 @@ class Template(ProcessorMixin):
         if isinstance(template_suffix, str):
             # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
-        generate_ids = self._skip_stop_tokens(generate_ids, template_suffix, is_finished)
-        if 'spaces_between_special_tokens' not in decode_kwargs:
-            decode_kwargs['spaces_between_special_tokens'] = False
-        return tokenizer.decode(generate_ids, **decode_kwargs)
+
+        len_tokens = len(template_suffix)
+        if is_finished and generate_ids[-len_tokens:] == template_suffix:
+            generate_ids = generate_ids[:-len_tokens]
+        elif not is_finished:
+            for i in range(len_tokens, 0, -1):
+                if generate_ids[-i:] == template_suffix[:i]:
+                    generate_ids = generate_ids[:-i]
+                    break
+        return generate_ids
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -787,9 +761,8 @@ class Template(ProcessorMixin):
                 loss_scale_res.append(loss_scale)
         return res, loss_scale_res
 
-    def _tokenize(self, context, **tokenizer_kwargs):
-        return self.tokenizer(
-            context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
+    def _tokenize(self, context, **kwargs):
+        return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio', 'tensor'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -810,7 +783,16 @@ class Template(ProcessorMixin):
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
-            return self.video_placeholder
+            if self.mode == 'vllm':
+                # https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/vision_language.py
+                from vllm.assets.video import video_to_ndarrays, video_get_metadata
+                num_frames = get_env_args('vllm_num_frames', int, 16)
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = [(video_data, video_metadatas)]
+                return self.video_placeholder
+            else:
+                return self.video_placeholder
         elif media_type == 'audio':
             return self.audio_placeholder
         elif media_type == 'tensor':
@@ -923,7 +905,7 @@ class Template(ProcessorMixin):
                     idx = inputs.bbox_idx
                     c_list = self.replace_bbox(bbox[idx], idx, inputs)
                     inputs.bbox_idx += 1
-                elif context == '<cot-process>' and self.mode == 'prm':
+                elif context == '<cot-process>' and self.task_type == 'prm':
                     c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
@@ -933,12 +915,17 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
-        if inputs.rejected_response:
-            if isinstance(inputs.rejected_response, str):
-                total_content += inputs.rejected_response
-            else:
-                total_content += '\n'.join(inputs.rejected_response)
+        total_content = []
+        for message in inputs.messages:
+            content = message['content'] or ''
+            if not isinstance(content, str):
+                if message['role'] == 'user':
+                    # Give up adding the default tag
+                    return
+                elif message['role'] == 'assistant':
+                    continue
+            total_content.append(content)
+        total_content = '\n'.join(total_content)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
@@ -957,25 +944,16 @@ class Template(ProcessorMixin):
                         f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
                         'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
 
-    def _encode_context_list(
-            self,
-            context_list: List[Context],
-            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
-        """return: input_ids, labels, tokenizer_kwargs"""
+    def _encode_context_list(self,
+                             context_list: List[Context],
+                             loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
-        tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        if self.loss_scale.keep_loss_scale:
-            ignore_loss_scale = False
-        else:
-            ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
-                # tokenizer_kwargs is the returned tokenizer_kwargs,
-                # while curr_tokenizer_kwargs is the tokenizer_kwargs for the current context.
                 token_list = self._tokenize(context)
             else:
                 token_list = context
@@ -984,11 +962,11 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not ignore_loss_scale:
+            if not self.loss_scale.is_loss_scale_binary:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if ignore_loss_scale:
+        if self.loss_scale.is_loss_scale_binary:
             loss_scale = None
-        return input_ids, labels, loss_scale, tokenizer_kwargs
+        return input_ids, labels, loss_scale
 
     @staticmethod
     def _add_dynamic_eos(input_ids: List[int], labels: List[int], loss_scale: Optional[List[int]],
@@ -1023,12 +1001,14 @@ class Template(ProcessorMixin):
         kwargs = {}
         if inputs.tools:
             kwargs['tools'] = inputs.tools
+        if 'thinking_budget' in inputs.extra_kwargs:
+            kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _get_system(self, inputs) -> Optional[str]:
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         template_meta = self.template_meta
         system = inputs.system
         tools = inputs.tools
@@ -1037,10 +1017,28 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
+            system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
-    def _swift_prepare_messages(self, messages):
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        """
+        Preprocesses the list of messages in the input by merging and formatting consecutive messages
+        according to their roles.
+
+        Specifically, this method:
+            - Merges consecutive messages from the same role ('assistant' or 'user') to prevent downstream errors.
+            - Detects consecutive tool-related messages following an assistant message, then formats and
+            combines them using `agent_template._format_tool_responses` for structured output.
+            - Updates the messages list in-place for further processing.
+
+        Args:
+            inputs: An StdTemplateInputs object which contains a 'messages' attribute, which is a list of dictionaries.
+                    Each message dictionary should have at least the keys 'role' and 'content'.
+
+        Returns:
+            None. The input messages list is updated in-place.
+        """
+        messages = inputs.messages
         if len(messages) < 2:
             return
         i = 1
@@ -1054,6 +1052,7 @@ class Template(ProcessorMixin):
                     i += 1
                 pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
+                # where tool_content is a List.
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
@@ -1065,14 +1064,15 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
+        self._swift_prepare_inputs(inputs)
         system = self._get_system(inputs)
-        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not self.template_meta.support_multi_round:
             logger.warning_once(
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
+            # TODO: Multimodal models may encounter image mismatch issues.
             inputs.messages = inputs.messages[-2:]
 
         res_context_list: List[Context] = []
@@ -1095,13 +1095,14 @@ class Template(ProcessorMixin):
             prefix = template_meta.system_prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
+        assert len(inputs.messages) > 0, f'inputs.messages: {inputs.messages}'
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}, f'query_role: {query_role}'
-            assert response_role in {'assistant'}, f'response_role: {response_role}'
+            assert query_role in {'user', 'tool'}, f'query_role: "{query_role}"'
+            assert response_role in {'assistant'}, f'response_role: "{response_role}"'
             if query_role == 'tool':
                 prompt = query
                 query = ''
@@ -1122,10 +1123,21 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
+                # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
+                # and here we avoid adding <|user|>.
+                response_content = response
+                if not isinstance(response_content, str):
+                    if isinstance(response, list):
+                        token_ids = response
+                    else:
+                        token_ids = response['token_ids']
+                    response_content = self.tokenizer.decode(token_ids[-20:])
+                endswith_stop_words = any(
+                    response_content.endswith(stop_word) for stop_word in template_meta.stop_words
+                    if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                # TODO Refactor me
-                if self.is_training and not sep_token or (getattr(self, 'task_type', None) == 'embedding'):
+                if (self.is_training or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1145,28 +1157,36 @@ class Template(ProcessorMixin):
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
-        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
+        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages,
+                                                            **inputs.extra_kwargs)
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _encode_truncated(self, inputs: StdTemplateInputs):
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
+    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
+                  truncation_strategy: Literal['left', 'right']):
+        placeholder_tokens = torch.tensor(self.placeholder_tokens)
+        input_ids_tensor = torch.tensor(input_ids)
+        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)
+        n_protected = protected.sum().item()
+        if n_protected < self.max_length:
+            non_protected = (~protected).nonzero(as_tuple=True)[0]
+            if truncation_strategy == 'left':
+                idx = non_protected[-(self.max_length - n_protected):]
+            else:
+                idx = non_protected[:self.max_length - n_protected]
+            protected[idx] = True
+        input_ids = input_ids_tensor[protected].tolist()
+        if labels is not None:
+            labels = torch.tensor(labels)[protected].tolist()
+        if loss_mask is not None:
+            loss_mask = torch.tensor(loss_mask)[protected].tolist()
+        return input_ids, labels, loss_mask
 
-        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-            encoded = Template._encode(self, inputs)
-            for key in ['images', 'audios', 'videos']:
-                encoded[key] = getattr(inputs, key)
-        else:
-            encoded = self._encode(inputs)
-
-        input_ids = encoded.get('input_ids')
-        labels = encoded.get('labels')
-        loss_scale = encoded.get('loss_scale')
-
+    @staticmethod
+    def _get_length(input_ids, labels):
         # input_ids might be a tensor.
         lengths = [0]
         if input_ids is not None:
@@ -1174,55 +1194,60 @@ class Template(ProcessorMixin):
         if labels is not None:
             lengths.append(len(labels))
         length = max(lengths)
-        encoded['length'] = length
+        return length
 
-        if self.max_length is not None:
-            if self.truncation_strategy == 'right':
-                input_ids = input_ids[:self.max_length]
-                if labels is not None:
-                    labels = labels[:self.max_length]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[:self.max_length]
-            elif self.truncation_strategy == 'left':
-                if len(input_ids) > self.max_length:
-                    logger.warning_once(
-                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
-                        f'{len(input_ids)}, max_length: {self.max_length}). '
-                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
-                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.',
-                        hash_id='max_length_check')
-                input_ids = input_ids[-self.max_length:]
-                if labels is not None:
-                    labels = labels[-self.max_length:]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[-self.max_length:]
+    def _encode_truncated(self, inputs: StdTemplateInputs):
+        self._preprocess_inputs(inputs)
+        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+            # For multi-modal models, images do not need to be pre processed here
+            # vllm/lmdeploy/sglang will handle the logic
+            encoded = Template._encode(self, inputs)
+            keys = ['images', 'audios', 'videos']
+            if self.mode == 'vllm':
+                keys.append('mm_processor_kwargs')
+            for key in keys:
+                value = getattr(inputs, key)
+                if value:
+                    encoded[key] = value
+        else:
+            encoded = self._encode(inputs)
+        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
+        input_ids = encoded.get('input_ids')
+        labels = encoded.get('labels')
+        loss_scale = encoded.get('loss_scale')
+        length = self._get_length(input_ids, labels)
+        if self.max_length is not None and length > self.max_length:
+            if self.truncation_strategy in {'right', 'left'}:
+                input_ids, labels, loss_scale = self._truncate(
+                    input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
+                length = self._get_length(input_ids, labels)
             elif self.truncation_strategy == 'raise':
-                if length > self.max_length:
-                    raise MaxLengthError(f'Current length of row({length}) is larger'
-                                         f' than the max_length({self.max_length}).')
+                raise MaxLengthError(f'Current length of row({length}) is larger'
+                                     f' than the max_length({self.max_length}).')
+        encoded['length'] = length
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        inputs.messages = deepcopy(inputs.messages)
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.mode != 'seq_cls'):
+                and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
         if self.is_encoder_decoder or self.mode == 'gkd':
-            # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
                 context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
                                                                        loss_scale_list[_slice], inputs)
-                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
+                input_ids, labels, loss_scale = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
                 encoded[f'{key}_labels'] = labels
                 encoded[f'{key}_loss_scale'] = loss_scale
@@ -1233,24 +1258,16 @@ class Template(ProcessorMixin):
                 loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
-            input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
-                res_context_list, loss_scale_list)
+            input_ids, labels, loss_scale = self._encode_context_list(res_context_list, loss_scale_list)
         self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
-
-        if tokenizer_kwargs:
-            encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if self.use_megatron:
-            self._handle_megatron_cp(encoded)
-            encoded['labels'] = encoded['labels'][1:] + [-100]
-            if encoded.get('loss_scale') is not None:
-                encoded['loss_scale'] = encoded['loss_scale'][1:] + [0]
-            encoded['position_ids'] = list(range(len(encoded['labels'])))
-        elif encoded.get('labels') is not None:
+        if encoded.get('labels') is not None:
             encoded['labels'][0] = -100
+        if encoded.get('loss_scale') is not None:
+            encoded['loss_scale'][0] = 0
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels') or k.endswith('loss_scale'):
@@ -1259,13 +1276,13 @@ class Template(ProcessorMixin):
 
     def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
         cp_size = self.sequence_parallel_size
-        if cp_size == 1:
+        if not self.use_megatron or cp_size == 1:
             return
         input_ids = encoded['input_ids']
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
-        if 'loss_scale' in encoded:
+        if encoded.get('loss_scale') is not None:
             encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
@@ -1394,12 +1411,13 @@ class Template(ProcessorMixin):
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):
-        from swift.llm import to_device
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
-                     } and k not in kwargs:
+            if k in {
+                    'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
+                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k'
+            } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -1412,12 +1430,9 @@ class Template(ProcessorMixin):
 
     @property
     def is_training(self):
-        return self.mode not in {'vllm', 'lmdeploy', 'sglang', 'pt'}
+        return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(
-        self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
-                            'generative_reranker']
-    ) -> None:
+    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto', 'gkd']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1460,24 +1475,37 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
-        if self.mode == 'rlhf':
-            res = self._rlhf_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'kto':
-            res = self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'gkd':
-            res = self._gkd_data_collator(batch, padding_to=padding_to)
-        elif self.mode in {'pt', 'train', 'prm'}:
+        if self.packing and isinstance(batch[0], list):
+            batch = sum(batch, start=[])
+        num_samples = len(batch)
+        if self.task_type == 'causal_lm':
+            if self.mode in {'pt', 'train'}:
+                res = self._data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'kto':
+                res = self._kto_data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'gkd':
+                res = self._gkd_data_collator(batch, padding_to=padding_to)
+        elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'embedding':
+        elif self.task_type == 'seq_cls':
+            if self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            else:
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+        elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
-        elif self.mode in ['reranker', 'generative_reranker']:
+        elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
+        else:
+            raise ValueError(f'task_type: {self.task_type} is not supported.')
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if self.use_megatron:
+            res['num_samples'] = num_samples
         return res
 
     @staticmethod
@@ -1595,31 +1623,37 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        import os
-        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels = []
-        new_batch = []
-        for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = min(max_negative_samples, len(value_list))
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
+        if self.is_training:
+            max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
+            max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+            labels_list = []
+            new_batch = []
+            for b in batch:
+                labels = b.pop('labels', None)
+                positive_num = sum(labels)
+                negative_num = len(labels) - positive_num
+                max_positive = min(positive_num, max_positive_samples)
+                max_negative = min(negative_num, max_negative_samples)
+                for i in random.sample(range(positive_num), max_positive):
+                    new_batch.append(
+                        {key: b[key][i]
+                         for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
+                    labels_list.append(1)
+                    for j in random.sample(range(negative_num), max_negative):
+                        new_batch.append({
+                            key: b[key][j + positive_num]
+                            for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
+                        })
+                        labels_list.append(0)
 
-            indexes = ['positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
+            res = self._data_collator(new_batch, padding_to=padding_to)
+            if labels_list:
+                res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+        else:
+            new_batch = []
+            for b in batch:
+                new_batch.append({key: val for key, val in b.items() if isinstance(val, list)})
+            res = self._data_collator(new_batch, padding_to=padding_to)
         return res
 
     def _seq_cls_data_collator(self,
@@ -1629,7 +1663,7 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            problem_type = self._get_problem_type(self.config)
+            problem_type = self.config.problem_type
             if problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
             elif problem_type == 'multi_label_classification':
@@ -1642,10 +1676,6 @@ class Template(ProcessorMixin):
             res['labels'] = labels
         return res
 
-    def _data_flatten(self, batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        new_batch = [(row, len(row['input_ids'])) for row in batch]
-        return [self.packing_row(new_batch)]
-
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1656,31 +1686,30 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing
         if self.padding_free:
-            batch[:] = self._data_flatten(batch)
-        if self._packing:
+            batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
+        elif self.use_megatron:
+            for encoded in batch:
+                encoded['position_ids'] = list(range(len(encoded['labels'])))
+
         res = {}
-        if packing_mode:
-            # only support llm
+        if self.padding_free:
+            assert len(batch) == 1, f'batch: {batch}'
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
-                v = self.gather_list(batch, k)
-                if v:
-                    if k == 'channel':
-                        res[k] = v
-                    else:
-                        res[k] = [v]
+                v = batch[0].get(k)
+                if v is not None:
+                    res[k] = v if k == 'channel' else [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-            channel = [b['channel'] for b in batch if b.get('channel') is not None]
+            channel = [b.get('channel') for b in batch]
 
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
-            if channel:
+            if any(channel):
                 res['channel'] = channel
 
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
@@ -1689,9 +1718,16 @@ class Template(ProcessorMixin):
                     res[key] = val
 
         keys = [
-            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
+            'input_ids',
+            'inputs_embeds',
+            'attention_mask',
+            'labels',
+            'loss_scale',
+            'position_ids',
+            'token_type_ids',
+            'attention_mask_2d',
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1705,36 +1741,55 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+        if not self.padding_free and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+            attention_mask_key = 'attention_mask_2d' if self.use_megatron else 'attention_mask'
+            res[attention_mask_key] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
-            padding_to = math.ceil(max(seq_lens) / 128) * 128
-            cp_size = self.sequence_parallel_size
-            if cp_size > 1:
-                padding_len = padding_to - seq_lens[0]
-                position_ids = res['position_ids'][0].tolist()
-                position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                res['position_ids'][0] = torch.tensor(position_ids)
+            # For code simplicity, only the attention_backend 'flash' is supported here.
+            if padding_to is not None:
+                padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
+            if self.padding_free:
+                cp_size = self.sequence_parallel_size
+                if cp_size > 1:
+                    padding_len = padding_to - seq_lens[0]
+                    position_ids = res['position_ids'][0]
+                    extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
+                    if position_ids.ndim == 3:  # compat mrope
+                        extended_position_ids = extended_position_ids[None,
+                                                                      None, :].expand(position_ids.shape[0], 1, -1)
+                    res['position_ids'] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
+            else:
+                seq_len = max(seq_lens) if padding_to is None else padding_to
+                res['attention_mask'] = torch.tril(torch.ones(
+                    (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                for i, seq_len in enumerate(seq_lens):
+                    res['attention_mask'][i, :, seq_len:] = 0
+                res['attention_mask'] = ~res['attention_mask']
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if self.use_megatron and key == 'position_ids' and self.sequence_parallel_size > 1:
-                pass
-            elif padding_to is not None:
+            if self.use_megatron and not self.padding_free and key == 'attention_mask':
+                continue
+            if padding_to is not None and not (self.padding_free and key == 'position_ids'
+                                               and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            res[key] = self._pad_sequence(res[key], pad_value)
+            if key == 'position_ids' and res[key][0].ndim == 3:
+                res[key] = torch.concat(res[key], dim=-1)
+            else:
+                res[key] = self._pad_sequence(res[key], pad_value)
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if not self.use_megatron and (use_torchacc() or self.sequence_parallel_size > 1):
-            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        if not self.use_megatron and self.sequence_parallel_size > 1:
+            res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res
 
@@ -1752,28 +1807,18 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
+
+        for media_type in ['image', 'video']:
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
-    def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
-        # torchacc & xtuner
+    def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
         labels = res.get('labels')
         loss_scale = res.get('loss_scale')
-        if use_torchacc():
-            from swift.utils.torchacc_utils import pad_and_split_batch
-            rank, _, world_size, _ = get_dist_setting()
-            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
-                padding_to,
-                input_ids,
-                attention_mask,
-                labels,
-                loss_scale,
-                self.max_length,
-                tokenizer,
-                rank,
-                world_size,
-                padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             if 'position_ids' not in res:
@@ -1789,21 +1834,19 @@ class Template(ProcessorMixin):
                 res[key] = value
         return res
 
-    def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
-        if tokenizer_kwargs is None:
-            tokenizer_kwargs = {}
-
+    def print_inputs(self, inputs: Dict[str, Any]) -> None:
         # Base keys to check
+        tokenizer_kwargs = inputs.pop('tokenizer_kwargs', None) or {}
         base_keys = [
             'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
         ]
 
         # For reranker/embedding modes, also check prefixed keys
-        if self.mode in {'reranker', 'generative_reranker', 'embedding'}:
+        if self.task_type in {'reranker', 'generative_reranker', 'embedding'}:
             prefixes = []
-            if self.mode in {'reranker', 'generative_reranker'}:
+            if self.task_type in {'reranker', 'generative_reranker'}:
                 prefixes = ['positive_', 'negative_']
-            elif self.mode == 'embedding':
+            elif self.task_type == 'embedding':
                 prefixes = ['anchor_', 'positive_', 'negative_']
 
             # Add prefixed keys for reranker/embedding modes
@@ -1831,7 +1874,7 @@ class Template(ProcessorMixin):
 
         for key in keys_to_check:
             # Skip labels completely for certain modes
-            if key.endswith('labels') and self.mode in {'reranker', 'generative_reranker'}:
+            if key.endswith('labels') and self.task_type in {'reranker', 'generative_reranker'}:
                 continue
 
             val = inputs.get(key)  # fix val is a tensor
@@ -1840,7 +1883,7 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key.endswith('labels') and self.mode in {'seq_cls', 'embedding'}:
+                if key.endswith('labels') and self.task_type in {'seq_cls', 'embedding'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     # Handle nested lists (e.g., for reranker negative samples)
@@ -1919,7 +1962,7 @@ class Template(ProcessorMixin):
 
         return torch.stack(padded_sequences)
 
-    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+    def safe_decode(self, input_ids: List[int], **kwargs) -> str:
         if isinstance(self, Template):
             tokenizer = self.tokenizer
             placeholder_tokens = self.placeholder_tokens
@@ -1946,14 +1989,14 @@ class Template(ProcessorMixin):
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += tokenizer.decode(input_ids[e:s], **kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += tokenizer.decode(input_ids[e:], **kwargs)
         return result_str
 
     @staticmethod
@@ -1972,6 +2015,8 @@ class Template(ProcessorMixin):
             else:
                 flash_attention_forward = _origin_flash_attention_forward
             kwargs['position_ids'] = position_ids
+            if args and isinstance(args[0], torch.Tensor):
+                kwargs['position_ids'] = kwargs['position_ids'].to(args[0].device)
             return flash_attention_forward(*args, **kwargs)
 
         modeling_module._flash_attention_forward = _flash_attention_forward
@@ -1979,3 +2024,61 @@ class Template(ProcessorMixin):
             yield
         finally:
             modeling_module._flash_attention_forward = _origin_flash_attention_forward
+
+    @staticmethod
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+        dtype = visual.dtype
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = processor.image_processor(images=images, return_tensors='pt')
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return inputs_embeds
+
+    @staticmethod
+    def _concat_text_position_ids(position_ids):
+        seq_len = position_ids.shape[-1]
+        text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)

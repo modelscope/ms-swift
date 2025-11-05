@@ -128,6 +128,23 @@ register_model(
         requires=['transformers>=4.39.3'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v3_1,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V3.1-Base', 'deepseek-ai/DeepSeek-V3.1-Base'),
+                Model('deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3.1'),
+                Model('deepseek-ai/DeepSeek-V3.1-Terminus', 'deepseek-ai/DeepSeek-V3.1-Terminus'),
+            ]),
+        ],
+        TemplateType.deepseek_v3_1,
+        get_model_tokenizer_deepseek_moe,
+        architectures=['DeepseekV3ForCausalLM'],
+        model_arch=ModelArch.deepseek_v2,
+        requires=['transformers>=4.39.3'],
+    ))
+
 
 def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
     kwargs['tokenizer'] = processor.tokenizer
@@ -299,4 +316,32 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM', 'Qwen3ForCausalLM'],
         model_arch=ModelArch.llama,
+    ))
+
+
+def get_model_tokenizer_deepseek_ocr(*args, **kwargs):
+    from transformers import AutoModel
+    kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModel
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        patch_output_clone(model.model.embed_tokens)
+        patch_output_to_input_device(model.model.sam_model)
+        patch_output_to_input_device(model.model.vision_model)
+        patch_output_to_input_device(model.model.projector)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_ocr,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-OCR', 'deepseek-ai/DeepSeek-OCR'),
+            ]),
+        ],
+        TemplateType.deepseek_ocr,
+        get_model_tokenizer_deepseek_ocr,
+        model_arch=ModelArch.deepseek_ocr,
+        requires=['transformers==4.46.3', 'easydict'],
+        tags=['vision'],
     ))

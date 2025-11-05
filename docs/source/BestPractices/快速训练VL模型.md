@@ -114,6 +114,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx  \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
@@ -150,6 +151,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
@@ -193,10 +195,10 @@ FPS_MAX_FRAMES=12 \
 swift deploy \
     --model /path/to/stage2_checkpoint \
     --infer_backend vllm \
-    --gpu_memory_utilization 0.9 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 2048 \
-    --limit_mm_per_prompt '{"image": 5, "video": 2}' \
+    --vllm_limit_mm_per_prompt '{"image": 5, "video": 2}' \
     --served_model_name Qwen3-VL
 ```
 

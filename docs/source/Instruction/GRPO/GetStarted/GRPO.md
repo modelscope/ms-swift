@@ -1,19 +1,10 @@
 # GRPO
 
-**更新日志**
-- **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
-- **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
-- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
-- **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
-- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model。
-- **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
-- **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[文档](../DeveloperGuide/奖励模型)部分。
-- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
-
 GRPOTrainer在ms-swift3.5进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 [GRPO(Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) 算法利用组内相对优势计算来替代 PPO 算法中独立的价值模型，并直接在损失函数中加入 KL 散度惩罚来提高训练稳定性。
 
+## 算法原理
 
 GRPO 目标函数
 
@@ -177,25 +168,25 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 2
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 2
 ```
 
-更多 rollout 参数参考[文档](../../../Instruction/命令行参数.md#vllm参数)
+更多 rollout 参数参考[vLLM参数](../../../Instruction/命令行参数.md#vllm参数)和[rollout 参数](../../../Instruction/命令行参数.md#rollout参数)
 
-注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP。
+注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP，或升级vLLM
 
 
 训练使用以下参数配置外部 vLLM 服务器
@@ -206,7 +197,75 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
+#### 权重同步加速
+swift 3.10 优化了权重同步，设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
 
+```bash
+# rollout(server mode)
+swift rollout \
+    --vllm_enable_lora true \
+    --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
+    ...
+
+# grpo(colocate mode)
+swift rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --vllm_enable_lora true \
+    ...
+```
+
+注意：以下情况无法使用该优化：
+
+- 训练多模态模型的ViT层(freeze_vit false)
+- MoE 模型
+
+优化实现细节请参考该[PR](https://github.com/modelscope/ms-swift/pull/5773)
+
+## logged metrics
+- completions/mean_length：生成的 completion 的平均长度。
+- completions/min_length：生成的 completion 的最小长度。
+- completions/max_length：生成的 completion 的最大长度。
+- completions/clipped_ratio：被长度截断的 completion 占比。
+- reward/{reward_func_name}/mean：某个特定 reward function 的平均奖励值。
+- reward/{reward_func_name}/std：某个特定 reward function 的奖励标准差。
+> 注意, 上述两个指标是在所有 completions 范围内统计得到的。
+- reward：加权 reward_weights 后的整体平均奖励。
+- reward_std：加权 reward_weights 后，每个 batch 内整体奖励的标准差。
+> 注意：上述两个指标是先在每个组内分别计算均值/std，然后再对各组的结果取平均。
+- frac_reward_zero_std：在生成 batch 中，reward 标准差为零的样本比例，意味着该 prompt 上的答案几乎无多样性（所有回答奖励一致）。
+- kl：生成的 completion 上，模型与参考模型之间的平均 KL 散度。仅当 beta 非零时记录。
+- clip_ratio/region_mean：不同句子中被 CLIP 的的 token 平均比例
+- clip_ratio/low_mean：不同句子中被 下CLIP 的的 token 平均比例
+- clip_ratio/low_min：不同句子中被 下CLIP 的的 token 最小比例
+- clip_ratio/high_mean：不同句子中被 上CLIP 的的 token 平均比例
+- clip_ratio/high_max：不同句子中被 上CLIP 的的 token 最大比例
+> 注意：如果开启`overlong_filter`, kl 和 clip_ratio 指标会过滤超长的样本
+
+如果设置了`log_entropy`参数，则会额外记录entropy相关指标，包括
+- entropy/mean: 不同句子中的 entropy 均值
+- entropy/max: 不同句子中的 entropy 最大值
+- entropy/min: 不同句子中的 entropy 最小值
+> 注意这里的 句子 entropy 指 completion 中的 token entropy 均值
+
+
+如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
+- entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
+
+如果设置了`log_completions`, 将保存训练动态在output对应文件夹中，包括
+- step：记录时的训练步数
+- prompt：模型输入
+- completion：模型采样回答
+- {reward_func_name}：特定奖励
+- entropy：entropy token 均值，在设置`log_entropy`时记录
+
+设置 `report_to wandb/swanlab` 将训练动态Table推送到对应的平台
+
+如果需要在Table中额外记录其他列，请在 `GRPOTrainer._generate_and_score_completions` 方法中，设置 metrics_to_gather 字典。
+
+默认自动检测
+- `image`：视觉数据集图像输入。(暂时只支持wandb)
+- `solution`：数据集中的 solution 列。
 
 ## FAQ
 **1. 训练过程中 loss 等于0 / 接近0 / 小于0**
@@ -298,3 +357,14 @@ steps_per_generation = 16
 gradient_accumulation_steps = 8
 
 则一次 rollout 结果将拆分成两批 mini-batch 进行更新
+
+**8. swift deploy 与 swift rollout 的区别**
+
+- swift deploy 主要用于模型的部署和推理，支持 PT、vLLM、SGLang 等多种引擎，兼容流式推理与 OpenAI API 的调用格式。
+
+- swift rollout 则专注于 GRPO 推理加速，目前仅支持 vLLM 引擎，并内置了权重自动同步的功能。
+
+
+**9. 如何取消 KL 项损失**
+
+将参数设置为 `--beta 0`，即可关闭 KL 损失的计算，并且不会加载参考模型（ref model）。

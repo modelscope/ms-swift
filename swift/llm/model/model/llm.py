@@ -1,15 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from types import MethodType
 from typing import Any, Dict
 
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_sentence_transformers,
+                        get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo, safe_snapshot_download
 
 logger = get_logger()
 
@@ -242,54 +242,6 @@ register_model(
         architectures=['BailingMoeForCausalLM'],
     ))
 
-
-def get_model_tokenizer_qwen2_gte(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  *,
-                                  tokenizer=None,
-                                  model_config=None,
-                                  automodel_class=None,
-                                  **kwargs):
-    from sentence_transformers import SentenceTransformer
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info.config = model_config
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    if load_model:
-        model = SentenceTransformer(
-            model_dir, trust_remote_code=True, model_kwargs={
-                'torch_dtype': torch_dtype,
-            })
-        model.config = model_config
-
-        def enable_input_require_grads(self):
-
-            def make_inputs_require_grads(module, input, output):
-                output.requires_grad_(True)
-
-            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
-
-        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
-        tokenizer = model.tokenizer
-
-        def forward(self, **kwargs):
-            output = self._forward_origin(input=kwargs)
-            return {'last_hidden_state': output['sentence_embedding']}
-
-        if not hasattr(model, '_forward_origin'):
-            model._forward_origin = model.forward
-            model.forward = MethodType(forward, model)
-    else:
-        model = None
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.qwen2_gte, [
@@ -299,7 +251,7 @@ register_model(
             ]),
         ],
         None,
-        get_model_tokenizer_qwen2_gte,
+        get_model_tokenizer_sentence_transformers,
         architectures=['Qwen2ForCausalLM']))
 
 register_model(
@@ -341,16 +293,107 @@ register_model(
         TemplateType.dots1,
         get_model_tokenizer_with_flash_attn,
         architectures=['Dots1ForCausalLM'],
-        requires=['transformers>=4.53.0.dev0'],
+        requires=['transformers>=4.53'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.hunyuan_moe,
+        [ModelGroup([
+            Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
+        ])],
+        TemplateType.hunyuan_moe,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['HunYuanMoEV1ForCausalLM'],
     ))
 
 register_model(
     ModelMeta(
         LLMModelType.hunyuan,
-        [ModelGroup([
-            Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
-        ])],
+        [
+            ModelGroup([
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct', 'tencent/Hunyuan-0.5B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct', 'tencent/Hunyuan-1.8B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct', 'tencent/Hunyuan-4B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct', 'tencent/Hunyuan-7B-Instruct'),
+                # pretrain
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Pretrain', 'tencent/Hunyuan-0.5B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Pretrain', 'tencent/Hunyuan-1.8B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Pretrain', 'tencent/Hunyuan-4B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Pretrain', 'tencent/Hunyuan-7B-Pretrain'),
+                # fp8
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-FP8', 'tencent/Hunyuan-0.5B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-FP8', 'tencent/Hunyuan-1.8B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-FP8', 'tencent/Hunyuan-4B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-FP8', 'tencent/Hunyuan-7B-Instruct-FP8'),
+                # awq
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-AWQ-Int4', 'tencent/Hunyuan-0.5B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-AWQ-Int4', 'tencent/Hunyuan-1.8B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-AWQ-Int4', 'tencent/Hunyuan-4B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-AWQ-Int4', 'tencent/Hunyuan-7B-Instruct-AWQ-Int4'),
+                # gptq
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-0.5B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-1.8B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-4B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-7B-Instruct-GPTQ-Int4'),
+            ])
+        ],
         TemplateType.hunyuan,
         get_model_tokenizer_with_flash_attn,
-        architectures=['HunYuanMoEV1ForCausalLM'],
+        requires=['transformers>=4.55.0.dev0'],
+        architectures=['HunYuanDenseV1ForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gpt_oss, [
+            ModelGroup([
+                Model('openai-mirror/gpt-oss-20b', 'openai/gpt-oss-20b'),
+                Model('openai-mirror/gpt-oss-120b', 'openai/gpt-oss-120b'),
+            ])
+        ],
+        TemplateType.gpt_oss,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GptOssForCausalLM'],
+        ignore_patterns=['metal/', 'original/'],
+        requires=['transformers>=4.55']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.longchat,
+        [
+            ModelGroup([
+                Model('meituan-longcat/LongCat-Flash-Chat', 'meituan-longcat/LongCat-Flash-Chat'),
+                Model('meituan-longcat/LongCat-Flash-Chat-FP8', 'meituan-longcat/LongCat-Flash-Chat-FP8'),
+            ])
+        ],
+        TemplateType.longchat,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LongcatFlashForCausalLM'],
+        requires=['transformers>=4.54,<4.56'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ling2,
+        [
+            ModelGroup([
+                Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
+                Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
+            ])
+        ],
+        TemplateType.ling2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['BailingMoeV2ForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ring2,
+        [ModelGroup([
+            Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
+        ])],
+        TemplateType.ring2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['BailingMoeV2ForCausalLM'],
     ))

@@ -61,6 +61,20 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
 ```
 
+- You can control whether the loss is computed for specific parts of the model's response by adding the `"loss"` field (requires ms-swift >= 3.8). This field defaults to `None`. If `"loss"` is set to `true`, the corresponding content will contribute to the loss calculation (equivalent to a `loss_scale` of 1). If `"loss"` is set to `false`, the corresponding content will be excluded from loss computation. Note that this feature only takes effect for messages where `"role"` is `"assistant"`, and it has higher priority than the command-line argument `--loss_scale`. Example data format:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
+```
+
+#### Channel Loss
+If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "channel": "general"}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "channel": "math"}
+```
+
 ### RLHF
 
 #### DPO/ORPO/CPO/SimPO/RM
@@ -73,6 +87,20 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 The format of multimodal data should follow the specifications in [Multimodal Dataset](#multimodal), with additional columns such as `images` to represent other modality inputs. When it is necessary to associate different image information with preference data, the `rejected_images` field can be used to indicate the images related to the rejected responses. In the alignment dataset, at least one of `rejected_images` or `rejected_response` must be provided for each entry.
 
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
+
+Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images` (requires ms-swift>=3.8), which offers greater flexibility (e.g., for multimodal or agent scenarios). If you use "rejected_messages", then in multimodal scenarios you must also provide "rejected_images", "rejected_audios", "rejected_videos", etc.; in Agent scenarios you must also provide "rejected_tools", etc. An example of the multimodal data format is as follows:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a puppy."}], "rejected_images": ["kitten.png"]}
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "rejected_images": ["puppy.png"]}
+```
+
+The above format is equivalent to:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": "This is a puppy."}
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_images": ["puppy.png"]}
+```
 
 #### KTO
 
@@ -118,6 +146,8 @@ If `seq_kd` is enabled, the final round of the 'assistant' part is not required 
 **Multi-label Task**:
 
 ```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": []}
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [0, 2]}
 {"messages": [{"role": "user", "content": "<sentence>"}], "label": [1, 3, 5]}
 ```
 
@@ -166,12 +196,18 @@ Supervised Fine-tuning:
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 {"messages": [{"role": "user", "content": "<tensor>Generate a report for this medical scan"}, {"role": "assistant", "content": "The scan shows normal cardiac function with no abnormalities detected."}], "tensors": ["/xxx/cardiac_scan.pt"]}
 ```
+- Note: The following fields will be automatically converted to the corresponding images, videos, and audios fields.
+  - images: image, images.
+  - videos: video, videos.
+  - audios: audio, audios.
+- If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
+- If you wish to directly pass in video frames instead of a video file, you can use the following format (requires `ms-swift>=3.8.3`): `"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`. This format is supported only by certain models, including Qwen2/2.5/3-VL, Qwen2.5/3-Omni, and their derivative models.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` and `tensors` added on top of that.
 
 #### Grounding
 
-For grounding (object detection) tasks, SWIFT supports two methods:
+For grounding (object detection) tasks, ms-swift supports two methods:
 
 1. Directly use the data format of the grounding task corresponding to the model. For example, the format for qwen2-vl is as follows:
 
@@ -184,9 +220,11 @@ For grounding (object detection) tasks, SWIFT supports two methods:
 When using this type of data, please note:
 
 - Different models have different special characters and data format for the grounding task.
-- The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
+- The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2/3-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
+  - Note: Qwen2.5-VL uses absolute coordinates, so you need to be careful with image resizing each time. If you use the dataset format from Option 1, you need to resize the images in advance (height and width must be multiples of 28) and scale the coordinates accordingly. If you use the dataset format from Option 2, ms-swift will handle image resizing for you. You can still use `MAX_PIXELS` or `--max_pixels` for image resizing (training only; for inference, you still need to handle image resizing yourself).
 
-1. Use SWIFT's grounding data format:
+
+2. Use ms-swift's grounding data format:
 
 ```
 {"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Describe the image."}, {"role": "assistant", "content": "<ref-object><bbox> and <ref-object><bbox> are playing on the beach"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["a dog", "a woman"], "bbox": [[331.5, 761.4, 853.5, 1594.8], [676.5, 685.8, 1099.5, 1427.4]]}}
@@ -196,17 +234,33 @@ When using this type of data, please note:
 
 The format will automatically convert the dataset format to the corresponding model's grounding task format and select the appropriate model's bbox normalization method. Compared to the general format, this format includes an additional "objects" field, which contains the following subfields:
 
-- ref: Used to replace `<ref-object>`.
-- bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points.
+- ref: Used to replace the `<ref-object>` placeholder in messages. The length of `ref` should match the number of `<ref-object>` instances.
+- bbox: Used to replace the `<bbox>` placeholder in messages. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points. The length of `bbox` should match the number of `<bbox>` instances.
   - Note: `<ref-object>` and `<bbox>` do not have a corresponding relationship; references and bounding boxes replace their own placeholders separately.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
-- image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
+- image_id: Typically used for multi-image grounding tasks. This parameter only takes effect when bbox_type is 'real', representing which image the bbox corresponds to, used for scaling the bbox. The index starts from 0, and defaults to all being the 0th image. The length of image_id needs to be consistent with the length of bbox. For example: if the length of bbox is 10 and the length of images is 2, then the length of image_id needs to be 10, with values within the set `{0, 1}`.
 
-### Text-to-Image Format
-
+For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`, requires "ms-swift>=3.9.1") to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Draw me an apple"}, {"role": "assistant", "content": "<image>"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```
+
+Testing the final format of the grounding data in ms-swift format:
+```python
+import os
+os.environ["MAX_PIXELS"] = "1003520"
+from swift.llm import get_model_tokenizer, get_template
+
+_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
+template = get_template(tokenizer.model_meta.template, tokenizer)
+data = {...}
+template.set_mode('train')
+encoded = template.encode(data, return_template_inputs=True)
+print(f'[INPUT_IDS] {template.safe_decode(encoded["input_ids"])}\n')
+print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
+print(f'images: {encoded["template_inputs"].images}')
+```
+
 
 ### Agent Format
 Here are example data samples for a text-only Agent and a multimodal Agent:
@@ -223,6 +277,11 @@ Here are example data samples for a text-only Agent and a multimodal Agent:
 - Note: You can also manually process the data into the messages format with roles set to system, user, or assistant. The purpose of agent_template is to automatically map the tools field and the messages with roles tool_call and tool_response into the standard messages format with roles system, user, and assistant.
 - For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
+### Text-to-Image Format
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Draw me an apple"}, {"role": "assistant", "content": "<image>"}], "images": ["/xxx/x.jpg"]}
+```
 
 ## dataset_info.json
 
@@ -289,3 +348,41 @@ The following parameters are supported:
 - split: Defaults to `['train']`.
 - preprocess_func: A preprocessing function or callable object, default is `AutoPreprocessor()`. This preprocessing function takes an `HfDataset` as input and returns an `HfDataset` in the standard format.
 - load_function: Defaults to `DatasetLoader.load`. If a custom loading function is needed, it should return an `HfDataset` in the standard format, allowing users maximum flexibility while bypassing the ms-swift dataset loading mechanism. This parameter usually does not need to be modified.
+
+
+Below are examples of registering datasets:
+
+```python
+from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from typing import Dict, Any
+
+class CustomPreprocessor(ResponsePreprocessor):
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = f"""Task: Judge whether the two sentences below are semantically similar.
+Sentence 1: {row['text1']}
+Sentence 2: {row['text2']}
+Output the category [0/1]: 0 for different meanings, 1 for similar meanings.
+"""
+        response = str(row['label'])
+        row = {
+            'query': query,
+            'response': response
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/financial_classification',
+        subsets=[SubsetDataset('train', split=['train']), SubsetDataset('test', split=['test'])],
+        preprocess_func=CustomPreprocessor(),
+    ))
+
+if __name__ == '__main__':
+    # load_dataset returns train_dataset and val_dataset based on `split_dataset_ratio`
+    # Here, since we didn't pass `split_dataset_ratio` (defaults to 0), we take the first one (index 0)
+    dataset = load_dataset('swift/financial_classification:train')[0]
+    test_dataset = load_dataset('swift/financial_classification:test')[0]
+    print(f'dataset[0]: {dataset[0]}')
+    print(f'test_dataset[0]: {test_dataset[0]}')
+```

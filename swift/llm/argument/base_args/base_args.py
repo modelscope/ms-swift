@@ -9,12 +9,13 @@ from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
-from swift.utils import (check_json_format, check_shared_disk, get_dist_setting, get_logger, import_external_file,
-                         is_dist, is_master, set_device, use_hf_hub)
+from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
+                         json_parse_to_dict, set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
+from .ray_args import RayArguments
 from .template_args import TemplateArguments
 
 logger = get_logger()
@@ -52,7 +53,7 @@ class CompatArguments:
 
 @dataclass
 class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
-                    ModelArguments):
+                    ModelArguments, RayArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
@@ -63,6 +64,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         seed (int): Random seed for reproducibility. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
         load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        packing (bool): Flag to enable packing of datasets. Default is False.
+        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
@@ -80,7 +83,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     load_data_args: bool = False
     # dataset
     packing: bool = False
-    packing_cache: Optional[str] = None
+    packing_length: Optional[int] = None
+    lazy_tokenize: Optional[bool] = None
+    cached_dataset: List[str] = field(default_factory=list)
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -97,6 +102,20 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         pass
+
+    def _init_lazy_tokenize(self):
+        if self.lazy_tokenize is None:
+            if (self.model_meta is not None and self.model_meta.is_multimodal and not self.streaming
+                    and not self.packing):
+                self.lazy_tokenize = True
+            else:
+                self.lazy_tokenize = False
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        if self.lazy_tokenize:
+            if self.packing:
+                raise ValueError('Packing and lazy_tokenize are incompatible.')
+            if self.streaming:
+                raise ValueError('Streaming and lazy_tokenize are incompatible.')
 
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
@@ -132,17 +151,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
 
-    def _check_packing(self):
-        if not self.packing:
-            return
-        error = ValueError('When using the packing feature across multiple nodes, ensure that all nodes share '
-                           'the same packing cache directory. You can achieve this by setting the '
-                           '`MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache '
-                           '<shared_path>` argument in the command line.')
-        check_shared_disk(error, self.packing_cache)
-        if self.packing_cache:
-            os.environ['PACKING_CACHE'] = self.packing_cache
-
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
             self.use_hf = True
@@ -166,14 +174,21 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-
+        RayArguments.__post_init__(self)
+        if self.max_length is None and self.model_info is not None:
+            self.max_length = self.model_info.max_model_len
+        if self.packing and self.packing_length is None:
+            self.packing_length = self.max_length
+        if isinstance(self.cached_dataset, str):
+            self.cached_dataset = [self.cached_dataset]
+        self._init_lazy_tokenize()
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
 
     def _init_model_kwargs(self):
         """Prepare model kwargs and set them to the env"""
-        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
+        self.model_kwargs: Dict[str, Any] = json_parse_to_dict(self.model_kwargs)
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
@@ -205,7 +220,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None) or getattr(
+            self, 'adapter_load', None)
+        if isinstance(adapters, str):
+            adapters = [adapters]
         self.ckpt_dir = get_ckpt_dir(model, adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
@@ -217,7 +235,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             old_args = json.load(f)
         force_load_keys = [
             # base_args
-            'tuner_backend',
             'train_type',
             # model_args
             'task_type',
@@ -225,8 +242,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
         ]
-        if 'megatron' in self.__class__.__name__.lower():
-            force_load_keys = []
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
             'custom_register_path',
@@ -240,6 +255,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'new_special_tokens',
             'num_labels',
             'problem_type',
+            'rope_scaling',
+            'max_model_len',
             # quant_args
             'quant_method',
             'quant_bits',
@@ -254,7 +271,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'use_chat_template',
             'response_prefix',
         ]
-
         data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
             if old_value is None:
@@ -295,12 +311,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                             **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
-        kwargs.update(self.get_model_kwargs())
+        res = self.get_model_kwargs()
+        res.update(kwargs)
         # compat rlhf
-        kwargs['model_id_or_path'] = model or self.model
-        kwargs['model_type'] = model_type or self.model_type
-        kwargs['model_revision'] = model_revision or self.model_revision
-        kwargs['task_type'] = task_type or self.task_type
-        kwargs['num_labels'] = num_labels or self.num_labels
+        res['model_id_or_path'] = model or self.model
+        res['model_type'] = model_type or self.model_type
+        res['model_revision'] = model_revision or self.model_revision
+        res['task_type'] = task_type or self.task_type
+        res['num_labels'] = num_labels or self.num_labels
 
-        return get_model_tokenizer(**kwargs)
+        return get_model_tokenizer(**res)

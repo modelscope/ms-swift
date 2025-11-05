@@ -30,7 +30,6 @@ class KeyeVLTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from keye_vl_utils import fetch_image, fetch_video
-        # from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
@@ -40,51 +39,49 @@ class KeyeVLTemplate(Template):
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             video = inputs.videos[index]
-            if os.path.isdir(video):
-                video = [os.path.join(video, fname) for fname in os.listdir(video)]
-            video = fetch_video({'video': video})
+            video, video_kwargs = fetch_video({'video': video})
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
+            for k, v in video_kwargs.items():
+                inputs.mm_processor_kwargs.setdefault(k, []).append(v)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from keye_vl_utils import vision_process
         encoded = super()._encode(inputs)
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-
-        images = inputs.images
-        videos = inputs.videos
         for media_type in ['images', 'videos']:
-            if locals()[media_type]:
+            mm_data = getattr(inputs, media_type)
+            if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(
-                        images=images, videos=None, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    if hasattr(processor, 'video_processor'):
-                        processor_func = processor.video_processor
-                    else:
-                        processor_func = processor.image_processor
-                    media_inputs = processor_func(images=None, videos=videos, return_tensors='pt', do_resize=False)
+                    split_token = self._tokenize('\n')[0]
+                    media_inputs = processor(
+                        text=['\n'.join(['<|video_pad|>'] * len(mm_data))],
+                        videos=mm_data,
+                        return_tensors='pt',
+                        **inputs.mm_processor_kwargs)
+                    splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
-                    media_inputs['second_per_grid_ts'] = [
-                        processor.image_processor.temporal_patch_size / vision_process.FPS
-                    ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
 
                 def _get_new_tokens(i):
-                    token_len = (media_grid_thw[i].prod() // merge_length)
-                    return [media_token] * token_len
+                    if media_type == 'images':
+                        token_len = (media_grid_thw[i].prod() // merge_length)
+                        return [media_token] * token_len
+                    else:
+                        return splited_tokens[i]
 
-                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-                loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                    _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
@@ -117,7 +114,7 @@ class KeyeVLTemplate(Template):
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
+                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
                 device = input_ids.device
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)
@@ -287,12 +284,19 @@ class KeyeVLTemplate(Template):
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
 
 # Register the Keye VL template
 register_template(KeyeTemplateMeta(MLLMTemplateType.keye_vl, template_cls=KeyeVLTemplate))
+
+
+class KeyeVL1_5Template(KeyeVLTemplate):
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return super(KeyeVLTemplate, self)._post_encode(model, inputs)
+
+
+register_template(
+    KeyeTemplateMeta(
+        MLLMTemplateType.keye_vl_1_5, template_cls=KeyeVL1_5Template, default_system='You are a helpful assistant.'))

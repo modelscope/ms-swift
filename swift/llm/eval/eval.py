@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import nullcontext
-from typing import List, Union
+from typing import List, Optional, Union
 
 from evalscope.constants import EvalBackend, EvalType
 from evalscope.run import TaskConfig, run_task
@@ -26,9 +26,8 @@ class SwiftEval(SwiftPipeline):
         deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
         with deploy_context as base_url:
             base_url = args.eval_url or base_url
-            url = f"{base_url.rstrip('/')}/chat/completions"
 
-            task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, url)
+            task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, base_url)
             result = self.get_task_result(task_cfg)
             eval_report[args.eval_backend] = result
 
@@ -102,11 +101,14 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir,
             limit=args.eval_limit,
             eval_batch_size=args.eval_num_proc,
-            dataset_args=args.dataset_args,
+            dataset_args=args.eval_dataset_args,
             generation_config=args.eval_generation_config,
             **args.extra_eval_args)
 
     def get_opencompass_task_cfg(self, dataset: List[str], url: str):
+        # Must use chat/completion endpoint
+        url = f"{url.rstrip('/')}/chat/completions"
+
         args = self.args
         work_dir = os.path.join(args.eval_output_dir, 'opencompass')
         return TaskConfig(
@@ -130,6 +132,9 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir)
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
+        # Must use chat/completion endpoint
+        url = f"{url.rstrip('/')}/chat/completions"
+
         args = self.args
         work_dir = os.path.join(args.eval_output_dir, 'vlmeval')
         return TaskConfig(
@@ -152,5 +157,5 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir)
 
 
-def eval_main(args: Union[List[str], EvalArguments, None] = None):
+def eval_main(args: Optional[Union[List[str], EvalArguments]] = None):
     return SwiftEval(args).main()

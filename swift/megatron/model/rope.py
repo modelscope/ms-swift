@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, Optional
 
 import torch
@@ -25,8 +26,8 @@ def _get_dummy_config(args):
         hidden_size=args.hidden_size,
         num_attention_heads=args.num_attention_heads,
     )
-    original_max_position_embeddings = args.original_max_position_embeddings or args.rope_scaling.get(
-        'original_max_position_embeddings')
+    original_max_position_embeddings = args.original_max_position_embeddings or (
+        args.rope_scaling or {}).get('original_max_position_embeddings')
     if original_max_position_embeddings is not None:
         dummy_config.original_max_position_embeddings = original_max_position_embeddings
     if args.partial_rotary_factor is not None:
@@ -37,7 +38,9 @@ def _get_dummy_config(args):
 EXTENDED_ROPE_INIT_FUNCTIONS = {}
 
 
-def _get_rope_type(rope_scaling: Dict[str, Any]):
+def _get_rope_type(rope_scaling: Optional[Dict[str, Any]]):
+    if rope_scaling is None:
+        return 'default'
     rope_type = rope_scaling['rope_type']
     if rope_type == 'dynamic' and rope_scaling.get('alpha') is not None:
         rope_type = 'dynamic_alpha'

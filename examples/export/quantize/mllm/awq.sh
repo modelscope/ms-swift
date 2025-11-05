@@ -1,3 +1,5 @@
+pip install "transformers==4.51.*"
+
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \

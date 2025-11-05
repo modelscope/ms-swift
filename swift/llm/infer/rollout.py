@@ -6,25 +6,31 @@ import inspect
 import multiprocessing
 import os
 import time
+import traceback
+from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import Dict, List, Optional, Union, get_type_hints
+from typing import Dict, List, Optional, Union
 
 import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
-from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
+from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_device, get_logger
+from swift.plugin.multi_turn import RolloutScheduler, multi_turns
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
+                                               patch_vllm_load_adapter)
+from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
+from .protocol import (InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest,
+                       UpdateFlattenedParamsRequest, UpdateWeightsRequest)
 
 try:
     from vllm.utils import get_open_port
@@ -39,16 +45,111 @@ It adds weight synchronization logic based on `vLLMEngine`.
 Usage:
     swift rollout \
         --model xxx \
-        --tensor_parallel_size xxx \
-        --data_parallel_size xxx \
-        --use_async_engine true/false \
-        --... \
+        --vllm_tensor_parallel_size xxx \
+        --vllm_data_parallel_size xxx \
+        --vllm_use_async_engine true/false \
         --other_vllm_arguments
 
 Note:
 - Rollout is intended solely for GRPO training sampling.
 - For inference or deployment, please use the `swift infer` or `swift deploy` commands.
 """
+
+patch_vllm_load_adapter()
+
+
+class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
+
+    def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
+        """
+        Receives updated weights from the client process and updates the named parameter in the model.
+
+        Args:
+            name (`str`):
+                Name of the weight tensor being updated.
+            dtype (`str`):
+                Data type of the weight tensor as a string (e.g., `"torch.float32"`).
+            shape (`Sequence[int]`):
+                Shape of the weight tensor.
+        """
+        if self._comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        dtype = getattr(torch, dtype.split('.')[-1])
+        # Allocate memory for the incoming weight tensor on the correct device.
+        weight = torch.empty(shape, dtype=dtype, device=self.device)
+
+        # Use NCCL to broadcast the updated weights from the client (src) to all workers.
+        self._comm.broadcast(weight, src=self.client_rank)
+        self._comm.group.barrier()
+
+        # Load the received weights into the model.
+        self.model_runner.model.load_weights(weights=[(name, weight)])
+
+    def update_adapter_flattened_param(self, lora_int_id: int, peft_config: Dict, metadatas: list[Dict]) -> None:
+        """
+        Receives and applies a flattened LoRA adapter to the model.
+        """
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
+        if self._comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+        self._comm.broadcast(flatten_tensor, src=self.client_rank)
+        self._comm.group.barrier()
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+        lora_request = TensorLoRARequest(
+            lora_name=f'{lora_int_id}',
+            lora_int_id=lora_int_id,
+            lora_path='dummy_lora_path',
+            peft_config=peft_config,
+            lora_tensors=named_params)
+        self.add_lora(lora_request)
+
+    def update_flattened_params(self, metadatas: list[Dict]) -> None:
+        """
+        Receives updated flattened weights from the client process and updates the model parameters.
+
+        Args:
+            metadatas (list[Dict]): List of metadata dictionaries for the flattened tensors.
+        """
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
+        if self._comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+
+        self._comm.broadcast(flatten_tensor, src=self.client_rank)
+        self._comm.group.barrier()
+
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+
+        # Load the reconstructed parameters into the model
+        self.model_runner.model.load_weights(weights=list(named_params.items()))
+
+    @property
+    def _comm(self):
+        """
+        Compatibility wrapper for communicator access across TRL versions.
+
+        Returns the appropriate communicator attribute based on the TRL version:
+        - trl < 0.24.0: self.pynccl_comm
+        - trl >= 0.24.0: self.communicator
+        """
+        # Try new version first
+        if hasattr(self, 'communicator'):
+            return self.communicator
+        # Fall back to old version
+        elif hasattr(self, 'pynccl_comm'):
+            return self.pynccl_comm
+        else:
+            return None
+
 
 logger = get_logger()
 
@@ -58,19 +159,41 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
+def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
+    if args.multi_turn_scheduler:
+        if args.multi_turn_scheduler not in multi_turns:
+            raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
+        scheduler_cls = multi_turns[args.multi_turn_scheduler]
+
+        kwargs = {}
+        if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
+            kwargs['tokenizer'] = engine.default_template.tokenizer
+        # gym kwargs
+        if args.use_gym_env:
+            kwargs.update({
+                'use_gym_env': args.use_gym_env,
+                'gym_env': args.gym_env,
+                'context_manager': args.context_manager,
+            })
+
+        rollout_engine: RolloutScheduler = scheduler_cls(infer_engine=engine, max_turns=args.max_turns, **kwargs)
+        if not rollout_engine:
+            raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
+    else:
+        rollout_engine = engine
+    return rollout_engine
+
+
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     args._import_external_plugins()
+    args._init_custom_register()
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
+    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    kwargs = {}
-    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
-        kwargs['device'] = get_device(str(data_parallel_rank))
-    kwargs['template'] = args.get_template(None)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
-
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -86,8 +209,12 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
-            result = method(*args, **kwargs)
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
+            try:
+                result = method(*args, **kwargs)
+            except Exception:
+                logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
+                result = None
             if command['type'] == 'call':
                 connection.send(result)
         elif command['type'] == 'shutdown':
@@ -96,7 +223,13 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
 
 async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    engine = SwiftRolloutDeploy.get_infer_engine(args)
+    # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
+    args._init_custom_register()
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+
+    rollout_engine = get_rollout_engine_type(args, engine)
+
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -112,11 +245,11 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
             try:
                 result = await method(*args, **kwargs)
-            except Exception as e:
-                logger.error(f'Method execution failed: {e}')
+            except Exception:
+                logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
                 result = None
 
             if command['type'] == 'call':
@@ -126,8 +259,6 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
 
 def llm_worker_entry(*args, **kwargs):
-    rollout_args: RolloutArguments = args[0]
-    rollout_args._import_external_plugins()
     asyncio.run(async_llm_worker(*args, **kwargs))
 
 
@@ -140,15 +271,18 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
+        self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
+        self.app.post('/update_flattened_params/')(self.update_flattened_params)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
         self.app.post('/get_engine_type/')(self.get_engine_type)
 
-    def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
+    def __init__(self, args: Optional[Union[List[str], RolloutArguments]] = None):
         super().__init__(args)
-        self.use_async_engine = self.args.use_async_engine
-        self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
+        self.use_gym_env = self.args.use_gym_env
+        self.use_async_engine = self.args.vllm_use_async_engine
+        self.num_connections = 1 if self.use_async_engine else self.args.vllm_data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -188,28 +322,29 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 process.join()  # ensure process termination after calling terminate()
 
     @staticmethod
-    def get_infer_engine(args: InferArguments, template=None, **kwargs):
+    def get_infer_engine(args: RolloutArguments, template=None, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
             'template': template,
-            'use_async_engine': args.use_async_engine,
-            'multi_turn_scheduler': args.multi_turn_scheduler,
-            'max_turn': args.max_turns
+            'use_async_engine': args.vllm_use_async_engine,
+            'max_lora_rank': args.vllm_max_lora_rank,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
             infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         kwargs.update(args.get_vllm_engine_kwargs())
+        kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
-        engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
-        if args.use_async_engine and args.data_parallel_size > 1:
-            engine_kwargs['data_parallel_size'] = args.data_parallel_size
+        engine_kwargs.update({'worker_extension_cls': 'swift.llm.infer.rollout.WeightSyncWorkerExtension'})
+        engine_kwargs['load_format'] = 'dummy'
+        if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
+            engine_kwargs['data_parallel_size'] = args.vllm_data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
 
         return GRPOVllmEngine(**kwargs)
@@ -233,7 +368,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         {"world_size": 8}
         ```
         """
-        return {'world_size': self.args.tensor_parallel_size * self.args.data_parallel_size}
+        return {'world_size': self.args.vllm_tensor_parallel_size * self.args.vllm_data_parallel_size}
 
     async def init_communicator(self, request: InitCommunicatorRequest):
         """
@@ -246,12 +381,17 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 - `port` (`int`): Port number to be used for communication.
                 - `world_size` (`int`): Total number of participating processes in the group.
         """
-        world_size = self.args.tensor_parallel_size * self.args.data_parallel_size + 1
+        world_size = self.args.vllm_tensor_parallel_size * self.args.vllm_data_parallel_size + 1
 
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
+        kwargs = {
+            'method':
+            'init_communicator',
+            'args': (request.host, request.port, world_size, *(() if request.client_device_uuid is None else
+                                                               (request.client_device_uuid, )))
+        }
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
@@ -279,6 +419,37 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
         return {'message': 'Request received, updating named parameter'}
 
+    async def update_adapter_flattened_param(self, request: UpdateFlattenedAdapterRequest):
+        peft_config = asdict(request.peft_config)
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (request.lora_int_id, peft_config, metadatas)}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating adapter parameter'}
+
+    async def update_flattened_params(self, request: UpdateFlattenedParamsRequest):
+        """
+        Updates the model weights with flattened tensor data.
+
+        Args:
+            request (UpdateFlattenedParamsRequest):
+                - metadatas (List[FlattenedTensorMetadata]): Metadata for the flattened tensors.
+
+        """
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_flattened_params', 'args': (metadatas, )}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating flattened parameters'}
+
     async def reset_prefix_cache(self):
         """
         Resets the prefix cache for the model.
@@ -292,12 +463,35 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     async def get_engine_type(self):
         """
-        Health check endpoint to verify that the server is running.
+        Return a dictionary describing the runtime engine configuration.
+
+        The returned object contains three keys:
+        - engine_type (str): Either 'AsyncLLMEngine' or 'LLMEngine', indicating
+        whether the asynchronous or synchronous engine is in use.
+        - use_gym_env (bool, optional): Present and True **only when**
+        ``use_async_engine`` and ``use_gym_env`` are both True.
+        - enable_multi_turn (bool): True if multi-turn scheduling is enabled
+        via ``args.multi_turn_scheduler``, otherwise False.
+
+        Returns
+        -------
+        dict
+            A concise specification of the current engine setup.
         """
-        if self.use_async_engine:
-            return {'engine_type': 'AsyncLLMEngine'}
-        else:
-            return {'engine_type': 'LLMEngine'}
+        enable_multi_turn = False
+        if self.args.multi_turn_scheduler:
+            enable_multi_turn = True
+        use_gym_env = False
+        if self.use_async_engine and self.use_gym_env:
+            use_gym_env = True
+        engine_type = 'AsyncLLMEngine' if self.use_async_engine else 'LLMEngine'
+        enable_lora = self.args.vllm_enable_lora
+        return {
+            'engine_type': engine_type,
+            'enable_multi_turn': enable_multi_turn,
+            'use_gym_env': use_gym_env,
+            'enable_lora': enable_lora,
+        }
 
     async def close_communicator(self):
         """
@@ -323,12 +517,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
             if not requests:
-                requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
+                requests = [RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])]
             # different seed bewteen vLLM Engine
             if request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            method = 'async_infer' if self.use_async_engine else 'infer'
+            method = 'infer' if not self.use_async_engine else 'async_infer'
             connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]
@@ -343,7 +537,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 
-def rollout_main(args: Union[List[str], RolloutArguments, None] = None) -> None:
+def rollout_main(args: Optional[Union[List[str], RolloutArguments]] = None) -> None:
     SwiftRolloutDeploy(args).main()
 
 
@@ -378,22 +572,3 @@ def run_rollout(args: RolloutArguments, return_url: bool = False):
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')
-
-
-# https://github.com/huggingface/trl/pull/3690
-# This patch handles backward compatibility for dtype parameter type changes in TRL:
-# - For TRL <= 0.19: dtype_annotation is torch.dtype (needs patching)
-# - For TRL > 0.19: dtype_annotation is str (no patching needed)
-old_update_named_param = WeightSyncWorkerExtension.update_named_param
-dtype_annotation = get_type_hints(old_update_named_param).get('dtype')
-
-if not hasattr(WeightSyncWorkerExtension, 'old_update_named_param') and dtype_annotation == torch.dtype:
-
-    @wraps(old_update_named_param)
-    def patched_update_named_param(self, name, dtype, shape) -> None:
-        if isinstance(dtype, str):
-            dtype = getattr(torch, dtype.split('.')[-1])
-        return old_update_named_param(self, name, dtype, shape)
-
-    WeightSyncWorkerExtension.update_named_param = patched_update_named_param
-    WeightSyncWorkerExtension.old_update_named_param = old_update_named_param

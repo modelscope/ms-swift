@@ -62,7 +62,7 @@ def create_lorap_optimizer(args: 'TrainingArguments', model, dataset):
 
 
 def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
-    from swift.llm import git_clone_github, get_model_arch
+    from swift.llm import git_clone_github
     if not args.local_repo_path:
         args.local_repo_path = git_clone_github('https://github.com/MoonshotAI/Moonlight.git')
     sys.path.append(os.path.join(args.local_repo_path, 'examples'))
@@ -75,9 +75,9 @@ def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
             key, value = mapping.split('=')
             optim_args[key] = value
 
-    model_arch = get_model_arch(model.model_meta.model_arch)
-    embed_key = model_arch.embedding or 'embed_tokens'
-    lm_head_key = model_arch.lm_head or 'lm_head'
+    model_arch = model.model_meta.model_arch
+    embed_key = getattr(model_arch, 'embedding', None) or 'embed_tokens'
+    lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
     muon_params = [
         p for n, p in model.named_parameters()
         if p.requires_grad and p.ndim >= 2 and embed_key not in n and lm_head_key not in n
@@ -130,9 +130,8 @@ def get_param_startswith(model,
 
 def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
     """ViT/Aligner/LLM use different learning rates."""
-    from swift.llm import get_model_arch
     decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
-    model_arch = get_model_arch(model.model_meta.model_arch)
+    model_arch = model.model_meta.model_arch
     vit_parameters = get_param_startswith(model, model_arch.vision_tower, model_arch.aligner)
     aligner_parameters = get_param_startswith(model, model_arch.aligner)
     llm_parameters = get_param_startswith(model, model_arch.language_model)
@@ -141,16 +140,16 @@ def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
                               [vit_parameters, aligner_parameters, llm_parameters]):
         if lr is None:
             lr = args.learning_rate
-        for wd in [0., args.weight_decay]:
-            if wd == 0:
-                params = [p for n, p in parameters if n not in decay_parameters]
-            else:
+        for use_wd, wd in zip([False, True], [0., args.weight_decay]):
+            if use_wd:
                 params = [p for n, p in parameters if n in decay_parameters]
+            else:
+                params = [p for n, p in parameters if n not in decay_parameters]
             if not params:
                 continue
             optimizer_grouped_parameters.append({
                 'params': params,
-                'weight_decay': args.weight_decay,
+                'weight_decay': wd,
                 'lr': lr,
             })
     optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args, model)

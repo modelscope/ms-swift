@@ -13,7 +13,7 @@ from transformers import PretrainedConfig
 
 from swift.hub import get_hub
 from swift.llm import to_device
-from swift.utils import deep_getattr, get_logger, safe_ddp_context, subprocess_run
+from swift.utils import deep_getattr, get_logger, is_local_master, safe_ddp_context, subprocess_run
 
 logger = get_logger()
 
@@ -21,10 +21,6 @@ _T = TypeVar('_T')
 
 
 class AttnImpl:
-    flash_attn = 'flash_attn'
-    sdpa = 'sdpa'
-    eager = 'eager'
-
     attn_impl_keys = ['_attn_implementation', 'attn_implementation', 'llm_attn_implementation']
     use_flash_attn_keys = ['_flash_attn_2_enabled', 'use_flash_attn', '_use_flash_attention_2']
 
@@ -32,7 +28,7 @@ class AttnImpl:
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl is None:
             return auto_value
-        return attn_impl == AttnImpl.flash_attn
+        return attn_impl in {'flash_attn', 'flash_attention_2'}
 
     @staticmethod
     def update_attn_impl(config: PretrainedConfig,
@@ -48,9 +44,9 @@ class AttnImpl:
             attn_impl_keys = [attn_impl_keys]
         attn_impl_keys = attn_impl_keys or AttnImpl.attn_impl_keys
         for key in attn_impl_keys:
-            HfConfigFactory.set_config_attr(config, key, attn_impl, ensure_set=False)
+            HfConfigFactory.set_config_attr(config, key, attn_impl, include_vit=True, ensure_set=False)
         for key in AttnImpl.use_flash_attn_keys:
-            HfConfigFactory.set_config_attr(config, key, use_flash_attn, ensure_set=False)
+            HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
 
 
 @dataclass
@@ -64,6 +60,7 @@ class ModelInfo:
 
     # extra
     rope_scaling: Optional[Dict[str, Any]] = None
+    is_moe_model: bool = False
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
@@ -91,6 +88,7 @@ class HfConfigFactory:
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
                           attr_name: str,
+                          include_vit: bool = False,
                           parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
         if isinstance(config, dict):
@@ -99,10 +97,11 @@ class HfConfigFactory:
             keys = dir(config)
         else:
             return []
-
-        value = deep_getattr(config, attr_name, None)
-        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
-            res.append((config, value))
+        config_keys = [None, 'language_config', 'llm_config', 'text_config']
+        if include_vit:
+            config_keys += ['vit_config', 'vision_config', 'audio_config']
+        if attr_name in keys and parent_key in config_keys:
+            res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
             if k.endswith('_config'):
@@ -110,13 +109,24 @@ class HfConfigFactory:
                     v = config[k]
                 else:
                     v = getattr(config, k)
-                res += HfConfigFactory._get_config_attrs(v, attr_name, k)
+                res += HfConfigFactory._get_config_attrs(v, attr_name, include_vit, k)
         return res
 
     @staticmethod
-    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str) -> Optional[Any]:
+    def is_moe_model(config) -> bool:
+        if 'Moe' in config.__class__.__name__:
+            return True
+        for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
+            if HfConfigFactory.get_config_attr(config, key):
+                return True
+        return False
+
+    @staticmethod
+    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
+                        attr_name: str,
+                        include_vit: bool = False) -> Optional[Any]:
         """Get the value of the attribute named attr_name."""
-        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if len(attrs) == 0:
             return None
         else:
@@ -126,9 +136,10 @@ class HfConfigFactory:
     def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
                         attr_name: str,
                         value: Any,
+                        include_vit: bool = False,
                         ensure_set: bool = True) -> int:
         """Set all the attr_name attributes to value."""
-        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if ensure_set and len(attrs) == 0:
             attrs.append((config, None))
         for config, _ in attrs:
@@ -170,6 +181,26 @@ class HfConfigFactory:
         return max_model_len
 
     @staticmethod
+    def set_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]], value: int):
+        """Set the max length supported by the model"""
+
+        possible_keys = [
+            'seq_length',  # qwen, chatglm
+            'max_position_embeddings',  # qwen1.5, llama2
+            'n_positions',  # polylm, phi-2
+            'model_max_length',  # baichuan2
+            # others
+            'seq_len',
+            'max_seq_len',
+            'max_sequence_length',
+            'max_seq_length',
+        ]
+        for key in possible_keys:
+            max_len_value = HfConfigFactory.get_config_attr(config, key)
+            if max_len_value is not None:
+                HfConfigFactory.set_config_attr(config, key, value)
+
+    @staticmethod
     def compat_zero3(config: PretrainedConfig) -> None:
         value = HfConfigFactory.get_config_attr(config, 'hidden_size')
         try:
@@ -183,7 +214,7 @@ class HfConfigFactory:
         if torch_dtype is None:
             return None
         if isinstance(torch_dtype, str):
-            torch_dtype = eval(f'torch.{torch_dtype}')
+            torch_dtype = getattr(torch, torch_dtype)
         return torch_dtype
 
     @staticmethod
@@ -257,23 +288,23 @@ def safe_snapshot_download(model_id_or_path: str,
     hub = get_hub(use_hf)
     if model_id_or_path.startswith('~'):
         model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
-    with safe_ddp_context(hash_id=model_id_or_path):
-        model_path_to_check = '/'.join(model_id_or_path.split(':', 1))
-        if os.path.exists(model_id_or_path):
-            model_dir = model_id_or_path
-            sub_folder = None
-        elif os.path.exists(model_path_to_check):
-            model_dir = model_path_to_check
-            sub_folder = None
-        else:
-            if model_id_or_path.startswith('/'):  # startswith
-                raise ValueError(f"path: '{model_id_or_path}' not found")
-            model_id_or_path = model_id_or_path.split(':', 1)  # get sub_folder
-            if len(model_id_or_path) == 1:
-                model_id_or_path = [model_id_or_path[0], None]
-            model_id_or_path, sub_folder = model_id_or_path
-            if sub_folder is not None:
-                kwargs['allow_patterns'] = [f"{sub_folder.rstrip('/')}/*"]
+    model_path_to_check = '/'.join(model_id_or_path.split(':', 1))
+    if os.path.exists(model_id_or_path):
+        model_dir = model_id_or_path
+        sub_folder = None
+    elif os.path.exists(model_path_to_check):
+        model_dir = model_path_to_check
+        sub_folder = None
+    else:
+        if model_id_or_path.startswith('/'):  # startswith
+            raise ValueError(f"path: '{model_id_or_path}' not found")
+        model_id_or_path = model_id_or_path.split(':', 1)  # get sub_folder
+        if len(model_id_or_path) == 1:
+            model_id_or_path = [model_id_or_path[0], None]
+        model_id_or_path, sub_folder = model_id_or_path
+        if sub_folder is not None:
+            kwargs['allow_patterns'] = [f"{sub_folder.rstrip('/')}/*"]
+        with safe_ddp_context(hash_id=model_id_or_path):
             model_dir = hub.download_model(model_id_or_path, revision, ignore_patterns, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
@@ -286,6 +317,7 @@ def safe_snapshot_download(model_id_or_path: str,
 
 
 def git_clone_github(github_url: str,
+                     *,
                      local_repo_name: Optional[str] = None,
                      branch: Optional[str] = None,
                      commit_hash: Optional[str] = None) -> str:
@@ -296,33 +328,47 @@ def git_clone_github(github_url: str,
     if local_repo_name is None:
         github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
+    github_url = f'{github_url}.git'
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    with safe_ddp_context(hash_id=local_repo_path):
-        if not os.path.exists(local_repo_path):
-            github_url = f'{github_url}.git'
+    with safe_ddp_context('git_clone', use_barrier=True):
+        repo_existed = os.path.exists(local_repo_path)
+        if not is_local_master() and repo_existed:
+            return local_repo_path
+        if repo_existed:
+            command = ['git', '-C', local_repo_path, 'fetch']
+            subprocess_run(command)
+            if branch is not None:
+                command = ['git', '-C', local_repo_path, 'checkout', branch]
+                subprocess_run(command)
+        else:
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
-            command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
             if branch is not None:
                 command += ['--branch', branch]
-                command_str += f' --branch {branch}'
-            logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
 
-            if commit_hash is not None:
-                git_cache_path = os.path.join(git_cache_dir, local_repo_name)
-                command = ['git', '-C', git_cache_path, 'reset', '--hard', commit_hash]
-                command_str = f"git -C '{git_cache_path}' reset '--hard' {commit_hash}"
-                logger.info(f'Run the command: `{command_str}`')
-                subprocess_run(command)
-
-        logger.info(f'local_repo_path: {local_repo_path}')
+        if commit_hash is not None:
+            command = ['git', '-C', local_repo_path, 'reset', '--hard', commit_hash]
+            subprocess_run(command)
+        elif repo_existed:
+            command = ['git', '-C', local_repo_path, 'pull']
+            subprocess_run(command)
+    logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
 
-def get_llm_model(model: torch.nn.Module, model_meta=None):
-    from swift import SwiftModel
+def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
+    """Get LLM model, this function can be used to get the llm module from a multi-modal model.
+
+    Args:
+        model: The model instance
+        model_meta: The model_meta information
+        inner_backbone: Get inner backbone model, like `QwenModel` or `LlamaModel`
+
+    Returns:
+
+    """
+    from swift.tuners import SwiftModel
     from peft import PeftModel
-    from swift.llm import get_model_arch
     from accelerate.utils import extract_model_from_parallel
     model = extract_model_from_parallel(model)
 
@@ -331,14 +377,17 @@ def get_llm_model(model: torch.nn.Module, model_meta=None):
     if model_meta is None:
         model_meta = model.model_meta
 
-    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    llm_prefix = getattr(model_meta.model_arch, 'language_model', None)
     if llm_prefix:
         llm_model = deep_getattr(model, llm_prefix[0])
     else:
         llm_model = model
 
-    if 'CausalLM' not in llm_model.__class__.__name__:
-        llm_model = model
+    if inner_backbone:
+        if hasattr(llm_model, 'thinker'):
+            llm_model = llm_model.thinker.model
+        elif hasattr(llm_model, 'model'):
+            llm_model = llm_model.model
     return llm_model
 
 

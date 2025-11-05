@@ -20,17 +20,28 @@ Swift DOCUMENTATION
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/GRPO/index.rst
+   Instruction/GKD.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
-   Instruction/Megatron-SWIFT-Training.md
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
+   Instruction/Ray.md
    Instruction/Reinforced-Fine-tuning.md
    Instruction/Agent-support.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Frequently-asked-questions.md
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Megatron-SWIFT
+
+   Megatron-SWIFT/Quick-start.md
+   Megatron-SWIFT/Command-line-parameters.md
+   Megatron-SWIFT/LoRA-Training.md
+   Megatron-SWIFT/Multimodal-Model.md
+   Megatron-SWIFT/Mcore-Bridge.md
 
 
 .. toctree::
@@ -50,6 +61,8 @@ Swift DOCUMENTATION
    BestPractices/GRPO-Multi-Modal-Training.md
    BestPractices/GRPO-Code-Training.md
    BestPractices/Qwen3-Best-Practice.md
+   BestPractices/Qwen3-VL-Best-Practice.md
+   BestPractices/MLLM-Registration.md
    BestPractices/Embedding.md
    BestPractices/Reranker.md
    BestPractices/Rapidly-Training-VL-model.md

@@ -3,12 +3,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingWithAnswerTemplate
 
 register_template(
     TemplateMeta(
@@ -31,9 +33,61 @@ register_template(
         default_system=DEFAULT_SYSTEM,
     ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
+
+class GMETemplate(Qwen2VLTemplate):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
+        return inputs
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=GMETemplate, suffix=['<|endoftext|>']))
+
+
+class JinaRerankerM0Template(Qwen2VLTemplate):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        instruction = ''
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = instruction + '\n' + '**Query**:\n' + query + '\n' + '**Document**:\n' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
+        return inputs
+
+
 register_template(
-    TemplateMeta(LLMTemplateType.qwen3_emb, suffix=['<|endoftext|>'], prefix=[], chat_sep=[], prompt=['{{QUERY}}']))
+    TemplateMeta(
+        MLLMTemplateType.jina_reranker_m0,
+        template_cls=JinaRerankerM0Template,
+        prefix=[],
+        chat_sep=[],
+        prompt=['{{QUERY}}']))
+
+
+class Qwen3EmbTemplate(Template):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.system is not None:
+            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
+            inputs.system = None
+        return inputs
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.qwen3_emb,
+        template_cls=Qwen3EmbTemplate,
+        suffix=['<|endoftext|>'],
+        prefix=[],
+        chat_sep=[],
+        prompt=['{{QUERY}}']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
@@ -293,10 +347,86 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.hunyuan,
+        LLMTemplateType.hunyuan_moe,
         prefix=['<|startoftext|>'],
         system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
         prompt=['{{QUERY}}<|extra_0|>'],
         chat_sep=['<|eos|><|startoftext|>'],
         suffix=['<|eos|>'],
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}<｜hy_place▁holder▁no▁3｜>'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
+        suffix=['<｜hy_place▁holder▁no▁2｜>'],
+        template_cls=ThinkingWithAnswerTemplate,
+        agent_template='hunyuan_hermes'))
+
+
+class GptTemplate(Template):
+
+    def _get_gpt_oss_prefix(self):
+        today = datetime.now().strftime('%Y-%m-%d')
+        return ('<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
+                f'Knowledge cutoff: 2024-06\nCurrent date: {today}\n\nReasoning: medium\n\n'
+                '# Valid channels: analysis, commentary, final. '
+                'Channel must be included for every message.<|end|>')
+
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
+        if inputs.system is None:
+            inputs.system = self._get_gpt_oss_prefix()
+        elif not inputs.system.startswith('<|start|>'):
+            inputs.system = self._get_gpt_oss_prefix() + (
+                f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                if not message['content'].startswith('<|channel|>'):
+                    message['content'] = '<|channel|>final<|message|>' + message['content']
+
+
+@dataclass
+class GptOssTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['{{SYSTEM}}'])
+    prompt: Prompt = field(default_factory=lambda: ['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end|>'])
+    suffix: Prompt = field(default_factory=lambda: ['<|return|>'])
+
+
+register_template(GptOssTemplateMeta(LLMTemplateType.gpt_oss, template_cls=GptTemplate))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.longchat,
+        prefix=[],
+        system_prefix=['SYSTEM:{{SYSTEM}}'],
+        prompt=[' [Round {{ROUND0}}] USER:{{QUERY}} ASSISTANT:'],
+        chat_sep=['</longcat_s>'],
+        suffix=['</longcat_s>'],
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ling2,
+        prefix=['<role>SYSTEM</role>detailed thinking off<|role_end|>'],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}\ndetailed thinking off<|role_end|>'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<|role_end|><role>ASSISTANT</role>'],
+        chat_sep=['<|role_end|>'],
+        suffix=['<|role_end|>'],
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ring2,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
+        chat_sep=[],
+        suffix=['<|endoftext|>'],
+        response_prefix='<think>\n',
     ))

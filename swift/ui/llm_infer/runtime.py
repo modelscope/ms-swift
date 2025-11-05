@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
+import re
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -11,8 +13,7 @@ import psutil
 from packaging import version
 
 from swift.ui.base import BaseUI
-from swift.utils import get_logger
-from swift.utils.utils import format_time
+from swift.utils import format_time, get_logger
 
 logger = get_logger()
 
@@ -250,10 +251,14 @@ class Runtime(BaseUI):
             pid, all_args = cls.parse_info_from_cmdline(task)
             log_file = all_args['log_file']
             if sys.platform == 'win32':
-                os.system(f'taskkill /f /t /pid "{pid}"')
+                command = ['taskkill', '/f', '/t', '/pid', pid]
             else:
-                os.system(f'pkill -9 -f {log_file}')
-            time.sleep(1)
+                command = ['pkill', '-9', '-f', log_file]
+            try:
+                result = subprocess.run(command, capture_output=True, text=True)
+                assert result.returncode == 0
+            except Exception as e:
+                raise e
             cls.break_log_event(task)
         return [cls.refresh_tasks()] + [gr.update(value=None)]
 
@@ -270,6 +275,10 @@ class Runtime(BaseUI):
             if e.elem_id in all_args:
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
+                elif isinstance(e, gr.Slider) and re.fullmatch(cls.int_regex, all_args[e.elem_id]):
+                    arg = int(all_args[e.elem_id])
+                elif isinstance(e, gr.Slider) and re.fullmatch(cls.float_regex, all_args[e.elem_id]):
+                    arg = float(all_args[e.elem_id])
                 else:
                     if e.elem_id == 'model':
                         if is_custom_path:

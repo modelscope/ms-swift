@@ -4,6 +4,7 @@ swift sft \
     --model Qwen/Qwen2.5-0.5B \
     --train_type lora \
     --dataset '<your-dataset>' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

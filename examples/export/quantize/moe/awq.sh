@@ -1,3 +1,5 @@
+pip install "transformers<4.52"
+
 CUDA_VISIBLE_DEVICES=0,1 \
 swift export \
     --model Qwen/Qwen3-30B-A3B \

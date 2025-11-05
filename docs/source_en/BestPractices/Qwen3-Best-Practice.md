@@ -14,7 +14,7 @@ swift infer \
     --infer_backend vllm \
     --stream true \
     --max_new_tokens 2048 \
-    --max_model_len 8192
+    --vllm_max_model_len 8192
 ```
 
 ```text
@@ -44,7 +44,7 @@ swift infer \
     --infer_backend vllm \
     --stream true \
     --max_new_tokens 2048 \
-    --max_model_len 8192 \
+    --vllm_max_model_len 8192 \
     --response_prefix '<think>\n\n</think>\n\n'
 ```
 
@@ -123,9 +123,9 @@ swift infer \
     --model Qwen/Qwen3-32B \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
-    --gpu_memory_utilization 0.9 \
-    --tensor_parallel_size 2 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 4096 \
     --write_batch_size 1000 \
     --result_path distill_dataset.jsonl
@@ -149,6 +149,7 @@ swift sft \
     --train_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -225,6 +226,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
@@ -296,6 +298,7 @@ swift rlhf \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
@@ -318,7 +321,7 @@ swift rlhf \
     --offload_model true \
     --offload_optimizer true \
     --deepspeed zero3 \
-    --tensor_parallel_size 1 \
+    --vllm_tensor_parallel_size 1 \
     --temperature 1.0 \
     --top_p 0.85 \
     --log_completions true \
@@ -327,27 +330,30 @@ swift rlhf \
 
 ## Megatron-SWIFT
 
-ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Instruction/Megatron-SWIFT-Training.md).
+ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/KTO/RM for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+
+For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 
 We will use Alibaba Cloud DLC to launch training. The training environment consists of two nodes equipped with 8x 80GiB A800 GPUs each. For more information on multi-node launching, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node).
 
 ```bash
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
-# Ensure that the weight save path `--save` and packing cache path `--packing_cache` are the same and shared across both nodes.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \

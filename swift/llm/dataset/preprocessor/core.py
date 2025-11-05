@@ -3,6 +3,7 @@ import ast
 import os
 from collections import Counter
 from contextlib import contextmanager
+from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -10,6 +11,7 @@ from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
+from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
@@ -18,21 +20,28 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
+_pair_keys = ['messages', 'images', 'videos', 'audios', 'tensors', 'tools', 'objects']
+
 
 class RowPreprocessor:
-    standard_keys = [
-        'messages', 'rejected_response', 'rejected_images', 'label', 'images', 'videos', 'audios', 'tensors', 'tools', 'objects',
-        'channel', 'margin'
-    ]
+    standard_keys = _pair_keys + list(
+        chain.from_iterable([f'{prefix}_{k}' for k in _pair_keys]
+                            for prefix in ['rejected', 'positive', 'negative'])) + [
+                                'rejected_response',
+                                'label',
+                                'channel',
+                                'margin',
+                            ]
 
     def __init__(self,
                  *,
                  columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
-                 random_state: Union[np.random.RandomState, int, None] = 42,
+                 random_state: Optional[Union[np.random.RandomState, int]] = 42,
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
+        self._version = 'v1'
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
@@ -57,7 +66,7 @@ class RowPreprocessor:
         assert len(messages) > 0, f'messages: {messages}'
         # fix swift/SlimOrca
         for message in messages:
-            keys = set(message.keys()) - {'role', 'content'}
+            keys = set(message.keys()) - {'role', 'content', 'loss'}
             for key in keys:
                 message.pop(key)
 
@@ -68,7 +77,7 @@ class RowPreprocessor:
             assert content is not None, f'message: {message}'
 
     @staticmethod
-    def _cast_images(row: Dict[str, Any]) -> None:
+    def _cast_mm_data(row: Dict[str, Any]) -> None:
         for key in ['images', 'rejected_images']:
             images = row.get(key, None)
             if images is None:
@@ -83,27 +92,20 @@ class RowPreprocessor:
             elif isinstance(images, dict):
                 row[key] = [images]
 
+        for key in ['videos', 'audios']:
+            mm_data = row.get(key)
+            if mm_data is None:
+                continue
+            elif isinstance(mm_data, str):
+                row[key] = [mm_data]
+
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
-        if 'rejected_messages' in row:
-            chosen_messages = row['messages']
-            rejected_messages = row['rejected_messages']
-            messages = []
-            rejected_response = None
-            for chosen_user, chosen_assistant, rejected_user, rejected_assistant in zip(
-                    chosen_messages[::2], chosen_messages[1::2], rejected_messages[::2], rejected_messages[1::2]):
-                assert chosen_user == rejected_user
-                messages.append(chosen_user)
-                messages.append(chosen_assistant)
-                if chosen_assistant != rejected_assistant:
-                    rejected_response = rejected_assistant['content']
-            row['messages'] = messages
-            row['rejected_response'] = rejected_response
-
         if 'rejected_response' in row:
             messages = row['messages']
             rejected_response = row['rejected_response']
-            if rejected_response is None or rejected_response == messages[-1]['content']:
+            if (rejected_response is None
+                    or isinstance(rejected_response, str) and rejected_response == messages[-1]['content']):
                 raise ValueError(f'rejected_response: {rejected_response}')
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -182,9 +184,9 @@ class RowPreprocessor:
                     row = [row]
                 for r in row:
                     self._check_objects(r)
-                    self._check_messages(r)
                     self._check_rejected_response(r)
-                    self._cast_images(r)
+                    self._check_messages(r)
+                    self._cast_mm_data(r)
             except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -232,16 +234,6 @@ class RowPreprocessor:
 
         return dataset
 
-    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = self.safe_rename_columns(dataset, self.origin_columns)
-        dataset = self.safe_rename_columns(dataset, self.columns)
-        if isinstance(dataset, HfIterableDataset):
-            # fix: https://github.com/huggingface/datasets/issues/6408
-            columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
-            if columns:
-                dataset = dataset.rename_columns(columns)
-        return dataset
-
     @staticmethod
     def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = RowPreprocessor.get_features_dataset(dataset)
@@ -260,7 +252,19 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
+                messages_feature = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                }]
+                messages_feature_with_loss = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                    'loss': Value(dtype='float64'),
+                }]
+                features['messages'] = messages_feature_with_loss
+                features['rejected_messages'] = messages_feature_with_loss
+                features['positive_messages'] = [messages_feature]
+                features['negative_messages'] = [messages_feature]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
@@ -312,14 +316,27 @@ class RowPreprocessor:
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
+                if isinstance(dataset, HfDataset) and not dataset.cache_files:
+                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                                                                 f'{dataset._fingerprint}.arrow')
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
-        dataset = self._rename_columns(dataset)
+                map_kwargs.pop('cache_file_name', None)
+        dataset = self.safe_rename_columns(dataset, self.origin_columns)
+        dataset = self.safe_rename_columns(dataset, self.columns)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
+        if isinstance(dataset, HfIterableDataset):
+            # fix: https://github.com/huggingface/datasets/issues/6408
+            columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
+            if columns:
+                dataset = dataset.rename_columns(columns)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
+                if isinstance(dataset, HfDataset) and not dataset.cache_files:
+                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                                                                 f'{dataset._fingerprint}.arrow')
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
                     fn_kwargs={

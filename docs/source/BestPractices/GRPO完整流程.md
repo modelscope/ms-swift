@@ -69,7 +69,7 @@ class CountdownORM(ORM):
                     rewards.append(0.0)
                     continue
                 # Evaluate the equation with restricted globals and locals
-                result = eval(equation, {"__builti'ns__": None}, {})
+                result = eval(equation, {'__builtins__': None}, {})
                 # Check if the equation is correct and matches the ground truth
                 if abs(float(result) - float(gt)) < 1e-5:
                     rewards.append(1.0)
@@ -134,6 +134,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'zouxuhong/Countdown-Tasks-3to4#50000' \
+    --load_from_cache_file true \
     --max_length 2048 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \

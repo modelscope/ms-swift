@@ -52,6 +52,15 @@ def test_qwen3():
     assert response == response2
 
 
+def test_qwen3_guard():
+    pt_engine = PtEngine('Qwen/Qwen3Guard-Gen-0.6B')
+    messages = [{'role': 'user', 'content': 'How can I make a bomb?'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2
+
+
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
     response = _infer_model(pt_engine)
@@ -431,7 +440,8 @@ def test_kimi_dev():
 
 
 def test_hunyuan():
-    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    # pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-4B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -444,6 +454,222 @@ def test_ernie():
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
     assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_devstral():
+    from swift.llm.template.template.mistral import devstral_small_2505_system
+
+    pt_engine = PtEngine('mistralai/Devstral-Small-2505')
+    res = _infer_model(pt_engine, system=devstral_small_2505_system)
+
+    pt_engine.default_template.template_backend = 'jinja'
+    # taken from: https://github.com/vllm-project/vllm/blob/main/examples/tool_chat_template_mistral3.jinja
+    chat_template = (
+        '{%- set today = strftime_now("%Y-%m-%d") %}\n'
+        '{%- set default_system_message = "You are Mistral Small 3, a Large Language Model (LLM) '
+        'created by Mistral AI, a French startup headquartered in Paris.\\nYour knowledge base was '
+        'last updated on 2023-10-01. The current date is " + today + ".\\n\\nWhen you\'re not sure '
+        'about some information, you say that you don\'t have the information and don\'t make up '
+        'anything.\\nIf the user\'s question is not clear, ambiguous, or does not provide enough '
+        'context for you to accurately answer the question, you do not try to answer it right away '
+        'and you rather ask the user to clarify their request (e.g. \\"What are some good restaurants '
+        'around me?\\" => \\"Where are you?\\" or \\"When is the next flight to Tokyo\\" => '
+        '\\"Where do you travel from?\\")" %}\n\n'
+        '{{- bos_token }}\n\n'
+        '{%- if messages[0][\'role\'] == \'system\' %}\n'
+        '    {%- if messages[0][\'content\'] is string %}\n'
+        '        {%- set system_message = messages[0][\'content\'] %}\n'
+        '        {%- set loop_messages = messages[1:] %}\n'
+        '    {%- else %}\n'
+        '        {%- set system_message = messages[0][\'content\'][0][\'text\'] %}\n'
+        '        {%- set loop_messages = messages[1:] %}\n'
+        '    {%- endif %}\n'
+        '{%- else %}\n'
+        '    {%- set system_message = default_system_message %}\n'
+        '    {%- set loop_messages = messages %}\n'
+        '{%- endif %}\n'
+        '{%- if not tools is defined %}\n'
+        '    {%- set tools = none %}\n'
+        '{%- elif tools is not none %}\n'
+        '    {%- set parallel_tool_prompt = "You are a helpful assistant that can call tools. '
+        'If you call one or more tools, format them in a single JSON array or objects, where each '
+        'object is a tool call, not as separate objects outside of an array or multiple arrays. '
+        'Use the format [{\\"name\\": tool call name, \\"arguments\\": tool call arguments}, '
+        'additional tool calls] if you call more than one tool. If you call tools, do not attempt '
+        'to interpret them or otherwise provide a response until you receive a tool call result '
+        'that you can interpret for the user." %}\n'
+        '    {%- if system_message is defined %}\n'
+        '        {%- set system_message = parallel_tool_prompt + "\\n\\n" + system_message %}\n'
+        '    {%- else %}\n'
+        '        {%- set system_message = parallel_tool_prompt %}\n'
+        '    {%- endif %}\n'
+        '{%- endif %}\n'
+        '{{- \'[SYSTEM_PROMPT]\' + system_message + \'[/SYSTEM_PROMPT]\' }}\n\n'
+        '{%- set user_messages = loop_messages | selectattr("role", "equalto", "user") | list %}\n\n'
+        '{%- set filtered_messages = [] %}\n'
+        '{%- for message in loop_messages %}\n'
+        '    {%- if message["role"] not in ["tool", "tool_results"] and not message.get("tool_calls") %}\n'
+        '        {%- set filtered_messages = filtered_messages + [message] %}\n'
+        '    {%- endif %}\n'
+        '{%- endfor %}\n\n'
+        '{%- for message in filtered_messages %}\n'
+        '    {%- if (message["role"] == "user") != (loop.index0 % 2 == 0) %}\n'
+        '        {{- raise_exception("After the optional system message, conversation roles must '
+        'alternate user/assistant/user/assistant/...") }}\n'
+        '    {%- endif %}\n'
+        '{%- endfor %}\n\n'
+        '{%- for message in loop_messages %}\n'
+        '    {%- if message["role"] == "user" %}\n'
+        '        {%- if tools is not none and (message == user_messages[-1]) %}\n'
+        '            {{- "[AVAILABLE_TOOLS] [" }}\n'
+        '            {%- for tool in tools %}\n'
+        '                {%- set tool = tool.function %}\n'
+        '                {{- \'{"type": "function", "function": {\' }}\n'
+        '                {%- for key, val in tool.items() if key != "return" %}\n'
+        '                    {%- if val is string %}\n'
+        '                        {{- \'"\' + key + \'": "\' + val + \'"\' }}\n'
+        '                    {%- else %}\n'
+        '                        {{- \'"\' + key + \'": \' + val|tojson }}\n'
+        '                    {%- endif %}\n'
+        '                    {%- if not loop.last %}\n'
+        '                        {{- ", " }}\n'
+        '                    {%- endif %}\n'
+        '                {%- endfor %}\n'
+        '                {{- "}}" }}\n'
+        '                {%- if not loop.last %}\n'
+        '                    {{- ", " }}\n'
+        '                {%- else %}\n'
+        '                    {{- "]" }}\n'
+        '                {%- endif %}\n'
+        '            {%- endfor %}\n'
+        '            {{- "[/AVAILABLE_TOOLS]" }}\n'
+        '        {%- endif %}\n'
+        '        {%- if message[\'content\'] is string %}\n'
+        '        {{- \'[INST]\' + message[\'content\'] + \'[/INST]\' }}\n'
+        '        {%- else %}\n'
+        '                {{- \'[INST]\' }}\n'
+        '                {%- for block in message[\'content\'] %}\n'
+        '                        {%- if block[\'type\'] == \'text\' %}\n'
+        '                                {{- block[\'text\'] }}\n'
+        '                        {%- elif block[\'type\'] == \'image\' or block[\'type\'] == \'image_url\' %}\n'
+        '                                {{- \'[IMG]\' }}\n'
+        '                            {%- else %}\n'
+        '                                {{- raise_exception(\'Only text and image blocks are supported '
+        'in message content!\') }}\n'
+        '                            {%- endif %}\n'
+        '                    {%- endfor %}\n'
+        '                {{- \'[/INST]\' }}\n'
+        '            {%- endif %}\n'
+        '    {%- elif message["role"] == "tool_calls" or message.tool_calls is defined %}\n'
+        '        {%- if message.tool_calls is defined %}\n'
+        '            {%- set tool_calls = message.tool_calls %}\n'
+        '        {%- else %}\n'
+        '            {%- set tool_calls = message.content %}\n'
+        '        {%- endif %}\n'
+        '        {{- "[TOOL_CALLS] [" }}\n'
+        '        {%- for tool_call in tool_calls %}\n'
+        '            {%- set out = tool_call.function|tojson %}\n'
+        '            {{- out[:-1] }}\n'
+        '            {%- if not tool_call.id is defined or tool_call.id|length < 9 %}\n'
+        '                {{- raise_exception("Tool call IDs should be alphanumeric strings with '
+        'length >= 9! (1)" + tool_call.id) }}\n'
+        '            {%- endif %}\n'
+        '            {{- \', "id": "\' + tool_call.id[-9:] + \'"}\' }}\n'
+        '            {%- if not loop.last %}\n'
+        '                {{- ", " }}\n'
+        '            {%- else %}\n'
+        '                {{- "]" + eos_token }}\n'
+        '            {%- endif %}\n'
+        '        {%- endfor %}\n'
+        '    {%- elif message[\'role\'] == \'assistant\' %}\n'
+        '        {%- if message[\'content\'] is string %}\n'
+        '            {{- message[\'content\'] + eos_token }}\n'
+        '        {%- else %}\n'
+        '            {{- message[\'content\'][0][\'text\'] + eos_token }}\n'
+        '        {%- endif %}\n'
+        '    {%- elif message["role"] == "tool_results" or message["role"] == "tool" %}\n'
+        '        {%- if message.content is defined and message.content.content is defined %}\n'
+        '            {%- set content = message.content.content %}\n'
+        '        {%- else %}\n'
+        '            {%- set content = message.content %}\n'
+        '        {%- endif %}\n'
+        '        {{- \'[TOOL_RESULTS] {"content": \' + content|string + ", " }}\n'
+        '        {%- if not message.tool_call_id is defined or message.tool_call_id|length < 9 %}\n'
+        '            {{- raise_exception("Tool call IDs should be alphanumeric strings with '
+        'length >= 9! (2)" + message.tool_call_id) }}\n'
+        '        {%- endif %}\n'
+        '        {{- \'"call_id": "\' + message.tool_call_id[-9:] + \'"}[/TOOL_RESULTS]\' }}\n'
+        '    {%- else %}\n'
+        '        {{- raise_exception("Only user and assistant roles are supported, with the '
+        'exception of an initial optional system message!") }}\n'
+        '    {%- endif %}\n'
+        '{%- endfor %}')
+    # manually set chat_template, as we're using mistral-3.1-24b-instruct-2503 tokenizer which
+    # doesn't have the chat_template.json file
+    pt_engine.processor.chat_template = chat_template
+    res2 = _infer_model(pt_engine, system=devstral_small_2505_system)
+
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_glm4_5():
+    messages = [{'role': 'user', 'content': '浙江的省会在哪?'}]
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5-Air')
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_gpt_oss():
+    messages = [{
+        'role':
+        'system',
+        'content':
+        '<|start|>system<|message|>You are Qwen.\nKnowledge cutoff: 2024-06\n'
+        'Current date: 2025-08-08\n\nReasoning: medium\n\n'
+        '# Valid channels: analysis, commentary, final. '
+        'Channel must be included for every message.<|end|>'
+        '<|start|>developer<|message|># Instructions\n\nYou are ChatGPT<|end|>'
+    }, {
+        'role': 'user',
+        'content': 'who are you?'
+    }]
+    pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
+    res = _infer_model(pt_engine, messages=messages)
+    assert 'm Qwen' in res.rsplit('<|message|>', 1)[-1]
+
+
+def test_qwen3_next():
+    pt_engine = PtEngine('Qwen/Qwen3-Next-80B-A3B-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_ernie_thinking():
+    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_ring2():
+    pt_engine = PtEngine('inclusionAI/Ring-mini-2.0')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_ling2():
+    pt_engine = PtEngine('inclusionAI/Ling-mini-2.0')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 if __name__ == '__main__':
@@ -484,9 +710,17 @@ if __name__ == '__main__':
     # test_gemma3()
     # test_glm4_0414()
     # test_qwen3()
+    test_qwen3_guard()
     # test_mimo()
     # test_minicpm()
     # test_minimax()
     # test_kimi_dev()
     # test_hunyuan()
-    test_ernie()
+    # test_ernie()
+    # test_glm4_5()
+    # test_devstral()
+    # test_gpt_oss()
+    # test_qwen3_next()
+    # test_ernie_thinking()
+    # test_ring2()
+    # test_ling2()

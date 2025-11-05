@@ -1,17 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, Optional, Tuple, Type
+from types import MethodType
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from transformers.utils.versions import require_version
 
-from swift.llm import TemplateType
-from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
-from ..constant import LLMModelType, MLLMModelType, RMModelType
+from swift.llm import TemplateType, to_device
+from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
+from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
@@ -552,11 +555,132 @@ register_model(
                 Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
+            ModelGroup([
+                Model('iic/Tongyi-DeepResearch-30B-A3B', 'Alibaba-NLP/Tongyi-DeepResearch-30B-A3B'),
+            ])
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_guard,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3Guard-Gen-0.6B', 'Qwen/Qwen3Guard-Gen-0.6B'),
+                Model('Qwen/Qwen3Guard-Gen-4B', 'Qwen/Qwen3Guard-Gen-4B'),
+                Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
+            ])
+        ],
+        TemplateType.qwen3_guard,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_thinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
+                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
+            ]),
+        ],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_nothinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
+                Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
+                # awq
+                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
+            ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
+                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
+            ])
+        ],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_coder,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       tags=['coding']),
+        ],
+        TemplateType.qwen3_coder,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_moe_thinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
+                Model('Qwen/Qwen3-30B-A3B-Thinking-2507-FP8', 'Qwen/Qwen3-30B-A3B-Thinking-2507-FP8'),
+                Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
+                Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
+                # awq
+                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
+            ]),
+        ],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
+        ])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [ModelGroup([
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
+            Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
+        ])],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57'],
     ))
 
 
@@ -566,21 +690,51 @@ def patch_qwen_vl_utils(vision_process):
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
+    res = {}
     for key in [
-            'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
-            'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
+            'image_factor',  # image_patch_size * SPATIAL_MERGE_SIZE
+            'min_pixels',  # IMAGE_MIN_TOKEN_NUM * image_factor ** 2
+            'max_pixels',
+            'video_min_pixels',
+            'video_max_pixels',
+            'video_total_pixels',
+            #
+            'max_ratio',
+            'frame_factor',
+            'fps',
+            'fps_min_frames',
+            'fps_max_frames',
+            # qwen3_vl
+            'image_max_token_num',
+            'image_min_token_num',
+            'spatial_merge_size',
+            'video_max_token_num',
+            'video_min_token_num',
     ]:
         type_func = float if key == 'fps' else int
-        setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
-    _read_video_decord = vision_process._read_video_decord
+        default_value = getattr(vision_process, key.upper(), None)
+        if default_value is None:
+            # Skip keys not supported by the specific vision_process implementation
+            continue
+        val = get_env_args(key, type_func, default_value)
+        setattr(vision_process, key.upper(), val)
+        res[key] = val
+    # Patch decord video reader if available
+    _read_video_decord = getattr(vision_process, '_read_video_decord', None)
+    if _read_video_decord is not None:
 
-    def _new_read_video_decord(ele: dict):
-        from swift.llm import load_file
-        ele['video'] = load_file(ele['video'])
-        return _read_video_decord(ele)
+        def _new_read_video_decord(ele: dict):
+            from swift.llm import load_file
+            ele['video'] = load_file(ele['video'])
+            return _read_video_decord(ele)
 
-    vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
+        backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
+        if isinstance(backends, dict):
+            backends['decord'] = _new_read_video_decord
+        elif backends is None:  # keye_vl
+            vision_process._read_video_decord = _new_read_video_decord
     vision_process._patch = True
+    return res
 
 
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
@@ -589,16 +743,14 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
     if model is not None:
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        if hasattr(base_model.model, 'embed_tokens'):
-            embed_tokens = base_model.model.embed_tokens
-        else:
-            embed_tokens = base_model.model.language_model.embed_tokens
-        patch_output_clone(embed_tokens)
-        patch_output_to_input_device(embed_tokens)
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    patch_qwen_vl_utils(vision_process)
+    check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
+    if check_qwen_vl_utils:
+        require_version('qwen_vl_utils<0.0.12')
+    global_vars = patch_qwen_vl_utils(vision_process)
+    tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
 
 
@@ -691,6 +843,293 @@ register_model(
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
+
+def patch_Qwen3VLMoeTextExperts_dtype():
+    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextExperts
+    if hasattr(Qwen3VLMoeTextExperts, '_patch'):
+        return
+    Qwen3VLMoeTextExperts._patch = True
+    origin_forward = Qwen3VLMoeTextExperts.forward
+
+    def forward(self, hidden_states, *args, **kwargs):
+        res = origin_forward(self, hidden_states, *args, **kwargs)
+        return res.to(hidden_states.dtype)
+
+    Qwen3VLMoeTextExperts.forward = forward
+
+
+def _forward_qwen3_vl_or_qwen3_omni(
+    self,
+    processor,
+    input_ids,
+    inputs_embeds,
+    pixel_values,
+    pixel_values_videos,
+    image_grid_thw,
+    video_grid_thw,
+):
+    if inputs_embeds is None:
+        inputs_embeds = self.get_input_embeddings()(input_ids)
+
+    dtype = self.visual.dtype
+    if pixel_values is None and pixel_values_videos is None:  # plain-text
+        images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+        media_inputs = processor.image_processor(images=images, return_tensors='pt')
+        media_inputs = to_device(media_inputs, input_ids.device)
+        pixel_values = media_inputs['pixel_values'].type(dtype)
+        image_embeds, deepstack_visual_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+        visual_pos_masks = None
+    else:
+        if pixel_values is None:
+            pixel_values_mixed = pixel_values_videos
+            grid_thw = video_grid_thw
+        elif pixel_values_videos is None:
+            pixel_values_mixed = pixel_values
+            grid_thw = image_grid_thw
+        else:
+            pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+            grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+        pixel_values_mixed = pixel_values_mixed.type(dtype)
+        mixed_embeds, deepstack_visual_embeds = self.visual(pixel_values_mixed, grid_thw=grid_thw)
+        if pixel_values is None:
+            image_embeds = None
+            video_embeds = mixed_embeds
+        elif pixel_values_videos is None:
+            image_embeds = mixed_embeds
+            video_embeds = None
+        else:
+            merge_length = processor.image_processor.merge_size**2
+            image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+            image_embeds = mixed_embeds[:image_tokens]
+            video_embeds = mixed_embeds[image_tokens:]
+
+        image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+        video_mask = (input_ids == self.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+        if image_embeds is not None:
+            image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            image_mask = image_mask.to(inputs_embeds.device)
+            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+        if video_embeds is not None:
+            video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            video_mask = video_mask.to(inputs_embeds.device)
+            inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        image_mask, video_mask = image_mask[..., 0], video_mask[..., 0]
+        visual_pos_masks = image_mask | video_mask
+        if image_embeds is not None and video_embeds is not None:
+            deepstack_image_embeds = [tensor[:image_tokens] for tensor in deepstack_visual_embeds]
+            deepstack_video_embeds = [tensor[image_tokens:] for tensor in deepstack_visual_embeds]
+            deepstack_visual_embeds = []
+            image_mask_joint = image_mask[visual_pos_masks]
+            video_mask_joint = video_mask[visual_pos_masks]
+            for img_embed, vid_embed in zip(deepstack_image_embeds, deepstack_video_embeds):
+                embed_joint = img_embed.new_zeros(visual_pos_masks.sum(), img_embed.shape[-1]).to(img_embed.device)
+                embed_joint[image_mask_joint, :] = img_embed
+                embed_joint[video_mask_joint, :] = vid_embed
+                deepstack_visual_embeds.append(embed_joint)
+    return inputs_embeds, visual_pos_masks, deepstack_visual_embeds
+
+
+def _patch_deepstack_process(model):
+
+    def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
+                           visual_embeds: torch.Tensor):
+        from swift.trainers.sequence_parallel import sequence_parallel
+        if sequence_parallel.world_size:
+            visual_pos_masks, visual_embeds = sequence_parallel.pad_and_split_mm_tokens(visual_pos_masks, visual_embeds)
+        if visual_pos_masks is None:
+            return hidden_states + visual_embeds.mean() * 0
+        visual_pos_masks = visual_pos_masks.to(hidden_states.device)
+        visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
+        hidden_states[visual_pos_masks, :] = local_this
+        return hidden_states
+
+    model._deepstack_process = MethodType(_deepstack_process, model)
+
+
+def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
+    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+        return
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
+                                                                check_model_inputs, Cache, is_torchdynamo_compiling)
+    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
+    output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
+
+    @check_model_inputs
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        pixel_values: Optional[torch.Tensor] = None,
+        pixel_values_videos: Optional[torch.FloatTensor] = None,
+        image_grid_thw: Optional[torch.LongTensor] = None,
+        video_grid_thw: Optional[torch.LongTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> Union[tuple, output_cls]:
+        if not self.training and not is_deepspeed_enabled():
+            return self.origin_forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                cache_position=cache_position,
+                **kwargs,
+            )
+
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError('You must specify exactly one of input_ids or inputs_embeds')
+
+        inputs_embeds, visual_pos_masks, deepstack_visual_embeds = _forward_qwen3_vl_or_qwen3_omni(
+            self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
+            video_grid_thw)
+        if position_ids is None:
+            attention_mask_tensor = (
+                attention_mask if not isinstance(attention_mask, dict) else attention_mask['full_attention'])
+            if attention_mask_tensor is not None and attention_mask_tensor.ndim == 4:
+                attention_mask_tensor = torch.diagonal(attention_mask_tensor[:, 0], dim1=1, dim2=2)
+                # Only apply conversion for floating point tensors (inverted masks)
+                if attention_mask_tensor.dtype.is_floating_point:
+                    attention_mask_tensor = attention_mask_tensor / torch.finfo(attention_mask_tensor.dtype).min
+                    attention_mask_tensor = (1.0 - attention_mask_tensor).int()
+
+            # Calculate RoPE index once per generation in the pre-fill stage only.
+            # When compiling, we can't check tensor values thus we check only input length
+            # It is safe to assume that `length!=1` means we're in pre-fill because compiled
+            # models currently cannot do asssisted decoding
+            prefill_compiled_stage = is_torchdynamo_compiling() and (
+                (input_ids is not None and input_ids.shape[1] != 1) or
+                (inputs_embeds is not None and inputs_embeds.shape[1] != 1))
+            prefill_noncompiled_stage = not is_torchdynamo_compiling() and (
+                (cache_position is not None and cache_position[0] == 0) or
+                (past_key_values is None or past_key_values.get_seq_length() == 0))
+            if (prefill_compiled_stage or prefill_noncompiled_stage) or self.rope_deltas is None:
+                position_ids, rope_deltas = self.get_rope_index(
+                    input_ids,
+                    image_grid_thw,
+                    video_grid_thw,
+                    attention_mask=attention_mask_tensor,
+                )
+                self.rope_deltas = rope_deltas
+            # then use the prev pre-calculated rope-deltas to get the correct position ids
+            else:
+                batch_size, seq_length, _ = inputs_embeds.shape
+                delta = ((cache_position[0]
+                          + self.rope_deltas).to(inputs_embeds.device) if cache_position is not None else 0)
+                position_ids = torch.arange(seq_length, device=inputs_embeds.device)
+                position_ids = position_ids.view(1, -1).expand(batch_size, -1)
+                if cache_position is not None:  # otherwise `deltas` is an int `0`
+                    delta = delta.repeat_interleave(batch_size // delta.shape[0], dim=0)
+                position_ids = position_ids.add(delta)
+                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
+
+        outputs = self.language_model(
+            input_ids=None,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            cache_position=cache_position,
+            visual_pos_masks=visual_pos_masks,
+            deepstack_visual_embeds=deepstack_visual_embeds,
+            **kwargs,
+        )
+
+        return output_cls(
+            last_hidden_state=outputs.last_hidden_state,
+            past_key_values=outputs.past_key_values,
+            rope_deltas=self.rope_deltas,
+        )
+
+    model.origin_forward = model.forward
+    model.forward = MethodType(forward, model)
+    _patch_deepstack_process(model.language_model)
+
+
+def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.14')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
+    kwargs['_check_qwen_vl_utils'] = False
+    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    if model is not None:
+        _compat_qwen3_vl_mixed_data(model.model, processor)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-2B-Instruct', 'Qwen/Qwen3-VL-2B-Instruct'),
+                Model('Qwen/Qwen3-VL-2B-Thinking', 'Qwen/Qwen3-VL-2B-Thinking'),
+                Model('Qwen/Qwen3-VL-2B-Instruct-FP8', 'Qwen/Qwen3-VL-2B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-2B-Thinking-FP8', 'Qwen/Qwen3-VL-2B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-4B-Instruct', 'Qwen/Qwen3-VL-4B-Instruct'),
+                Model('Qwen/Qwen3-VL-4B-Thinking', 'Qwen/Qwen3-VL-4B-Thinking'),
+                Model('Qwen/Qwen3-VL-4B-Instruct-FP8', 'Qwen/Qwen3-VL-4B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-4B-Thinking-FP8', 'Qwen/Qwen3-VL-4B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Instruct', 'Qwen/Qwen3-VL-8B-Instruct'),
+                Model('Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3-VL-8B-Thinking'),
+                Model('Qwen/Qwen3-VL-8B-Instruct-FP8', 'Qwen/Qwen3-VL-8B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-8B-Thinking-FP8', 'Qwen/Qwen3-VL-8B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-32B-Instruct', 'Qwen/Qwen3-VL-32B-Instruct'),
+                Model('Qwen/Qwen3-VL-32B-Thinking', 'Qwen/Qwen3-VL-32B-Thinking'),
+                Model('Qwen/Qwen3-VL-32B-Instruct-FP8', 'Qwen/Qwen3-VL-32B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-32B-Thinking-FP8', 'Qwen/Qwen3-VL-32B-Thinking-FP8'),
+            ]),
+        ],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3VLMoeForConditionalGeneration
+    require_version('qwen_vl_utils>=0.0.14')
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
+    kwargs['_check_qwen_vl_utils'] = False
+    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    patch_Qwen3VLMoeTextExperts_dtype()
+    if model is not None:
+        _compat_qwen3_vl_mixed_data(model.model, processor, True)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_moe_vl, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking', 'Qwen/Qwen3-VL-30B-A3B-Thinking'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-VL-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-30B-A3B-Thinking-FP8', 'Qwen/Qwen3-VL-30B-A3B-Thinking-FP8'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-235B-A22B-Instruct'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking', 'Qwen/Qwen3-VL-235B-A22B-Thinking'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Instruct-FP8', 'Qwen/Qwen3-VL-235B-A22B-Instruct-FP8'),
+                Model('Qwen/Qwen3-VL-235B-A22B-Thinking-FP8', 'Qwen/Qwen3-VL-235B-A22B-Thinking-FP8'),
+            ]),
+        ],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_moe_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLMoeForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
 register_model(
     ModelMeta(
         MLLMModelType.mimo_vl, [
@@ -714,8 +1153,11 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    patch_qwen_vl_utils(vision_process)
-    kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
+    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+    if enable_audio_output is not None:
+        kwargs['model_config'].enable_audio_output = enable_audio_output
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
@@ -743,6 +1185,219 @@ register_model(
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
         ignore_patterns=[],
+    ))
+
+
+def _compat_qwen3_omni_mixed_data(model, processor):
+    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+        return
+    from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import (Qwen3OmniMoeThinkerCausalLMOutputWithPast,
+                                                                            can_return_tuple, load_balancing_loss_func)
+
+    @can_return_tuple
+    def forward(
+        self,
+        input_ids=None,
+        input_features=None,
+        pixel_values=None,
+        pixel_values_videos=None,
+        image_grid_thw=None,
+        video_grid_thw=None,
+        attention_mask=None,
+        feature_attention_mask=None,
+        audio_feature_lengths=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        rope_deltas=None,
+        labels=None,
+        use_cache=None,
+        output_router_logits: Optional[bool] = None,
+        use_audio_in_video=None,
+        cache_position=None,
+        video_second_per_grid=None,
+        **kwargs,
+    ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
+        if not self.training and not is_deepspeed_enabled():
+            return self.origin_forward(
+                input_ids=input_ids,
+                input_features=input_features,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                attention_mask=attention_mask,
+                feature_attention_mask=feature_attention_mask,
+                audio_feature_lengths=audio_feature_lengths,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                rope_deltas=rope_deltas,
+                labels=labels,
+                use_cache=use_cache,
+                output_router_logits=output_router_logits,
+                use_audio_in_video=use_audio_in_video,
+                cache_position=cache_position,
+                video_second_per_grid=video_second_per_grid,
+                **kwargs,
+            )
+        output_router_logits = (
+            output_router_logits if output_router_logits is not None else self.config.text_config.output_router_logits)
+
+        inputs_embeds, visual_pos_masks, visual_embeds_multiscale = _forward_qwen3_vl_or_qwen3_omni(
+            self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
+            video_grid_thw)
+
+        if input_features is None:
+            input_features = input_ids.new_zeros([1, 128, 128], dtype=self.audio_tower.dtype)
+            feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
+            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
+            inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
+        else:
+            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
+            audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
+
+        if feature_attention_mask is not None:
+            audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
+        else:
+            audio_feature_lengths = None
+
+        if attention_mask is not None and position_ids is None:
+            if (cache_position is None or (cache_position is not None and cache_position[0] == 0)
+                    or self.rope_deltas is None):
+                delta0 = (1 - attention_mask).sum(dim=-1).unsqueeze(1)
+                position_ids, rope_deltas = self.get_rope_index(
+                    input_ids,
+                    image_grid_thw,
+                    video_grid_thw,
+                    attention_mask,
+                    use_audio_in_video,
+                    audio_feature_lengths,
+                    video_second_per_grid,
+                )
+                rope_deltas = rope_deltas - delta0
+                self.rope_deltas = rope_deltas
+            else:
+                batch_size, seq_length = input_ids.shape
+                delta = cache_position[0] + self.rope_deltas if cache_position is not None else 0
+                position_ids = torch.arange(seq_length, device=input_ids.device)
+                position_ids = position_ids.view(1, -1).expand(batch_size, -1)
+                position_ids = position_ids.add(delta)
+                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
+
+        outputs = self.model(
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_router_logits=output_router_logits,
+            cache_position=cache_position,
+            deepstack_visual_embeds=visual_embeds_multiscale,
+            visual_pos_masks=visual_pos_masks,
+            **kwargs,
+        )
+
+        hidden_states = outputs[0]
+        logits = self.lm_head(hidden_states)
+
+        loss = None
+        if labels is not None:
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.get_text_config().vocab_size)
+
+        aux_loss = None
+        if output_router_logits:
+            aux_loss = load_balancing_loss_func(
+                outputs.router_logits,
+                self.num_experts,
+                self.num_experts_per_tok,
+                attention_mask,
+            )
+            if labels is not None:
+                loss += self.config.router_aux_loss_coef * aux_loss.to(
+                    loss.device)  # make sure to reside in the same device
+
+        return Qwen3OmniMoeThinkerCausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            aux_loss=aux_loss,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            past_key_values=outputs.past_key_values,
+            rope_deltas=self.rope_deltas,
+        )
+
+    model.origin_forward = model.forward
+    model.forward = MethodType(forward, model)
+    _patch_deepstack_process(model.model)
+
+
+def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
+    from transformers import Qwen3OmniMoeForConditionalGeneration, Qwen3OmniMoeProcessor, Qwen3OmniMoeConfig
+    from qwen_omni_utils import vision_process
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3OmniMoeForConditionalGeneration
+    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['model_config'].thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
+    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+    if enable_audio_output is not None:
+        kwargs['model_config'].enable_audio_output = enable_audio_output
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    if model:
+        _compat_qwen3_omni_mixed_data(model.thinker, processor)
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        base_model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+        patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_omni,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Omni-30B-A3B-Instruct', 'Qwen/Qwen3-Omni-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Omni-30B-A3B-Thinking', 'Qwen/Qwen3-Omni-30B-A3B-Thinking'),
+                Model('Qwen/Qwen3-Omni-30B-A3B-Captioner', 'Qwen/Qwen3-Omni-30B-A3B-Captioner'),
+            ])
+        ],
+        TemplateType.qwen3_omni,
+        get_model_tokenizer_qwen3_omni,
+        model_arch=ModelArch.qwen3_omni,
+        architectures=['Qwen3OmniMoeForConditionalGeneration'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
+        tags=['vision', 'video', 'audio'],
+    ))
+
+
+def get_model_tokenizer_midashenglm(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        model.audio_encoder.float()
+        patch_output_clone(model.decoder.model.embed_tokens)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.midashenglm,
+        [ModelGroup([
+            Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
+        ])],
+        TemplateType.midashenglm,
+        get_model_tokenizer_midashenglm,
+        model_arch=ModelArch.midashenglm,
+        architectures=['MiDashengLMModel'],
+        requires=['transformers>=4.52', 'soundfile'],
+        tags=['audio'],
     ))
 
 
@@ -849,7 +1504,7 @@ register_model(
         ],
         TemplateType.ovis1_6,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.42'],
@@ -865,7 +1520,7 @@ register_model(
         ],
         TemplateType.ovis1_6_llama3,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
         architectures=['Ovis'],
         tags=['vision'],
     ))
@@ -885,7 +1540,40 @@ register_model(
         ],
         TemplateType.ovis2,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
+        architectures=['Ovis'],
+        tags=['vision'],
+        requires=['transformers>=4.46.2', 'moviepy<2'],
+    ))
+
+
+def get_model_tokenizer_ovis2_5(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        model.visual_tokenizer.to(model.dtype)
+        model.vte.to(model.dtype)
+
+        func_list = ['generate', 'forward', 'get_input_embeddings']
+        use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        patch_output_clone(embedding)
+        patch_get_input_embeddings(model.visual_tokenizer.vit, 'vision_model.embeddings.patch_embedding')
+
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis2_5,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis2.5-2B', 'AIDC-AI/Ovis2.5-2B'),
+                Model('AIDC-AI/Ovis2.5-9B', 'AIDC-AI/Ovis2.5-9B'),
+            ]),
+        ],
+        TemplateType.ovis2_5,
+        get_model_tokenizer_ovis2_5,
+        model_arch=ModelArch.ovis2_5,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
@@ -952,7 +1640,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwen3_reranker, [
+        RerankerModelType.qwen3_reranker, [
             ModelGroup([
                 Model('Qwen/Qwen3-Reranker-0.6B', 'Qwen/Qwen3-Reranker-0.6B'),
                 Model('Qwen/Qwen3-Reranker-4B', 'Qwen/Qwen3-Reranker-4B'),

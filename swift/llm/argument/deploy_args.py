@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.llm import safe_snapshot_download
-from swift.utils import find_free_port, get_logger
+from swift.utils import find_free_port, get_device_count, get_logger
 from .base_args import BaseArguments
 from .infer_args import InferArguments
 
@@ -38,9 +38,10 @@ class DeployArguments(InferArguments):
     served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 20  # Interval for printing global statistics
+    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     max_logprobs: int = 20
-    use_async_engine: bool = True
+    vllm_use_async_engine: bool = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -80,16 +81,69 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class RolloutArguments(DeployArguments):
-    use_async_engine: Optional[bool] = None
+    vllm_use_async_engine: Optional[bool] = None
+    use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
+    vllm_enable_lora: bool = False
+    vllm_max_lora_rank: int = 16
+    # GYM env
+    gym_env: Optional[str] = None
+    context_manager: Optional[str] = None
 
     def __post_init__(self):
+        self._check_trl_version()
         super().__post_init__()
+        self._set_default_engine_type()
+        self._check_args()
+        self._check_device_count()
 
-        if self.use_async_engine is None:
+    def _check_trl_version(self):
+        try:
+            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+        except ImportError as e:
+            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
+                              "Please upgrade your 'trl' package by 'pip install -U trl'") from e
+
+    def _set_default_engine_type(self):
+        if self.vllm_use_async_engine is None:
             if self.multi_turn_scheduler:
-                self.use_async_engine = True
+                self.vllm_use_async_engine = True
             else:
-                self.use_async_engine = False
+                self.vllm_use_async_engine = False
+
+        if self.use_gym_env is None:
+            self.use_gym_env = self.gym_env is not None
+
+    def _check_args(self):
+        if self.vllm_pipeline_parallel_size > 1:
+            raise ValueError('RolloutArguments does not support pipeline parallelism, '
+                             'please set vllm_pipeline_parallel_size to 1.')
+
+        if self.vllm_reasoning_parser is not None:
+            raise ValueError('vllm_reasoning_parser is not supported for Rollout, please unset it.')
+
+        if self.multi_turn_scheduler and not self.vllm_use_async_engine:
+            raise ValueError('please set vllm_use_async_engine to True with multi-turn scheduler.')
+
+    def _check_device_count(self):
+        local_device_count = get_device_count()
+        required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
+
+        if local_device_count < required_device_count:
+            msg = (f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
+                   f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
+                   f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
+                   f'Current required_device_count = {required_device_count}.')
+            raise ValueError(msg)
+
+        if local_device_count > required_device_count:
+            logger.warning_once(
+                f'local_device_count ({local_device_count}) is greater than required_device_count ({required_device_count}). '  # noqa
+                f'Only the first {required_device_count} devices will be utilized for rollout. '
+                f'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = device_count. '  # noqa
+                f'device_count: {local_device_count}, '
+                f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
+                f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
+                f'required_device_count: {required_device_count}.')

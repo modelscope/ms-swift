@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import Optional
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
@@ -10,12 +10,12 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
+from .arguments import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin, SwiftArgumentsMixin
 
 
 @dataclass
 class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
-    pass
+    ld_alpha: Optional[float] = None  # compat trl==0.15
 
 
 @dataclass
@@ -44,20 +44,26 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 
 @dataclass
-class GKDConfig(SwiftArgumentsMixin, HfGKDConfig):
-    pass
+class GKDConfig(RolloutTrainerArgumentsMixin, SwiftArgumentsMixin, HfGKDConfig):
+    offload_teacher_model: bool = False
+    max_completion_length: int = 512
+
+    def __post_init__(self):
+        RolloutTrainerArgumentsMixin.__post_init__(self)
+        SwiftArgumentsMixin.__post_init__(self)
 
 
 @dataclass
 class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
-    stop_words: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from swift.llm.argument.base_args.model_args import ModelArguments
-        super().__post_init__()
+        GRPOArgumentsMixin.__post_init__(self)
+        SwiftArgumentsMixin.__post_init__(self)
+        if self.vllm_reasoning_parser is not None:
+            raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')
+
         if self.cosine_max_len is None:
             self.cosine_max_len = self.max_completion_length
-        self.vllm_limit_mm_per_prompt = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
 
         if self.deepspeed and 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization'][
                 'stage'] == 3:

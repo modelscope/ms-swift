@@ -1,0 +1,44 @@
+NPROC_PER_NODE=8 \
+PYTORCH_CUDA_ALLOC_CONF='' \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --train_type full \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_max_model_len 2048 \
+    --vllm_tensor_parallel_size 4 \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --load_from_cache_file true \
+    --torch_dtype bfloat16 \
+    --num_train_epochs 1 \
+    --max_length 2048 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 8 \
+    --eval_steps 1000 \
+    --save_steps 1000 \
+    --learning_rate 1e-6 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --max_completion_length 1024 \
+    --reward_funcs accuracy format \
+    --num_generations 32 \
+    --system examples/train/grpo/prompt.txt \
+    --deepspeed zero3 \
+    --temperature 1.0 \
+    --top_p 1.0 \
+    --top_k 80 \
+    --attn_impl flash_attn \
+    --log_completions true \
+    --async_generate false \
+    --offload_optimizer true \
+    --offload_model true \
+    --padding_free true \
+    --sequence_parallel_size 4 \
+    --dataloader_drop_last true \
+    --sleep_level 1

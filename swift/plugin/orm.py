@@ -1,10 +1,11 @@
 import os
 import re
-from typing import Dict, List, Union
+from typing import TYPE_CHECKING, Dict, List, Union
 
 import json
 
-from swift.llm import InferRequest
+if TYPE_CHECKING:
+    from swift.llm import InferRequest
 
 
 class ORM:
@@ -109,7 +110,7 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], solution: List[str], **kwargs) -> List[float]:
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], solution: List[str], **kwargs) -> List[float]:
         rewards = []
         if not isinstance(infer_requests[0], str):
             predictions = [request['messages'][-1]['content'] for request in infer_requests]
@@ -211,7 +212,7 @@ class MathORM(ORM):
             value = False
         return value
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
@@ -237,36 +238,43 @@ class MathAccuracy(ORM):
     def __init__(self):
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
-            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
+            'The math_verify package is required but not installed. '
+            "Please install it using 'pip install math_verify==0.5.2'.")
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
         for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match')
+            content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
+            content_to_parse = content_match.group(1).strip() if content_match else content
+            has_answer_tag = content_match is not None
+
+            sol_match = re.search(r'<answer>(.*?)</answer>', sol, re.DOTALL)
+            sol_to_parse = sol_match.group(1).strip() if sol_match else sol
+
+            gold_parsed = parse(sol_to_parse, extraction_mode='first_match')
             if len(gold_parsed) != 0:
-                # We require the answer to be provided in correct latex (no malformed operators)
-                answer_parsed = parse(
-                    content,
-                    extraction_config=[
-                        LatexExtractionConfig(
-                            normalization_config=NormalizationConfig(
-                                nits=False,
-                                malformed_operators=False,
-                                basic_latex=True,
-                                equations=True,
-                                boxed=True,
-                                units=True,
-                            ),
-                            # Ensures that boxed is tried first
-                            boxed_match_priority=0,
-                            try_extract_without_anchor=False,
-                        )
-                    ],
-                    extraction_mode='first_match',
-                )
-                # edge case
+                if has_answer_tag:
+                    answer_parsed = parse(content_to_parse, extraction_mode='first_match')
+                else:
+                    answer_parsed = parse(
+                        content_to_parse,
+                        extraction_config=[
+                            LatexExtractionConfig(
+                                normalization_config=NormalizationConfig(
+                                    nits=False,
+                                    malformed_operators=False,
+                                    basic_latex=True,
+                                    boxed=True,
+                                    units=True,
+                                ),
+                                boxed_match_priority=0,
+                                try_extract_without_anchor=False,
+                            )
+                        ],
+                        extraction_mode='first_match',
+                    )
                 try:
                     reward = float(verify(gold_parsed, answer_parsed))
                 except Exception:
@@ -299,14 +307,12 @@ class ReActFormat(ORM):
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(self,
-                 tokenizer=None,
                  cosine_min_len_value_wrong: float = -0.5,
                  cosine_max_len_value_wrong: float = 0.0,
                  cosine_min_len_value_correct: float = 1.0,
                  cosine_max_len_value_correct: float = 0.5,
                  cosine_max_len: int = 1000,
                  accuracy_orm=None):
-        self.tokenizer = tokenizer
         self.min_len_value_wrong = cosine_min_len_value_wrong
         self.max_len_value_wrong = cosine_max_len_value_wrong
         self.min_len_value_correct = cosine_min_len_value_correct
@@ -321,8 +327,9 @@ class CosineReward(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
         acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
+        response_token_ids = kwargs.get('response_token_ids')
         rewards = []
-        for content, acc_reward in zip(completions, acc_rewards):
+        for ids, acc_reward in zip(response_token_ids, acc_rewards):
             is_correct = acc_reward >= 1.
             if is_correct:
                 # Swap min/max for correct answers
@@ -331,7 +338,7 @@ class CosineReward(ORM):
             else:
                 min_value = self.max_len_value_wrong
                 max_value = self.min_len_value_wrong
-            gen_len = len(self.tokenizer.encode(content))
+            gen_len = len(ids)
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(reward)
         return rewards
@@ -378,16 +385,16 @@ class RepetitionPenalty(ORM):
 
 class SoftOverlong(ORM):
 
-    def __init__(self, tokenizer, soft_max_length, soft_cache_length):
-        self.tokenizer = tokenizer
+    def __init__(self, soft_max_length, soft_cache_length):
         assert soft_cache_length < soft_max_length
         self.soft_max_length = soft_max_length
         self.soft_cache_length = soft_cache_length
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
-        for completion in completions:
-            completion_length = len(self.tokenizer.encode(completion))
+        response_token_ids = kwargs.get('response_token_ids')
+        for ids in response_token_ids:
+            completion_length = len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
             rewards.append(min(-exceed_len / self.soft_cache_length, 0))

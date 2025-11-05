@@ -28,7 +28,7 @@ logger = get_logger()
 
 Tool = Dict[str, Union[str, Dict]]
 History = List[Union[Tuple[str, str], List[str]]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]], List[int], None]]
 Messages = List[Message]
 
 
@@ -61,14 +61,14 @@ def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
         return data
 
 
-def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
+def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bool = False) -> Any:
     """Move inputs to a device"""
     if isinstance(data, Mapping):
-        return type(data)({k: to_device(v, device) for k, v in data.items()})
+        return type(data)({k: to_device(v, device, non_blocking) for k, v in data.items()})
     elif isinstance(data, (tuple, list)):
-        return type(data)(to_device(v, device) for v in data)
+        return type(data)(to_device(v, device, non_blocking) for v in data)
     elif isinstance(data, torch.Tensor):
-        return data.to(device=device)
+        return data.to(device=device, non_blocking=non_blocking)
     else:
         return data
 
@@ -84,15 +84,6 @@ def set_generation_config(model: nn.Module, generation_config: GenerationConfig)
             if k in old_generation_priority_config or old_v is not None and v is None:
                 setattr(generation_config, k, old_v)
     model.generation_config = generation_config
-
-
-def is_moe_model(model):
-    if 'Moe' in model.__class__.__name__:
-        return True
-    for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
-        if hasattr(model.config, key):
-            return True
-    return False
 
 
 def find_module_list(model) -> Optional[nn.ModuleList]:
@@ -152,15 +143,14 @@ def _add_gradient_checkpointing(module_list):
 
 
 def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
-    from .model import ModelMeta, get_model_arch
+    from .model import ModelMeta
     if isinstance(model, PeftModel):
         model = model.model
-    model_meta: ModelMeta = model.model_meta
-    model_arch = get_model_arch(model_meta.model_arch)
-    if model_meta.is_multimodal and model_arch:
-        tower_names = model_arch.language_model.copy()
+    model_meta: ModelMeta = getattr(model, 'model_meta', None)
+    if model_meta is not None and model_meta.is_multimodal and model_meta.model_arch:
+        tower_names = model_meta.model_arch.language_model.copy()
         if including_vit:
-            tower_names += model_arch.vision_tower
+            tower_names += model_meta.model_arch.vision_tower
     else:
         tower_names = [None]
 
@@ -325,3 +315,22 @@ def update_generation_config_eos_token(generation_config, template):
             modified = True
     if modified:
         generation_config.eos_token_id = eos_token_id
+
+
+def get_packed_seq_params(position_ids: torch.Tensor):
+    assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+    position_ids_f = position_ids.flatten()
+    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
+
+    cu_seqlens = torch.cat([
+        indices_q[position_ids_f == 0],
+        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
+    ])
+
+    max_length = cu_seqlens.diff().max()  # position_ids_f.max() + 1
+    return {
+        'cu_seq_lens_q': cu_seqlens,
+        'cu_seq_lens_k': cu_seqlens,
+        'max_length_q': max_length,
+        'max_length_k': max_length,
+    }

@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
+from trl.trainer.utils import selective_log_softmax
 
 
 class RLHFTrainerMixin:
@@ -31,7 +32,6 @@ class RLHFTrainerMixin:
                 disable_dropout_in_model(self.ref_model)
 
         self.is_encoder_decoder = kwargs['template'].is_encoder_decoder
-        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         if self.is_encoder_decoder:
@@ -42,6 +42,8 @@ class RLHFTrainerMixin:
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
         super().__init__(model, *_args, **kwargs)
+        self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
+        self.aux_loss_coef = args.router_aux_loss_coef
         if ref_model is not None:
             if self.is_deepspeed_enabled:
                 self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
@@ -50,8 +52,18 @@ class RLHFTrainerMixin:
 
         self.padding_value = self.tokenizer.pad_token_id
 
-    def get_train_dataloader(self):
-        train_dataloader = super().get_train_dataloader()
+    def create_loss_and_metric(self, args):
+        return {}
+
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_inputs(inputs)
+        return inputs
+
+    def get_train_dataloader(self, *args, **kwargs):
+        train_dataloader = super().get_train_dataloader(*args, **kwargs)
         base_dataloader = train_dataloader.base_dataloader if hasattr(
             train_dataloader, 'base_dataloader') and isinstance(train_dataloader.base_dataloader,
                                                                 DataLoader) else train_dataloader
@@ -115,3 +127,54 @@ class RLHFTrainerMixin:
         parameters = inspect.signature(get_train_sampler).parameters
         kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
         return get_train_sampler(**kwargs)
+
+    def get_per_token_logps(
+        self,
+        logits: torch.FloatTensor,
+        labels: torch.LongTensor,
+        label_pad_token_id=-100,
+        reduction='mean',
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if logits.shape[:-1] != labels.shape:
+            raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
+                             'and labels must have the same shape {labels.shape}')
+        loss_mask = labels != label_pad_token_id
+        labels = labels.clone()
+        labels[~loss_mask] = 0
+        if reduction == 'mean':
+            reduce_logits = logits.mean(-1)
+        elif reduction == 'sum':
+            reduce_logits = logits.sum(-1)
+        else:
+            raise ValueError(f'Invalid reduction: {reduction}')
+        if self.template.sequence_parallel_size == 1:
+            # https://github.com/huggingface/trl/pull/2799
+            # Reduce peak vram consumption with efficient selective log_softmax
+            per_token_logps = selective_log_softmax(logits, labels)
+            per_token_logps[~loss_mask] = 0
+            reduce_logits[~loss_mask] = 0
+            return per_token_logps, reduce_logits, loss_mask
+        else:
+            labels = labels.to(logits.device)
+            loss_mask = loss_mask.to(logits.device)
+            mean_logits = reduce_logits
+            per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+            from swift.trainers.sequence_parallel.utils import GatherLoss
+            from swift.trainers.sequence_parallel import sequence_parallel
+            position_ids = sequence_parallel.real_position_ids
+            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
+            total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)
+            if position_ids is not None and position_ids.min() == -1:
+                _pos_mask = position_ids >= 0
+                total_per_token_logps = total_per_token_logps[_pos_mask].contiguous()
+                total_mean_logits = total_mean_logits[_pos_mask].contiguous()
+                total_loss_mask = total_loss_mask[_pos_mask].contiguous()
+
+            total_loss_mask = total_loss_mask.bool()
+            total_per_token_logps = total_per_token_logps * (total_loss_mask)
+
+            if total_per_token_logps.dim() == 1:
+                total_per_token_logps = total_per_token_logps.unsqueeze(0)
+                total_mean_logits = total_mean_logits.unsqueeze(0)
+                total_loss_mask = total_loss_mask.unsqueeze(0)
+            return total_per_token_logps, total_mean_logits, total_loss_mask

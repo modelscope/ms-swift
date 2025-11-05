@@ -15,7 +15,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments
+from swift.llm import AdapterRequest, DeployArguments, InferArguments
 from swift.llm.infer.protocol import EmbeddingRequest, MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
@@ -30,13 +30,24 @@ class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
     args: args_class
 
+    @staticmethod
+    def get_infer_engine(args: InferArguments, template=None, **kwargs):
+        if isinstance(args, DeployArguments) and args.infer_backend == 'vllm' and args.vllm_data_parallel_size > 1:
+            if not args.vllm_use_async_engine:
+                raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
+            engine_kwargs = (kwargs.get('engine_kwargs') or {}).copy()
+            engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
+            kwargs['engine_kwargs'] = engine_kwargs
+            logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
+        return SwiftInfer.get_infer_engine(args, template, **kwargs)
+
     def _register_app(self):
         self.app.get('/v1/models')(self.get_available_models)
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
         self.app.post('/v1/embeddings')(self.create_embedding)
 
-    def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)
 
         self.infer_engine.strict = True
@@ -116,7 +127,7 @@ class SwiftDeploy(SwiftInfer):
                                                                              (tuple, list)):
                 continue
             for j, content in enumerate(response.choices[i].message.content):
-                if content['type'] == 'image':
+                if isinstance(content, dict) and content['type'] == 'image':
                     b64_image = MultiModalRequestMixin.to_base64(content['image'])
                     response.choices[i].message.content[j]['image'] = f'data:image/jpg;base64,{b64_image}'
 
@@ -211,7 +222,7 @@ class SwiftDeploy(SwiftInfer):
             log_level=args.log_level)
 
 
-def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+def deploy_main(args: Optional[Union[List[str], DeployArguments]] = None) -> None:
     SwiftDeploy(args).main()
 
 

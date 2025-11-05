@@ -2,8 +2,7 @@
 from typing import TYPE_CHECKING
 
 from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
-                                        SchedulerType)
+from transformers.trainer_utils import FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType
 
 from swift.utils.import_utils import _LazyModule
 from . import callback
@@ -15,18 +14,23 @@ except ImportError:
     ShardedDDPOption = None
 
 if TYPE_CHECKING:
-    from .arguments import Seq2SeqTrainingArguments, TrainingArguments, RLHFArgumentsMixin
+    from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, RLHFArgumentsMixin, VllmArguments,
+                            GRPOArgumentsMixin, RolloutTrainerArgumentsMixin)
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
                                RewardTrainer, GRPOTrainer, GKDTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GKDConfig
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer, RerankerTrainer
     from .mixin import SwiftMixin
+    from .utils import per_token_loss_func
 
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments', 'RLHFArgumentsMixin'],
+        'arguments': [
+            'Seq2SeqTrainingArguments', 'TrainingArguments', 'RLHFArgumentsMixin', 'VllmArguments',
+            'GRPOArgumentsMixin', 'RolloutTrainerArgumentsMixin'
+        ],
         'rlhf_arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig'],
         'rlhf_trainer': [
@@ -36,6 +40,7 @@ else:
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer', 'RerankerTrainer'],
         'mixin': ['SwiftMixin'],
+        'utils': ['per_token_loss_func'],
     }
 
     import sys
