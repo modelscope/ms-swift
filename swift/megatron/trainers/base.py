@@ -248,7 +248,7 @@ class BaseMegatronTrainer(ABC):
             if args.load_safetensors and args.train_type == 'lora':
                 for adapters, name in [(args.adapters, 'default'), (args.ref_adapters, 'ref_adapter')]:
                     if adapters:
-                        assert len(adapters) == 1, f'Currently only support one adapter for {name}'
+                        assert len(adapters) == 1, f'Currently only support one adapter.'
                         self.bridge.load_weights(model, adapters[0], is_peft_format=True, adapter_name=name)
             self.peft_models.append(peft_model)
             return model
