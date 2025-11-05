@@ -362,14 +362,14 @@ extra_args['model_info'] = model_info
 extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
-# 加载权重
+# Load weights
 bridge = megatron_model_meta.bridge_cls()
 bridge.load_weights(mg_model, model_info.model_dir)
-# 准备LoRA并加载
+# Prepare LoRA and load
 peft_model = prepare_mcore_model(mg_model)
 print(f'peft_model: {peft_model}')
 # bridge.load_weights(mg_model, 'adapter-path', is_peft_format=True)
-# 导出权重
+# Export weights
 for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
     pass
 bridge.save_weights([mg_model], 'output/Qwen3-30B-A3B-Instruct-2507-lora', is_peft_format=True)
