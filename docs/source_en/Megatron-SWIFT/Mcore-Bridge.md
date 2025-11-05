@@ -138,8 +138,8 @@ In addition to supporting full parameter import/export, Mcore-Bridge also suppor
 
 Below is an example of self-cognition training using LoRA for the text-only model Qwen3-Moe:
 
-- If you want to export merged weights instead of LoRA incremental weights, please set `--merge_lora true`.
-- Note: Since transformers and Megatron model structures may not always be consistent (for example, the expert part of Qwen3-VL-Moe in transformers is not implemented as Linear but as Parameters), some models cannot be converted (though Qwen3-VL-Moe supports conversion if only linear_proj and linear_qkv are set for LoRA training). However, most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+- If you want to export merged weights instead of LoRA delta weights, please set `--merge_lora true`. Setting `--merge_lora true` has better compatibility and supports all model series.
+- Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot convert LoRA delta weights (however, if Qwen3-VL-Moe only sets linear_proj and linear_qkv for LoRA training, conversion is also supported). But most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
 
 ```shell
 # 50GiB

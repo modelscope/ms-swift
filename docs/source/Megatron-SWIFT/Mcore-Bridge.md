@@ -130,8 +130,8 @@ swift infer \
 Mcore-Bridge除了支持全参数的导入导出，还支持单独对LoRA增量模型进行导入导出。
 
 以下为纯文本模型Qwen3-Moe模型使用LoRA自我认知训练的例子：
-- 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。
-- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
+- 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。设置`--merge_lora true`的兼容性更好，支持所有系列模型。
+- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 ```shell
 # 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
