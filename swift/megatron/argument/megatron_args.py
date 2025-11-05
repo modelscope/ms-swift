@@ -98,6 +98,12 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     save_safetensors: bool = False
     model: Optional[str] = None
     adapters: List[str] = field(default_factory=list)
+    ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
+    use_hf: bool = False
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
     # streaming dataloader
