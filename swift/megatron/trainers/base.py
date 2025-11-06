@@ -253,7 +253,7 @@ class BaseMegatronTrainer(ABC):
             self.peft_models.append(peft_model)
             return model
 
-        self._init_multimodal_full(args)
+        self._init_multimodal_full()
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -280,13 +280,12 @@ class BaseMegatronTrainer(ABC):
         visual = model.visual
         if visual is None:
             return
-        args = get_args()
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
-            if args.vit_gradient_checkpointing:
+            if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
-                    module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                    module.gradient_checkpointing_enable(**(self.args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
                     pass
@@ -789,9 +788,9 @@ class BaseMegatronTrainer(ABC):
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    @staticmethod
-    def _init_multimodal_full(args):
-        visual_cls = args.megatron_model_meta.visual_cls
+    def _init_multimodal_full(self):
+        args = get_args()
+        visual_cls = self.args.megatron_model_meta.visual_cls
         if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]

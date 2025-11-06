@@ -35,7 +35,7 @@ def model_provider(pre_process=True,
     from .register import get_megatron_model_meta
     args = get_args()
     use_te = args.transformer_impl == 'transformer_engine'
-    megatron_model_meta = get_megatron_model_meta(args.model_type)
+    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
 
     if args.record_memory_history:
         torch.cuda.memory._record_memory_history(
