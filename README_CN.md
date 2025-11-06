@@ -72,12 +72,12 @@
 
 ## 🎉 新闻
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
-- 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/ray的支持.md)。
+- 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
 - 🎁 2025.10.28: 已支持[使用yaml](examples/yaml)配置命令行参数。
 - 🎁 2025.09.29: 支持embedding/reranker/seq_cls任务的padding_free参数, 使用`--padding_free true --task_type embedding/reranker/generative_reranker/seq_cls`开始训练!
 - 🎁 2025.09.07: 支持CHORD训练算法，请查看[文档](docs/source/Instruction/GRPO/AdvancedResearch/CHORD.md)。
 - 🎁 2025.09.06: Ulysses现已支持与ring-attention结合使用，使得输入序列可以被切分成任意数量的块（不再受限于num_heads），命令参数仍然是`--sequence_parallel_size N`。
-- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/多模态模型.md)。
+- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/Mcore-Bridge.md)。
 - 🎁 2025.08.12: 支持在SFT训练中使用[Dynamic Fine-Tuning](https://arxiv.org/abs/2508.05629)(DFT)，使用参数 `--enable_dft_loss true`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/dft.sh)
 - 🎁 2025.07.12: 支持部署Embedding模型的部署(pt/vLLM/SGLang), 查看[这里](examples/deploy/embedding/client.py).
 - 🎁 2025.07.09: Megatron-SWIFT支持LoRA训练。相比ms-swift，在MoE模型提速显著。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora)。
@@ -85,15 +85,15 @@
 - 🎁 2025.06.18: 支持使用[sglang](https://github.com/sgl-project/sglang)推理加速引擎对ms-swift[推理](https://github.com/modelscope/ms-swift/blob/main/examples/infer/sglang)/部署/评测/ui模块进行加速，设置`--infer_backend sglang`即可。
 - 🎁 2025.06.15: 支持对纯文本大模型和多模态模型进行GKD训练。训练脚本参考这里：[纯文本](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [多模态](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd)。
 - 🎁 2025.06.11: 支持使用Megatron并行技术进行RLHF训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf)。
-- 🎁 2025.05.29: 支持pt、sft、dpo、grpo的序列并行，具体请查看[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text)。
-- 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO/DeveloperGuide/奖励模型.md)。
+- 🎁 2025.05.29: 支持pt、sft、dpo、grpo的序列并行，具体请查看[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
+- 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO/DeveloperGuide/reward_model.md)。
 - 🎁 2025.04.15: ms-swift论文已经被AAAI 2025接收，论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383)。
-- 🎁 2025.03.23: 支持了多轮GRPO，用于构建多轮对话场景的训练(例如agent tool calling)，请查看[文档](docs/source/Instruction/GRPO/DeveloperGuide/多轮训练.md)。
-- 🎁 2025.03.16: 支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/快速开始.md)。
+- 🎁 2025.03.23: 支持了多轮GRPO，用于构建多轮对话场景的训练(例如agent tool calling)，请查看[文档](docs/source/Instruction/GRPO/DeveloperGuide/multi_turn.md)。
+- 🎁 2025.03.16: 支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Quick-start.md)。
 - 🎁 2025.03.15: 支持纯文本和多模态模型的embedding模型的微调，请查看[训练脚本](examples/train/embedding)。
 - 🎁 2025.03.05: 支持GRPO的hybrid模式，4GPU(4*80G)训练72B模型的脚本参考[这里](examples/train/grpo/internal/vllm_72b_4gpu.sh)。同时支持vllm的tensor并行，训练脚本参考[这里](examples/train/grpo/internal)。
 - 🎁 2025.02.21: GRPO算法支持使用LMDeploy，训练脚本参考[这里](examples/train/grpo/internal/full_lmdeploy.sh)。此外测试了GRPO算法的性能，使用一些tricks使训练速度提高到300%。WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)。
-- 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/source/Instruction/强化微调.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
+- 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/source/Instruction/Reinforced-Fine-tuning.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
 - 🔥 2025.02.12: 支持GRPO (Group Relative Policy Optimization) 训练算法，文档参考[这里](docs/source/Instruction/GRPO/GetStarted/GRPO.md)。
 - 🎁 2024.12.04: **ms-swift3.0**大版本更新。请查看[发布说明和更改](docs/source/Instruction/ReleaseNote3.0.md)。
 <details><summary>更多</summary>
@@ -179,7 +179,7 @@ swift sft \
 ```
 
 小贴士：
-- 如果要使用自定义数据集进行训练，你可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)组织数据集格式，并指定`--dataset <dataset_path>`。
+- 如果要使用自定义数据集进行训练，你可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)组织数据集格式，并指定`--dataset <dataset_path>`。
 - `--model_author`和`--model_name`参数只有当数据集中包含`swift/self-cognition`时才生效。
 - 如果要使用其他模型进行训练，你只需要修改`--model <model_id/model_path>`即可。
 - 默认使用ModelScope进行模型和数据集的下载。如果要使用HuggingFace，指定`--use_hf true`即可。
@@ -275,9 +275,9 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 
 |   常用链接 |
 | ------ |
-|   [🔥命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
-|   [支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
-|   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B.html), [🔥自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
+|   [🔥命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)   |
+|   [支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)   |
+|   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-model.html), [🔥自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)   |
 |   [大模型教程](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
 ### 训练
@@ -296,8 +296,8 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | CPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh)            | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | ✅                                                                                            |
 | SimPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh)          | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | ✅                                                                                            |
 | ORPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh)           | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | ✅                                                                                            |
-| 分类模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5/sft.sh) | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_vl/sft.sh) |
-| Embedding模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gte.sh) | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh)  |
+| 分类模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5/sft.sh) | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls/qwen2_5_omni) |
+| Embedding模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh) | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh)  |
 | Reranker模型训练 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
 

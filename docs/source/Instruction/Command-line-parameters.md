@@ -93,7 +93,7 @@
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
 - 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
-- norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
+- norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
@@ -382,7 +382,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 参数含义可以查看[vllm文档](https://docs.vllm.ai/en/latest/serving/engine_args.html)。
 
 - 🔥vllm_gpu_memory_utilization: GPU内存比例，取值范围为0到1。默认值`0.9`。
-  - 注意：该参数在"ms-swift<3.7"的参数名为`gpu_memory_utilization`。下面的`vllm_`参数同理。若出现参数不匹配问题，请查看[ms-swift3.6文档](https://swift.readthedocs.io/zh-cn/v3.6/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#vllm)。
+  - 注意：该参数在"ms-swift<3.7"的参数名为`gpu_memory_utilization`。下面的`vllm_`参数同理。若出现参数不匹配问题，请查看[ms-swift3.6文档](https://swift.readthedocs.io/zh-cn/v3.6/Instruction/Command-line-parameters.html#vllm)。
 - 🔥vllm_tensor_parallel_size: tp并行数，默认为`1`。
 - vllm_pipeline_parallel_size: pp并行数，默认为`1`。
 - vllm_data_parallel_size: dp并行数，默认为`1`，在`swift deploy/rollout`命令中生效。
