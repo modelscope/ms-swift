@@ -59,7 +59,7 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 训练时候的eval_acc和推理时候的acc 计算方式不一样的。`acc_strategy`: 默认为`'token'`, 可选择的值包括: `'token'`, `'seq'`.
 
 ### Q17: 魔搭官方镜像与swift环境
-`docker run`命令启动容器即可，如：`docker run --gpus all -p 8000:8000 -it -d --name ms modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-1.26.0-LLM /bin/bash`，启动容器后拉最新代码安装swift。另外，针对大模型训练场景，提供了`ms-swift`镜像，额外增加了`Megatron-SWIFT`的依赖，如：`modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1`，详见[swift安装文档](https://swift.readthedocs.io/zh-cn/latest/GetStarted/SWIFT%E5%AE%89%E8%A3%85.html)。
+`docker run`命令启动容器即可，如：`docker run --gpus all -p 8000:8000 -it -d --name ms modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-1.26.0-LLM /bin/bash`，启动容器后拉最新代码安装swift。另外，针对大模型训练场景，提供了`ms-swift`镜像，额外增加了`Megatron-SWIFT`的依赖，如：`modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1`，详见[swift安装文档](https://swift.readthedocs.io/zh-cn/latest/GetStarted/SWIFT-installation.html)。
 
 ### Q18: 多机多卡训练命令行
 详见[多机多卡例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)
