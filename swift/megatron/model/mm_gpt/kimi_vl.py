@@ -26,8 +26,7 @@ class KimiVLVit(HuggingFaceModule):
 
     def __init__(self, config):
         args = get_args()
-        model_dir = args.model_info.model_dir
-        model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', model_dir)
+        model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', args.model_dir)
         super().__init__(config, [model_cls])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):

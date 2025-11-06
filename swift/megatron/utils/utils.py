@@ -86,7 +86,7 @@ def get_target_modules(args, model):
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             return get_multimodal_target_regex(
                 args,
                 model,

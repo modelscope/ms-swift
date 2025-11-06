@@ -298,18 +298,18 @@ from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_mo
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-4B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     torch_dtype=torch.bfloat16,
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 bridge = megatron_model_meta.bridge_cls()
@@ -343,11 +343,13 @@ from swift.megatron import (
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-30B-A3B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     pipeline_model_parallel_size=2,
     expert_model_parallel_size=2,
@@ -358,8 +360,6 @@ megatron_args = MegatronArguments(
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 # Load weights

@@ -49,7 +49,6 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
     def __init__(self, config, ignore_init_model_cls=None):
         super().__init__(config)
         args = get_args()
-        model_dir = args.model_info.model_dir
         attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
         kwargs = {'attn_impl': attn_impl} if args.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []
@@ -59,7 +58,8 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         context_list.append(patch_hf_initialize_weight())
         kwargs['model_type'] = args.model_info.model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
-            model, self.processor = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
+            model, self.processor = get_model_tokenizer(
+                args.model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
         for hf_prefix, mg_prefix in self.module_mapping.items():
             setattr(self, mg_prefix, deep_getattr(model, hf_prefix))

@@ -242,7 +242,7 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
             if args.load_safetensors:
-                self.bridge.load_weights(model, args.model_info.model_dir)
+                self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
             if args.load_safetensors and args.train_type == 'lora':
@@ -271,7 +271,7 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             for m in self.unwrapped_models:
                 self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
@@ -792,7 +792,7 @@ class BaseMegatronTrainer(ABC):
     @staticmethod
     def _init_multimodal_full(args):
         visual_cls = args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
+        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:
