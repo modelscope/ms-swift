@@ -47,8 +47,10 @@ def get_multimodal_target_regex(
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
 ) -> str:
+    from ..model import get_megatron_model_meta
+    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
     modules = []
-    visual_cls = args.megatron_model_meta.visual_cls
+    visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
     aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
     if not freeze_llm:
