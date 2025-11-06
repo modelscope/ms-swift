@@ -369,7 +369,7 @@ class BaseMegatronTrainer(ABC):
             eval_iters = args.eval_iters
 
         with torch.no_grad(), tqdm(
-                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+                total=eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
                 print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')

@@ -354,7 +354,6 @@ megatron_args = MegatronArguments(
     pipeline_model_parallel_size=2,
     expert_model_parallel_size=2,
     sequence_parallel=True,
-    moe_grouped_gemm=True,
     torch_dtype=torch.bfloat16,
     train_type='lora',
     **config_kwargs,
