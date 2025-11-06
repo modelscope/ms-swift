@@ -319,10 +319,10 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args, **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
+                                       config, *args, **kwargs)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(self,
