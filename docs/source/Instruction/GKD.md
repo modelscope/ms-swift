@@ -165,7 +165,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 > **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 PyTorch，建议使用预采样方案。
 
-训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/vllm_server.sh)
+训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh)
 
 ### 方案 2：教师模型预采样
 
