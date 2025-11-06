@@ -263,11 +263,13 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
-        **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
+        model=args.model,
+        model_type=args.model_type,
+        **kwargs,
+        **current_convert_kwargs,
+        save=args.output_dir,
+        torch_dtype=args.torch_dtype)
     extra_args = megatron_args.parse_to_megatron()
-    extra_args['model_info'] = args.model_info
-    extra_args['model_meta'] = args.model_meta
-    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
@@ -304,14 +306,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         extra_config['load'] = args.mcore_model
     kwargs.update(extra_config)
     megatron_args = MegatronArguments(
+        model=args.model,
+        model_type=args.model_type,
         **kwargs,
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
     extra_args = megatron_args.parse_to_megatron()
-    extra_args['model_info'] = args.model_info
-    extra_args['model_meta'] = args.model_meta
-    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 

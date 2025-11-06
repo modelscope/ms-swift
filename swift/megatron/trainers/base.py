@@ -242,7 +242,7 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
             if args.load_safetensors:
-                self.bridge.load_weights(model, args.model_info.model_dir)
+                self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
             if args.load_safetensors and args.train_type == 'lora':
@@ -253,7 +253,7 @@ class BaseMegatronTrainer(ABC):
             self.peft_models.append(peft_model)
             return model
 
-        self._init_multimodal_full(args)
+        self._init_multimodal_full()
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -271,7 +271,7 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             for m in self.unwrapped_models:
                 self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
@@ -280,13 +280,12 @@ class BaseMegatronTrainer(ABC):
         visual = model.visual
         if visual is None:
             return
-        args = get_args()
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
-            if args.vit_gradient_checkpointing:
+            if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
-                    module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                    module.gradient_checkpointing_enable(**(self.args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
                     pass
@@ -319,20 +318,24 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
+                   **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
+                                       config, *args, **kwargs)
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
+    def evaluate(
+        self,
+        forward_step_func,
+        data_iterator,
+        model,
+        process_non_loss_data_func,
+        config,
+        verbose=False,
+        non_loss_data_func=None,
+        eval_iters=None,
+    ):
         """Evaluation."""
         args = get_args()
         timers = get_timers()
@@ -356,18 +359,26 @@ class BaseMegatronTrainer(ABC):
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
+        forward_backward_func = get_forward_backward_func()
+        if args.enable_cuda_graph and args.cuda_graph_scope == 'full_iteration':
+            from megatron.core.full_cuda_graph import FullCudaGraphWrapper
+            forward_backward_func = FullCudaGraphWrapper(
+                forward_backward_func, cuda_graph_warmup_steps=args.cuda_graph_warmup_steps)
+
+        if eval_iters is None:
+            eval_iters = args.eval_iters
+
         with torch.no_grad(), tqdm(
-                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+                total=eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
-                print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-            while iteration < args.eval_iters:
+                print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+            while iteration < eval_iters:
                 iteration += 1
                 prog_bar.update()
                 if verbose:
-                    print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                    print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
-                forward_backward_func = get_forward_backward_func()
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
@@ -380,7 +391,8 @@ class BaseMegatronTrainer(ABC):
                     seq_length=args.seq_length,
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
-                    forward_only=True)
+                    forward_only=True,
+                )
                 ft_integration.on_eval_step_end()
                 config.timers = get_timers()
 
@@ -443,7 +455,8 @@ class BaseMegatronTrainer(ABC):
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
                     forward_only=True,
-                    collect_non_loss_data=True)
+                    collect_non_loss_data=True,
+                )
 
         # Move model back to the train mode.
         for model_module in model:
@@ -775,10 +788,10 @@ class BaseMegatronTrainer(ABC):
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    @staticmethod
-    def _init_multimodal_full(args):
-        visual_cls = args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
+    def _init_multimodal_full(self):
+        args = get_args()
+        visual_cls = self.args.megatron_model_meta.visual_cls
+        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:
