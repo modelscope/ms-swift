@@ -1,5 +1,4 @@
 import math
-import os
 from dataclasses import dataclass, fields
 
 from swift.llm import BaseArguments
@@ -40,7 +39,7 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
             self.problem_type = self.problem_type or getattr(config, 'problem_type', None)
             logger.info(f'args.problem_type: {self.problem_type}')
         kwargs = convert_hf_config(config)
-        self._check_megatron_kwargs()
+        self._check_megatron_kwargs(kwargs)
         if tokenizer is not None and self.new_special_tokens and kwargs['padded_vocab_size'] < len(tokenizer):
             kwargs['padded_vocab_size'] = math.ceil(len(tokenizer) / 128) * 128
             self.initialize_embedding = True
