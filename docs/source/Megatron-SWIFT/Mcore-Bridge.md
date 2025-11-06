@@ -130,8 +130,8 @@ swift infer \
 Mcore-Bridge除了支持全参数的导入导出，还支持单独对LoRA增量模型进行导入导出。
 
 以下为纯文本模型Qwen3-Moe模型使用LoRA自我认知训练的例子：
-- 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。
-- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
+- 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。设置`--merge_lora true`的兼容性更好，支持所有系列模型。
+- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 ```shell
 # 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -319,7 +319,7 @@ swift infer \
     --stream true
 ```
 
-LoRA权重的加载、导出和存储同理：
+LoRA权重的加载、导出和存储同理，运行`CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 test.py`
 ```python
 import torch
 
@@ -329,12 +329,16 @@ from swift.megatron import (
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+_, processor = get_model_tokenizer('Qwen/Qwen3-30B-A3B-Instruct-2507', load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
     tensor_model_parallel_size=2,
+    pipeline_model_parallel_size=2,
+    expert_model_parallel_size=2,
+    sequence_parallel=True,
+    moe_grouped_gemm=True,
     torch_dtype=torch.bfloat16,
     train_type='lora',
     **config_kwargs,
@@ -354,15 +358,14 @@ print(f'peft_model: {peft_model}')
 # 导出权重
 for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
     pass
-# 保存权重
-bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-lora', is_peft_format=True)
+bridge.save_weights([mg_model], 'output/Qwen3-30B-A3B-Instruct-2507-lora', is_peft_format=True)
 ```
 
 推理新产生的权重：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model Qwen/Qwen3-4B-Instruct-2507 \
-    --adapters output/Qwen3-4B-Instruct-2507-lora \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --adapters output/Qwen3-30B-A3B-Instruct-2507-lora \
     --stream true
 ```

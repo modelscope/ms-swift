@@ -197,7 +197,6 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_device = next(mg_language_model.parameters()).device
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
-        # TODO: test pp tie_weights
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
         if args.tensor_model_parallel_size > 1:
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region

@@ -86,10 +86,13 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ```
 
 infonce loss支持几个环境变量：
-1. INFONCE_TEMPERATURE temperature参数，不设置的话默认值是0.01
-2. INFONCE_USE_BATCH 使用sample内部的`negative_messages`（hard negative样例）还是使用一个batch内其他样本作为in-batch negatives；默认为True，表示使用batch内部的样本作为负例
-3. INFONCE_HARD_NEGATIVES hard negatives的数量；如果不设置会使用数据中提供的所有`negative_messages`。由于长度未必一致，因此会采用for循环计算loss（计算会慢）。若设置为某个数值，则不足会随机采样补齐，超长会选用前`INFONCE_HARD_NEGATIVES`个
-4. INFONCE_MASK_FAKE_NEGATIVE mask掉假negative。默认为False，开启时会判断positive sample的similarity+0.1，比该值大的sample的similarity会被设置为-inf，防止positive sample泄露问题
+1. `INFONCE_TEMPERATURE`： temperature参数，不设置的话默认值是0.01
+2. `INFONCE_USE_BATCH`： 使用sample内部的`negative_messages`（hard negative样例）还是使用一个batch内其他样本作为in-batch negatives；默认为True，表示使用batch内部的样本作为负例
+3. `INFONCE_HARD_NEGATIVES`： hard negatives的数量；如果不设置会使用数据中提供的所有`negative_messages`。由于长度未必一致，因此会采用for循环计算loss（计算会慢）。若设置为某个数值，则不足会随机采样补齐，超长会选用前`INFONCE_HARD_NEGATIVES`个
+4. `INFONCE_MASK_FAKE_NEGATIVE`： mask掉假negative。默认为False，开启时会判断 `positive_similarity + INFONCE_FAKE_NEG_MARGIN`，比该阈值大的样本相似度会被设置为 `-inf`，以防止正样本泄露问题
+5. `INFONCE_FAKE_NEG_MARGIN`：假负样本屏蔽的边际，默认 `0.1`。
+6. `INFONCE_INCLUDE_QQ`：是否在分母中加入 q–q 分量（query 间相似度）作为负例，默认 `False`。
+7. `INFONCE_INCLUDE_DD`：是否在分母中加入 d–d 分量（正样本文档与 batch 内所有文档的相似度）作为负例，默认 `False`。
 
 > 也可以在数据集中将hard negatives数量设置为数量相等，这样即使不设置也不会使用for循环方式，加快计算速度
 > `negative_messages`也可以不提供。在这种情况下，保持`INFONCE_USE_BATCH=True`，会使用一个batch内部的其他样本作为负例

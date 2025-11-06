@@ -98,6 +98,12 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     save_safetensors: bool = False
     model: Optional[str] = None
     adapters: List[str] = field(default_factory=list)
+    ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
+    use_hf: bool = False
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
     # streaming dataloader
@@ -286,7 +292,7 @@ class MegatronArguments(ExtraMegatronArguments):
     expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
-    moe_grouped_gemm: bool = False
+    moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
     moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None

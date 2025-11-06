@@ -10,7 +10,7 @@ from megatron.training import get_args
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 
-from swift.llm import deep_getattr, get_model_tokenizer, save_checkpoint
+from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
@@ -35,6 +35,7 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         self._is_peft_format = False
+        self._adapter_name = 'default'
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
@@ -244,8 +245,8 @@ class GPTBridge:
             is_lora, is_modules_to_save = state
         if is_lora and self._is_peft_format and param_key != 'layer_norm_weight':
             if to_mcore:
-                lora_A_key = f'{module_key}.lora_A.default.{param_key}'
-                lora_B_key = f'{module_key}.lora_B.default.{param_key}'
+                lora_A_key = f'{module_key}.lora_A.{self._adapter_name}.{param_key}'
+                lora_B_key = f'{module_key}.lora_B.{self._adapter_name}.{param_key}'
                 mg_lora_A = deep_getattr(mg_module, f'{lora_A_key}')
                 mg_lora_B = deep_getattr(mg_module, f'{lora_B_key}')
                 hf_lora_A = hf_state_dict[f'{hf_module_key}.lora_A.{hf_param_key}'].load()
@@ -253,8 +254,8 @@ class GPTBridge:
                 self._set_weight(mg_lora_A, hf_lora_A, lora_A_key, offset, is_expert)
                 self._set_weight(mg_lora_B, hf_lora_B, lora_B_key, offset, is_expert)
             else:
-                lora_A_key = f'{module_key}.lora_A.default.{param_key}'
-                lora_B_key = f'{module_key}.lora_B.default.{param_key}'
+                lora_A_key = f'{module_key}.lora_A.{self._adapter_name}.{param_key}'
+                lora_B_key = f'{module_key}.lora_B.{self._adapter_name}.{param_key}'
                 lora_A_tensor = deep_getattr(mg_module, f'{lora_A_key}.data')
                 lora_B_tensor = deep_getattr(mg_module, f'{lora_B_key}.data')
                 hf_lora_A_key = f'{hf_module_key}.lora_A.{hf_param_key}'
@@ -330,8 +331,10 @@ class GPTBridge:
                     hf_state_dict['v_proj.lora_B.weight'].load().reshape((num_query_groups, -1, q_lora_B.shape[-1])),
                 ],
                                    dim=1).reshape((-1, q_lora_B.shape[-1]))
-                self._set_weight(mg_attn.linear_qkv.lora_A['default'].weight, lora_A, 'linear_qkv.lora_A.weight')
-                self._set_weight(mg_attn.linear_qkv.lora_B['default'].weight, lora_B, 'linear_qkv.lora_B.weight')
+                self._set_weight(mg_attn.linear_qkv.lora_A[self._adapter_name].weight, lora_A,
+                                 'linear_qkv.lora_A.weight')
+                self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
+                                 'linear_qkv.lora_B.weight')
             else:
                 linear_qkv_weight = torch.cat([
                     hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
@@ -349,10 +352,12 @@ class GPTBridge:
             if self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                lora_A = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.lora_A['default'].weight.data,
-                                          'linear_qkv.lora_A.default.weight')
-                lora_B = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.lora_B['default'].weight.data,
-                                          'linear_qkv.lora_B.default.weight')
+                lora_A = self._get_weight(
+                    None if mg_attn is None else mg_attn.linear_qkv.lora_A[self._adapter_name].weight.data,
+                    f'linear_qkv.lora_A.{self._adapter_name}.weight')
+                lora_B = self._get_weight(
+                    None if mg_attn is None else mg_attn.linear_qkv.lora_B[self._adapter_name].weight.data,
+                    f'linear_qkv.lora_B.{self._adapter_name}.weight')
                 if lora_A is not None:
                     self._peft_target_modules.update({'q_proj', 'k_proj', 'v_proj'})
                     for key in ['q_proj', 'k_proj', 'v_proj']:
@@ -481,8 +486,8 @@ class GPTBridge:
         # linear_fc1
         if to_mcore:
             if isinstance(mg_mlp.linear_fc1, LoraParallelLinear):
-                mg_lora_B = mg_mlp.linear_fc1.lora_B['default'].weight0 if is_expert else mg_mlp.linear_fc1.lora_B[
-                    'default'].weight
+                mg_lora_B = mg_mlp.linear_fc1.lora_B[
+                    self._adapter_name].weight0 if is_expert else mg_mlp.linear_fc1.lora_B[self._adapter_name].weight
                 mg_lora_B = mg_lora_B.new_empty(num_local_experts * 2, mg_lora_B.shape[0] // 2, mg_lora_B.shape[-1])
                 if hasattr(hf_mlp, 'gate_up_proj'):
                     if is_expert:
@@ -523,20 +528,23 @@ class GPTBridge:
                     assert (
                         lora_A == up_lora_A).all(), 'Need to ensure lora_A consistency between gate_proj and up_proj'
                 if is_expert:
-                    mg_lora_A = mg_mlp.linear_fc1.lora_A['default'].weight0
+                    mg_lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight0
                     mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
                 else:
-                    mg_lora_A = mg_mlp.linear_fc1.lora_A['default'].weight
-                self._set_weight(mg_lora_A, lora_A, 'linear_fc1.lora_A.default.weight', is_expert=is_expert)
-                self._set_weight(mg_lora_B, lora_B, 'linear_fc1.lora_B.default.weight', is_expert=is_expert)
+                    mg_lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight
+                self._set_weight(
+                    mg_lora_A, lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                self._set_weight(
+                    mg_lora_B, lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if is_expert:
                     mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
                     mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
                     for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc1.lora_A['default'], f'weight{i}').data.copy_(mg_lora_A[i])
-                        getattr(mg_mlp.linear_fc1.lora_B['default'], f'weight{i}').data.copy_(mg_lora_B[i])
+                        getattr(mg_mlp.linear_fc1.lora_A[self._adapter_name], f'weight{i}').data.copy_(mg_lora_A[i])
+                        getattr(mg_mlp.linear_fc1.lora_B[self._adapter_name], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
-                    mg_mlp.linear_fc1.lora_B['default'].weight.data.copy_(mg_lora_B.view(-1, mg_lora_B.shape[-1]))
+                    mg_mlp.linear_fc1.lora_B[self._adapter_name].weight.data.copy_(
+                        mg_lora_B.view(-1, mg_lora_B.shape[-1]))
             else:
                 fc1_weight = mg_mlp.linear_fc1.weight0 if is_expert else mg_mlp.linear_fc1.weight
                 fc1_weight = fc1_weight.new_empty(num_local_experts * 2, fc1_weight.shape[0] // 2, fc1_weight.shape[1])
@@ -596,19 +604,21 @@ class GPTBridge:
                 else:
                     if is_expert:
                         lora_A = torch.concat([
-                            getattr(mg_mlp.linear_fc1.lora_A['default'], f'weight{i}') for i in range(num_local_experts)
+                            getattr(mg_mlp.linear_fc1.lora_A[self._adapter_name], f'weight{i}')
+                            for i in range(num_local_experts)
                         ],
                                               dim=0)
                         lora_B = torch.concat([
-                            getattr(mg_mlp.linear_fc1.lora_B['default'], f'weight{i}') for i in range(num_local_experts)
+                            getattr(mg_mlp.linear_fc1.lora_B[self._adapter_name], f'weight{i}')
+                            for i in range(num_local_experts)
                         ],
                                               dim=0)
                     else:
-                        lora_A = mg_mlp.linear_fc1.lora_A['default'].weight
-                        lora_B = mg_mlp.linear_fc1.lora_B['default'].weight
+                        lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight
+                        lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name].weight
                     lora_B = lora_B.view(num_local_experts * 2, -1, lora_B.shape[1])
-                lora_A = self._get_weight(lora_A, 'linear_fc1.lora_A.default.weight', is_expert=is_expert)
-                lora_B = self._get_weight(lora_B, 'linear_fc1.lora_B.default.weight', is_expert=is_expert)
+                lora_A = self._get_weight(lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                lora_B = self._get_weight(lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if lora_A is not None:
                     if hasattr(hf_mlp, 'gate_up_proj'):
                         self._peft_target_modules.update({'gate_up_proj'})
@@ -644,8 +654,11 @@ class GPTBridge:
                     fc1_weight = None
                 else:
                     if is_expert:
-                        fc1_weight = torch.concat(
-                            [getattr(mg_mlp.linear_fc1, f'weight{i}') for i in range(num_local_experts)], dim=0)
+                        linear_fc1 = mg_mlp.linear_fc1
+                        if isinstance(linear_fc1, LoraParallelLinear):
+                            linear_fc1 = linear_fc1.base_layer
+                        fc1_weight = torch.concat([getattr(linear_fc1, f'weight{i}') for i in range(num_local_experts)],
+                                                  dim=0)
                     else:
                         fc1_weight = mg_mlp.linear_fc1.weight
                     fc1_weight = fc1_weight.view(num_local_experts * 2, -1, fc1_weight.shape[1])
@@ -686,9 +699,9 @@ class GPTBridge:
         if is_expert:
             if to_mcore:
                 if isinstance(mg_mlp.linear_fc2, LoraParallelLinear):
-                    mg_lora_A = mg_mlp.linear_fc2.lora_A.default.weight0
+                    mg_lora_A = mg_mlp.linear_fc2.lora_A[self._adapter_name].weight0
                     mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
-                    mg_lora_B = mg_mlp.linear_fc2.lora_B.default.weight0
+                    mg_lora_B = mg_mlp.linear_fc2.lora_B[self._adapter_name].weight0
                     mg_lora_B = mg_lora_B.new_empty(num_local_experts * mg_lora_B.shape[0], mg_lora_B.shape[1])
                     lora_A = torch.concat([
                         hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.lora_A.weight'].load()
@@ -700,13 +713,15 @@ class GPTBridge:
                         for i in range(num_local_experts)
                     ],
                                           dim=0)
-                    self._set_weight(mg_lora_A, lora_A, 'linear_fc2.lora_A.default.weight', is_expert=is_expert)
-                    self._set_weight(mg_lora_B, lora_B, 'linear_fc2.lora_B.default.weight', is_expert=is_expert)
+                    self._set_weight(
+                        mg_lora_A, lora_A, f'linear_fc2.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                    self._set_weight(
+                        mg_lora_B, lora_B, f'linear_fc2.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                     mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
                     mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
                     for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc2.lora_A['default'], f'weight{i}').data.copy_(mg_lora_A[i])
-                        getattr(mg_mlp.linear_fc2.lora_B['default'], f'weight{i}').data.copy_(mg_lora_B[i])
+                        getattr(mg_mlp.linear_fc2.lora_A[self._adapter_name], f'weight{i}').data.copy_(mg_lora_A[i])
+                        getattr(mg_mlp.linear_fc2.lora_B[self._adapter_name], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
                     fc2_weight = mg_mlp.linear_fc2.weight0
                     fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
@@ -740,15 +755,19 @@ class GPTBridge:
                         lora_B = None
                     else:
                         lora_A = torch.concat([
-                            getattr(mg_mlp.linear_fc2.lora_A['default'], f'weight{i}') for i in range(num_local_experts)
+                            getattr(mg_mlp.linear_fc2.lora_A[self._adapter_name], f'weight{i}')
+                            for i in range(num_local_experts)
                         ],
                                               dim=0)
                         lora_B = torch.concat([
-                            getattr(mg_mlp.linear_fc2.lora_B['default'], f'weight{i}') for i in range(num_local_experts)
+                            getattr(mg_mlp.linear_fc2.lora_B[self._adapter_name], f'weight{i}')
+                            for i in range(num_local_experts)
                         ],
                                               dim=0)
-                    lora_A = self._get_weight(lora_A, 'linear_fc2.lora_A.default.weight', is_expert=is_expert)
-                    lora_B = self._get_weight(lora_B, 'linear_fc2.lora_B.default.weight', is_expert=is_expert)
+                    lora_A = self._get_weight(
+                        lora_A, f'linear_fc2.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                    lora_B = self._get_weight(
+                        lora_B, f'linear_fc2.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                     if lora_A is not None:
                         self._peft_target_modules.update({'down_proj'})
                         lora_A = lora_A.view(num_local_experts, -1, lora_A.shape[-1])
@@ -761,8 +780,11 @@ class GPTBridge:
                     if mg_mlp is None:
                         fc2_weight = None
                     else:
-                        fc2_weight = torch.concat(
-                            [getattr(mg_mlp.linear_fc2, f'weight{i}') for i in range(num_local_experts)], dim=0)
+                        linear_fc2 = mg_mlp.linear_fc2
+                        if isinstance(linear_fc2, LoraParallelLinear):
+                            linear_fc2 = linear_fc2.base_layer
+                        fc2_weight = torch.concat([getattr(linear_fc2, f'weight{i}') for i in range(num_local_experts)],
+                                                  dim=0)
                     down_proj_weight = self._get_weight(fc2_weight, 'linear_fc2.weight', is_expert=is_expert)
                     del fc2_weight
                     if down_proj_weight is not None:
@@ -951,8 +973,10 @@ class GPTBridge:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
 
-    def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False):
+    def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
         self._is_peft_format = is_peft_format
+        self._adapter_name = adapter_name
+        hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
         with SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
@@ -964,10 +988,10 @@ class GPTBridge:
                        only_last_rank: bool = False,
                        is_peft_format: bool = False,
                        tqdm_desc: str = 'Exporting: '):
-        # TODO: modules_to_save
         self._target_device = target_device
         self._only_last_rank = only_last_rank
         self._is_peft_format = is_peft_format
+        self._adapter_name = 'default'
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
@@ -984,12 +1008,12 @@ class GPTBridge:
         saver.finalize()
         if is_last_rank():
             if is_peft_format:
-                peft_config = copy(mg_models[0].peft_config['default'])
+                peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 peft_config.target_modules = self._peft_target_modules
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
-                # TODO: new_special_tokens, vocab_size...
+                self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
                 save_checkpoint(
                     None,

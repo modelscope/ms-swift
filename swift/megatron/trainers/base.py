@@ -245,9 +245,11 @@ class BaseMegatronTrainer(ABC):
                 self.bridge.load_weights(model, args.model_info.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.load_safetensors and args.train_type == 'lora' and args.adapters:
-                assert len(args.adapters) == 1, 'Currently only support one adapter'
-                self.bridge.load_weights(model, args.adapters[0], is_peft_format=True)
+            if args.load_safetensors and args.train_type == 'lora':
+                for adapters, name in [(args.adapters, 'default'), (args.ref_adapters, 'ref_adapter')]:
+                    if adapters:
+                        assert len(adapters) == 1, 'Currently only support one adapter.'
+                        self.bridge.load_weights(model, adapters[0], is_peft_format=True, adapter_name=name)
             self.peft_models.append(peft_model)
             return model
 
@@ -306,7 +308,7 @@ class BaseMegatronTrainer(ABC):
             logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
-            if hasattr(module.weight, 'main_param'):
+            if getattr(module.weight, 'main_param', None) is not None:
                 module.weight.main_param.copy_(module.weight.view(-1))
 
     def _all_reduce_metric(self,
