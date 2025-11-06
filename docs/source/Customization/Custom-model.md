@@ -2,7 +2,7 @@
 
 ms-swift内置的模型，你可以直接通过指定model_id或者model_path来使用：`--model <model_id_or_path>`。ms-swift会根据model_id/model_path的后缀和`config.json`文件来判断model_type。
 
-每种model_type都有唯一的模型结构、template和加载方式。当然，你也可以手动传入`--model_type`、`--template`来进行覆盖。ms-swift已支持的model_type和template可以查看[支持的模型与数据集](../Instruction/支持的模型和数据集.md)。
+每种model_type都有唯一的模型结构、template和加载方式。当然，你也可以手动传入`--model_type`、`--template`来进行覆盖。ms-swift已支持的model_type和template可以查看[支持的模型与数据集](../Instruction/Supported-models-and-datasets.md)。
 
 以下介绍如何注册一个新模型和对应的template。最佳实践参考[注册多模态模型最佳实践](../BestPractices/注册多模态模型最佳实践.md)。
 

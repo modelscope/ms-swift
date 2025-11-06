@@ -72,7 +72,7 @@ pip install flash-attn --no-build-isolation  # packing需要
 
 ### 数据准备
 
-使用 ms-swift 进行 SFT 的自定义数据集格式如下（system 字段是可选的）。您可以将其组织为 JSON、JSONL 或 CSV 格式。在训练脚本中指定 `--dataset <dataset_path>`。有关完整的数据集格式指南，请参考[自定义数据集文档](../Customization/自定义数据集.md)。
+使用 ms-swift 进行 SFT 的自定义数据集格式如下（system 字段是可选的）。您可以将其组织为 JSON、JSONL 或 CSV 格式。在训练脚本中指定 `--dataset <dataset_path>`。有关完整的数据集格式指南，请参考[自定义数据集文档](../Customization/Custom-dataset.md)。
 
 ```text
 # 通用格式
@@ -135,7 +135,7 @@ swift infer \
 
 如果需要在离线环境下进行训练，可以手动下载模型和数据集，并指定 `--model <model-path>` 和 `--dataset <dataset-dir>`。数据集可以在 [Modelscope Hub](https://modelscope.cn/datasets/swift/self-cognition)上找到。对`swift/self-cognition`数据集的预处理函数可以查看[这里](https://github.com/modelscope/ms-swift/blob/36fdf381e5e88cb8a71c9d69c1d8936a989318cc/swift/llm/dataset/dataset/llm.py#L882)。
 
-关于训练脚本中各参数的含义，请参考[命令行参数文档](../Instruction/命令行参数.md)。
+关于训练脚本中各参数的含义，请参考[命令行参数文档](../Instruction/Command-line-parameters.md)。
 
 ```bash
 # 显存占用：22GB
@@ -270,7 +270,7 @@ pip install vllm==0.8.5.post1
 {"messages": [{"role": "user", "content": "What is your name?"}]}
 ```
 
-关于其他 RLHF 算法的数据集准备，请参考[自定义数据集文档](../Customization/自定义数据集.md#rlhf)。
+关于其他 RLHF 算法的数据集准备，请参考[自定义数据集文档](../Customization/Custom-dataset.md#rlhf)。
 
 数据集要求的注意事项：
 
@@ -328,9 +328,9 @@ swift rlhf \
 
 Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
-ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO/KTO/RM。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
+ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO/KTO/RM。支持的模型可以在[支持的模型文档](../Instruction/Supported-models-and-datasets.md)中找到。
 
-关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/快速开始.md)。
+关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/Quick-start.md)。
 
 我们将使用阿里云 DLC 启动训练。训练环境由2台配备8卡 80GiB A800 GPU 组成。关于多节点启动方法的更多信息，请参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)。
 

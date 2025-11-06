@@ -152,21 +152,21 @@ Here’s a breakdown of what unfolds:
 Overall, this is a sweet, lighthearted video that showcases the innocence and imagination of early childhood. The child’s engagement with the book, combined with their glasses and playful demeanor, creates a delightful and memorable scene.
 ```
 
-- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/命令行参数.md#qwen3_vl)。
+- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl)。
 
 
 ## 训练
 
-本文档将介绍如何使用 ms-swift 与 Megatron-SWIFT 训练 Qwen3-VL。推荐 Dense 模型使用 ms-swift（即 transformers 后端，更加方便简单），而 Moe 模型使用 Megatron-SWIFT（即 megatron 后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/快速开始.md#benchmark)）。
+本文档将介绍如何使用 ms-swift 与 Megatron-SWIFT 训练 Qwen3-VL。推荐 Dense 模型使用 ms-swift（即 transformers 后端，更加方便简单），而 Moe 模型使用 Megatron-SWIFT（即 megatron 后端，更快的训练速度，benchmark查看[这里](../Megatron-SWIFT/Quick-start.md#benchmark)）。
 
-如果您需要自定义数据集微调模型，你可以将数据准备成以下格式，并在命令行中设置`--dataset train.jsonl --val_dataset val.jsonl`，其中验证集为可选。更多介绍请参考[多模态数据集文档](../Customization/自定义数据集.md#多模态)。
+如果您需要自定义数据集微调模型，你可以将数据准备成以下格式，并在命令行中设置`--dataset train.jsonl --val_dataset val.jsonl`，其中验证集为可选。更多介绍请参考[多模态数据集文档](../Customization/Custom-dataset.md#多模态)。
 ```jsonl
 {"messages": [{"role": "user", "content": "浙江的省会在哪？"}, {"role": "assistant", "content": "浙江的省会在杭州。"}]}
 {"messages": [{"role": "user", "content": "<image><image>两张图片有什么区别"}, {"role": "assistant", "content": "前一张是小猫，后一张是小狗"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
 {"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "<image>图片中是什么，<video>视频中是什么"}, {"role": "assistant", "content": "图片中是一个大象，视频中是一只小狗在草地上奔跑"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
-Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swift 提供的 grounding 数据集格式，其中"bbox"中的坐标为绝对坐标，ms-swift 会自动将绝对坐标转为归一化1000的相对坐标。更多信息请参考[grounding数据集格式文档](../Customization/自定义数据集.md#grounding)。
+Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swift 提供的 grounding 数据集格式，其中"bbox"中的坐标为绝对坐标，ms-swift 会自动将绝对坐标转为归一化1000的相对坐标。更多信息请参考[grounding数据集格式文档](../Customization/Custom-dataset.md#grounding)。
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>找到图像中的<ref-object>"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["羊", "羊", "羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```
@@ -251,7 +251,7 @@ swift infer \
 
 以下提供对`Qwen3-VL-30B-A3B-Instruct`模型的微调脚本，我们使用 Megatron-SWIFT 进行单机全参数训练。我们同样采用混合数据进行训练，该示例脚本仅作为演示用途。训练所需显存资源为8 * 80GiB，训练时间为20分钟。
 
-关于 Megatron-SWIFT 的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/快速开始.md)。Megatron-SWIFT 与 ms-swift 共用 template 和 dataset 模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
+关于 Megatron-SWIFT 的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/Quick-start.md)。Megatron-SWIFT 与 ms-swift 共用 template 和 dataset 模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
 
 HF格式权重转为Megatron格式：
 ```shell
@@ -263,7 +263,7 @@ swift export \
     --output_dir Qwen3-VL-30B-A3B-Instruct-mcore
 ```
 
-微调脚本如下，训练技巧与并行技术的调整参考[Megatron-SWIFT文档](../Megatron-SWIFT/快速开始.md#训练技巧)。
+微调脚本如下，训练技巧与并行技术的调整参考[Megatron-SWIFT文档](../Megatron-SWIFT/Quick-start.md#训练技巧)。
 ```shell
 # 8 * 80GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

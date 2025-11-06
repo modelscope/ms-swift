@@ -86,4 +86,4 @@ $$
 
 - **`--beta`**：KL 散度正则化系数 $\beta$
 
-其他参数参考 [GRPO参数](../../命令行参数.md#grpo参数)
+其他参数参考 [GRPO参数](../../Command-line-parameters.md#grpo参数)

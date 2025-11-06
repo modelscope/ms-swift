@@ -86,7 +86,7 @@ alpaca格式:
 多模态数据的格式参考[多模态数据集](#多模态), 额外加入如`images`的列表示其他模态输入。当需要为偏好对数据关联不同的图片信息时，可通过`rejected_images`字段标注拒绝回答对应的图片信息。
 对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个
 
-> 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/人类对齐.md#rm)
+> 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
 
 当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
 
@@ -158,11 +158,11 @@ alpaca格式:
 
 ### Embedding
 
-请参考[embedding训练文档](../BestPractices/Embedding训练.md#数据集格式)
+请参考[embedding训练文档](../BestPractices/Embedding.md#数据集格式)
 
 ### Reranker
 
-请参考[Reranker训练文档](../BestPractices/Reranker训练.md#数据集格式)
+请参考[Reranker训练文档](../BestPractices/Reranker.md#数据集格式)
 
 ### 多模态
 
@@ -255,7 +255,7 @@ print(f'images: {encoded["template_inputs"].images}')
 - `{"role": "tool_response", ...}`也可以写成`{"role": "tool", ...}`，这两种写法是等价的。该部分也将根据`agent_template`自动转换格式。该部分在训练时将不进行损失的计算，角色类似于`{"role": "user", ...}`。
 - 该格式支持并行调用工具，例子参考第一条数据样本。多模态Agent数据样本中`<image>`标签数量应与"images"长度相同，其标签位置代表图像特征的插入位置。当然也支持其他模态，例如audios, videos。
 - 注意：您也可以手动将数据处理为role为system/user/assistant的messages格式。agent_template的作用是将其中的tools字段以及role为tool_call和tool_response的messages部分，自动映射为标准的role为system/user/assistant的messages格式。
-- 更多请参考[Agent文档](../Instruction/Agent支持.md)。
+- 更多请参考[Agent文档](../Instruction/Agent-support.md)。
 
 ### 文生图格式
 

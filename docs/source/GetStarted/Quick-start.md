@@ -21,7 +21,7 @@ ms-swift是魔搭社区提供的大模型与多模态大模型训练部署框架
 
 ## 安装
 
-ms-swift的安装请参考[安装文档](./SWIFT安装.md)。
+ms-swift的安装请参考[安装文档](./SWIFT-installation.md)。
 
 ## 使用样例
 
@@ -58,7 +58,7 @@ swift sft \
 ```
 
 小贴士：
-- 如果要使用自定义数据集进行训练，你可以参考[这里](../Customization/自定义数据集.md)组织数据集格式，并指定`--dataset <dataset_path>`。
+- 如果要使用自定义数据集进行训练，你可以参考[这里](../Customization/Custom-dataset.md)组织数据集格式，并指定`--dataset <dataset_path>`。
 - `--model_author`和`--model_name`参数只有当数据集中包含`swift/self-cognition`时才生效。
 - 如果要使用其他模型进行训练，你只需要修改`--model <model_id/model_path>`即可。
 - 默认使用ModelScope进行模型和数据集的下载。如果要使用HuggingFace，指定`--use_hf true`即可。
