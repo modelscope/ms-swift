@@ -319,20 +319,24 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args, **kwargs):
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
+                   **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                        config, *args, **kwargs)
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
+    def evaluate(
+        self,
+        forward_step_func,
+        data_iterator,
+        model,
+        process_non_loss_data_func,
+        config,
+        verbose=False,
+        non_loss_data_func=None,
+        eval_iters=None,
+    ):
         """Evaluation."""
         args = get_args()
         timers = get_timers()
@@ -356,18 +360,26 @@ class BaseMegatronTrainer(ABC):
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
+        forward_backward_func = get_forward_backward_func()
+        if args.enable_cuda_graph and args.cuda_graph_scope == 'full_iteration':
+            from megatron.core.full_cuda_graph import FullCudaGraphWrapper
+            forward_backward_func = FullCudaGraphWrapper(
+                forward_backward_func, cuda_graph_warmup_steps=args.cuda_graph_warmup_steps)
+
+        if eval_iters is None:
+            eval_iters = args.eval_iters
+
         with torch.no_grad(), tqdm(
                 total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
-                print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-            while iteration < args.eval_iters:
+                print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+            while iteration < eval_iters:
                 iteration += 1
                 prog_bar.update()
                 if verbose:
-                    print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                    print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
-                forward_backward_func = get_forward_backward_func()
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
@@ -380,7 +392,8 @@ class BaseMegatronTrainer(ABC):
                     seq_length=args.seq_length,
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
-                    forward_only=True)
+                    forward_only=True,
+                )
                 ft_integration.on_eval_step_end()
                 config.timers = get_timers()
 
@@ -443,7 +456,8 @@ class BaseMegatronTrainer(ABC):
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
                     forward_only=True,
-                    collect_non_loss_data=True)
+                    collect_non_loss_data=True,
+                )
 
         # Move model back to the train mode.
         for model_module in model:
