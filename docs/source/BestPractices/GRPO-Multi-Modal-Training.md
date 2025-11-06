@@ -104,7 +104,7 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 #### 训练参数：
 我们选取 Qwen2.5-VL-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在八卡 GPU 上进行实验。如果遇到vllm部署qwen2.5-vl报错，可以参考[issue](https://github.com/vllm-project/vllm/issues/13285)
 
-由于任务简单，我们设置max_completion_length为1024，奖励函数选择external_r1v_acc和format，学习率和beta分别设置为1e-6和0.001。其他设置如下所示，batch_size和num_generations的设置原则可以参考[GRPO完整流程](./GRPO完整流程.md)。
+由于任务简单，我们设置max_completion_length为1024，奖励函数选择external_r1v_acc和format，学习率和beta分别设置为1e-6和0.001。其他设置如下所示，batch_size和num_generations的设置原则可以参考[GRPO完整流程](./GRPO.md)。
 首先拉起 external vLLM server
 ```bash
 CUDA_VISIBLE_DEVICES=6,7 \

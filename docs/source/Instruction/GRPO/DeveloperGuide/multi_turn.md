@@ -190,7 +190,7 @@ swift rollout \
 
 **第一种：设置 loss_scale**
 
-ms-swift 提供 loss_scale 参数来对模型回复部分的内容进行损失缩放设置。比如设置`--loss_scale last_round`，可以将非最后一轮的模型回复的损失置零。我们也可以实现自定义 loss_scale，具体请参考[定制化 loss_scale 文档](../../../Customization/插件化.md#定制化loss_scale)。
+ms-swift 提供 loss_scale 参数来对模型回复部分的内容进行损失缩放设置。比如设置`--loss_scale last_round`，可以将非最后一轮的模型回复的损失置零。我们也可以实现自定义 loss_scale，具体请参考[定制化 loss_scale 文档](../../../Customization/Pluginization.md#定制化loss_scale)。
 
 > 注：在GRPO中，loss_scale 只提供掩码功能，不提供缩放功能。
 

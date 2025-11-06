@@ -1,7 +1,7 @@
 
 # 快速开始
 
-ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/qwen3_moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/支持的模型和数据集.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
+ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/qwen3_moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
 
 
 | 方法   | 全参数 | LoRA | MoE | 多模态 |
@@ -50,7 +50,7 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
 ```
 
-或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT安装.md#镜像)）
+或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
@@ -156,7 +156,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。
-- Megatron-SWIFT使用与ms-swift相同的dataset和template处理模块，因此同样支持packing、loss_scale、agent训练等技术。自定义数据集格式参考[自定义数据集文档](../Customization/自定义数据集.md)。
+- Megatron-SWIFT使用与ms-swift相同的dataset和template处理模块，因此同样支持packing、loss_scale、agent训练等技术。自定义数据集格式参考[自定义数据集文档](../Customization/Custom-dataset.md)。
 - **更多案例**：包括packing、多机、32K上下文、DPO、MoE模型、预训练，可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron)。
 
 

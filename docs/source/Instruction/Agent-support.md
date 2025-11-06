@@ -202,7 +202,7 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 - 所有与正则表达式`<think>\\s*</think>\\s*`匹配的字符串，loss_scale为0，即不计算损失。
 
-更多的loss_scale插件设计，请参考[插件化](../Customization/插件化.md)文档.
+更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
 
 
 ## 训练

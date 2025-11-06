@@ -20,7 +20,7 @@
 
 
 ## 环境准备
-推荐的第三方库版本参考[SWIFT安装文档](../GetStarted/SWIFT安装.md)
+推荐的第三方库版本参考[SWIFT安装文档](../GetStarted/SWIFT-installation.md)
 ```bash
 pip install ms-swift -U
 
@@ -29,7 +29,7 @@ pip install deepspeed -U
 ```
 
 ## 预训练
-预训练使用`swift pt`命令，这将自动使用生成式而非对话式的template，即将`use_chat_template`设置为False（其他所有的命令，例如`swift sft/rlhf/infer`，都默认将`use_chat_template`设置为True）。此外，`swift pt`与`swift sft`相比，具有不同的数据集格式，可以参考[自定义数据集文档](../Customization/自定义数据集.md)。
+预训练使用`swift pt`命令，这将自动使用生成式而非对话式的template，即将`use_chat_template`设置为False（其他所有的命令，例如`swift sft/rlhf/infer`，都默认将`use_chat_template`设置为True）。此外，`swift pt`与`swift sft`相比，具有不同的数据集格式，可以参考[自定义数据集文档](../Customization/Custom-dataset.md)。
 
 使用CLI进行预训练的脚本可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh)。更多训练技术的介绍可以参考微调章节。
 
@@ -42,7 +42,7 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
 
 ### 使用CLI
 
-我们提供了10分钟在单卡3090上对Qwen2.5-7B-Instruct进行自我认知微调的最佳实践，具体参考[这里](../GetStarted/快速开始.md)，这可以帮助您快速了解SWIFT。
+我们提供了10分钟在单卡3090上对Qwen2.5-7B-Instruct进行自我认知微调的最佳实践，具体参考[这里](../GetStarted/Quick-start.md)，这可以帮助您快速了解SWIFT。
 
 此外，我们给出了一系列脚本帮助您了解SWIFT的训练能力：
 
@@ -54,11 +54,11 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
   - FSDP+QLoRA: 双卡3090运行70B模型的训练，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/fsdp_qlora/train.sh)。
   - 多机多卡训练: 我们书写了使用swift、torchrun、dlc、deepspeed、accelerate启动多节点运行的shell脚本示例。除了dlc和deepspeed，其他启动脚本都需要在所有节点中启动才可运行。具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multi-node)。
 - 量化训练：支持使用GPTQ、AWQ、AQLM、BNB、HQQ、EETQ量化技术的QLoRA训练。微调7B模型只需要9GB显存资源。具体参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora)。
-- 多模态训练：SWIFT支持多模态模型的预训练、微调和RLHF。支持Caption、VQA、OCR、[Grounding](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-vl-grounding/zh.ipynb)任务。支持图像、视频和音频三种模态。具体参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal)。多模态自定义数据集格式参考[自定义数据集文档](../Customization/自定义数据集.md)。
+- 多模态训练：SWIFT支持多模态模型的预训练、微调和RLHF。支持Caption、VQA、OCR、[Grounding](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-vl-grounding/zh.ipynb)任务。支持图像、视频和音频三种模态。具体参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal)。多模态自定义数据集格式参考[自定义数据集文档](../Customization/Custom-dataset.md)。
   - 对ViT/Aligner使用全参数训练，LLM使用LoRA训练，并采用不同学习率的例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit)。
   - 多模态模型packing，增加训练速度，例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/packing)。
 - RLHF训练：参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。多模态模型参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf)。GRPO训练参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal)。强化微调查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft)。
-- Megatron训练：支持使用Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行。参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/快速开始.md)。
+- Megatron训练：支持使用Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行。参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/Quick-start.md)。
 - 序列分类模型训练：参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls)。
 - Embedding模型训练：参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding)
 - Agent训练：参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent)。
@@ -72,7 +72,7 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
 小帖士：
 
 - 在使用`swift sft`通过LoRA技术微调base模型为chat模型时，有时需要手动设置模板。通过添加`--template default`参数来避免base模型因未见过对话模板中的特殊字符而无法正常停止的情况。具体参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/base_to_chat)。
-- 如果需要在**断网**环境下进行训练，请设置`--model <model_dir>`和`--check_model false`。如果对应的模型需要`git clone`github的仓库，例如`deepseek-ai/Janus-Pro-7B`，请设置手动下载仓库，并设置`--local_repo_path <repo_dir>`。具体参数含义请参考[命令行参数文档](命令行参数.md)。
+- 如果需要在**断网**环境下进行训练，请设置`--model <model_dir>`和`--check_model false`。如果对应的模型需要`git clone`github的仓库，例如`deepseek-ai/Janus-Pro-7B`，请设置手动下载仓库，并设置`--local_repo_path <repo_dir>`。具体参数含义请参考[命令行参数文档](Command-line-parameters.md)。
 - 无法对QLoRA训练的模型进行Merge LoRA，因此不建议使用QLoRA进行微调，无法在推理和部署时使用vLLM/Sglang/LMDeploy进行推理加速。建议使用LoRA/全参数进行微调，合并为完整权重后再使用GPTQ/AWQ/BNB进行[量化](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize)。
 - 如果使用NPU进行训练，只需要将shell中的`CUDA_VISIBLE_DEVICES`修改为`ASCEND_RT_VISIBLE_DEVICES`。
 - SWIFT默认在训练时设置`--gradient_checkpointing true`来节约显存，这会略微降低训练速度。
@@ -124,7 +124,7 @@ swift infer \
     --max_new_tokens 2048
 ```
 - adapters文件夹中包含了训练的参数文件`args.json`，因此不需要额外指定`--model`，`--system`，swift会自动读取这些参数。如果要关闭此行为，可以设置`--load_args false`。
-- 如果使用全参数训练，请使用`--model`替代`--adapters`指定训练的checkpoint目录。更多参考[推理和部署文档](./推理和部署.md#推理)。
+- 如果使用全参数训练，请使用`--model`替代`--adapters`指定训练的checkpoint目录。更多参考[推理和部署文档](./Inference-and-deployment.md#推理)。
 - 你可以使用`swift app`替代`swift infer`进行界面推理。
 - 你可以选择对LoRA进行merge（额外指定`--merge_lora true`），然后指定`--infer_backend vllm/sglang/lmdeploy`进行推理加速。
 
@@ -240,7 +240,7 @@ print(f'args.template_type: {args.template}')
 print(f'args.default_system: {args.system}')
 ```
 
-- 对全参数训练的checkpoint进行推理，将`model`设置为checkpoint_dir，并将lora_checkpoint设置为None即可。更多参考[推理和部署文档](./推理和部署.md#推理)。
+- 对全参数训练的checkpoint进行推理，将`model`设置为checkpoint_dir，并将lora_checkpoint设置为None即可。更多参考[推理和部署文档](./Inference-and-deployment.md#推理)。
 - 使用流式推理以及`VllmEngine`、`SglangEngine`、`LmdeployEngine`进行推理加速，可以参考[大模型](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo.py)和[多模态大模型](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_mllm.py)推理示例。
 - 微调后的模型使用huggingface transformers/peft生态推理，可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_hf.py)。
 - 若训练了多个LoRA，要进行多LoRA切换，可以参考[推理](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py)、[部署](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/lora)样例。
@@ -250,7 +250,7 @@ print(f'args.default_system: {args.system}')
 
 ## 部署（微调后模型）
 
-使用以下命令启动部署服务端。如果权重使用全参数训练，请使用`--model`替代`--adapters`指定训练的checkpoint目录。你可以参考[推理和部署文档](./推理和部署.md#部署)介绍的客户端调用方式：curl、openai库和swift客户端进行调用。
+使用以下命令启动部署服务端。如果权重使用全参数训练，请使用`--model`替代`--adapters`指定训练的checkpoint目录。你可以参考[推理和部署文档](./Inference-and-deployment.md#部署)介绍的客户端调用方式：curl、openai库和swift客户端进行调用。
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
@@ -279,7 +279,7 @@ swift deploy \
 
 ### 客户端
 
-这里只介绍使用openai库进行调用。使用curl、swift客户端调用的例子可以参考[推理和部署文档](./推理和部署.md#部署)。
+这里只介绍使用openai库进行调用。使用curl、swift客户端调用的例子可以参考[推理和部署文档](./Inference-and-deployment.md#部署)。
 
 ```python
 from openai import OpenAI

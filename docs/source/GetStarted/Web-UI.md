@@ -17,7 +17,7 @@ os.system('swift sft --model xxx --dataset xxx')
 ```
 
 这给web-ui带来了几个特性：
-1. web-ui的每个超参数描述都带有`--xxx`的标记，这与[命令行参数](../Instruction/命令行参数.md)的内容是一致的
+1. web-ui的每个超参数描述都带有`--xxx`的标记，这与[命令行参数](../Instruction/Command-line-parameters.md)的内容是一致的
 2. web-ui可以在一台多卡机器上并行启动多个训练/部署任务
 3. web-ui服务关闭后，后台服务是仍旧运行的，这防止了web-ui被关掉后影响训练进程，如果需要关闭后台服务，只需要**选择对应的任务**后在界面上的`运行时`tab点击杀死服务
 4. 重新启动web-ui后，如果需要显示正在运行的服务，在`运行时`tab点击`找回运行时任务`即可

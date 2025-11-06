@@ -9,7 +9,7 @@ Megatron 以其卓越的训练速度和丰富的并行技术而著称，但也�
 Mcore-Bridge 兼容 Dense/MoE/多模态等多种模型架构。训练完成后，转换后的模型可直接使用 transformers、vLLM、SGLang 等主流推理框架部署。
 
 ## 无缝训练
-目前Mcore-Bridge已支持TP/PP/EP/ETP/VPP等并行技术，支持所有Megatron-SWIFT支持的模型架构，参考[支持的模型文档](../Instruction/支持的模型和数据集.md)。以下介绍Mcore-Bridge的无缝训练能力，分别介绍Dense模型和Moe模型。
+目前Mcore-Bridge已支持TP/PP/EP/ETP/VPP等并行技术，支持所有Megatron-SWIFT支持的模型架构，参考[支持的模型文档](../Instruction/Supported-models-and-datasets.md)。以下介绍Mcore-Bridge的无缝训练能力，分别介绍Dense模型和Moe模型。
 
 ### Dense模型
 以下为多模态模型Qwen3-VL模型训练的例子:
