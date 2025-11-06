@@ -20,13 +20,17 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         args = get_args()
         if args.train_type == 'full' and args.rlhf_type != 'rm':
             ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
+            args.ref_model = args.ref_model or args.model
             for m in ref_models:
                 m = unwrap_model(m)
+                if args.load_safetensors:
+                    self.bridge.load_weights(m, args.ref_model)
                 m.requires_grad_(False).eval()
             if args.ref_load is None:
                 args.ref_load = args.load
-            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_models, None, None, load_arg='ref_load')
+            if args.ref_load:
+                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                    ref_models, None, None, load_arg='ref_load')
             self.ref_models = ref_models
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
