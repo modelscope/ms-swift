@@ -40,8 +40,7 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
-        self.model_type = self.args.model_type
-        megatron_model_meta = get_megatron_model_meta(self.model_type)
+        megatron_model_meta = get_megatron_model_meta(self.args.model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
         self.tp_size = self.args.tensor_model_parallel_size
@@ -62,7 +61,7 @@ class GPTBridge:
     def _init_meta_hf_model(self):
         with torch.device('meta'), disable_safe_ddp_context_use_barrier():
             self.hf_model, self.processor = get_model_tokenizer(
-                self.args.model_dir, model_type=self.model_type, return_dummy_model=True)
+                self.args.model_dir, model_type=self.args.model_type, return_dummy_model=True)
 
     @staticmethod
     def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
