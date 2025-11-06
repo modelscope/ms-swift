@@ -67,6 +67,7 @@ class GPTModel(McoreGPTModel):
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
                 # softmax_scale
                 config.mscale = hf_rope_scaling['mscale']
+                config.mscale_all_dim = hf_rope_scaling['mscale_all_dim']
                 config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
