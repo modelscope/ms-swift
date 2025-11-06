@@ -712,7 +712,7 @@ def init_megatron_env() -> None:
         # TODO: Synchronization issues may occur in DDP scenarios
         # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.14.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])
