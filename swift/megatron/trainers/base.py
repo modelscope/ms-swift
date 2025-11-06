@@ -6,7 +6,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Literal
+from typing import Callable, Dict, List, Literal, Optional
 
 import megatron.core
 import torch
@@ -14,8 +14,10 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups, param_group_identifier_keys
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
+from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
@@ -235,6 +237,156 @@ class BaseMegatronTrainer(ABC):
             args.no_load_rng = origin_no_load_rng
             args.finetune = origin_finetune
 
+    # Code borrowed from Megatron-LM
+    def _get_param_groups(
+        self,
+        model_chunks: List[MegatronModule],
+        no_weight_decay_cond: Optional[Callable],
+        scale_lr_cond: Optional[Callable],
+        lr_mult: float,
+        lr: float,
+        min_lr: float,
+        decoupled_lr: Optional[float],
+        decoupled_min_lr: Optional[float],
+        default_skip_embedding_weight_decay: bool = False,
+    ) -> List[Dict]:
+        """Create parameter groups for optimizer.
+
+        Creates parameter groups based on weight decay condition (regularized vs
+        non regularized), learning rate scale condition (lr vs lr_mult * lr),
+        and whether it is expert parameters. scale_lr_cond is used during finetuning
+        where head of the network requires a scaled version of the base learning rate.
+
+        Args:
+            model_chunks (List[MegatronModule]): model chunks to create parameter
+                groups for.
+            no_weight_decay_cond (func, optional): function to determine whether a
+                parameter should not perform weight decay.
+            scale_lr_cond (func, optional): function to determine whether a parameter
+                should have a scaled learning rate.
+            lr_mult (float): learning rate multiplier for parameters that
+                satisfy scale_lr_cond.
+            lr (float): learning rate.
+            min_lr (float): minimum learning rate.
+            decoupled_lr (Optional[float]): optional decoupled learning rate.
+            decoupled_min_lr (Optional[float]): optional decoupled minimum learning rate.
+            default_skip_embedding_weight_decay (bool): whether to skip weight decay for embedding
+                parameters by default, if no_weight_decay_cond is not provided.
+
+        Returns:
+            List of parameter groups.
+        """
+
+        use_decoupled_learning_rate = decoupled_lr is not None
+
+        # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
+        params_map = {}
+        for model_chunk in model_chunks:
+            visual = model_chunk.module.module.visual
+            for name, param in model_chunk.named_parameters():
+                if not param.requires_grad:
+                    continue
+
+                is_expert_parallel = not getattr(param, 'allreduce', True)
+
+                if no_weight_decay_cond is not None:
+                    no_wd: bool = no_weight_decay_cond(name, param)
+                else:
+                    # Do not regularize biases and norm parameters.
+                    #  optionally, also skip weight decay for embedding parameters if requested
+                    #  (useful if you do not want embeddings to shrink to zero in training
+                    #  https://arxiv.org/abs/2312.16903)
+                    no_wd = (
+                        name.endswith('.bias') or len(param.shape) == 1
+                        or (default_skip_embedding_weight_decay and 'embedding' in name))
+                _lr_mult = lr_mult
+                if scale_lr_cond is not None:
+                    scale_lr = scale_lr_cond(name, param)
+                else:
+                    scale_lr = False
+                    # Handling multimodal models: vit_lr, aligner_lr
+                    unwrapped_name = name.removeprefix('module.').removeprefix('module.')
+                    is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner)
+                    is_vit = any(unwrapped_name.startswith(f'visual.{k}')
+                                 for k in visual._vision_tower) and not is_aligner
+                    if is_vit and self.args.vit_lr:
+                        scale_lr = True
+                        _lr_mult = self.args.vit_lr / lr
+                    elif is_aligner and self.args.aligner_lr:
+                        scale_lr = True
+                        _lr_mult = self.args.aligner_lr / lr
+
+                if not no_wd and not scale_lr:
+                    wd_mult, _lr_mult = 1.0, 1.0
+                elif not no_wd and scale_lr:
+                    wd_mult, _lr_mult = 1.0, _lr_mult
+                elif no_wd and not scale_lr:
+                    wd_mult, _lr_mult = 0.0, 1.0
+                else:
+                    wd_mult, _lr_mult = 0.0, _lr_mult
+
+                is_decoupled_lr = False
+                # For input/embedding and output layer: embedding.word_embeddings.weight /
+                # output_layer.weight.
+                if use_decoupled_learning_rate and getattr(param, 'is_embedding_or_output_parameter', False):
+                    is_decoupled_lr = True
+
+                key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+                if key not in params_map:
+                    params_map[key] = []
+                params_map[key].append(param)
+
+        # Distributed checkpoint requires all ranks to have the same param groups,
+        # so we need to align the param groups across ranks, otherwise we may have
+        # runtime error when loading the checkpoint or numerical error when resuming training.
+        params_key = list(params_map.keys())
+        gathered_params_key = [None for _ in range(torch.distributed.get_world_size())]
+        torch.distributed.all_gather_object(gathered_params_key, params_key)
+        for keys in gathered_params_key:
+            for key in keys:
+                if key not in params_key:
+                    params_key.append(key)
+
+        param_groups = []
+        for key in params_key:
+            wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr = key
+            params = params_map[key] if key in params_map else []
+            param_group = {
+                'params': params,
+                'wd_mult': wd_mult,
+                'lr_mult': _lr_mult,
+                'is_expert_parallel': is_expert_parallel,
+                'is_decoupled_lr': is_decoupled_lr,
+            }
+            # Ensure param_group has required keys for matching when loading optimizer state
+            # See MegatronOptimizer._filter_and_reorder_param_groups.
+            assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            param_groups.append(param_group)
+
+        param_groups = _update_min_and_max_lr_in_param_groups(
+            param_groups,
+            lr=lr,
+            min_lr=min_lr,
+            decoupled_lr=decoupled_lr,
+            decoupled_min_lr=decoupled_min_lr,
+        )
+
+        return param_groups
+
+    @contextmanager
+    def _patch_get_param_groups(self):
+        if not self.args.megatron_model_meta.is_multimodal:
+            yield
+            return
+        from megatron.core import optimizer
+
+        _get_param_groups = optimizer._get_param_groups
+        optimizer._get_param_groups = self._get_param_groups
+        try:
+            yield
+        finally:
+            optimizer._get_param_groups = _get_param_groups
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         args = get_args()
@@ -254,7 +406,7 @@ class BaseMegatronTrainer(ABC):
             return model
 
         self._init_multimodal_full(args)
-        with self._patch_load_state_dict(self._load_base_checkpoint):
+        with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         if args.initialize_embedding:
@@ -319,7 +471,8 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args, **kwargs):
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
+                   **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                        config, *args, **kwargs)
