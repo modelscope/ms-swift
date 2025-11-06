@@ -71,7 +71,7 @@ See [issue](https://github.com/modelscope/ms-swift/issues/1813).
 `swift sft` uses `torchrun`.
 
 ### Q21: I have a question about my SFT dataset being too large; tokenizing takes a long time. Is there a solution?
-Use `lazy_tokenize`or stream reading (`streaming`). See [Command Line Parameters documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
+Use `lazy_tokenize`or stream reading (`streaming`). See [Command Line Parameters documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html).
 
 ### Q22: When two datasets are simply appended together in the training set, does the model shuffle internally during training, or does it take data in order to train?
 Command-line parameter `dataset_shuffle`. For more details, see the [command-line parameters documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).

@@ -5,40 +5,40 @@
 ## 训练
 
 ### Q1: Swift微调支持的模型和数据集有哪些？
-详见文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+详见文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。
 
 ### Q2: 使用自定义数据集训练时支持的数据格式有哪些？
-自定义数据集格式见文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+自定义数据集格式见文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)。
 
 ### Q3: 自定义数据集dataset_info.json格式，如何通过这种方式使用自定义数据集？
-dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)。命令行，`--custom_dataset_info xxx.json`，`--dataset <dataset_id_or_path>`。
+dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)。命令行，`--custom_dataset_info xxx.json`，`--dataset <dataset_id_or_path>`。
 
 ### Q4: 如何在界面训练使用自定义数据集？
-界面训练使用自定义数据集与命令行一致，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+界面训练使用自定义数据集与命令行一致，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)。
 
 ### Q5: 数据集jsonl文件里的一行能不能写成这样？{"index": "00000", "query": "11111", "response": "22222", 'source':'qqq'}
-可以有额外字段的，这些字段默认不会被使用。详见[命令行参数remove_unused_columns](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id4)。
+可以有额外字段的，这些字段默认不会被使用。详见[命令行参数remove_unused_columns](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id4)。
 
 ### Q6: 命令行参数在哪个文档中查看？
-详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q7: 离线环境训练需要配置的参数有哪些？
-`--model 本地路径`，`--check_model false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+`--model 本地路径`，`--check_model false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q8: model_type在哪儿查看？
-查看文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+查看文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。
 
 ### Q9: 模型训练完能直接转gguf格式吗？
-目前只支持导出ModelFile，详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+目前只支持导出ModelFile，详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q10: swift支持预训练吗，我看只有sft？
-支持，命令行`swift pt`，[预训练例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain)，数据集格式见[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+支持，命令行`swift pt`，[预训练例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain)，数据集格式见[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)。
 
 ### Q11: 想问一下用lora微调的模型，如果想断点续训的话，是应该先把它合成一整个模型吗，还是可以不合起来，直接通过路径来指定原模型和lora块
-不合并，`--resume_from_checkpoint output/xxx/vx-xxx/checkpoint-xxx`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+不合并，`--resume_from_checkpoint output/xxx/vx-xxx/checkpoint-xxx`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q12: 我想控制一下从网上下载下来的原始模型权重的位置，怎么才能做到把原始的模型放在指定的文件夹里呢？
-可以配置环境变量`MODELSCOPE_CACHE=your_path`将原始的模型存到指定路径；如果用sdk下载，通过`cache_dir="本地地址"`；也可以使用`modelscope download`命令行工具或`git`下载，详见modelscope文档[模型下载](https://modelscope.cn/docs/models/download)。训练时`--model`配置本地路径即可。如果需要在离线环境训练，配置`--check_model false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+可以配置环境变量`MODELSCOPE_CACHE=your_path`将原始的模型存到指定路径；如果用sdk下载，通过`cache_dir="本地地址"`；也可以使用`modelscope download`命令行工具或`git`下载，详见modelscope文档[模型下载](https://modelscope.cn/docs/models/download)。训练时`--model`配置本地路径即可。如果需要在离线环境训练，配置`--check_model false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q13: 有人在用ms-swift遇到过这个问题？
 ```text
@@ -71,10 +71,10 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 `swift sft`走的就是`torchrun`。
 
 ### Q21: 有个问题，因为我的sft数据集太大了，然后每次tokenize都需要很久，有解决方案吗？
-使用`lazy_tokenize`或流式读取`streaming`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+使用`lazy_tokenize`或流式读取`streaming`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q22: 训练时，如果两个数据集直接追加一起放在训练集中，模型在训练的时候内部会有shuffle的流程吗？还是按顺序取数据去训练？
-命令行参数`dataset_shuffle`，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+命令行参数`dataset_shuffle`，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q23: 如果模型两张卡，数据不开并行，deepspeed就会出现报错，怎么处理呢？
 `deepspeed` 和 `device_map`是不兼容的，两个只能选1个。
@@ -98,10 +98,10 @@ V100机器要用fp32训练qwen2。
 参考这个[例子](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh)。
 
 ### Q30: 当前训练完默认最多保存两个checkpoint，如果想多保存几个应该怎么修改呢？
-`--save_total_limit`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+`--save_total_limit`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q31: Grounding任务中通用数据格式支持一个类别有多个实例吗？
-目前均支持了一个物体对应多个bbox，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html#grounding)。
+目前均支持了一个物体对应多个bbox，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)。
 
 ### Q32: 这个错误为什么会出现在这，numpy.object找不到在哪？
 `numpy==1.26.3`，尝试一下。
@@ -119,13 +119,13 @@ V100机器要用fp32训练qwen2。
 参考qlora[例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora)。
 
 ### Q37: 请教一个问题，我应该如何在swift框架下扩充我的词表呢？
-详见[命令行参数new_special_tokens](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id3)。
+详见[命令行参数new_special_tokens](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id3)。
 
 ### Q38: 同名的模型是可以直接使用huggingface上的吗？
 设置环境变量`USE_HF=1`。
 
 ### Q39: 请问Qwen2-VL-2B能进行增量预训练吗？有指导文件吗?有图文,也有纯文本的。
-支持，按[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)中的格式组织数据就行。
+支持，按[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)中的格式组织数据就行。
 
 ### Q40: 请问下用视频做训练的时候，如何在参数中控制抽帧率，设了frame_rate设不起, minicpmv
 设置环境变量`MAX_NUM_FRAMES`。
@@ -140,7 +140,7 @@ V100机器要用fp32训练qwen2。
 详见[issue](https://github.com/modelscope/ms-swift/issues/1825)。
 
 ### Q44: swift现在是支持qwen2-vl多阶段预训练的吗？我看官方的最佳实践里的sft好像都是vit+llm一起训的，不知道支不支持单独finetune
-`--freeze_vit`，`--freeze_aligner`，`--freeze_llm`这几个参数可以控制，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#tuner)。
+`--freeze_vit`，`--freeze_aligner`，`--freeze_llm`这几个参数可以控制，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#tuner)。
 
 ### Q45: qwen2-vl是不是不支持混合纯文本数据?
 支持图文和纯文本。
@@ -149,7 +149,7 @@ V100机器要用fp32训练qwen2。
 支持channel loss，参考`--enable_channel_loss`。
 
 ### Q47: 模型训练后，回复重复了很多内容
-参考[预训练与微调](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E9%A2%84%E8%AE%AD%E7%BB%83%E4%B8%8E%E5%BE%AE%E8%B0%83.html)。如果训练过程中出现重复的情况，请多训练几个epoch, 清洗数据, 全参数训练, 采用RLHF的方式缓解。
+参考[预训练与微调](https://swift.readthedocs.io/zh-cn/latest/Instruction/Pre-training-and-Fine-tuning.html)。如果训练过程中出现重复的情况，请多训练几个epoch, 清洗数据, 全参数训练, 采用RLHF的方式缓解。
 
 ### Q48: 想问一下swift目前支持prompt tuning或者prefix tuning吗？
 不支持，这两个方法知识遗忘比较严重，目前不推荐使用。
@@ -171,10 +171,10 @@ V100机器要用fp32训练qwen2。
 指定可见显卡就可以。
 
 ### Q53: 设置--dataset的话，怎么让数据集下载到固定位置，我在命令行参数没找到，下次如果再次读取的话如何可以从下载的地方读取
-`dataset_path`支持文件夹，一般是`git clone`下载下来的数据集文件夹。详见[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html#dataset-info-json)。
+`dataset_path`支持文件夹，一般是`git clone`下载下来的数据集文件夹。详见[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#dataset-info-json)。
 
 ### Q54: --streaming true，我设置num_train_epochs会报错让我设置max_steps。不可以只设置num_train_epochs吗？
-详见`streaming`参数说明，[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id4)。
+详见`streaming`参数说明，[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id4)。
 
 ### Q55: 好奇tools为啥是"[]"，不是直接支持[]呢，能否帮忙解答一下，这个tools为啥是"[]"这种格式呢，不是直接使用[]呢，有些不理解
 这是因为datasets的底层pyarrow对于类型管控比较严格。我们官方的grounding数据集的objects部分也是因为这个原因要用str，要不pyarrow就会报错：你每行的类型不一致。
@@ -201,7 +201,7 @@ RuntimeError: Expected to mark a variable ready only once.This error is caused b
 支持的。
 
 ### Q62: 我发现2.x支持MAX_PIXELS，3.x文档里有个--max_pixel参数是一个意思吗，他的处理逻辑是啥样的？我用12000*9000的图片，2.x设置resacle_image训练internvl还是会崩
-环境变量的参数是对应模型的参数，`MAX_PIXELS`只支持qwen2vl的，internvl有自己的环境变量参数，详见[特定模型参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id18)。
+环境变量的参数是对应模型的参数，`MAX_PIXELS`只支持qwen2vl的，internvl有自己的环境变量参数，详见[特定模型参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id18)。
 
 ### Q63: 从qwen base模型微调成chat模型有没有实践文档，有什么要特别配置的吗?
 `swift sft`，没有其他需要特别配置的，参考[例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/base_to_chat)。
@@ -216,7 +216,7 @@ RuntimeError: Expected to mark a variable ready only once.This error is caused b
 只有llama系列能用`longlora`。
 
 ### Q67: 想问下swift怎么加入自己的special token？
-详见[命令行参数文档new_special_tokens](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id3)。
+详见[命令行参数文档new_special_tokens](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id3)。
 
 ### Q68: --freeze_parameters_ratio这个参数，如果设定为0.7，是不是说明训练的时候只更新llm的30%的参数？是随机更新30%吗，这个参数更新的机制是什么呀？
 从下往上freeze。
@@ -362,7 +362,7 @@ streaming是不随机的。
 默认就是true的。
 
 ### Q101: 请教一下，pretrain阶段数据集比较大，用了streaming流式和packing打包数据，这时候需要设置 max_steps，有没有参数或者命令可以根据epochs、bs等参数计算打包后的总的steps吗？
-设置`--max_steps`或`--max_epochs`，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id4)streaming参数说明。
+设置`--max_steps`或`--max_epochs`，详见[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id4)streaming参数说明。
 
 ### Q102: unsloth训练，报错：assert(type(target modules) in (list,tuple,))。配置的参数是--target modules all-linear
 别用`all-linear`，改为具体的模块列表，比如`--target_modules q k v`。
@@ -437,7 +437,7 @@ vl模型的目前仅支持flash-attn，纯文本两种都支持。
 查看这个[issue](https://github.com/modelscope/ms-swift/issues/4030)。
 
 ### Q125: 请问megatron-swift如何配置断点续训？
-配置`--load`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--adapter_load`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+配置`--load`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--adapter_load`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
 
 ### Q126: 有没有人在复现Kimi-VL-A3B-Instruct的时候出现了如下的报错？
 ```text
@@ -519,13 +519,13 @@ rollout应该是不兼容pipeline parallel。
 ## 推理
 
 ### Q1:swift推理有文档吗？
-swift支持python脚本、命令行、ui界面推理，详见[推理和部署](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%8E%A8%E7%90%86%E5%92%8C%E9%83%A8%E7%BD%B2.html)。
+swift支持python脚本、命令行、ui界面推理，详见[推理和部署](https://swift.readthedocs.io/zh-cn/latest/Instruction/Inference-and-deployment.html)。
 
 ### Q2: 训练后的模型如何使用数据集推理？
-参数`--load_data_args true`或`--val_dataset <your-val-dataset>`，见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+参数`--load_data_args true`或`--val_dataset <your-val-dataset>`，见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q3: swift推理的时候可以指定下载好的模型吗？
-`--model`配置本地路径即可，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+`--model`配置本地路径即可，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q4: 我想在一个没有label的数据集上推理，怎么做呢？我看文档里面的数据集格式都是训练集
 配置参数`--val_dataset <your-val-dataset>`。
@@ -538,7 +538,7 @@ ValueError: Input length of input_ids is 35, but `max_length` is set to 20. This
 设置`model.generation_config.max_new_tokens`。
 
 ### Q6: qwen2-vl推理（训练）爆显存
-设置命令行参数`--max_pixels xxx`、环境变量`MAX_PIXELS=xxx`、或特定模型参数`--model_kwargs '{"max_pixels": xxx}'`，其中环境变量仅对文档中对应的模型生效，详见文档[特定模型参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id18)。
+设置命令行参数`--max_pixels xxx`、环境变量`MAX_PIXELS=xxx`、或特定模型参数`--model_kwargs '{"max_pixels": xxx}'`，其中环境变量仅对文档中对应的模型生效，详见文档[特定模型参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id18)。
 
 ### Q7: v100显卡，在python虚拟环境中，参考https://swift2x.readthedocs.io/zh-cn/latest/Multi-Modal/qwen2-vl%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.html 完成环境准备，在测试推理命令：CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type qwen2-vl-7b-instruct 时报错：RuntimeError: probability tensor contains either `inf`, `nan` or element < 0
 尝试用A10或者3090机器推理。
@@ -553,7 +553,7 @@ ValueError: Input length of input_ids is 35, but `max_length` is set to 20. This
 详见qwen2-vl [issue#96](https://github.com/QwenLM/Qwen2.5-VL/issues/96)。
 
 ### Q11: vllm作为推理后端的话，模型必须合并以后才能调用吗？
-可以不合并，详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+可以不合并，详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q12: 请问在使用python脚本推理时，如何使用cpu?
 设置环境变量，`os.environ['CUDA_VISIBLE_DEVICES'] = '-1'`。
@@ -721,7 +721,7 @@ raise ValueError(f"Unknown initialization {init_lora_weights=}") ValueError: Unk
 ## 部署
 
 ### Q1: 如何部署训练后的模型？
-`swift deploy --adapters xxx`，见文档[推理和部署](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%8E%A8%E7%90%86%E5%92%8C%E9%83%A8%E7%BD%B2.html)。
+`swift deploy --adapters xxx`，见文档[推理和部署](https://swift.readthedocs.io/zh-cn/latest/Instruction/Inference-and-deployment.html)。
 
 ### Q2: 如何使用vllm部署进行多卡部署？
 详见[例子](https://github.com/modelscope/ms-swift/tree/main/examples/deploy)。
@@ -819,10 +819,10 @@ system优先级：数据集中的>命令行的>template中默认的。
 'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video', 'Video-MME'
 ```
 
-详见文档[评测](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%AF%84%E6%B5%8B.html)。
+详见文档[评测](https://swift.readthedocs.io/zh-cn/latest/Instruction/Evaluation.html)。
 
 ### Q2: 如何使用自定义评测集？
-纯文本、多模态自定义评测集必须和某个官方评测集数据格式（pattern）保持一致，见文档[评测](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%AF%84%E6%B5%8B.html)。
+纯文本、多模态自定义评测集必须和某个官方评测集数据格式（pattern）保持一致，见文档[评测](https://swift.readthedocs.io/zh-cn/latest/Instruction/Evaluation.html)。
 
 ### Q3: python3.11环境，评测时mmengine报错
 尝试python3.10环境。或先安装全量依赖： `pip3 install evalscope[all]`，再打patch： `pip3 install https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/package/evalscope-0.5.3.post1-py3-none-any.whl`。
