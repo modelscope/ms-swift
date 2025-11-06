@@ -394,7 +394,7 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
             if args.load_safetensors:
-                self.bridge.load_weights(model, args.model_info.model_dir)
+                self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
             if args.load_safetensors and args.train_type == 'lora':
@@ -405,7 +405,7 @@ class BaseMegatronTrainer(ABC):
             self.peft_models.append(peft_model)
             return model
 
-        self._init_multimodal_full(args)
+        self._init_multimodal_full()
         with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -423,7 +423,7 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             for m in self.unwrapped_models:
                 self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
@@ -432,13 +432,12 @@ class BaseMegatronTrainer(ABC):
         visual = model.visual
         if visual is None:
             return
-        args = get_args()
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
-            if args.vit_gradient_checkpointing:
+            if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
-                    module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                    module.gradient_checkpointing_enable(**(self.args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
                     pass
@@ -522,7 +521,7 @@ class BaseMegatronTrainer(ABC):
             eval_iters = args.eval_iters
 
         with torch.no_grad(), tqdm(
-                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+                total=eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
                 print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
@@ -941,10 +940,10 @@ class BaseMegatronTrainer(ABC):
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    @staticmethod
-    def _init_multimodal_full(args):
-        visual_cls = args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
+    def _init_multimodal_full(self):
+        args = get_args()
+        visual_cls = self.args.megatron_model_meta.visual_cls
+        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:

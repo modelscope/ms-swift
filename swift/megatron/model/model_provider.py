@@ -32,8 +32,10 @@ def model_provider(pre_process=True,
     Returns:
         Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
     """
+    from .register import get_megatron_model_meta
     args = get_args()
     use_te = args.transformer_impl == 'transformer_engine'
+    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
 
     if args.record_memory_history:
         torch.cuda.memory._record_memory_history(
@@ -71,8 +73,8 @@ def model_provider(pre_process=True,
     else:  # using core models
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
-        elif args.megatron_model_meta.get_transformer_layer_spec is not None:
-            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
+        elif megatron_model_meta.get_transformer_layer_spec is not None:
+            transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
                 # Define the decoder block spec
@@ -107,7 +109,7 @@ def model_provider(pre_process=True,
             # qwen2_moe
             for layer_spec in transformer_layer_spec.layer_specs:
                 layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
-        model = args.megatron_model_meta.model_cls(
+        model = megatron_model_meta.model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
             vocab_size=args.padded_vocab_size,
