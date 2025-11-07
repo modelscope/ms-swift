@@ -632,12 +632,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 Updated samples with rollout results merged in.
         """
 
-        if self.vllm_tensor_parallel_size > 1:
-            local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
-            orig_size = len(outputs) // self.vllm_tensor_parallel_size
-            tp_slice = slice(local_rank_in_group * orig_size, (local_rank_in_group + 1) * orig_size)
-            outputs = outputs[tp_slice]
-
         def merge_output_input_data(input_data: Dict[str, Union[torch.Tensor, Any]], output: RolloutOutput):
             response = output.response
             choice = response.choices[0]
