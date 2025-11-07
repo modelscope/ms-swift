@@ -127,6 +127,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # visual
     vit_gradient_checkpointing: bool = True
+    vit_lr: Optional[float] = None
+    aligner_lr: Optional[float] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     # qwen3_next
     linear_num_value_heads: Optional[int] = None
