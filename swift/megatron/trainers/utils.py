@@ -347,11 +347,14 @@ def offload_megatron_optimizer(optimizers):
         empty_cache()
 
 
-def log_gpu_memory(prefix: str = ''):
+def log_gpu_memory(prefix: str = '', info_once: bool = False):
     logger = get_logger()
-
-    logger.info(f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
-                f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
+    log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
+               f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
+    if info_once:
+        logger.info_once(log_msg, hash_id=prefix)
+    else:
+        logger.info(log_msg)
 
 
 def should_filter_lora_parameter(name: str) -> bool:

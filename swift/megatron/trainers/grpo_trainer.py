@@ -26,8 +26,8 @@ from swift.llm.infer.protocol import RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, _create_parameter_buckets,
-                                               _process_bucket_with_flattened_tensor,
-                                               replace_assistant_response_with_ids)
+                                               _process_bucket_with_flattened_tensor, aggressive_empty_cache,
+                                               replace_assistant_response_with_ids, set_expandable_segments)
 from swift.utils import get_current_device, get_logger, is_master, is_vllm_available, remove_response
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
@@ -160,10 +160,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             context = self.offload_context if self.enable_offload else nullcontext
 
             with context():
+                set_expandable_segments(False)
                 self.engine = self.prepare_vllm()
                 if self.args.sleep_level > 0:
                     self.engine.engine.sleep(self.args.sleep_level)
                     log_gpu_memory('after sleep vLLM engine')
+                set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
 
@@ -205,11 +207,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if is_lora_training:
                 self.merge_lora_adapters()
 
-            # Export weights from megatron models using bridge
-            per_tensor_params = dict(self.bridge.export_weights(self.unwrapped_models))
-
-            # Load weights to vLLM engine
-            self._load_weights_to_vllm(per_tensor_params)
+            # Export and load weights incrementally to avoid memory spikes
+            self._export_and_load_weights_incrementally()
 
         finally:
             # Unmerge adapters to restore training state
@@ -222,32 +221,73 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
 
-    def _load_weights_to_vllm(self, state_dict: Dict[str, torch.Tensor]):
+    def _export_and_load_weights_incrementally(self):
         """
-        Load state_dict to vLLM engine using flattened tensor optimization.
+        Export weights from Megatron models and load to vLLM incrementally.
 
-        For server mode: Uses FlattenedTensorBucket to batch parameters and reduce communication overhead.
-        For colocate mode: Directly loads weights to the inner model.
+        For colocate mode: llm_model.load_weights accepts an iterator, so pass it directly.
+        For server mode: Process weights in buckets to avoid memory spikes.
         """
-        if self.vllm_mode == 'server' and self.is_main_process:
-            # Use flattened tensor optimization for efficient weight transfer
-            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
-            named_params = list(state_dict.items())
+        # Export weights returns an iterator
+        weight_iterator = self.bridge.export_weights(self.unwrapped_models)
 
-            # Create parameter buckets for efficient processing
-            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
-
-            # Process each bucket with flattened tensor
-            for bucket in parameter_buckets:
-                _process_bucket_with_flattened_tensor(self, bucket)
-
-            del named_params, parameter_buckets
-        elif self.vllm_mode == 'colocate':
-            # Colocate mode: direct weight loading
+        if self.vllm_mode == 'colocate':
+            # Colocate mode: load_weights supports iterator, pass directly
             llm_model = self.engine.inner_model
-            llm_model.load_weights(state_dict.items())
+            llm_model.load_weights(weight_iterator)
+        elif self.vllm_mode == 'server' and self.is_main_process:
+            # Server mode: process in buckets and sync with flattened tensors
+            self._load_weights_to_server_in_buckets(weight_iterator)
 
-        del state_dict
+    def _load_weights_to_server_in_buckets(self, weight_iterator):
+        """
+        Load weights to vLLM server in buckets using FlattenedTensorBucket.
+
+        Args:
+            weight_iterator: Iterator of (name, tensor) tuples from export_weights
+        """
+        # Get bucket size from environment or use default
+        bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+        bucket_size_bytes = bucket_size_mb * 1024 * 1024
+
+        current_bucket = []
+        current_size = 0
+
+        for name, param in weight_iterator:
+            param_size = param.numel() * param.element_size()
+            current_bucket.append((name, param))
+            current_size += param_size
+
+            # If adding this param would exceed bucket size, process current bucket first
+            if current_size > bucket_size_bytes and current_bucket:
+                self._sync_bucket_to_server(current_bucket)
+                current_bucket = []
+                current_size = 0
+
+        # Process remaining parameters in the last bucket
+        if current_bucket:
+            self._sync_bucket_to_server(current_bucket)
+
+    def _sync_bucket_to_server(self, bucket_params: List[Tuple[str, torch.Tensor]]):
+        """
+        Synchronize a bucket of parameters to vLLM server using flattened tensors.
+
+        Args:
+            bucket_params: List of (name, tensor) tuples to sync
+        """
+        if not bucket_params:
+            return
+
+        # Create FlattenedTensorBucket for efficient transfer
+        bucket = FlattenedTensorBucket(named_tensors=bucket_params)
+        metadatas = bucket.get_metadata()
+        flattened_tensor = bucket.get_flattened_tensor()
+
+        # Directly call vllm_client to update weights
+        self.vllm_client.update_flattened_params(metadatas, flattened_tensor)
+
+        # Clean up to free memory immediately
+        del bucket, metadatas, flattened_tensor
 
     def _prepare_rewards(self):
         # TODO: reward model
@@ -533,8 +573,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            log_gpu_memory(f'before wake up vLLM engine {kwargs}')
             self.engine.engine.wake_up(**kwargs)
-            log_gpu_memory(f'after wake up vLLM engine with {kwargs}')
+            log_gpu_memory(f'after wake up vLLM engine {kwargs}')
 
         # Step 2: Load model weights
         if self._step != self._last_loaded_step:
@@ -545,8 +586,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         with context():
             if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                aggressive_empty_cache()
+                set_expandable_segments(False)
+                log_gpu_memory('before wake up vLLM engine kv_cache')
                 self.engine.engine.wake_up(tags=['kv_cache'])
-                log_gpu_memory('after wake up vLLM engine with kv_cache')
+                log_gpu_memory('after wake up vLLM engine kv_cache')
 
             # Step3: Rollout
             batch = self.preprocess_rollout_data(batch)
@@ -555,7 +599,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step4: Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
                 self.engine.engine.reset_prefix_cache()
+                log_gpu_memory('before sleep vLLM engine')
                 self.engine.engine.sleep(level=self.args.sleep_level)
+                aggressive_empty_cache()
+                set_expandable_segments(True)
                 log_gpu_memory('after sleep vLLM engine')
             batch = self.postprocess_rollout_data(batch, outputs)
 
@@ -699,24 +746,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return outputs
 
     def _colocate_rollout(self, batch, request_config: RequestConfig):
-        if self.vllm_tensor_parallel_size > 1:
-            local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
-            local_input_length = len(batch)
-            all_input_lengths = [None] * self.vllm_tensor_parallel_size
-            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
-
-            start_idx = sum(all_input_lengths[:local_rank_in_group])
-            end_idx = start_idx + all_input_lengths[local_rank_in_group]
-
-            gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
-            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
-            batch = [p for sublist in gathered_batch for p in sublist]
-
         outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
-
-        if self.vllm_tensor_parallel_size > 1:
-            outputs = outputs[start_idx:end_idx]
-
         return outputs
 
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
@@ -1037,16 +1067,38 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.loss_type == 'grpo':
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
-            sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0) for loss, mask in zip(loss_list, mask_list)]
-            loss = torch.stack(sample_loss[:micro_batch_size]).mean()
+
+            # In CP mode, aggregate numerator and denominator before division (Megatron standard)
+            if self.args.context_parallel_size > 1:
+                # Compute sum and count for each sample on this CP rank
+                sample_sum_and_count = torch.stack([
+                    torch.stack([(loss * mask).sum(), mask.sum().clamp(min=1.0)])
+                    for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
+                ])  # Shape: [micro_batch_size, 2]
+
+                # All-reduce to aggregate across CP ranks
+                all_reduce(sample_sum_and_count, group=mpu.get_context_parallel_group())
+
+                # Now compute per-sample loss and average
+                sample_loss = sample_sum_and_count[:, 0] / sample_sum_and_count[:, 1]
+                loss = sample_loss.mean()
+            else:
+                sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0)
+                               for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])]
+                loss = torch.stack(sample_loss).mean()
         elif self.loss_type == 'bnpo':
-            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+            if self.args.context_parallel_size > 1:
+                # Aggregate numerator and denominator across CP ranks
+                loss_and_count = torch.stack([(per_token_loss * completion_mask).sum(),
+                                              completion_mask.sum().clamp(min=1.0)])
+                all_reduce(loss_and_count, group=mpu.get_context_parallel_group())
+                loss = loss_and_count[0] / loss_and_count[1]
+            else:
+                loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
-
-        loss = all_reduce(loss, group=mpu.get_context_parallel_group())
         # loss = loss.mean()
         avg_metric = {
             'loss': loss.clone().detach(),
@@ -1079,9 +1131,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         }
 
         reporting_metric = {**avg_reporting_metric, **max_reporting_metric, **min_reporting_metric, **addition_metrics}
-        # fix megatron-lm bug
-        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-        loss = loss / mpu.get_context_parallel_world_size()
+        # NOTE: For GRPO, CP loss aggregation is already handled in loss calculation (line 1046-1058)
+        # by aggregating numerator/denominator before division (Megatron standard pattern).
+        # DO NOT divide by CP size again here, or loss will be incorrect.
+        # For other loss types (bnpo), the aggregation is also handled inline (line 1064-1071).
+        # Only divide by CP size if there's a specific case that needs it (e.g., Megatron-LM bug fix
+        # for standard cross-entropy loss, but GRPO uses custom loss calculation).
         return loss, reporting_metric
 
     def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
@@ -1207,7 +1262,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def get_num_iters_per_step(self):
         if hasattr(self, '_num_iters_per_step'):
             return self._num_iters_per_step
-        # each rollout DP group will generate generation_batch_size / world_size completions
+        # each rollout DP group will generate generation_batch_size / dp_size completions
         dp_size = mpu.get_data_parallel_world_size()
         completions_to_rollout = self.generation_batch_size // dp_size
         # completions will be repeated num_generations times after

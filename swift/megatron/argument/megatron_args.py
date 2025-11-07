@@ -169,7 +169,10 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError(
                     "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
             world_size = torch.distributed.get_world_size()
-            dp_size = world_size // (self.pipeline_model_parallel_size * self.tensor_model_parallel_size)
+            # total_model_size = TP × PP × CP,
+            # data_parallel_size = world_size // total_model_size
+            dp_size = world_size // (
+                self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
             num_rollout_prompt = self.generation_batch_size // self.num_generations
             assert num_rollout_prompt % dp_size == 0, (
                 f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
