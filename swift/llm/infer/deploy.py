@@ -13,7 +13,7 @@ import json
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments, InferArguments
 from swift.llm.infer.protocol import EmbeddingRequest, MultiModalRequestMixin
@@ -42,6 +42,9 @@ class SwiftDeploy(SwiftInfer):
         return SwiftInfer.get_infer_engine(args, template, **kwargs)
 
     def _register_app(self):
+        self.app.get('/health')(self.health)
+        self.app.get('/ping')(self.ping)
+        self.app.post('/ping')(self.ping)
         self.app.get('/v1/models')(self.get_available_models)
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
@@ -84,6 +87,21 @@ class SwiftDeploy(SwiftInfer):
         if args.adapter_mapping:
             model_list += [name for name in args.adapter_mapping.keys()]
         return model_list
+
+    async def health(self) -> Response:
+        """Health check endpoint."""
+        try:
+            # Check if the inference engine is accessible
+            if self.infer_engine is not None:
+                return Response(status_code=200)
+            else:
+                return Response(status_code=503)
+        except Exception:
+            return Response(status_code=503)
+
+    async def ping(self) -> Response:
+        """Ping check endpoint. Required for SageMaker compatibility."""
+        return await self.health()
 
     async def get_available_models(self):
         model_list = self._get_model_list()
