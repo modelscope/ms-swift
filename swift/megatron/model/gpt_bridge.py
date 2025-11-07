@@ -142,6 +142,19 @@ class GPTBridge:
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
+            new_state_dict = {}
+            for k, v in hf_state_dict.items():
+                if self._is_peft_format:
+                    if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                        k = k.replace(f'{self._adapter_name}.', '')
+                        new_state_dict[k] = v
+                else:
+                    if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                        continue
+                    k = k.replace(f'base_layer.', '')
+                    k = k.replace(f'original_module.', '')
+                    new_state_dict[k] = v
+            hf_state_dict = new_state_dict
             if self.pp_size > 1:
                 src_rank = torch.tensor([0 if hf_state_dict is None else self.pp_rank],
                                         dtype=torch.int64,
