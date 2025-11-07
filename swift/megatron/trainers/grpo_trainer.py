@@ -494,8 +494,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         def _get_encoded_batch(rollout_batch, advantages):
             template = self.template
-            encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
-            encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
+            with self._template_context(template):
+                encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
+                encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
             labels = encoded_batch['labels']
             assert self.template.padding_free
             position_ids = encoded_batch.get('text_position_ids')
@@ -1283,3 +1284,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
         rollout_batch = global_rollout_batch[data_slice]
         return rollout_batch
+
+    @contextmanager
+    def _template_context(self, template: Template):
+        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
+        max_length = template.max_length
+        template.max_length = None
+        try:
+            yield
+        finally:
+            template.max_length = max_length
