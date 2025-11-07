@@ -11,6 +11,8 @@ def try_init_unsloth():
 
 
 if __name__ == '__main__':
+    from swift.cli.utils import fix_ppu
+    fix_ppu()
     try_init_unsloth()
     from swift.ray import try_init_ray
     try_init_ray()
