@@ -1,11 +1,13 @@
 def is_ppu():
     import subprocess
-    result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=10)
-
-    if result.returncode == 0:
-        output = result.stdout
-        return 'PPU-' in output
-    else:
+    try:
+        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            output = result.stdout
+            return 'PPU-' in output
+        else:
+            return False
+    except:  # noqa
         return False
 
 
