@@ -151,8 +151,8 @@ class GPTBridge:
                 else:
                     if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
                         continue
-                    k = k.replace(f'base_layer.', '')
-                    k = k.replace(f'original_module.', '')
+                    k = k.replace('base_layer.', '')
+                    k = k.replace('original_module.', '')
                     new_state_dict[k] = v
             hf_state_dict = new_state_dict
             if self.pp_size > 1:
@@ -1033,7 +1033,7 @@ class GPTBridge:
                         exclude_router='all-router' not in args.target_modules)
                 else:
                     assert not isinstance(peft_config.target_modules, str), (
-                        f'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
+                        'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
                     peft_config.target_modules = self._peft_target_modules
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
