@@ -593,7 +593,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 log_gpu_memory('after wake up vLLM engine kv_cache')
 
             # Step3: Rollout
-            batch = self.preprocess_rollout_data(batch)
             outputs: List[RolloutOutput] = self._rollout(batch)
 
             # Step4: Sleep to release memory
@@ -607,28 +606,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             batch = self.postprocess_rollout_data(batch, outputs)
 
         return batch
-
-    def preprocess_rollout_data(self, batch):
-        """
-        Gather rollout trajectories across the vLLM tensor-parallel (TP) group.
-
-        This method collect the full batch on every rank, then flattens
-        the nested lists into a single list of samples.
-
-        Args:
-            batch (list): List of rollout samples local to this TP rank.
-
-        Returns:
-            list: Flattened list containing all rollout samples from every
-                rank in the TP group.
-        """
-        if self.vllm_tensor_parallel_size == 1:
-            return batch
-
-        gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
-        torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
-        flattened_batch = [p for sublist in gathered_batch for p in sublist]
-        return flattened_batch
 
     def _rollout(self, batch) -> List[RolloutOutput]:
         request_config = self._get_request_config()
@@ -746,7 +723,24 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return outputs
 
     def _colocate_rollout(self, batch, request_config: RequestConfig):
+        if self.vllm_tensor_parallel_size > 1:
+            local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
+            local_input_length = len(batch)
+            all_input_lengths = [None] * self.vllm_tensor_parallel_size
+            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
+
+            start_idx = sum(all_input_lengths[:local_rank_in_group])
+            end_idx = start_idx + all_input_lengths[local_rank_in_group]
+
+            gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
+            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
+            batch = [p for sublist in gathered_batch for p in sublist]
+
         outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
+
+        if self.vllm_tensor_parallel_size > 1:
+            outputs = outputs[start_idx:end_idx]
+
         return outputs
 
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
