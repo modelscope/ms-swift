@@ -17,6 +17,7 @@ from accelerate.utils import broadcast_object_list
 from dacite import from_dict
 from megatron.core import mpu
 from megatron.training import get_args, training
+from torch.distributed.nn import all_reduce
 from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
@@ -33,7 +34,12 @@ from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
                     load_megatron_optimizer, log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
-                    patch_model_for_lora_export, profiling_context)
+                    profiling_context)
+
+try:
+    from trl.trainer.utils import entropy_from_logits
+except ImportError:
+    from swift.trainers.rlhf_trainer.utils import entropy_from_logits
 
 logger = get_logger()
 
@@ -99,6 +105,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.dynamic_sample = args.dynamic_sample
         self.max_resample_times = args.max_resample_times
         self.overlong_filter = args.overlong_filter
+
+        # Entropy mask settings, TODO
+        self.log_entropy = args.log_entropy
+        self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
@@ -190,14 +200,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _move_model_to_vllm(self):
         # Handle LoRA: merge adapters before exporting weights
         is_lora_training = self.args.train_type == 'lora'
-        restore_funcs = []
 
         try:
             if is_lora_training:
-                self._merge_lora_adapters()
-                for model in self.unwrapped_models:
-                    restore_func = patch_model_for_lora_export(model)
-                    restore_funcs.append(restore_func)
+                self.merge_lora_adapters()
 
             # Export weights from megatron models using bridge
             per_tensor_params = dict(self.bridge.export_weights(self.unwrapped_models))
@@ -206,13 +212,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._load_weights_to_vllm(per_tensor_params)
 
         finally:
-            for restore_func in restore_funcs:
-                restore_func()
-
             # Unmerge adapters to restore training state
             if is_lora_training:
-                logger.info('Unmerging LoRA adapters to restore training state...')
-                self._unmerge_lora_adapters()
+                self.unmerge_lora_adapters()
 
         # Reset prefix cache
         if self.vllm_mode == 'server' and self.is_main_process:
@@ -310,24 +312,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
-
-    def _merge_lora_adapters(self):
-        """Merge LoRA adapters into base model weights for vLLM inference."""
-        from ..tuners import LoraParallelLinear
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Merge all active adapters
-                    module.merge()
-
-    def _unmerge_lora_adapters(self):
-        """Unmerge LoRA adapters to restore training state."""
-        from ..tuners import LoraParallelLinear
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Unmerge to restore separate LoRA weights for training
-                    module.unmerge()
 
     def _get_rollout_group(self):
         """
@@ -788,6 +772,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 return advantages / (rewards_std + 1e-4)
             return advantages
 
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
         assert len(batch) == rewards_per_func.shape[0]
         total_rewards_per_func = gather(rewards_per_func)
         rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
@@ -807,7 +792,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
             # rewards: [prompt_batch_size, self.num_generations]
             # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
-            mode = 'train' if self.unwrapped_models[0].training else 'eval'
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             rewards_std = group_rewards.std(-1).mean().item()
@@ -1032,7 +1016,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
-                "and 'sequence'.")
+                ",'sequence' and 'sequence_token'.")
 
         coef_1 = torch.exp(log_importance_weights)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
@@ -1062,6 +1046,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
+        loss = all_reduce(loss, group=mpu.get_context_parallel_group())
         # loss = loss.mean()
         avg_metric = {
             'loss': loss.clone().detach(),

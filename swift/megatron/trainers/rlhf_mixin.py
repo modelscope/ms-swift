@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
+import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.training import get_args, get_model
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
-from torch.distributed.nn import all_reduce
+from torch.distributed.nn import all_gather, all_reduce
 from transformers.utils import ContextManagers
 
 from swift.utils import get_logger
@@ -60,8 +62,6 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
         if per_token:
-            if args.context_parallel_size > 1:
-                per_token_logps = all_reduce(per_token_logps, group=mpu.get_context_parallel_group())
             return per_token_logps
 
         if num_samples is None:
