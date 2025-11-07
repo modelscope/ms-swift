@@ -6,7 +6,6 @@
   "fsdp_config": {
     "fsdp_auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
     "fsdp_cpu_ram_efficient_loading": true,
-    "fsdp_offload_params": true,
     "fsdp_reshard_after_forward": true,
     "fsdp_state_dict_type": "FULL_STATE_DICT",
     "fsdp_activation_checkpointing": true,
