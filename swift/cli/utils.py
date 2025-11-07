@@ -1,19 +1,8 @@
-def is_ppu():
-    import subprocess
-    try:
-        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            output = result.stdout
-            return 'PPU-' in output
-        else:
-            return False
-    except:  # noqa
-        return False
+import os
 
 
-def fix_ppu():
-    if is_ppu():
-        import os
+def try_use_single_device_mode():
+    if os.environ.get('SWIFT_SINGLE_DEVICE_MODE', '0') == '1':
         visible_devices = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
         visible_device = visible_devices[int(os.environ['LOCAL_RANK'])]
         os.environ['CUDA_VISIBLE_DEVICES'] = str(visible_device)
