@@ -40,7 +40,7 @@ class MegatronExportArguments(MegatronBaseArguments):
         super().__post_init__()
         self._init_save()
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
-        extra_config = MegatronArguments.load_args_config(self.adapter_load or self.load)
+        extra_config = MegatronArguments.load_args_config(self.ckpt_dir)
         extra_config['adapter_load'] = self.adapter_load
         if self.load:
             extra_config['load'] = self.load

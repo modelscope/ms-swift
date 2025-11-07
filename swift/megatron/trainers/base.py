@@ -29,6 +29,7 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
+from peft.utils import ModulesToSaveWrapper
 from tqdm.auto import tqdm
 
 from swift.llm import dynamic_gradient_checkpointing
@@ -893,7 +894,7 @@ class BaseMegatronTrainer(ABC):
         """Merge LoRA adapters into base model weights for vLLM inference."""
         for model in self.unwrapped_models:
             for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
+                if isinstance(module, (LoraParallelLinear, ModulesToSaveWrapper)):
                     # Merge all active adapters
                     module.merge()
 
@@ -901,7 +902,7 @@ class BaseMegatronTrainer(ABC):
         """Unmerge LoRA adapters to restore training state."""
         for model in self.unwrapped_models:
             for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
+                if isinstance(module, (LoraParallelLinear, ModulesToSaveWrapper)):
                     # Unmerge to restore separate LoRA weights for training
                     module.unmerge()
 

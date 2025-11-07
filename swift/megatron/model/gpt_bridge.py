@@ -136,12 +136,38 @@ class GPTBridge:
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
+            if self._is_peft_format:
+                new_state_dict = {}
+                for k, v in hf_state_dict.items():
+                    k = k.replace('.lora_A.', f'.lora_A.{self._adapter_name}.')
+                    k = k.replace('.lora_B.', f'.lora_B.{self._adapter_name}.')
+                    k = k.replace('.modules_to_save.', f'.modules_to_save.{self._adapter_name}.')
+                    new_state_dict[k] = v
+                hf_state_dict = new_state_dict
             incompatible_keys = mg_module.load_state_dict(hf_state_dict, strict=False)
-            assert len(incompatible_keys.missing_keys
-                       ) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
+            missing_keys = incompatible_keys.missing_keys
+            if self._is_peft_format:
+                missing_keys = [
+                    k for k in incompatible_keys.missing_keys
+                    if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k
+                ]
+            assert len(missing_keys) == 0, f'incompatible_keys.missing_keys: {missing_keys}'
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
+            new_state_dict = {}
+            for k, v in hf_state_dict.items():
+                if self._is_peft_format:
+                    if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                        k = k.replace(f'{self._adapter_name}.', '')
+                        new_state_dict[k] = v
+                else:
+                    if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                        continue
+                    k = k.replace('base_layer.', '')
+                    k = k.replace('original_module.', '')
+                    new_state_dict[k] = v
+            hf_state_dict = new_state_dict
             if self.pp_size > 1:
                 src_rank = torch.tensor([0 if hf_state_dict is None else self.pp_rank],
                                         dtype=torch.int64,
@@ -998,6 +1024,7 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
+        from swift.llm import get_multimodal_target_regex
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
@@ -1005,10 +1032,22 @@ class GPTBridge:
                 tqdm_desc='Saving: '):
             saver.add_tensor(k, v)
         saver.finalize()
+        args = self.args
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
-                peft_config.target_modules = self._peft_target_modules
+                if args.is_multimodal and 'all-linear' in args.target_modules:
+                    peft_config.target_modules = get_multimodal_target_regex(
+                        self.hf_model,
+                        freeze_llm=args.freeze_llm,
+                        freeze_vit=args.freeze_vit,
+                        freeze_aligner=args.freeze_aligner,
+                        include_embedding='all-embedding' in args.target_modules,
+                        exclude_router='all-router' not in args.target_modules)
+                else:
+                    assert not isinstance(peft_config.target_modules, str), (
+                        'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
+                    peft_config.target_modules = self._peft_target_modules
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
