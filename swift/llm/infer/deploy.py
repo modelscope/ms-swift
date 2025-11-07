@@ -90,13 +90,9 @@ class SwiftDeploy(SwiftInfer):
 
     async def health(self) -> Response:
         """Health check endpoint."""
-        try:
-            # Check if the inference engine is accessible
-            if self.infer_engine is not None:
-                return Response(status_code=200)
-            else:
-                return Response(status_code=503)
-        except Exception:
+        if self.infer_engine is not None:
+            return Response(status_code=200)
+        else:
             return Response(status_code=503)
 
     async def ping(self) -> Response:
