@@ -998,6 +998,7 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
+        from swift.llm import get_multimodal_target_regex
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
@@ -1005,10 +1006,22 @@ class GPTBridge:
                 tqdm_desc='Saving: '):
             saver.add_tensor(k, v)
         saver.finalize()
+        args = self.args
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
-                peft_config.target_modules = self._peft_target_modules
+                if args.is_multimodal and 'all-linear' in args.target_modules:
+                    peft_config.target_modules = get_multimodal_target_regex(
+                        self.hf_model,
+                        freeze_llm=args.freeze_llm,
+                        freeze_vit=args.freeze_vit,
+                        freeze_aligner=args.freeze_aligner,
+                        include_embedding='all-embedding' in args.target_modules,
+                        exclude_router='all-router' not in args.target_modules)
+                else:
+                    assert not isinstance(peft_config.target_modules, str), (
+                        f'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
+                    peft_config.target_modules = self._peft_target_modules
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
