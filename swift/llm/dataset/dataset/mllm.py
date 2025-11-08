@@ -1306,3 +1306,28 @@ register_dataset(
         hf_dataset_id='leonardPKU/clevr_cogen_a_train',
         preprocess_func=ClevrPreprocessor(),
         tags=['qa', 'math', 'vision', 'grpo']))
+
+
+class Voc2007MultilabelPreprocessor(ResponsePreprocessor):
+    class_name = [
+        'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', 'dog',
+        'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor'
+    ]
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['query'] = f'多标签分类，类别包括：{self.class_name}'
+        label = []
+        for i, x in enumerate(row['npy']):
+            if x == 1:
+                label.append(i)
+        row['label'] = label
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='clip-benchmark/wds_voc2007_multilabel',
+        hf_dataset_id='clip-benchmark/wds_voc2007_multilabel',
+        preprocess_func=Voc2007MultilabelPreprocessor(columns={'webp': 'images'}),
+        tags=['multilabel', 'multi-modal'],
+    ))
