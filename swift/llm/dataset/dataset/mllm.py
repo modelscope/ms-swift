@@ -1309,18 +1309,12 @@ register_dataset(
 
 
 class Voc2007MultilabelPreprocessor(ResponsePreprocessor):
-    class_name = [
-        'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', 'dog',
-        'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor'
-    ]
+    CLASS_NAME = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
+                  'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor')
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row['query'] = f'多标签分类，类别包括：{self.class_name}'
-        label = []
-        for i, x in enumerate(row['npy']):
-            if x == 1:
-                label.append(i)
-        row['label'] = label
+        row['query'] = f'多标签分类，类别包括：{list(self.CLASS_NAME)}'
+        row['label'] = [i for i, x in enumerate(row['npy']) if x == 1]
         return super().preprocess(row)
 
 

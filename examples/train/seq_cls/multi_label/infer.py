@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 from swift.llm import BaseArguments, InferRequest, PtEngine, get_template
 
@@ -29,5 +30,5 @@ template = get_template(args.template, engine.processor, args.system, use_chat_t
 engine.default_template = template
 
 resp_list = engine.infer([infer_request])
-response: int = resp_list[0].choices[0].message.content
+response: List[int] = resp_list[0].choices[0].message.content
 print(f'response: {response}')
