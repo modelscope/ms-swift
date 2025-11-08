@@ -157,14 +157,14 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     _test_params_sum(mg_model)
 
     is_multimodal = template.model_meta.is_multimodal
-    inputs = template.encode(get_examples(is_multimodal))
-    hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
+        inputs = template.encode(get_examples(is_multimodal))
+        hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
         model_arch = hf_model.model_meta.model_arch
