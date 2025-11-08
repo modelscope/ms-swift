@@ -9,6 +9,7 @@ from megatron.core import mpu
 from megatron.training import get_args
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
+from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
@@ -1053,6 +1054,8 @@ class GPTBridge:
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
+                if getattr(self.hf_model, '_auto_class') is not None:
+                    custom_object_save(self.hf_model, output_dir, config=model.config)
                 save_checkpoint(
                     None,
                     self.processor,
