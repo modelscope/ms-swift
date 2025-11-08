@@ -9,6 +9,7 @@ import json
 import torch
 from transformers.utils.versions import require_version
 
+from swift.llm import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
@@ -94,9 +95,10 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padding_free: bool = True
     mlp_padding_free: bool = False
     # mcore-bridge
+    model: Optional[str] = None
+    model_type: Optional[str] = None
     load_safetensors: bool = False
     save_safetensors: bool = False
-    model: Optional[str] = None
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
@@ -125,6 +127,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # visual
     vit_gradient_checkpointing: bool = True
+    vit_lr: Optional[float] = None
+    aligner_lr: Optional[float] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     # qwen3_next
     linear_num_value_heads: Optional[int] = None
@@ -448,6 +452,9 @@ class MegatronArguments(ExtraMegatronArguments):
         MegatronTunerMixin.__post_init__(self)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
+        self.model_info, self.model_meta = get_model_info_meta(
+            self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
+        self.model_type = self.model_info.model_type
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self._patch_megatron_timeout(self.distributed_timeout_minutes)
@@ -492,6 +499,10 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
+        extra_args['model_dir'] = self.model_info.model_dir
+        extra_args['is_multimodal'] = self.model_meta.is_multimodal
+        # model_type may be overridden by megatron
+        extra_args['hf_model_type'] = self.model_type
         megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')
         args_dict.update(megatron_extra_kwargs)
         for k, value in args_dict.items():

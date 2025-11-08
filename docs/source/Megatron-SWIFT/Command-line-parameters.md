@@ -283,6 +283,9 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
+- vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。
+  - 通常与`--freeze_vit false`、`--freeze_aligner false`参数结合使用。
+- aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
 - 🔥packing: 是否使用序列packing提升计算效率（不同节点与进程更负载均衡，GPU利用率更高；但需要额外的预处理时间）并稳定显存占用，默认为False。当前支持CPT/SFT/DPO/KTO/RM。
   - 注意：**同一batch的不同序列之间依旧是不可见的**，除了Qwen3-Next。

@@ -31,7 +31,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -39,8 +39,8 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
-# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
-git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
+# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.14.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.14.0)).
+git clone --branch core_r0.14.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
@@ -65,7 +65,7 @@ Recommended Operating Environment:
 | torch        | >=2.0        | 2.7.1/2.8.0    |                    |
 | transformer_engine    | >=2.3       |         |                  |
 | apex |   |  0.1 | |
-| megatron_core    |        | 0.13      |                  |
+| megatron_core    |        | 0.14      |                  |
 | flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.1      |                    |
 | modelscope   | >=1.23       |             |                    |
