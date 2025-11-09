@@ -75,6 +75,7 @@ class GPTBridge:
             'linear_qkv',
             # mla
             'linear_q_proj',
+            'linear_q_up_proj',
             'linear_kv_up_proj'
         }
         # RowLinear
