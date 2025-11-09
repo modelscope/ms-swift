@@ -25,6 +25,7 @@ config_mapping = {
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
     'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk', 'moe_k'],
+    'moe_router_num_groups': ['topk_group'],
     'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     # deepseek
