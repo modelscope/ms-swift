@@ -285,6 +285,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     moe_router_topk: Optional[int] = None
     moe_router_num_groups: Optional[int] = None
+    moe_router_group_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = None

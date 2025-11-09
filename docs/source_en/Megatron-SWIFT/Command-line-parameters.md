@@ -197,7 +197,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - moe_ffn_hidden_size: Hidden layer size of the feedforward network (ffn) for each expert. Default is None and will be automatically read from config.json. If not found and `num_experts` is not None, it will be set to ffn_hidden_size.
 - moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
-- moe_router_num_groups: Number of groups to divide experts into for group-limited routing. Refers to `topk_group` in DeepSeek-V2 and DeepSeek-V3. Default is None. Automatically read from config.json.
+- moe_router_num_groups: Number of groups to divide experts into for group-limited routing. Refers to DeepSeek-V2 and DeepSeek-V3. Default is None. Automatically read from config.json.
+- moe_router_group_topk: Number of selected groups for group-limited routing. Default is None. Automatically read from config.json.
 - moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
 - 🔥moe_router_dtype: Data type used for routing computation and expert output weighted averaging. Options are 'none', 'fp32', and 'fp64', which enhances numerical stability, especially when the number of experts is large. When used together with `moe_permute_fusion`, the performance impact is negligible. Default is 'fp32'. 'none' means no change to data type.
 - moe_router_score_function: Scoring function for MoE TopK routing. Can be "softmax" or "sigmoid". Default is None and is read from config.json.
