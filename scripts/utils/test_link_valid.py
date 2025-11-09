@@ -27,7 +27,7 @@ def check_links_in_folder(folder_path):
     for root, _, files in os.walk(folder_path):
         for file in files:
             if file.endswith('.md'):
-                if file in ['支持的模型和数据集.md', 'Supported-models-and-datasets.md']:
+                if file in ['Supported-models-and-datasets.md', 'Supported-models-and-datasets.md']:
                     continue
                 file_path = os.path.join(root, file)
                 logger.info(f'Checking links in file: {file_path}')

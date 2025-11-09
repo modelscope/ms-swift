@@ -9,6 +9,7 @@ from megatron.core import mpu
 from megatron.training import get_args
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
+from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
@@ -28,6 +29,7 @@ class GPTBridge:
     hf_state_dict_mapping = {}
 
     def __init__(self, disable_tqmd: bool = False):
+        from .register import get_megatron_model_meta
         self.args = get_args()
         self.disable_tqmd = disable_tqmd
         self._target_device = None
@@ -39,9 +41,8 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
-        megatron_model_meta = self.args.megatron_model_meta
-        self.is_multimodal = megatron_model_meta.is_multimodal
-        if self.is_multimodal and megatron_model_meta.visual_cls is not None:
+        megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
+        if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
         self.tp_size = self.args.tensor_model_parallel_size
         self.pp_size = self.args.pipeline_model_parallel_size
@@ -59,10 +60,9 @@ class GPTBridge:
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
     def _init_meta_hf_model(self):
-        model_info = self.args.model_info
         with torch.device('meta'), disable_safe_ddp_context_use_barrier():
             self.hf_model, self.processor = get_model_tokenizer(
-                model_info.model_dir, model_type=model_info.model_type, return_dummy_model=True)
+                self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
     @staticmethod
     def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
@@ -75,7 +75,7 @@ class GPTBridge:
             'linear_qkv',
             # mla
             'linear_q_proj',
-            'linear_kv_down_proj',
+            'linear_q_up_proj',
             'linear_kv_up_proj'
         }
         # RowLinear
@@ -137,12 +137,39 @@ class GPTBridge:
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
+            if self._is_peft_format:
+                new_state_dict = {}
+                for k, v in hf_state_dict.items():
+                    k = k.replace('.lora_A.', f'.lora_A.{self._adapter_name}.')
+                    k = k.replace('.lora_B.', f'.lora_B.{self._adapter_name}.')
+                    k = k.replace('.modules_to_save.', f'.modules_to_save.{self._adapter_name}.')
+                    new_state_dict[k] = v
+                hf_state_dict = new_state_dict
             incompatible_keys = mg_module.load_state_dict(hf_state_dict, strict=False)
-            assert len(incompatible_keys.missing_keys
-                       ) == 0, f'incompatible_keys.missing_keys: {incompatible_keys.missing_keys}'
+            missing_keys = incompatible_keys.missing_keys
+            if self._is_peft_format:
+                missing_keys = [
+                    k for k in incompatible_keys.missing_keys
+                    if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k
+                ]
+            assert len(missing_keys) == 0, f'incompatible_keys.missing_keys: {missing_keys}'
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
+            if hf_state_dict is not None:
+                new_state_dict = {}
+                for k, v in hf_state_dict.items():
+                    if self._is_peft_format:
+                        if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                            k = k.replace(f'{self._adapter_name}.', '')
+                            new_state_dict[k] = v
+                    else:
+                        if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                            continue
+                        k = k.replace('base_layer.', '')
+                        k = k.replace('original_module.', '')
+                        new_state_dict[k] = v
+                hf_state_dict = new_state_dict
             if self.pp_size > 1:
                 src_rank = torch.tensor([0 if hf_state_dict is None else self.pp_rank],
                                         dtype=torch.int64,
@@ -881,9 +908,9 @@ class GPTBridge:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
             hf_state_dict = {}
-        lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
+        lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, self.hf_embed_key, to_mcore)
-        if self.is_multimodal:
+        if self.args.is_multimodal:
             for prefix, mg_prefix in self.module_mapping.items():
                 mg_module = deep_getattr(mg_model, f'visual.{mg_prefix}')
                 hf_state_dict.update(self._set_module(mg_module, hf_state_dict, f'{hf_prefix}{prefix}.', to_mcore))
@@ -898,13 +925,13 @@ class GPTBridge:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
             hf_state_dict = {}
-        lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
+        lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.untie_embeddings_and_output_weights:
             hf_lm_head_key = self.hf_lm_head_key
             if not to_mcore and self.args.task_type == 'seq_cls':
                 hf_lm_head_key = self.hf_score_key
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
-        elif lm_model.output_layer.weight is not None:
+        elif to_mcore and lm_model.output_layer.weight is not None:
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
                              to_mcore)
@@ -943,7 +970,7 @@ class GPTBridge:
             hf_state_dict = {}
         for layer_idx in tqdm(
                 range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd):
-            lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
+            lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             start_idx = lm_model.decoder.layers[0].layer_number - 1
             mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
             if mg_layer_available:
@@ -1006,20 +1033,35 @@ class GPTBridge:
                 tqdm_desc='Saving: '):
             saver.add_tensor(k, v)
         saver.finalize()
+        args = self.args
         if is_last_rank():
             if is_peft_format:
+                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
-                peft_config.target_modules = self._peft_target_modules
+                if args.is_multimodal and 'all-linear' in args.target_modules:
+                    peft_config.target_modules = get_multimodal_target_regex(
+                        self.hf_model,
+                        freeze_llm=args.freeze_llm,
+                        freeze_vit=args.freeze_vit,
+                        freeze_aligner=args.freeze_aligner,
+                        include_embedding='all-embedding' in args.target_modules,
+                        exclude_router='all-router' not in args.target_modules)
+                else:
+                    assert not isinstance(peft_config.target_modules, str), (
+                        'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
+                    peft_config.target_modules = self._peft_target_modules
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
+                if getattr(self.hf_model, '_auto_class') is not None:
+                    custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
                 save_checkpoint(
                     None,
                     self.processor,
                     output_dir,
-                    model_dirs=[self.hf_model.model_info.model_dir],
+                    model_dirs=[self.args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
 

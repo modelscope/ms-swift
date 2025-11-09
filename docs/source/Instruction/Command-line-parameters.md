@@ -1,6 +1,6 @@
 # 命令行参数
 
-命令行参数的介绍会分为基本参数，原子参数、集成参数和特定模型参数。**命令行最终使用的参数列表为集成参数。集成参数继承自基本参数和一些原子参数**。特定模型参数是针对于具体模型的参数，可以通过`--model_kwargs'`或者环境变量进行设置。Megatron-SWIFT命令行参数介绍可以在[Megatron-SWIFT训练文档](../Megatron-SWIFT/命令行参数.md)中找到。
+命令行参数的介绍会分为基本参数，原子参数、集成参数和特定模型参数。**命令行最终使用的参数列表为集成参数。集成参数继承自基本参数和一些原子参数**。特定模型参数是针对于具体模型的参数，可以通过`--model_kwargs'`或者环境变量进行设置。Megatron-SWIFT命令行参数介绍可以在[Megatron-SWIFT训练文档](../Megatron-SWIFT/Command-line-parameters.md)中找到。
 
 **提示：**
 - 命令行传入list使用空格隔开即可。例如：`--dataset <dataset_path1> <dataset_path2>`。
@@ -29,9 +29,9 @@
 
 ### 模型参数
 - 🔥model: [模型id](https://modelscope.cn/models)或模型本地路径。默认为None。
-- 🔥model_type: 模型类型。**我们将相同的模型架构、模型加载过程、template定义为一个`model_type`**。默认为None，即**根据`--model`的后缀和config.json中的'architectures'属性进行自动选择**。对应模型的model_type可以在[支持的模型列表](./支持的模型和数据集.md)中找到。
+- 🔥model_type: 模型类型。**我们将相同的模型架构、模型加载过程、template定义为一个`model_type`**。默认为None，即**根据`--model`的后缀和config.json中的'architectures'属性进行自动选择**。对应模型的model_type可以在[支持的模型列表](./Supported-models-and-datasets.md)中找到。
   - 注意：ms-swift中model_type的概念与`config.json`中的model_type不同。
-  - 自定义模型通常需要自行注册`model_type`和`template`，具体可以参考[自定义模型文档](../Customization/自定义模型.md)。
+  - 自定义模型通常需要自行注册`model_type`和`template`，具体可以参考[自定义模型文档](../Customization/Custom-model.md)。
 - model_revision: 模型版本，默认为None。
 - task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'、'reranker'和'generative_reranker'。seq_cls的例子可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls)，embedding的例子查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding)。
   - 若设置为'seq_cls'，你通常需要额外设置`--num_labels`和`--problem_type`。
@@ -52,7 +52,7 @@
 
 
 ### 数据参数
-- 🔥dataset: 数据集id或路径的list。默认为`[]`。每个数据集的传入格式为：`'数据集id or 数据集路径:子数据集#采样数量'`，其中子数据集和取样数据可选。本地数据集支持jsonl、csv、json、文件夹等。**hub端的开源数据集可以通过`git clone`到本地并将文件夹传入而离线使用**。自定义数据集格式可以参考[自定义数据集文档](../Customization/自定义数据集.md)。你可以传入`--dataset <dataset1> <dataset2>`来使用多个数据集。
+- 🔥dataset: 数据集id或路径的list。默认为`[]`。每个数据集的传入格式为：`'数据集id or 数据集路径:子数据集#采样数量'`，其中子数据集和取样数据可选。本地数据集支持jsonl、csv、json、文件夹等。**hub端的开源数据集可以通过`git clone`到本地并将文件夹传入而离线使用**。自定义数据集格式可以参考[自定义数据集文档](../Customization/Custom-dataset.md)。你可以传入`--dataset <dataset1> <dataset2>`来使用多个数据集。
   - 子数据集: 该参数只有当dataset为ID或者文件夹时生效。若注册时指定了subsets，且只有一个子数据集，则默认选择注册时指定的子数据集，否则默认为'default'。你可以使用`/`来选择多个子数据集，例如：`<dataset_id>:subset1/subset2`。你也可以使用'all'来选择注册时指定的所有子数据集，例如：`<dataset_id>:all`。注册例子可以参考[这里](https://modelscope.cn/datasets/swift/garbage_competition)。
   - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
@@ -73,17 +73,17 @@
 - shuffle_buffer_size: 该参数用于指定**流式数据集**的随机buffer大小，默认为1000。该参数只在`dataset_shuffle`设置为true时有效。
 - download_mode: 数据集下载模式，包含`reuse_dataset_if_exists`和`force_redownload`，默认为'reuse_dataset_if_exists'。
   - 通常在使用hub端数据集报错时设置为`--download_mode force_redownload`。
-- columns: 用于对数据集进行列映射，使数据集满足AutoPreprocessor可以处理的样式，AutoPreprocessor可以处理的数据集格式查看[自定义数据集文档](../Customization/自定义数据集.md)。你可以传入json字符串，例如：`'{"text1": "query", "text2": "response"}'`，代表将数据集中的"text1"映射为"query"，"text2"映射为"response"，而query-response格式可以被AutoPreprocessor处理。默认为None。
+- columns: 用于对数据集进行列映射，使数据集满足AutoPreprocessor可以处理的样式，AutoPreprocessor可以处理的数据集格式查看[自定义数据集文档](../Customization/Custom-dataset.md)。你可以传入json字符串，例如：`'{"text1": "query", "text2": "response"}'`，代表将数据集中的"text1"映射为"query"，"text2"映射为"response"，而query-response格式可以被AutoPreprocessor处理。默认为None。
 - strict: 如果为True，则数据集只要某行有问题直接抛错，否则会丢弃出错数据样本。默认False。该参数通常用于排查错误。
 - 🔥remove_unused_columns: 是否删除数据集中不被使用的列，默认为True。
   - 若该参数设置为False，则将额外的数据集列传递至trainer的`compute_loss`函数内，**方便自定义损失函数使用额外的数据集列**。
   - GPRO该参数的默认值为False。
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。
 - 🔥model_author: 仅用于自我认知任务，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{AUTHOR}}`通配符。传入模型作者的中文名和英文名，以空格分隔，例如：`--model_author '魔搭' 'ModelScope'`。默认为None。
-- custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/自定义数据集.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。默认为`[]`。
+- custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。默认为`[]`。
 
 ### 模板参数
-- 🔥template: 对话模板类型。默认为None，自动选择对应model的template类型，对应关系参考[支持的模型列表](./支持的模型和数据集.md)。
+- 🔥template: 对话模板类型。默认为None，自动选择对应model的template类型，对应关系参考[支持的模型列表](./Supported-models-and-datasets.md)。
 - 🔥system: 自定义system字段，可以传入字符串或者**txt文件路径**。默认为None，使用注册template时的默认system。
   - 注意：数据集中的system**优先级**最高，然后是`--system`，最后是注册template时设置的`default_system`。
 - 🔥max_length: 限制单数据集样本经过`tokenizer.encode`后的tokens最大长度，超过的数据样本会根据`truncation_strategy`参数进行处理（避免训练OOM）。默认为None，即设置为模型支持的tokens最大长度(max_model_len)。
@@ -92,8 +92,8 @@
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
-- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent支持.md)。
-- norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
+- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
+- norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
@@ -146,7 +146,7 @@
 
 - use_ray: boolean类型。是否使用ray，默认为`False`
 - ray_exp_name: ray实验名字，这个字段会用作cluster和worker名称前缀，可以不填
-- device_groups: 字符串（jsonstring）类型。在使用ray时，该字段必须配置，具体可以查看[ray文档](ray的支持.md)。
+- device_groups: 字符串（jsonstring）类型。在使用ray时，该字段必须配置，具体可以查看[ray文档](Ray.md)。
 
 ### yaml支持
 
@@ -207,7 +207,7 @@ gradient_checkpointing: true
 - router_aux_loss_coef: 用于moe模型训练时，设置 aux_loss 的权重，默认为`0.`。
   - 注意：在"ms-swift==3.7.0"，其默认为None，从config.json中读取，该行为在"ms-swift>=3.7.1"被修改。
 - enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
-- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/自定义数据集.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
+- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
   - 注意：该参数为"ms-swift>=3.8"新增，若要在"ms-swift<3.8"使用channel loss，请查看v3.7文档。
 - logging_dir: tensorboard日志保存路径。默认为None，即设置为`f'{self.output_dir}/runs'`。
 - 🔥predict_with_generate: 验证时使用生成式的方式，默认为False。
@@ -458,7 +458,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - optimizer: plugin的自定义optimizer名称，默认为None。可选optimizer参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py)。
 - loss_type: plugin的自定义loss_type名称。默认为None，使用模型自带损失函数。
 - metric: plugin的自定义metric名称。默认为None，在predict_with_generate=True的情况下默认设置为'nlg'。
-- eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/评测.md#训练中评测)。
+- eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/Evaluation.md#训练中评测)。
 - eval_dataset: 评测数据集，可设置多个数据集，用空格分割。
 - eval_dataset_args: 评测数据集参数，json格式，可设置多个数据集的参数。
 - eval_limit: 评测数据集采样数。
@@ -485,7 +485,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - ref_adapters: 默认为`[]`。若你要使用SFT产生的LoRA权重进行DPO/KTO/GRPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapters sft_ckpt --ref_adapters sft_ckpt`。若是此场景的断点续训，则设置`--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`。
 - ref_model_type: 同model_type。默认为None。
 - ref_model_revision: 同model_revision。默认为None。
-- 🔥beta: 控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。默认为`None`，使用不同rlhf算法的默认值不同，其中`simpo`算法默认为`2.`，GRPO默认为`0.04`，GKD默认为0.5，其他算法默认为`0.1`。具体参考[文档](./人类对齐.md)。
+- 🔥beta: 控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。默认为`None`，使用不同rlhf算法的默认值不同，其中`simpo`算法默认为`2.`，GRPO默认为`0.04`，GKD默认为0.5，其他算法默认为`0.1`。具体参考[文档](./RLHF.md)。
 - label_smoothing: 是否使用DPO smoothing，默认值为`0`。
 - max_completion_length: GRPO/PPO/GKD算法中的最大生成长度，默认为512。
 - 🔥rpo_alpha: 来自[RPO 论文](https://arxiv.org/abs/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
@@ -559,7 +559,7 @@ reward模型参数将在PPO、GRPO中使用。
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
-- reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/奖励模型.md#自定义奖励模型)。
+- reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/reward_model.md#自定义奖励模型)。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`, 注意对于多模态模型，
 左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
@@ -656,7 +656,7 @@ soft overlong 奖励参数
 
 ### Rollout参数
 Rollout参数继承于[部署参数](#部署参数)
-- multi_turn_scheduler: 多轮GRPO训练规划器，传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。默认为None，具体参考[文档](./GRPO/DeveloperGuide/多轮训练.md)。
+- multi_turn_scheduler: 多轮GRPO训练规划器，传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。默认为None，具体参考[文档](./GRPO/DeveloperGuide/multi_turn.md)。
 - max_turns: 多轮GRPO训练下的最大轮数，默认为None，即不做约束。
 - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
 - vllm_max_lora_rank: vLLM Engine LoRA参数，需大于等于训练的lora_rank，建议等于。默认为16。
@@ -681,7 +681,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 评测参数继承于[部署参数](#部署参数)。
 
 - 🔥eval_backend: 评测后端，默认为'Native'，也可以指定为'OpenCompass'或'VLMEvalKit'。
-- 🔥eval_dataset: 评测数据集，请查看[评测文档](./评测.md)。
+- 🔥eval_dataset: 评测数据集，请查看[评测文档](./Evaluation.md)。
 - eval_limit: 每个评测集的采样数，默认为None。
 - eval_output_dir: 评测存储结果的文件夹，默认为'eval_output'。
 - temperature: 覆盖生成参数，默认为0。
@@ -758,7 +758,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - FPS: 默认为2.0。
 - FPS_MIN_FRAMES: 默认为4。一段视频的最小抽帧数。
 - 🔥FPS_MAX_FRAMES: 默认为768。一段视频的最大抽帧数。
-- 🔥QWENVL_BBOX_FORMAT: (ms-swift>=3.9.1) grounding格式使用'legacy'还是'new'。'legacy'格式为：`<|object_ref_start|>一只狗<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`，'new'格式参考：[Qwen3-VL cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb)，并参考[grounding数据集格式文档](../Customization/自定义数据集.md#grounding)。默认为'legacy'。
+- 🔥QWENVL_BBOX_FORMAT: (ms-swift>=3.9.1) grounding格式使用'legacy'还是'new'。'legacy'格式为：`<|object_ref_start|>一只狗<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`，'new'格式参考：[Qwen3-VL cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb)，并参考[grounding数据集格式文档](../Customization/Custom-dataset.md#grounding)。默认为'legacy'。
   - 注意：该环境变量适配Qwen2/2.5/3-VL和Qwen2.5/3-Omni系列模型。
 
 ### qwen2_audio

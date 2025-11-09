@@ -13,7 +13,7 @@
 ## 推理
 ms-swift使用了分层式的设计思想，用户可以使用命令行界面、Web-UI界面和直接使用Python的方式进行推理。
 
-如果要查看LoRA微调后模型的推理，可以参考[预训练与微调文档](./预训练与微调.md#推理微调后模型)。
+如果要查看LoRA微调后模型的推理，可以参考[预训练与微调文档](./Pre-training-and-Fine-tuning.md#推理微调后模型)。
 
 ### 使用CLI
 
@@ -103,7 +103,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 - 界面推理：你可以将`swift infer`改成`swift app`。
 - batch推理：`infer_backend=pt`可以指定`--max_batch_size`对大模型和多模态大模型进行batch推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh)。在进行batch推理时，你不能设置`--stream true`。
 - DDP/device_map推理：`infer_backend=pt`支持使用DDP/device_map技术进行并行推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh)。
-- 推理加速：swift支持使用vllm/sglang/lmdeploy对推理、部署和评测模块进行推理加速，只需要额外指定`--infer_backend vllm/sglang/lmdeploy`即可。可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/ddp.sh)。
+- 推理加速：swift支持使用vllm/sglang/lmdeploy对推理、部署和评测模块进行推理加速，只需要额外指定`--infer_backend vllm/sglang/lmdeploy`即可。可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_ddp.sh)。
 - 多模态模型：我们提供了[pt](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh)/[vllm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh)/[lmdeploy](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh)对多模态模型进行多GPU推理的shell脚本。
 - 量化模型：直接选择GPTQ、AWQ、BNB量化的模型，例如：`--model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4`即可。
 - 更多模型类型：我们提供了[bert](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/bert.sh)、[reward_model](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/reward_model.sh)、[prm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/prm.sh)的推理脚本。
@@ -191,7 +191,7 @@ print(f'response2: {resp_list[2].choices[0].message.content}')
 
 ## 部署
 
-如果要查看LoRA微调后模型的部署，可以参考[预训练与微调文档](./预训练与微调.md#部署微调后模型)。
+如果要查看LoRA微调后模型的部署，可以参考[预训练与微调文档](./Pre-training-and-Fine-tuning.md#部署微调后模型)。
 
 这里主要介绍对多模态模型的部署和调用，文本大模型我们给出简单的部署和调用的简单案例：
 

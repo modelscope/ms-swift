@@ -951,6 +951,10 @@ class SwiftMixin:
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.template.is_encoder_decoder,
                 cu_seqlens=cu_seqlens)
+        elif self.args.task_type == 'seq_cls' and self.args.problem_type == 'multi_label_classification':
+            # TODO: compat padding_free
+            preds = logits.sigmoid() > 0.5
+            metrics = {'acc': (labels == preds).all(dim=-1)}
         else:
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:

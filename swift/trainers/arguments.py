@@ -157,6 +157,7 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     padding_side: Optional[str] = None
     padding_free: Optional[bool] = None
     task_type: Optional[str] = None
+    problem_type: Optional[str] = None
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):

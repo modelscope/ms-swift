@@ -99,7 +99,7 @@
 - ckpt_assume_constant_structure: 如果在单个训练中，模型和优化器状态字典结构保持不变，允许Megatron进行额外检查点性能优化。默认为False。
 
 **分布式参数**:
-并行技术的选择请参考[训练技巧文档](快速开始.md#训练技巧)。
+并行技术的选择请参考[训练技巧文档](Quick-start.md#训练技巧)。
 
 - distributed_backend: 分布式后端，可选为'nccl', 'gloo'。默认为nccl。
 - 🔥use_distributed_optimizer: 使用分布式优化器（即zero1）。默认为True。
@@ -113,7 +113,7 @@
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
-- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](../Instruction/命令行参数.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
+- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](../Instruction/Command-line-parameters.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
 - num_layers_per_virtual_pipeline_stage: 每个虚拟流水线阶段的层数。默认为None。该参数和`--num_virtual_stages_per_pipeline_rank`参数都可以用来设置vpp并行。
 - num_virtual_stages_per_pipeline_rank: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
 - microbatch_group_size_per_virtual_pipeline_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
@@ -304,7 +304,7 @@ lora训练：
 
 ## 训练参数
 
-Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/命令行参数.md#基本参数)。此外还包括以下参数：
+Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
@@ -312,6 +312,9 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
+- vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。
+  - 通常与`--freeze_vit false`、`--freeze_aligner false`参数结合使用。
+- aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
 - 🔥packing: 是否使用序列packing提升计算效率（不同节点与进程更负载均衡，GPU利用率更高；但需要额外的预处理时间）并稳定显存占用，默认为False。当前支持CPT/SFT/DPO/KTO/RM。
   - 注意：**同一batch的不同序列之间依旧是不可见的**，除了Qwen3-Next。
@@ -324,7 +327,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - cached_dataset: 训练中使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练时，tokenize过程占用gpu时间。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
   - 注意：cached_dataset支持`--packing`，但不支持`--lazy_tokenize`和`--streaming`。cached_dataset暂不支持CP。
 - enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
-- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/自定义数据集.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
+- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora/new_special_tokens.sh)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'。
@@ -335,12 +338,12 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
 - 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'kto'和'rm'。
-- loss_scale: 覆盖[基本参数](../Instruction/命令行参数.md)中的loss_scale。默认为'last_round'。
+- loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
 
 ## 导出参数
-这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/命令行参数.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。
+这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - 🔥to_hf: Megatron格式权重转成HF格式。默认为False。
 - 🔥merge_lora: 默认为None，若`to_hf`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。合并后的权重存储在`--save`目录下。
