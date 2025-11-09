@@ -216,7 +216,6 @@
 - qk_head_dim: QK 投影中 head 的维度。 `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`。默认为None，自动从config.json读取。
 - qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
 
-
 **Tuner参数**:
 - train_type: 可选为'lora'和'full'。默认为'full'。
 - 🔥freeze_llm: 该参数只对多模态模型生效，可用于全参数训练和LoRA训练，但会产生不同的效果。若是全参数训练，将freeze_llm设置为True会将LLM部分权重进行冻结；若是LoRA训练且`target_modules`设置为'all-linear'，将freeze_llm设置为True将会取消在LLM部分添加LoRA模块。该参数默认为False。

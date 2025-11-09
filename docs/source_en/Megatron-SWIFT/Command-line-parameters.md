@@ -229,7 +229,6 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - qk_head_dim: Dimension of the head in the QK projection. `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`. Default is None and will be automatically read from config.json.
 - qk_pos_emb_head_dim: Dimension of the position embedding in the QK projection. Default is None and will be automatically read from config.json.
 
-
 **Tuner Parameters**:
 
 - train_type: Options are `'lora'` and `'full'`. Default is `'full'`.
