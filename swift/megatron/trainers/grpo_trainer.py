@@ -1043,6 +1043,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
         if self.template.padding_free:
+            # In padding_free + sequence mode, coef_1 is [num_samples, 1]
+            # We need to expand to [1, total_tokens] for token-level loss computation
+            if self.importance_sampling_level == 'sequence':
+                # Expand sequence-level weights to token-level without gradient
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths, dim=0).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths, dim=0).unsqueeze(0)
+
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
