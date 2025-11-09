@@ -2,11 +2,13 @@
 from copy import copy
 from typing import Optional
 
+import megatron.core
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.training import get_args
+from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
@@ -41,6 +43,7 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
+        self.megatron_core_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
@@ -64,8 +67,7 @@ class GPTBridge:
             self.hf_model, self.processor = get_model_tokenizer(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
-    @staticmethod
-    def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
+    def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
         if mg_key is None:
             return
         # ColumnLinear
@@ -78,6 +80,9 @@ class GPTBridge:
             'linear_q_up_proj',
             'linear_kv_up_proj'
         }
+        if not self.megatron_core_014:
+            # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
+            dim0_keys.update({'linear_q_down_proj', 'linear_kv_down_proj'})
         # RowLinear
         dim1_keys = {'linear_proj', 'linear_fc2'}
         if 'lora_A' not in mg_key and 'lora_B' not in mg_key:
@@ -856,6 +861,9 @@ class GPTBridge:
                              to_mcore)
         self._set_state_dict(mg_attn, 'linear_kv_up_proj.weight', hf_state_dict, 'kv_b_proj.weight', to_mcore)
         if self.args.qk_layernorm:
+            if self.args.q_lora_rank is not None:
+                self._set_state_dict(mg_attn, 'linear_q_up_proj.layer_norm_weight', hf_state_dict,
+                                     'q_a_layernorm.weight', to_mcore)
             self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict, 'kv_a_layernorm.weight',
                                  to_mcore)
         if to_mcore:
