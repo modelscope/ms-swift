@@ -25,6 +25,12 @@ logger = get_logger()
 
 class OutputLayerLinear(TELinear):
 
+    def forward(self, hidden_states, *args, **kwargs):
+        args = get_args()
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+            hidden_states = gather_from_sequence_parallel_region(hidden_states)
+        return super().forward(hidden_states)
+
     def sharded_state_dict(
             self,
             prefix: str = '',
@@ -159,9 +165,11 @@ class GPTModel(McoreGPTModel):
         Applies embeddings to input tokens, or uses `decoder_input` from a previous
         pipeline stage. Also sets up rotary positional embeddings.
         """
+        # Decoder embedding.
 
         # If decoder_input is provided (not None), then input_ids and position_ids are ignored.
         # Otherwise, apply embedding layer on input_ids and position_ids to get decoder_input.
+        in_inference_mode = inference_context is not None and not self.training
 
         # Decoder embedding.
         if decoder_input is not None:
@@ -209,8 +217,9 @@ class GPTModel(McoreGPTModel):
                         packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
                     )
 
-        if ((self.config.enable_cuda_graph or self.config.flash_decode) and rotary_pos_cos is not None
-                and inference_context and inference_context.is_static_batching() and not self.training):
+        if (in_inference_mode and ((self.config.enable_cuda_graph and self.config.cuda_graph_scope != 'full_iteration')
+                                   or self.config.flash_decode) and rotary_pos_cos is not None
+                and inference_context.is_static_batching()):
             current_batch_size = input_ids.shape[0]
             sequence_len_offset = torch.tensor(
                 [inference_context.sequence_len_offset] * current_batch_size,
@@ -223,101 +232,10 @@ class GPTModel(McoreGPTModel):
         # Wrap decoder_input to allow the decoder (TransformerBlock) to delete the
         # reference held by this caller function, enabling early garbage collection for
         # inference. Skip wrapping if decoder_input is logged after decoder completion.
-        if (inference_context is not None and not self.training and not has_config_logger_enabled(self.config)):
+        if in_inference_mode and not has_config_logger_enabled(self.config):
             decoder_input = WrappedTensor(decoder_input)
 
         return decoder_input, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, sequence_len_offset
-
-    def _postprocess(
-        self,
-        hidden_states,
-        input_ids,
-        position_ids,
-        labels,
-        rotary_pos_emb,
-        rotary_pos_cos,
-        rotary_pos_sin,
-        mtp_in_postprocess=None,
-        loss_mask=None,
-        decoder_input=None,
-        attention_mask=None,
-        inference_params=None,
-        packed_seq_params=None,
-        sequence_len_offset=None,
-        runtime_gather_output=None,
-        extra_block_kwargs=None,
-        inference_context=None,
-    ):
-        """Postprocesses decoder hidden states to generate logits or compute loss.
-
-        Applies Multi-Token Prediction if enabled, generates output logits through
-        the output layer, and computes language model loss when labels are provided.
-        """
-        # logits and loss
-        output_weight = None
-        if self.share_embeddings_and_output_weights:
-            output_weight = self.shared_embedding_or_output_weight()
-
-        if mtp_in_postprocess:
-            hidden_states = self.mtp(
-                input_ids=input_ids,
-                position_ids=position_ids,
-                labels=labels,
-                loss_mask=loss_mask,
-                hidden_states=hidden_states,
-                attention_mask=attention_mask,
-                inference_params=inference_params,
-                rotary_pos_emb=rotary_pos_emb,
-                rotary_pos_cos=rotary_pos_cos,
-                rotary_pos_sin=rotary_pos_sin,
-                packed_seq_params=packed_seq_params,
-                sequence_len_offset=sequence_len_offset,
-                embedding=self.embedding,
-                output_layer=self.output_layer,
-                output_weight=output_weight,
-                runtime_gather_output=runtime_gather_output,
-                compute_language_model_loss=self.compute_language_model_loss,
-                **(extra_block_kwargs or {}),
-            )
-
-        if not self.post_process:
-            return hidden_states
-
-        if (not self.training and inference_context is not None
-                and inference_context.materialize_only_last_token_logits):
-            if inference_context.is_static_batching():
-                hidden_states = hidden_states[-1:, :, :]
-            else:
-                # Reshape [B, 1, H] to [1, B, H] → extract each sample’s true last‐token hidden
-                # state ([B, H]) → unsqueeze back to [1, B, H]
-                # (so that the output layer, which expects S×B×H, receives only the final token)
-                hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
-
-        # logits and loss
-        args = get_args()
-        if args.task_type == 'causal_lm':
-            logits, _ = self.output_layer(
-                hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-        else:
-            if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-                hidden_states = gather_from_sequence_parallel_region(hidden_states)
-            logits = self.output_layer(hidden_states)[0]
-        if has_config_logger_enabled(self.config):
-            payload = OrderedDict({
-                'input_ids': input_ids,
-                'position_ids': position_ids,
-                'attention_mask': attention_mask,
-                'decoder_input': decoder_input,
-                'logits': logits,
-            })
-            log_config_to_disk(self.config, payload, prefix='input_and_logits')
-        if labels is None or args.task_type == 'seq_cls':
-            # [s b h] => [b s h]
-            return logits.transpose(0, 1).contiguous()
-
-        loss = self.compute_language_model_loss(labels, logits)
-
-        return loss
 
     # Code borrowed from NVIDIA/Megatron-LM
     def forward(
@@ -362,7 +280,7 @@ class GPTModel(McoreGPTModel):
             hidden_states = self.decoder(
                 hidden_states=decoder_input,
                 attention_mask=attention_mask,
-                inference_params=inference_params,
+                inference_context=inference_context,
                 rotary_pos_emb=rotary_pos_emb,
                 rotary_pos_cos=rotary_pos_cos,
                 rotary_pos_sin=rotary_pos_sin,
@@ -372,11 +290,12 @@ class GPTModel(McoreGPTModel):
                 **kwargs,
             )
 
+        args = get_args()
         return self._postprocess(
             hidden_states=hidden_states,
             input_ids=input_ids,
             position_ids=position_ids,
-            labels=labels,
+            labels=labels if args.task_type == 'causal_lm' else None,
             rotary_pos_emb=rotary_pos_emb,
             rotary_pos_cos=rotary_pos_cos,
             rotary_pos_sin=rotary_pos_sin,

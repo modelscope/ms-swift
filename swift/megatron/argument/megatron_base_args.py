@@ -43,6 +43,8 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
         if tokenizer is not None and self.new_special_tokens and kwargs['padded_vocab_size'] < len(tokenizer):
             kwargs['padded_vocab_size'] = math.ceil(len(tokenizer) / 128) * 128
             self.initialize_embedding = True
+        if self.task_type == 'seq_cls':
+            self.initialize_embedding = True
         logger.info(f'megatron_config: {kwargs}')
         for k, v in kwargs.items():
             if getattr(self, k) is None:
