@@ -315,10 +315,6 @@ class MegatronArguments(ExtraMegatronArguments):
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
 
-    # mtp
-    mtp_num_layers: Optional[int] = None
-    mtp_loss_scaling_factor: float = 0.1
-
     # fp8
     fp8_format: Literal['e4m3', 'hybrid'] = None
     fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
