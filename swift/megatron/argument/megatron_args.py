@@ -284,10 +284,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_shared_expert_intermediate_size: Optional[int] = None
 
     moe_router_topk: Optional[int] = None
+    moe_router_num_groups: Optional[int] = None
+    moe_router_group_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = None
-    moe_router_bias_update_rate: float = 1e-3
+    moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
