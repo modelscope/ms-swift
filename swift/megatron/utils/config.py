@@ -32,6 +32,7 @@ config_mapping = {
     'q_lora_rank': ['q_lora_rank'],
     'kv_lora_rank': ['kv_lora_rank'],
     'moe_router_score_function': ['scoring_func'],
+    'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
