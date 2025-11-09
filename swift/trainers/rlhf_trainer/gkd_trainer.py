@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import os
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from typing import Dict, Optional, Union
 
 import torch
@@ -12,15 +14,21 @@ from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
-from swift.utils import get_logger, unwrap_model_for_generation
+from swift.llm.template.template_inputs import TemplateInputs
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+                         unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, prepare_deepspeed
+from .utils import identity_data_collator, patch_profiling_decorator, prepare_deepspeed
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
 
 logger = get_logger()
+if is_wandb_available():
+    import wandb
+if is_swanlab_available():
+    import swanlab
 
 
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
@@ -38,6 +46,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.generation_config = model.generation_config
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
+
+        # Initialize logging components
+        self._prepare_logging()
 
         # Initialize teacher model
         if self.is_deepspeed_enabled:
@@ -66,6 +77,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
 
     # Code borrowed from huggingface/trl
+    @patch_profiling_decorator
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
         # Generate output with respect to the prompt only
@@ -102,6 +114,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         inputs['position_ids'] = new_position_ids
         return generated_tokens, new_attention_mask, new_labels
 
+    @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
@@ -164,6 +177,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return batch_encoded
 
     # Code borrowed from huggingface/trl
+    @patch_profiling_decorator
     def training_step(self,
                       model: nn.Module,
                       inputs: DataType,
@@ -178,12 +192,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
+        original_inputs = inputs  # Keep original inputs for logging
+
         if self._get_random_num() <= self.lmbda:
             # On-policy: student model generates responses
             if args.use_vllm:
                 processed_inputs = self._preprocess_inputs(inputs)
-                inputs = self._fast_infer(processed_inputs)
-                inputs = self._prepare_batch_inputs(inputs)
+                generated_inputs = self._fast_infer(processed_inputs)
+                # Log on-policy generations from vLLM (aligned with GRPO)
+                self._log_on_policy_vllm_generations(original_inputs, generated_inputs)
+                inputs = self._prepare_batch_inputs(generated_inputs)
             else:
                 inputs = self._prepare_batch_inputs(inputs)
                 with unwrap_model_for_generation(
@@ -196,6 +214,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 inputs['input_ids'] = new_input_ids
                 inputs['attention_mask'] = new_attention_mask
                 inputs['labels'] = new_labels
+                # Log on-policy generations from student model (aligned with GRPO)
+                self._log_on_policy_generations(original_inputs, new_input_ids)
 
         elif self.seq_kd:
             inputs = self._prepare_batch_inputs(inputs)
@@ -272,3 +292,137 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.load_model(self.accelerator.unwrap_model(self.teacher_model))
         yield
         self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+
+    def _prepare_logging(self):
+        """Initialize logging components for on-policy rollout tracking."""
+        args = self.args
+        self.log_completions = getattr(args, 'log_completions', True)
+        self.wandb_log_unique_prompts = getattr(args, 'wandb_log_unique_prompts', False)
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+
+        # Initialize logs deque for storing rollout data (aligned with GRPO)
+        max_log_size = getattr(args, 'generation_batch_size', 1000)
+        self._logs = {
+            'prompt': deque(maxlen=max_log_size),
+            'completion': deque(maxlen=max_log_size),
+        }
+
+    def _apply_chat_template_to_messages_list(self, messages_list: DataType):
+        """Convert messages list to prompt text list using template (aligned with GRPO)."""
+        prompts_text = []
+        for messages in messages_list:
+            remove_response(messages)
+            template_inputs = TemplateInputs.from_dict({'messages': messages})
+            res = self.template.encode(template_inputs)
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
+        return prompts_text
+
+    @patch_profiling_decorator
+    def _log_on_policy_generations(self, inputs: DataType, generated_ids: torch.Tensor):
+        """Log on-policy generation results from student model (aligned with GRPO).
+
+        Args:
+            inputs: Original input data
+            generated_ids: Generated token IDs (full sequences including prompt)
+        """
+        if not self.log_completions:
+            return
+
+        # Extract messages (prompts without response)
+        messages = [deepcopy(inp['messages']) for inp in inputs]
+        for msg in messages:
+            if msg and msg[-1].get('role') == 'assistant':
+                msg.pop()  # Remove assistant response for prompt
+
+        # Convert to prompt text
+        prompts_text = self._apply_chat_template_to_messages_list(messages)
+
+        # Decode completions from generated tokens
+        completions = []
+        for i in range(len(inputs)):
+            if i < generated_ids.shape[0]:
+                completion_ids = generated_ids[i]
+                # Decode full sequence, the completion part will be after the prompt
+                completion_text = self.processing_class.decode(completion_ids, skip_special_tokens=True)
+                completions.append(completion_text)
+            else:
+                completions.append('')
+
+        # Store logs
+        self._logs['prompt'].extend(prompts_text)
+        self._logs['completion'].extend(completions)
+
+    @patch_profiling_decorator
+    def _log_on_policy_vllm_generations(self, original_inputs: DataType, generated_inputs: DataType):
+        """Log on-policy generation results from vLLM (aligned with GRPO).
+
+        Args:
+            original_inputs: Original input data
+            generated_inputs: Generated inputs with response_token_ids from vLLM
+        """
+        if not self.log_completions:
+            return
+
+        # Extract messages (prompts without response)
+        messages = [deepcopy(inp['messages']) for inp in original_inputs]
+        for msg in messages:
+            if msg and msg[-1].get('role') == 'assistant':
+                msg.pop()  # Remove assistant response for prompt
+
+        # Convert to prompt text
+        prompts_text = self._apply_chat_template_to_messages_list(messages)
+
+        # Decode completions from response_token_ids
+        completions = []
+        for i, gen_inp in enumerate(generated_inputs):
+            if 'response_token_ids' in gen_inp and gen_inp['response_token_ids']:
+                completion_text = self.processing_class.decode(gen_inp['response_token_ids'], skip_special_tokens=True)
+                completions.append(completion_text)
+            else:
+                completions.append('')
+
+        # Store logs
+        self._logs['prompt'].extend(prompts_text)
+        self._logs['completion'].extend(completions)
+
+    def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
+        """Override log method to include completion table logging (aligned with GRPO)."""
+        # Call parent log method
+        import transformers
+        from packaging import version
+        if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
+            super().log(logs, start_time)
+        else:
+            super().log(logs)
+
+        # Log completions table if we have data (only for on-policy generations)
+        if self.accelerator.is_main_process and self.log_completions and len(self._logs['prompt']) > 0:
+            seen_nums = len(self._logs['prompt'])
+            table = {
+                'step': [str(self.state.global_step)] * seen_nums,
+                'prompt': list(self._logs['prompt'])[:seen_nums],
+                'completion': list(self._logs['completion'])[:seen_nums],
+            }
+
+            # Write to jsonl
+            self.jsonl_writer.append(table)
+
+            # Log to wandb if enabled
+            report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
+            if report_to_wandb:
+                import pandas as pd
+                df = pd.DataFrame(table)
+                if self.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                wandb.log({'gkd_completions': wandb.Table(dataframe=df)})
+
+            # Log to swanlab if enabled
+            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
+            ) is not None
+            if report_to_swanlab:
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['step'])):
+                    row = [table[header][i] for header in headers]
+                    rows.append(row)
+                swanlab.log({'gkd_completions': swanlab.echarts.Table().add(headers, rows)})
