@@ -287,10 +287,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_inputs(inputs)
 
-        if self.args.use_liger_kernel:
-            base_model = self.template.get_base_model(self.model)
-            if 'skip_logits' in inspect.signature(base_model.forward).parameters:
-                inputs['skip_logits'] = True
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
