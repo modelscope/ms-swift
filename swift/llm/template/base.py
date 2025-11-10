@@ -334,7 +334,6 @@ class Template(ProcessorMixin):
 
         返回值：
         - None
-
         使用示例：
         >>> # 示例1：基础初始化
         >>> from transformers import AutoTokenizer
@@ -470,7 +469,7 @@ class Template(ProcessorMixin):
             self.max_length = self.model_info.max_model_len  # 使用模型的默认最大长度（从config或model_info获取）
         
         # ===== 打印配置信息日志 =====
-        # NOTE: repr(obj) 是 Python 的内置函数，用于获取对象的“官方字符串表示形式”，生成一个尽可能准确、可用于调试的字符串
+        # NOTE: repr(obj) 是 Python 的内置函数，用于获取对象的"官方字符串表示形式"，生成一个尽可能准确、可用于调试的字符串
         logger.info(f'default_system: {repr(self.template_meta.default_system)}')  # 记录默认系统提示
         logger.info(f'max_length: {self.max_length}')  # 记录最大序列长度
         logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')  # 记录响应前缀
@@ -488,7 +487,6 @@ class Template(ProcessorMixin):
         
         # ===== 初始化模板元数据 =====
         self.template_meta.init(tokenizer)  # 调用template_meta的init方法，完成特殊token ID的设置等初始化工作
-
     @staticmethod  # 静态方法：不依赖实例状态
     def _load_image(image, load_images: bool):
         """函数功能：
@@ -652,7 +650,6 @@ class Template(ProcessorMixin):
         if self.model_meta.is_multimodal:  # 若为多模态模型
             self._replace_image_tags(inputs)  # 替换<image>标签为模型特定的图像占位符
             self._replace_start_image_tags(inputs)  # 替换<start-image>标签（某些模型需要）
-
         # ===== 步骤3：加载和预处理图像数据 =====
         for img_field in ['images', 'rejected_images']:  # 遍历图像字段（包括RLHF的rejected_images）
             images = getattr(inputs, img_field, None)  # 获取图像列表
@@ -879,7 +876,6 @@ class Template(ProcessorMixin):
         # 将生成模式标志保存到 inputs 对象
         # 后续的模板处理逻辑可以根据此标志调整行为
         inputs.generate_mode = generate_mode
-    
     @staticmethod
     def _extend_tokens(
             input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
@@ -977,7 +973,6 @@ class Template(ProcessorMixin):
         """
         # 初始化已添加 token 的累计长度（用于调整后续索引位置）
         added_tokens_len = 0
-        
         # 遍历所有需要替换的索引位置
         for i, idx in enumerate(replace_idx_list):
             # 调用 get_new_tokens 函数获取用于替换的新 token 序列
@@ -1250,7 +1245,6 @@ class Template(ProcessorMixin):
         
         # 返回包含 chosen、rejected 编码和二元标签的字典
         return encoded
-
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         """函数功能：
         编码 GKD（Generalized Knowledge Distillation，广义知识蒸馏）训练数据。
@@ -1663,7 +1657,6 @@ class Template(ProcessorMixin):
             # 将标签列表添加到编码结果中
             # labels 格式：[positive_label, negative_label_0, negative_label_1, ...]
             _encoded['labels'] = labels
-            
         else:  # 推理模式
             # 推理模式只需要编码 query（anchor），不需要 positive 和 negative
             # ===== 编码 Anchor（查询） =====
@@ -1682,7 +1675,6 @@ class Template(ProcessorMixin):
         
         # 返回编码结果
         return _encoded
-
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         """函数功能：
         编码 Reranker（重排序）任务的训练数据，用于文档相关性排序任务。
@@ -2093,7 +2085,6 @@ class Template(ProcessorMixin):
         # 推理模式（inputs.label is None）：不包含 'labels' 字段
         # 训练模式：包含 'labels' 字段，格式取决于 problem_type
         return encoded
-
     @torch.inference_mode()
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],  # 输入数据：支持多种格式
@@ -2322,7 +2313,6 @@ class Template(ProcessorMixin):
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
-    
     @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
         """
@@ -2539,7 +2529,6 @@ class Template(ProcessorMixin):
         assert problem_type is not None  # 确保已成功推断出问题类型
         config.problem_type = problem_type  # 将推断结果保存到config，避免下次重复推断
         return problem_type
-
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         """
         函数功能：
@@ -2952,7 +2941,6 @@ class Template(ProcessorMixin):
         # *args: 展开位置参数（如input_ids, attention_mask）
         # **kwargs: 展开关键字参数（如max_new_tokens, temperature等）
         return model.generate(*args, **kwargs)
-
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         """
         函数功能：
@@ -2969,7 +2957,7 @@ class Template(ProcessorMixin):
             is_finished (bool): 生成是否已完成，默认True
                 - True: 生成已完成，移除完整的后缀token序列
                     例如：生成结束，移除完整的<|im_end|>
-                - False: 生成未完成（流式生成中），移除部分匹配的后缀token
+                - False: 生成未完成（流式生成中），移除部分匹配的后缀
                     例如：流式输出时，可能只生成了后缀的一部分，需要移除这部分
         
         返回值：
@@ -3008,8 +2996,8 @@ class Template(ProcessorMixin):
             >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
             >>> print(result)  # []（返回空列表）
             
-            >>> # 示例6：多token后缀（如"\n</s>"）
-            >>> # 假设后缀是[198, 2]（换行符+</s>）
+            >>> # 示例6：多token后缀（如"\n { "）
+            >>> # 假设后缀是[198, 2]（换行符+ڕ ）
             >>> template.template_meta.suffix = [[198, 2]]
             >>> generate_ids = [1, 2, 3, 198, 2]  # 完整后缀
             >>> result = template.skip_stop_tokens(generate_ids, is_finished=True)
@@ -3173,7 +3161,7 @@ class Template(ProcessorMixin):
         # 使用getattr安全获取generation_config的stop_words属性
         # - 若generation_config有stop_words属性且不为None，使用该值（优先级高）
         # - 否则使用template_meta.stop_words作为默认值
-        # 停止词列表示例：['<|im_end|>', '<|endoftext|>', '</s>']
+        # 停止词列表示例：['<|im_end|>', '<|endoftext|>', 'ڕ ']
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
         
         # ===== 步骤3：创建停止条件列表并添加到generate_kwargs =====
@@ -3267,7 +3255,6 @@ class Template(ProcessorMixin):
             res_context_type）中。这是模板系统构建完整对话上下文的核心方法，通过占位符机制实现
             灵活的模板定义和动态内容填充。该方法采用原地修改（inplace）方式，直接修改传入的结果
             列表，不返回新列表。
-        
         参数：
             context_list (List[Context]): 输入的上下文列表，包含模板字符串或token列表
                 - Context类型为Union[str, List[int]]，即字符串或token ID列表
@@ -3402,7 +3389,6 @@ class Template(ProcessorMixin):
             # 标记类型为OTHER（非RESPONSE的所有内容）
             # 注意：{{RESPONSE}}的类型在步骤2.1.1中已设置为RESPONSE，不会执行到这里
             res_context_type.append(ContextType.OTHER)
-
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """
@@ -3609,7 +3595,6 @@ class Template(ProcessorMixin):
         # ===== 初始化结果列表 =====
         res: List[Context] = []  # 拆分后的上下文列表
         loss_scale_res: List[float] = []  # 拆分后的loss_scale列表
-
         # ===== 遍历上下文列表，对每个元素进行拆分处理 =====
         for context, loss_scale in zip(context_list, loss_scale_list):
             # 初始化临时列表，存储当前context的拆分结果
@@ -3883,7 +3868,6 @@ class Template(ProcessorMixin):
             res_loss_scale += [loss_scale] * len(c_list)
         
         return res, res_loss_scale
-
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
         """
@@ -4136,7 +4120,7 @@ class Template(ProcessorMixin):
         """
         函数功能：
             动态添加EOS（End of Sentence）token到labels中。该方法用于在助手回复结束位置（从有效
-            token转换到-100的边界）识别并激活suffix token（如<|im_end|>、</s>等）的loss计算。
+            token转换到-100的边界）识别并激活suffix token（如<|im_end|>、ڕ 等）的loss计算。
             通过检测labels中从有效值（>=0）到-100的转换边界，判断该位置是否包含suffix token，
             若是则将对应的labels从-100改为实际token ID，使模型学习正确生成结束标记。
         
@@ -4153,7 +4137,7 @@ class Template(ProcessorMixin):
                 List[int]：每个位置的loss权重
             suffix_tokens_id (List[int]): 后缀token序列（通常是EOS token）
                 从template_meta.suffix编码得到
-                例如：[151643]（<|im_end|>）或 [2]（</s>）
+                例如：[151643]（<|im_end|>）或 [2]（ڕ ）
         
         返回值：
             None: 该方法直接修改传入的labels和loss_scale列表（原地修改），不返回任何值。
@@ -4181,7 +4165,7 @@ class Template(ProcessorMixin):
             >>> print(loss_scale)
             # [1.0, 1.0, 1.0, 1.0, 0.0, 1.0]  # EOS位置的loss_scale从0变为1
             
-            >>> # 示例3：多token suffix（如"\n</s>"）
+            >>> # 示例3：多token suffix（如"\nڕ "）
             >>> input_ids = [1, 2, 3, 10, 11, 4, 5]  # 10,11是两个suffix token
             >>> labels = [1, 2, 3, -100, -100, 6, 7]
             >>> loss_scale = None
@@ -4303,10 +4287,9 @@ class Template(ProcessorMixin):
         # 如果提供了tools（工具定义），添加到kwargs中（用于function calling场景）
         if inputs.tools:
             kwargs['tools'] = inputs.tools
-        
         # 调用tokenizer的apply_chat_template方法，将消息列表转换为格式化文本
         # tokenize=False: 返回文本字符串而非token ID（后续会统一分词）
-        # add_generation_prompt: 是否添加生成提示符（如'<|assistant|>'）
+        # add_generation_prompt: 是否添加生成提示符（如'<rewritten_file>'）
         # **kwargs: 传递tools等额外参数
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
@@ -4381,7 +4364,6 @@ class Template(ProcessorMixin):
             # 参数：tools（工具列表）、system or ''（原系统提示或空串）、messages[0]（首条消息作为上下文）
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
-
     def _swift_prepare_inputs(self, inputs):
         """
         函数功能：
@@ -4616,7 +4598,6 @@ class Template(ProcessorMixin):
                 - labels (Optional[List[int]]): 截断后的标签序列（若原值非None）
                 - loss_mask (Optional[List[float]]): 截断后的loss权重序列（若原值非None）
                 注：所有占位符token都会保留，即使总长度超过max_length
-        
         使用示例：
             >>> # 示例1：右截断（保留左侧），无占位符token
             >>> template = Template(...)
@@ -4796,7 +4777,6 @@ class Template(ProcessorMixin):
         encoded['labels'] = labels  # 更新labels
         encoded['loss_scale'] = loss_scale  # 更新loss_scale
         return encoded  # 返回编码结果
-
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         """
         函数功能：
@@ -4950,161 +4930,86 @@ class Template(ProcessorMixin):
                 if k.endswith('labels') or k.endswith('loss_scale'):  # 若键名以labels或loss_scale结尾
                     encoded[k] = None  # 设置为None（推理时不需要这些字段）
         return encoded
-
-    def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
+    def pre_forward_hook(self, model: nn.Module, args, kwargs):
         """
         函数功能：
-            处理Megatron-LM的上下文并行（Context Parallelism，简称CP）所需的序列padding。在使用
-            Megatron-LM进行序列并行训练时，序列长度必须是 `cp_size * 2` 的整数倍，以便将序列均匀
-            分割到多个设备上。该方法通过在序列末尾添加padding token，确保序列长度满足这一要求，
-            同时更新对应的labels和loss_scale，使padding部分不参与loss计算。
+            模型前向传播的预处理钩子函数。在模型forward方法执行前自动调用，负责对输入kwargs进行预处理和转换。
+            主要用于多模态模型的特殊处理（如将input_ids转换为inputs_embeds）、设备迁移、参数兼容性检查等。
+            通过_post_encode方法支持子类自定义输入转换逻辑（如图像特征编码、多模态融合等）。
         
         参数：
-            encoded (Dict[str, Any]): 编码后的数据字典，包含以下字段（会被原地修改）：
-                - input_ids (List[int]): 输入token序列
-                - labels (List[int]): 标签序列
-                - loss_scale (Optional[List[float]]): loss权重序列（如有）
+            model (nn.Module): PyTorch模型实例，可能是PeftModel或原始模型
+            args (tuple): 位置参数（通常为空，未使用）
+            kwargs (dict): 关键字参数字典，包含模型forward所需的输入数据
+                - input_ids (torch.Tensor): 输入token序列，shape: (batch_size, seq_len)
+                - attention_mask (torch.Tensor): 注意力掩码，shape: (batch_size, seq_len)
+                - labels (torch.Tensor): 标签序列（训练时），shape: (batch_size, seq_len)
+                - pixel_values (torch.Tensor): 图像像素值（多模态）
+                - 其他模型特定的输入参数
         
         返回值：
-            None: 该方法直接修改传入的encoded字典（原地修改），不返回任何值。
-                  修改后，input_ids、labels和loss_scale（如有）的长度都会变为 `cp_size * 2` 的整数倍，
-                  padding部分使用pad_token_id填充input_ids，-100填充labels，0填充loss_scale。
+            Tuple[tuple, dict]: (args, kwargs)元组
+                - args: 位置参数（保持不变，原样返回）
+                - kwargs: 处理后的关键字参数字典，可能包含：
+                    - inputs_embeds (torch.Tensor): 嵌入向量（多模态模型），shape: (batch_size, seq_len, hidden_size)
+                    - input_ids (torch.Tensor): token序列（若未使用inputs_embeds）
+                    - attention_mask, labels等其他参数
+                    - 已移除不兼容的参数（如模型不支持的position_ids）
         
         使用示例：
-            >>> # 示例1：基础场景，序列长度不满足要求
+            >>> # 示例1：多模态模型的自动处理（通过register_forward_pre_hook注册）
+            >>> template = QwenVLTemplate(...)
+            >>> model = AutoModel.from_pretrained('Qwen-VL')
+            >>> template.register_hook(model)  # 内部调用model.register_forward_pre_hook(template.pre_forward_hook)
+            >>> # 当调用model(**kwargs)时，pre_forward_hook自动执行
+            >>> outputs = model(input_ids=input_ids, pixel_values=pixel_values)
+            >>> # pre_forward_hook将pixel_values编码并融合到inputs_embeds中
+            
+            >>> # 示例2：手动调用进行输入预处理
             >>> template = Template(...)
-            >>> template.use_megatron = True
-            >>> template.sequence_parallel_size = 4  # cp_size = 4，要求长度为8的倍数
-            >>> encoded = {
-            ...     'input_ids': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # 长度10
-            ...     'labels': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            ...     'loss_scale': None
-            ... }
-            >>> template._handle_megatron_cp(encoded)
-            >>> print(len(encoded['input_ids']))  # 16（向上取整到8的倍数：16）
-            >>> print(encoded['input_ids'][-6:])  # [10, pad_id, pad_id, pad_id, pad_id, pad_id]
-            >>> print(encoded['labels'][-6:])  # [10, -100, -100, -100, -100, -100]
-            
-            >>> # 示例2：序列长度已经满足要求（不需要padding）
-            >>> encoded = {
-            ...     'input_ids': [1, 2, 3, 4, 5, 6, 7, 8],  # 长度8，已经是8的倍数
-            ...     'labels': [1, 2, 3, 4, 5, 6, 7, 8],
-            ... }
-            >>> template._handle_megatron_cp(encoded)
-            >>> print(len(encoded['input_ids']))  # 8（不变，无需padding）
-            
-            >>> # 示例3：带loss_scale的场景
-            >>> encoded = {
-            ...     'input_ids': [10, 20, 30, 40, 50],  # 长度5
-            ...     'labels': [10, 20, 30, 40, 50],
-            ...     'loss_scale': [1.0, 1.0, 0.8, 0.8, 1.0]
-            ... }
-            >>> template.sequence_parallel_size = 2  # cp_size = 2，要求长度为4的倍数
-            >>> template._handle_megatron_cp(encoded)
-            >>> print(len(encoded['input_ids']))  # 8（向上取整到4的倍数：8）
-            >>> print(encoded['loss_scale'])
-            # [1.0, 1.0, 0.8, 0.8, 1.0, 0, 0, 0]  # padding部分添加了3个0
-            
-            >>> # 示例4：未启用Megatron或cp_size=1（直接返回，不处理）
-            >>> template.use_megatron = False  # 未启用Megatron
-            >>> encoded = {'input_ids': [1, 2, 3], 'labels': [1, 2, 3]}
-            >>> template._handle_megatron_cp(encoded)
-            >>> print(len(encoded['input_ids']))  # 3（不变，直接返回）
+            >>> kwargs = {'input_ids': input_ids, 'attention_mask': attention_mask}
+            >>> args, processed_kwargs = template.pre_forward_hook(model, (), kwargs)
+            >>> outputs = model(**processed_kwargs)
         """
-        # ===== 步骤1：获取上下文并行大小 =====
-        cp_size = self.sequence_parallel_size  # 获取序列并行的分片数量
+        from swift.llm import to_device  # 导入设备迁移工具函数
         
-        # ===== 步骤2：检查是否需要处理 =====
-        if not self.use_megatron or cp_size == 1:  # 若未启用Megatron或不使用序列并行
-            return  # 直接返回，无需处理（cp_size=1时序列长度无特殊要求）
-        
-        # ===== 步骤3：计算需要padding的长度 =====
-        input_ids = encoded['input_ids']  # 获取输入token序列
-        # 计算padding长度，使序列长度成为 cp_size * 2 的整数倍
-        # 公式：向上取整到 (cp_size * 2) 的倍数，然后减去当前长度
-        # 例如：len=10, cp_size=4 -> (cp_size*2)=8 -> ceil(10/8)*8=16 -> padding_len=16-10=6
-        padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
-        
-        # ===== 步骤4：为input_ids添加padding =====
-        # 在input_ids末尾添加 padding_len 个 pad_token_id
-        # pad_token_id通常是特殊的padding token（如0或其他tokenizer指定的值）
-        input_ids += [self.tokenizer.pad_token_id] * padding_len
-        
-        # ===== 步骤5：为labels添加padding =====
-        # 在labels末尾添加 padding_len 个 -100
-        # -100是PyTorch中ignore_index的默认值，表示这些位置不参与loss计算
-        encoded['labels'] += [-100] * padding_len
-        
-        # ===== 步骤6：为loss_scale添加padding（如果存在） =====
-        if encoded.get('loss_scale') is not None:  # 若loss_scale字段存在且不为None
-            # 在loss_scale末尾添加 padding_len 个 0
-            # 0表示这些padding位置的loss权重为0（不参与loss计算）
-            encoded['loss_scale'] += [0] * padding_len
-
-    def debug_logger(self, inputs):
-        if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
-            return
-        if 'input_ids' in inputs:
-            k = 'input_ids'
-            val = inputs['input_ids']
-        elif 'generate_ids' in inputs:
-            k = 'generate_ids'
-            val = inputs['generate_ids']
-        for v in val:
-            self.print_inputs({k: v.tolist()})
-
-    @staticmethod
-    def _split_list(inputs: List[int], x: int) -> List[List[int]]:
-        idxs = findall(inputs, x)
-        idxs.append(len(inputs))
-        res = []
-        lo = 0
-        for idx in idxs:
-            res.append(inputs[lo:idx])
-            lo = idx + 1
-        return res
-
-    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
-        context_list = []
-        if self.mode in {'vllm', 'lmdeploy'}:
-            video = inputs.videos.pop(inputs.video_idx)
-            inputs.video_idx -= 1
-        else:
-            video = inputs.videos[inputs.video_idx]
-        images = inputs.images
-        new_images = load_video_func(video)
-        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
-        for i in range(len(new_images)):
-            context_list += replace_tag(i)
-        inputs.image_idx += len(new_images)
-        return context_list
-
-    def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
-                         num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if self.skip_prompt:
-            generate_ids = generate_ids[..., num_prompt_tokens:]
-        return generate_ids
-
-    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
-        return response
-
-    def pre_forward_hook(self, model: nn.Module, args, kwargs):
-        from swift.llm import to_device
+        # 将kwargs中所有tensor迁移到模型所在设备，保持数据类型不变
+        # 例如：kwargs={'input_ids': tensor(cpu), 'labels': tensor(cpu)} -> old_kwargs={'input_ids': tensor(cuda:0), 'labels': tensor(cuda:0)}
         old_kwargs = to_device(kwargs, model.device)
+        
+        # 调用_post_encode进行模型特定的输入转换，然后再次迁移到模型设备
+        # _post_encode由子类重写以实现特殊逻辑：如Qwen-VL将pixel_values编码为inputs_embeds
+        # 例如：old_kwargs有pixel_values -> _post_encode提取图像特征并融合 -> kwargs={'inputs_embeds': ..., 'attention_mask': ...}
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
+        
+        # 恢复_post_encode中未处理但需要保留的关键参数
+        # 这些参数要么是模型forward必需的，要么是用于特定功能（如Megatron的序列并行）
         for k, v in old_kwargs.items():
+            # 检查参数是否在白名单中，且_post_encode未返回该参数
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
                     'cumulative_seqlens_q', 'cumulative_seqlens_k', 'max_length_q', 'max_length_k'
             } and k not in kwargs:
+                # 将缺失的参数从old_kwargs恢复到kwargs
+                # 例如：_post_encode返回{'inputs_embeds': ...}，但缺少attention_mask，则从old_kwargs恢复
                 kwargs[k] = v
+        
+        # 若使用inputs_embeds（多模态融合后的嵌入），则移除input_ids避免冲突
+        # transformers模型forward中，inputs_embeds优先级高于input_ids，两者不能同时存在
         if 'inputs_embeds' in kwargs:
-            kwargs.pop('input_ids', None)
-
-        base_model = self.get_base_model(model)
-        parameters = inspect.signature(base_model.forward).parameters
+            kwargs.pop('input_ids', None)  # 安全移除input_ids（若不存在也不报错）
+        
+        # 检查模型forward方法是否支持position_ids参数
+        base_model = self.get_base_model(model)  # 获取底层模型（剥离PeftModel包装）
+        parameters = inspect.signature(base_model.forward).parameters  # 获取forward方法的参数签名
+        
+        # 若模型不支持position_ids参数，则从kwargs中移除，避免传入时报错
+        # 部分模型（如某些视觉模型）的forward不接受position_ids
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
+        
+        # 返回处理后的参数
+        # args保持不变（通常为空元组），kwargs已完成设备迁移、多模态处理、参数兼容性调整
         return args, kwargs
 
     @property
@@ -5115,28 +5020,82 @@ class Template(ProcessorMixin):
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
-        """This function is important for multi-modal training, as it registers the post_encode method
-            as a forward hook, converting input_ids into inputs_embeds.
         """
+        函数功能：
+            为模型注册前向传播预处理钩子。
+            该方法将`pre_forward_hook`注册到模型的forward方法执行前，对多模态训练至关重要，
+            因为它会在模型前向传播前自动将input_ids转换为inputs_embeds（融合图像、视频、音频等多模态特征）。
+            支持DeepSpeed Zero-3分布式训练的特殊处理，确保钩子在Zero-3初始化后仍保持正确的执行顺序。
+            注册是幂等的，重复调用不会重复注册。
+        
+        参数：
+            models (List[nn.Module]): 需要注册钩子的模型列表
+                - 通常包含主模型及其子模块
+                - 对于多模态模型（如Qwen-VL、InternVL），钩子会处理pixel_values等多模态输入
+                - 示例：[model] 或 [model.base_model, model.lm_head]
+        
+        返回值：
+            None: 该方法无返回值，通过副作用（注册钩子、修改_handles列表）完成工作
+        
+        使用示例：
+            >>> # 示例1：多模态模型训练初始化
+            >>> from swift.llm import Template
+            >>> template = QwenVLTemplate(...)
+            >>> model = AutoModelForCausalLM.from_pretrained('Qwen-VL')
+            >>> template.register_post_encode_hook([model])  # 注册钩子
+            >>> # 后续训练时，model.forward会自动调用pre_forward_hook处理多模态输入
+            >>> outputs = model(input_ids=input_ids, pixel_values=pixel_values, labels=labels)
+            
+            >>> # 示例2：DeepSpeed Zero-3分布式训练
+            >>> template.register_post_encode_hook([model])
+            >>> # 若启用Zero-3，会自动monkey patch deepspeed.initialize
+            >>> # 确保钩子在Zero-3初始化后保持正确执行顺序
+        """
+        # 幂等性检查：若已注册钩子（_handles非空），直接返回，避免重复注册
+        # _handles是(model, handle)元组的列表，存储已注册的钩子信息
         if self._handles:
             return
 
+        # 遍历所有需要注册钩子的模型
         for model in models:
-            # please use torch>=2.0
+            # 注册前向传播预处理钩子（pre hook）到模型
+            # self.pre_forward_hook: 钩子函数，在model.forward执行前被调用
+            # with_kwargs=True: 允许钩子接收和修改关键字参数（kwargs），要求PyTorch>=2.0
+            # 返回的handle用于后续移除钩子
             handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
+            
+            # 将(model, handle)元组添加到_handles列表
+            # 保存这些信息以便后续通过remove_post_encode_hook移除钩子
             self._handles.append((model, handle))
-
+        
+        # DeepSpeed Zero-3特殊处理
+        # Zero-3会在初始化时重新组织模型结构，可能导致钩子执行顺序错乱
         if is_deepspeed_zero3_enabled():
-            import deepspeed
+            import deepspeed  # 导入deepspeed库
+            
+            # 保存原始的deepspeed.initialize函数引用，用于后续恢复（在remove_post_encode_hook中）
             self._deepspeed_initialize = deepspeed.initialize
-
+            
+            # 使用装饰器保留原函数的元信息（函数名、文档字符串等）
             @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
+                # 调用原始的deepspeed.initialize完成Zero-3初始化
+                # res包含初始化后的模型、优化器等对象
                 res = self._deepspeed_initialize(*args, **kwargs)
+                
+                # Zero-3初始化后，遍历所有已注册的钩子，调整钩子执行顺序
                 for model, handle in self._handles:
+                    # 将钩子移动到_forward_pre_hooks有序字典的末尾
+                    # 确保pre_forward_hook在其他钩子之后执行（或根据需要调整顺序）
+                    # handle.id: 钩子的唯一标识符
                     model._forward_pre_hooks.move_to_end(handle.id)
+                
+                # 返回初始化结果（模型、优化器等）
                 return res
-
+            
+            # Monkey patch: 替换deepspeed.initialize为自定义的_initialize
+            # 这样在外部调用deepspeed.initialize时，会自动执行钩子顺序调整逻辑
+            # 确保在DeepSpeed Zero-3环境下，pre_forward_hook能正确执行
             deepspeed.initialize = _initialize
 
     def remove_post_encode_hook(self):
@@ -5152,13 +5111,15 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
         return models
 
-    def data_collator(self, batch: List[Dict[str, Any]],  # 批量编码数据：每个元素是encode()返回的字典
-                       *, padding_to: Optional[int] = None) -> Dict[str, Any]:  # 可选的padding目标长度
-        """函数功能：
+    def data_collator(self, batch: List[Dict[str, Any]],
+                       *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        collator: 在机器学习 / 深度学习中，collator通常指数据整理器/批处理组装器，用于在 DataLoader 中把单个样本拼接成一个批次。
+        功能：
         将批量的编码数据整理（collate）为模型可直接使用的批次张量。这是训练时的核心方法，
         负责对变长序列进行padding对齐、生成attention mask、拼接多模态数据等操作。
 
-        主要职责：
+        具体职责：
         1. 根据task_type和mode选择相应的data collator子方法
         2. 对batch中的input_ids、labels等序列进行padding对齐
         3. 生成attention_mask（支持Megatron的4D causal mask）
@@ -5217,7 +5178,7 @@ class Template(ProcessorMixin):
         """
         from swift.llm import RowPreprocessor  # 导入行预处理器：用于将行格式数据转换为批次格式
         
-        # ===== 根据task_type和mode选择相应的data collator子方法 =====
+        # 1> 根据task_type和mode选择相应的data collator子方法
         if self.task_type == 'causal_lm':  # 若任务类型为因果语言模型
             if self.mode in {'pt', 'train'}:  # 标准推理或训练模式
                 res = self._data_collator(batch, padding_to=padding_to)  # 调用标准data collator：padding、生成attention_mask等
@@ -5239,8 +5200,8 @@ class Template(ProcessorMixin):
         elif self.task_type in {'reranker', 'generative_reranker'}:  # 若任务类型为文档排序
             res = self._reranker_data_collator(batch, padding_to=padding_to)  # 调用reranker data collator：处理positive/negative文档对
         
-        # ===== 处理额外参数（如果不移除未使用列） =====
-        if not self.remove_unused_columns:  # 若配置为保留额外参数
+        # 2> 如果不移除未使用列，则配置为保留额外参数，处理额外参数
+        if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]  # 收集所有batch元素中的_extra_kwargs
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)  # 将行格式的extra_kwargs转换为批次格式（如将列表合并为单个列表）
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})  # 将extra_kwargs合并到结果中（不覆盖已有键）
@@ -5267,12 +5228,38 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
-        # List[Tensor] ->  List[Tensor]
-        res = []
-        for b in batch:
+        """
+        功能：
+            从批次样本 `batch` 中收集名为 `attr_name` 的列表型字段，按顺序扁平化拼接为一个单一列表；
+            同时会从各样本字典中移除该字段（使用 pop），以避免后续重复处理。
+            原注释含义：List[Tensor] -> List[Tensor]（聚合外层结构，不改变内部元素的形状/类型）。
+
+        参数：
+            batch (List[Dict[str, Any]]): 编码后的样本列表，每个样本为一个字典；
+                其中 `attr_name` 对应的值应为 List[Any]，常见为 List[Tensor] 或 List[int] 等。
+            attr_name (str): 需要收集的字段名（如 'input_ids'、'labels'、'position_ids' 等）。
+
+        返回：
+            Optional[List[Any]]: 扁平化后的聚合列表；若所有样本均无该字段则返回空列表 []。
+                - 若元素为 Tensor，本函数不更改其 shape（常见形状：(seq_len,) 或 (seq_len, hidden_size)）。
+
+        示例：
+            >>> batch = [
+            ...     {'input_ids': [torch.tensor([1, 2])]},
+            ...     {'input_ids': [torch.tensor([3])]},
+            ... ]
+            >>> Template.gather_list(batch, 'input_ids')
+            [tensor([1, 2]), tensor([3])]
+            # 注意：调用后对应键已从各样本中移除，避免后续被再次聚合。
+        """
+        res = []  # 初始化结果列表，用于累积各样本中该字段的所有元素
+        for b in batch:  # 逐样本遍历
+            # 仅在样本中存在该字段且不为 None 时处理
             if b.get(attr_name) is not None:
+                # 取出并删除该字段（副作用：从样本字典中移除键），再将其列表元素按顺序扩展到 res
+                # 若元素为 Tensor，不改变其数值与形状，仅改变外层聚合结构
                 res += b.pop(attr_name)
-        return res
+        return res  # 返回聚合后的扁平列表
 
     @staticmethod
     def concat_tensor(batch: List[Dict[str, Any]], attr_name: str, dim: int) -> Optional[torch.Tensor]:
@@ -5281,344 +5268,251 @@ class Template(ProcessorMixin):
             if b.get(attr_name) is not None:
                 res.append(b.pop(attr_name))
         return torch.concat(res, dim=dim) if res else None
-
-    def _rlhf_data_collator(self,
-                            batch: List[Dict[str, Any]],
-                            *,
-                            chosen_prefix: str = 'chosen_',
-                            rejected_prefix: str = 'rejected_',
-                            padding_to: Optional[int] = None) -> Dict[str, Any]:
-        new_batch = []
-        for prefix in [chosen_prefix, rejected_prefix]:
-            new_batch += self._fetch_inputs_startswith(batch, prefix)
-        res = self._data_collator(new_batch, padding_to=padding_to)
-
-        # reward modeling
-        margin = [b['margin'] for b in batch if b.get('margin') is not None]
-        if margin:
-            res['margin'] = torch.tensor(margin, dtype=torch.float)
-
-        return res
-
-    def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
-        kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
-
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
-        res = {
-            **{f'completion_{k}': v
-               for k, v in res.items()},
-            **{f'KL_completion_{k}': v
-               for k, v in kl_res.items()},
-        }
-        label = [b['label'] for b in batch if b.get('label') is not None]
-        if label:
-            res['label'] = label
-        return res
-
-    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = self._data_collator(batch, padding_to=padding_to)
-        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
-        if prompts_batch:
-            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-            res['prompts'] = prompts_res.pop('input_ids')
-            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
-        return res
-
-    def _embedding_data_collator(self,
-                                 batch: List[Dict[str, Any]],
-                                 *,
-                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = []
-        new_batch = []
-        for b in batch:
-            if 'input_ids' in b:
-                new_batch += [b]
-            else:
-                keys = [key for key in b.keys() if 'negative' in key]
-                max_neg = None
-                for key in keys:
-                    value_list = b[key]
-                    suffix = key[len('negative_'):]
-                    max_neg = len(value_list)
-                    for i, value in enumerate(value_list):
-                        b[f'negative{i}_{suffix}'] = value
-                    b.pop(key)
-
-                indexes = ['anchor_', 'positive_']
-                if max_neg is not None:
-                    for i in range(0, max_neg):
-                        indexes.append(f'negative{i}_')
-                for prefix in indexes:
-                    new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', []))
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.float32)
-        return res
-
-    def _reranker_data_collator(self,
-                                batch: List[Dict[str, Any]],
-                                *,
-                                padding_to: Optional[int] = None) -> Dict[str, Any]:
-        import os
-        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels = []
-        new_batch = []
-        for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = min(max_negative_samples, len(value_list))
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
-
-            indexes = ['positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
-        res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
-        return res
-
-    def _seq_cls_data_collator(self,
-                               batch: List[Dict[str, Any]],
-                               *,
-                               padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
-        res = self._data_collator(batch, padding_to=padding_to)
-        if labels:
-            problem_type = self._get_problem_type(self.config)
-            if problem_type == 'regression':
-                labels = torch.tensor(labels, dtype=torch.float32)
-            elif problem_type == 'multi_label_classification':
-                one_hot_labels = torch.zeros((len(labels), self.config.num_labels), dtype=torch.float32)
-                for i, label in enumerate(labels):
-                    one_hot_labels[i, label] = 1
-                labels = one_hot_labels
-            else:
-                labels = torch.tensor(labels, dtype=torch.long)
-            res['labels'] = labels
-        return res
-
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
-        Args:
-            batch(`List[Dict[str, Any]]`): The input data in batch
-            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
-                will be padded to the `longest`
+        功能：
+            批量数据整理器的核心实现。这是训练和推理中DataLoader的关键组件。
+            将一个batch中的多个样本（每个样本由encode方法生成）整理为模型forward所需的统一格式，主要工作包括：
+                1> 序列padding（对齐到相同长度）；
+                2> 数据类型转换（list→tensor）；
+                3> attention_mask和position_ids生成；
+                4> 支持特殊训练模式（packing、padding_free、Megatron）；
+                5> 多模态数据整理；
+                6> 序列并行数据处理。
+        
+        参数：
+            batch (List[Dict[str, Any]]): 批量编码数据，每个元素是encode()返回的字典
+                - 每个dict包含：input_ids/inputs_embeds, labels, loss_scale, position_ids等字段
+                - 示例：[{'input_ids': [1,2,3], 'labels': [-100,2,3]}, {'input_ids': [4,5], 'labels': [-100,5]}]
+            
+            padding_to (Optional[int]): 固定padding长度，若为None则padding到batch内最长序列
+                - 用于确定性训练（固定batch大小）或Megatron的特殊要求
+                - 示例：padding_to=512表示所有序列padding到512长度
+        
+        返回：
+            Dict[str, Any]: 整理后的批量数据字典，可直接传入model.forward
+                - input_ids (torch.Tensor): shape (batch_size, max_seq_len)，padding后的token序列
+                - attention_mask (torch.Tensor): shape (batch_size, max_seq_len) 或 (batch_size, 1, max_seq_len, max_seq_len)
+                - labels (torch.Tensor): shape (batch_size, max_seq_len)，padding位置填充-100
+                - loss_scale (torch.Tensor): shape (batch_size, max_seq_len)，padding位置填充0
+                - position_ids (torch.Tensor): shape (batch_size, max_seq_len)，位置索引
+                - pixel_values, image_sizes等多模态字段（如有）
+        
+        示例：
+            >>> # 示例1：标准训练场景
+            >>> template = Template(...)
+            >>> batch = [template.encode(inputs1), template.encode(inputs2)]
+            >>> # batch = [{'input_ids': [1,2,3], 'labels': [-100,2,3]}, {'input_ids': [4,5,6,7], 'labels': [-100,5,6,7]}]
+            >>> collated = template._data_collator(batch)
+            >>> # collated = {'input_ids': tensor([[1,2,3,pad], [4,5,6,7]]), 'labels': tensor([[-100,2,3,-100], [-100,5,6,7]]), ...}
+            
+            >>> # 示例2：固定长度padding
+            >>> collated = template._data_collator(batch, padding_to=512)
+            >>> # 所有序列padding到512长度
         """
-        assert self.tokenizer.pad_token_id is not None
-        padding_side = self.padding_side if self.is_training else 'left'
-        padding_right = padding_side == 'right'
-        if self.padding_free:
-            batch[:] = [self.packing_row(batch)]
-        elif self.use_megatron:
+        # 1> 前置检查和配置初始化
+        assert self.tokenizer.pad_token_id is not None  # 确保tokenizer已配置pad_token_id
+        padding_side = self.padding_side if self.is_training else 'left'  # 训练用配置的padding_side，推理用left
+        padding_right = padding_side == 'right'  # 标志是否右padding（True=右，False=左）
+        
+        # 2> 特殊训练模式的预处理
+        if self.padding_free:  # padding_free模式：将batch内所有样本packing为单个长序列
+            batch[:] = [self.packing_row(batch)]  # 原地替换batch为单个packing后的样本
+        elif self.use_megatron:  # Megatron模式：手动生成position_ids
             for encoded in batch:
-                encoded['position_ids'] = list(range(len(encoded['labels'])))
-        if self._packing:
+                encoded['position_ids'] = list(range(len(encoded['labels'])))  # position_ids=[0,1,2,...,seq_len-1]
+        
+        if self._packing:  # packing模式下必须有position_ids（用于区分不同样本边界）
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
+        
+        # 3> 收集批量数据到结果字典
         res = {}
-        if self._packing:
-            # only support llm
+        if self._packing:  # packing模式：所有样本已合并为单序列
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
-                v = self.gather_list(batch, k)
+                v = self.gather_list(batch, k)  # 收集该字段的所有值并flatten（packing模式下batch只有1个元素）
                 if v:
                     if k == 'channel':
-                        res[k] = v
+                        res[k] = v  # channel保持列表格式
                     else:
-                        res[k] = [v]
-        else:
+                        res[k] = [v]  # 其他字段包装为单元素列表（兼容后续统一处理）
+        else:  # 非packing模式：收集各样本的字段到列表
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
             channel = [b['channel'] for b in batch if b.get('channel') is not None]
-
-            if inputs_embeds:
+            
+            if inputs_embeds:  # 多模态场景使用inputs_embeds（融合后的嵌入）
                 res['inputs_embeds'] = inputs_embeds
-            if input_ids:
+            if input_ids:  # 标准场景使用input_ids
                 res['input_ids'] = input_ids
-            if channel:
+            if channel:  # 数据来源渠道标识
                 res['channel'] = channel
-
+            
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
                     res[key] = val
-
-        keys = [
-            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
-        ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
-        # Convert to tensor and remove unnecessary dimensions.
-        seq_lens = None
+        
+        # 4> 数据类型转换：list→tensor，并移除冗余维度
+        keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids']
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]  # 各字段对应的padding值
+        
+        seq_lens = None  # 记录batch内各序列的长度
         for key in keys:
             if key not in res:
                 continue
             for i, val in enumerate(res[key]):
-                if isinstance(val, (list, tuple)):
+                if isinstance(val, (list, tuple)):  # list/tuple转为tensor
                     val = torch.tensor(val)
                 elif key == 'inputs_embeds' and val.ndim == 3 or key != 'inputs_embeds' and val.ndim == 2:
+                    # 移除冗余batch维度：inputs_embeds (1,seq_len,hidden)->（seq_len,hidden），其他(1,seq_len)->(seq_len)
                     val = val[0]
                 res[key][i] = val
-            if not seq_lens:
-                seq_lens = [seq.shape[0] for seq in res[key]]
+            if not seq_lens:  # 仅需计算一次（所有字段的seq_len相同）
+                seq_lens = [seq.shape[0] for seq in res[key]]  # 获取每个样本的序列长度
+        
+        # 5> 生成attention_mask和position_ids（非packing模式）
         if not self._packing and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            if not self.use_megatron:
+            if not self.use_megatron:  # 标准模式：生成全1的attention_mask
+                # torch.ones
+                # 功能：用于创建一个所有元素都为1的张量
+                # 原型：torch.ones(size, dtype=None, device=None)
                 res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
-            if self.is_training and self.padding_side == 'left':
+            if self.is_training and self.padding_side == 'left':  # 训练+左padding：需手动生成position_ids
+                # torch.arange
+                # 功能：用于创建一个从起始值到终止值的等差序列张量（左闭右开）
+                # 原型：torch.arange(start=0, end, step=1, dtype=None, device=None)
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
-
+        
+        # 6> Megatron特殊处理：生成4D causal attention mask
         if self.use_megatron:
-            # For code simplicity, only the attention_backend 'flash' is supported here.
-            if padding_to is not None:
+            if padding_to is not None:  # 向上取整到padding_to的倍数
                 padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
-            if self._packing:
+            
+            if self._packing:  # packing模式：处理序列并行的position_ids
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
                     padding_len = padding_to - seq_lens[0]
                     position_ids = res['position_ids'][0].tolist()
-                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
+                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))  # 循环填充position_ids
                     res['position_ids'] = [torch.tensor(position_ids)]
-            else:
+            else:  # 非packing模式：生成4D下三角causal mask
                 seq_len = max(seq_lens) if padding_to is None else padding_to
+                # shape: (batch_size, 1, seq_len, seq_len)，下三角为True（可见），上三角为False（不可见）
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
-                for i, seq_len in enumerate(seq_lens):
+                for i, seq_len in enumerate(seq_lens):  # 将padding部分的mask置为0（不可见）
                     res['attention_mask'][i, :, seq_len:] = 0
 
+        # 7> 执行padding操作
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
             if self.use_megatron and not self._packing and key == 'attention_mask':
-                continue
-            if padding_to is not None and not (self._packing and key == 'position_ids'
-                                               and self.sequence_parallel_size > 1):
+                continue  # Megatron的attention_mask已在上面生成，跳过padding
+            
+            # 若指定padding_to且不是特殊情况，先padding到padding_to长度
+            if padding_to is not None and not (self._packing and key == 'position_ids' and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
+                    # F.pad参数：(0, 右padding) for 右padding模式，(右padding, 0) for 左padding模式
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
+            
+            # 将列表中的多个tensor padding到相同长度并stack为单个tensor
+            # _pad_sequence会根据padding_side选择左或右padding
             res[key] = self._pad_sequence(res[key], pad_value)
 
-        # multimodal
+        # 8> 整理多模态数据（pixel_values, image_sizes等）
         res.update(self._data_collator_mm_data(batch))
+        
+        # 9> 序列并行数据处理（非Megatron场景）
         if not self.use_megatron and self.sequence_parallel_size > 1:
             res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
-
+        
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        函数功能：
-            整理和拼接批次中的多模态数据（multimodal data）。该方法专门处理视觉模态的数据，
-            包括图像的像素值、图像尺寸信息和视频的像素值。通过将批次中所有样本的多模态张量
-            沿批次维度拼接，为多模态模型（如视觉-语言模型）提供统一格式的输入数据。
-        
+        功能：
+            汇总批次样本中的视觉模态张量（图像/视频像素值及尺寸），沿批次维拼接为统一输入，
+            便于多模态模型直接读取；只返回实际存在的字段。
+
         参数：
-            batch (List[Dict[str, Any]]): 批量数据列表，每个元素是一个字典，可能包含以下多模态字段：
-                - pixel_values (torch.Tensor, optional): 图像的像素值张量
-                    形状通常为 (num_images, channels, height, width) 或模型特定格式
-                    如 Qwen2-VL 的 (num_patches, channels) 格式
-                - image_sizes (torch.Tensor, optional): 图像尺寸信息张量
-                    用于记录原始图像的宽高，便于模型进行位置编码或后处理
-                    形状通常为 (num_images, 2)，存储 [height, width]
-                - pixel_values_videos (torch.Tensor, optional): 视频的像素值张量
-                    形状通常为 (num_frames, channels, height, width) 或模型特定格式
-                    用于处理视频输入的多模态任务
-        
-        返回值：
-            Dict[str, torch.Tensor]: 拼接后的多模态数据字典，可能包含以下字段：
-                - pixel_values (torch.Tensor): 批次中所有图像的像素值拼接结果
-                    形状为 (total_num_images, channels, height, width) 或模型特定格式
-                - image_sizes (torch.Tensor): 批次中所有图像的尺寸信息拼接结果
-                    形状为 (total_num_images, 2)
-                - pixel_values_videos (torch.Tensor): 批次中所有视频的像素值拼接结果
-                    形状为 (total_num_frames, channels, height, width) 或模型特定格式
-            注：只返回批次中实际存在的字段，不存在的字段不会出现在返回字典中
-        
-        使用示例：
-            >>> # 假设批次中有2个样本，第1个包含图像，第2个只有文本
+            batch (List[Dict[str, Any]]): encode() 输出的样本列表，元素可能含有 pixel_values、
+                image_sizes、pixel_values_videos 等字段。
+
+        返回：
+            Dict[str, torch.Tensor]: 拼接后的多模态字典，如 {'pixel_values': tensor(...)}。
+
+        示例：
             >>> batch = [
-            ...     {
-            ...         'input_ids': [1, 2, 3],
-            ...         'pixel_values': torch.randn(2, 3, 224, 224),  # 2张图像
-            ...         'image_sizes': torch.tensor([[224, 224], [224, 224]])
-            ...     },
-            ...     {
-            ...         'input_ids': [4, 5, 6],
-            ...         'pixel_values': torch.randn(1, 3, 224, 224),  # 1张图像
-            ...         'image_sizes': torch.tensor([[224, 224]])
-            ...     }
+            ...     {'pixel_values': torch.randn(2, 3, 224, 224)},
+            ...     {'pixel_values': torch.randn(1, 3, 224, 224)}
             ... ]
-            >>> template = Template(...)
-            >>> mm_data = template._data_collator_mm_data(batch)
-            >>> print(mm_data['pixel_values'].shape)  # torch.Size([3, 3, 224, 224])
-            >>> print(mm_data['image_sizes'].shape)   # torch.Size([3, 2])
-            
-            >>> # 视频数据示例
-            >>> batch = [
-            ...     {
-            ...         'input_ids': [1, 2],
-            ...         'pixel_values_videos': torch.randn(16, 3, 224, 224)  # 16帧视频
-            ...     }
-            ... ]
-            >>> mm_data = template._data_collator_mm_data(batch)
-            >>> print(mm_data['pixel_values_videos'].shape)  # torch.Size([16, 3, 224, 224])
+            >>> mm = template._data_collator_mm_data(batch)
+            >>> mm['pixel_values'].shape  # torch.Size([3, 3, 224, 224])
         """
-        # ===== 步骤1：初始化结果字典 =====
-        res = {}  # 存储拼接后的多模态数据
-        
-        # ===== 步骤2：处理图像像素值数据 =====
-        # 从批次中提取所有非空的 pixel_values 字段（过滤掉 None 值）
+        res: Dict[str, torch.Tensor] = {}
+
+        # 1> 图像像素：收集所有非 None 的 pixel_values，并沿批次维拼接
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
-        if len(pixel_values) > 0:  # 如果批次中至少有一个样本包含图像数据
-            # 沿批次维度（通常是第0维）拼接所有图像的像素值张量
-            # 例如：[tensor(2,3,224,224), tensor(1,3,224,224)] -> tensor(3,3,224,224)
+        if pixel_values:
             res['pixel_values'] = torch.concat(pixel_values)
 
-            # ===== 步骤3：处理图像尺寸信息 =====
-            # 从批次中提取所有非空的 image_sizes 字段
+            # 2> 图像尺寸：与像素值数量一一对应，常见形状 (num_images, 2)
             image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
-            if len(image_sizes) > 0:  # 如果批次中至少有一个样本包含图像尺寸信息
-                # 拼接所有图像的尺寸信息张量
-                # 例如：[tensor([[224,224],[224,224]]), tensor([[224,224]])] -> tensor([[224,224],[224,224],[224,224]])
+            if image_sizes:
                 res['image_sizes'] = torch.concat(image_sizes)
 
-        # ===== 步骤4：处理视频像素值数据 =====
-        # 从批次中提取所有非空的 pixel_values_videos 字段（过滤掉 None 值）
+        # 3> 视频像素：concat 后得到连续帧序列
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
-        if len(pixel_values_videos) > 0:  # 如果批次中至少有一个样本包含视频数据
-            # 沿批次维度拼接所有视频的像素值张量
-            # 例如：[tensor(16,3,224,224), tensor(8,3,224,224)] -> tensor(24,3,224,224)
+        if pixel_values_videos:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        
-        # ===== 步骤5：返回拼接后的多模态数据字典 =====
+
         return res
 
     def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
+        """
+        功能：
+            序列并行（sequence parallel）场景下，对批次字典 `res` 进行额外整理：
+            - 若启用序列并行且存在 input_ids，则确保 position_ids 就绪（左 padding 时需显式生成）。
+            - 将函数内部计算出的 input_ids／attention_mask／labels／loss_scale 回写到 `res`。
+            该函数通常在 `_data_collator` 末尾调用，用于 Megatron 以外的序列并行配置。
+
+        参数：
+            res (Dict[str, Any]): `_data_collator` 已整理出的结果字典，包含张量或 None。
+            padding_to (Optional[int]): 目标 padding 长度；此处仅透传，不直接使用（为保持接口一致）。
+            tokenizer (PreTrainedTokenizerBase): tokenizer 对象，调试或回退时可用；本函数中未直接调用。
+            padding_side (str): 当前使用的 padding 方向，'left' 或 'right'。
+
+        返回：
+            Dict[str, Any]: 更新后的结果字典 `res`，包含序列并行所需的 position_ids 以及同步过的键值。
+
+        示例：
+            >>> res = {'input_ids': torch.ones(2, 10, dtype=torch.long)}
+            >>> res = template._sp_data_collator(res, padding_to=None, tokenizer=tokenizer, padding_side='right')
+            >>> res['position_ids'].shape  # torch.Size([2, 10])
+        """
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
         labels = res.get('labels')
         loss_scale = res.get('loss_scale')
         if self.sequence_parallel_size > 1 and input_ids is not None:
+            # 1> 序列并行场景：input_ids 形状通常为 (batch_size, seq_len)
             bs, seq_len = input_ids.shape
+            # 若结果中尚未提供 position_ids，则按顺序生成 [0, 1, ..., seq_len-1]
             if 'position_ids' not in res:
                 position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
             else:
                 position_ids = res['position_ids']
+            # 序列并行要求右 padding（或 batch_size==1）；违背时抛出断言提示
             assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
             value = _local_var[key]
+            # 依次回写可能在调用链中被更新的键，避免外部引用旧数据
             if value is not None:
                 res[key] = value
         return res
@@ -5688,128 +5582,285 @@ class Template(ProcessorMixin):
             logger.info(f'[LOSS_SCALE] {val}')
 
     async def prepare_lmdeploy_pytorch_inputs(self, inputs) -> None:
-        images = inputs.pop('images', None) or []
-        if len(images) == 0:
+        """
+        功能：
+            针对 lmdeploy PyTorch 推理接口，将 input_ids 中的图像占位符 (-100) 替换为实际图像 token，
+            并记录每张图像在新序列中的起始偏移，最终把图像信息写入 inputs['multimodal']。
+
+        参数：
+            inputs (Dict[str, Any]): 推理输入字典，包含：
+                - input_ids (List[int]): 可能带有 -100 占位符的 token 序列；
+                - images (List[Dict[str, Any]]): 图像元信息，需包含 image_token_id、image_tokens 等字段。
+
+        返回：
+            None: 原地修改 inputs，不返回值。
+
+        示例：
+            >>> inputs = {
+            ...     'input_ids': [1, -100, 2, -100, 3],
+            ...     'images': [
+            ...         {'image_token_id': 32000, 'image_tokens': 4},
+            ...         {'image_token_id': 32001, 'image_tokens': 2},
+            ...     ]
+            ... }
+            >>> await template.prepare_lmdeploy_pytorch_inputs(inputs)
+            >>> inputs['input_ids']  # [1, 32000, 32000, 32000, 32000, 2, 32001, 32001, 3]
+            >>> inputs['multimodal'][0]['offset']  # 1，表示第一张图像的 token 起始索引
+        """
+        images = inputs.pop('images', None) or []  # 取出图像列表，若无图像则返回空列表
+        if len(images) == 0:  # 没有图像无需处理
             return
+
         input_ids = inputs['input_ids']
-        idx_list = findall(input_ids, -100)
+        idx_list = findall(input_ids, -100)  # 找到所有占位符索引（-100）
         assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
-        idx_list.insert(0, -1)
-        new_input_ids = []
+        idx_list.insert(0, -1)  # 在开头插入 -1，方便处理首段 token
+        new_input_ids: List[int] = []
+
         for i in range(len(idx_list) - 1):
+            # 复制当前占位符前的原始 token 片段
             new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            # 记录当前图像在新序列中的起始位置 offset
             images[i]['offset'] = len(new_input_ids)
+            # 6> 用图像 token 填充：重复 image_token_id，数量为 image_tokens
             new_input_ids += [images[i]['image_token_id']] * images[i]['image_tokens']
+
+        # 追加最后一个占位符之后的 token
         new_input_ids += input_ids[idx_list[-1] + 1:]
+
+        # 回写更新后的 input_ids 和图像信息
         inputs['input_ids'] = new_input_ids
         inputs['multimodal'] = images
 
     async def prepare_lmdeploy_turbomind_inputs(self, inputs: Dict[str, Any]) -> None:
-        images = inputs.pop('images', None) or []
-        if len(images) == 0:
+        """
+        功能：
+            为 lmdeploy TurboMind 推理引擎准备多模态输入：将 input_ids 中的图像占位符 (-100) 替换为
+            IMAGE_DUMMY_TOKEN_INDEX，并记录每张图像在新序列中的起止区间 [start, end)，同时将图像
+            embedding 张量移至 CPU。TurboMind 通过这些区间将图像 token 与文本 token 对齐。
+
+        参数：
+            inputs (Dict[str, Any]): 推理输入字典，需包含：
+                - input_ids (List[int]): 带 -100 占位符的 token 序列；
+                - images (List[torch.Tensor]): 图像特征张量列表，shape 通常为 (num_visual_tokens, hidden_size)。
+
+        返回：
+            None: 原地修改 inputs，不返回值。
+
+        示例：
+            >>> inputs = {
+            ...     'input_ids': [1, -100, 2, -100, 3],
+            ...     'images': [torch.randn(8, 4096), torch.randn(4, 4096)]  # 两张图像，8 和 4 个视觉 token
+            ... }
+            >>> await template.prepare_lmdeploy_turbomind_inputs(inputs)
+            >>> inputs['input_ids']  # [1, IMAGE_DUMMY_TOKEN_INDEX*8, 2, IMAGE_DUMMY_TOKEN_INDEX*4, 3]
+            >>> inputs['input_embedding_ranges']  # [[1, 9], [10, 14]]，表示图像 token 区间
+        """
+        images = inputs.pop('images', None) or []  # 取出图像列表，若无则为空
+        if len(images) == 0:  # 无图像直接返回
             return
-        from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
+        from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX  # TurboMind 图像占位 token
         input_ids = inputs['input_ids']
-        idx_list = findall(input_ids, -100)
+        idx_list = findall(input_ids, -100)  # 找出所有 -100 占位符的索引位置
         assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
-        idx_list.insert(0, -1)
-        new_input_ids = []
-        ranges = []
+        idx_list.insert(0, -1)  # 在开头插入 -1，便于处理第一段文本 token
+        new_input_ids = []  # 新的 token 序列
+        ranges = []  # 记录每张图像的 [start, end) 区间
+        
         for i in range(len(idx_list) - 1):
-            _range = []
+            _range = []  # 当前图像的区间
+            # 复制当前占位符前的原始 token 片段
             new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            # 记录图像 token 起始位置（当前 new_input_ids 的长度）
             _range.append(len(new_input_ids))
+            # 用 IMAGE_DUMMY_TOKEN_INDEX 填充视觉 token
+            # images[i].shape[0] 是该图像的视觉 token 数量（如 8 个 token）
+            # 例如：images[0].shape=(8, 4096) → 填充 8 个 IMAGE_DUMMY_TOKEN_INDEX
             new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+            # 记录图像 token 结束位置（当前 new_input_ids 的长度）
             _range.append(len(new_input_ids))
-            ranges.append(_range)
+            ranges.append(_range)  # 保存区间 [start, end)
+        
+        # 3> 追加最后一个占位符之后的所有 token
         new_input_ids += input_ids[idx_list[-1] + 1:]
+        
+        # 4> 将图像 embedding 移至 CPU（TurboMind 要求）并回写结果
         inputs['input_embeddings'] = [image.to('cpu') for image in images]
-        inputs['input_embedding_ranges'] = ranges
-        inputs['input_ids'] = new_input_ids
+        inputs['input_embedding_ranges'] = ranges  # 每张图像的 token 区间
+        inputs['input_ids'] = new_input_ids  # 更新后的 token 序列
+
 
     def _pad_sequence(self, sequences: List[torch.Tensor], padding_value: float = 0.) -> torch.Tensor:
-        """Pad sequence by some side
+        """
+        功能：
+            对一批张量序列执行统一的 padding，使其对齐到相同长度。训练阶段遵循模板配置的
+            `padding_side`（left/right），推理阶段统一使用左 padding。右 padding 直接调用
+            `torch.nn.utils.rnn.pad_sequence`，左 padding 通过 `torch.nn.functional.pad` 手动实现。
 
-        Args:
-            sequences: The input sequences in tensor.
-            padding_value: The padding value
+        参数：
+            sequences (List[torch.Tensor]): 待对齐的序列张量列表，常见形状：
+                - (seq_len,) —— 纯 token 序列
+                - (seq_len, hidden_size) —— embedding 序列
+            padding_value (float): padding 使用的数值；文本通常为0，labels常用-100以忽略loss。
 
-        Returns:
-            A tensor after padding
+        返回：
+            torch.Tensor: 对齐后的批量张量，shape = (len(sequences), max_seq_len, ...)。
+
+        示例：
+            >>> seqs = [torch.tensor([1, 2, 3]), torch.tensor([4, 5])]
+            >>> Template()._pad_sequence(seqs, padding_value=0)
+            tensor([[1, 2, 3],
+                    [0, 4, 5]])  # 默认左padding
+
+            >>> seqs = [torch.tensor([[1., 1.], [2., 2.]]), torch.tensor([[3., 3.]])]
+            >>> template.padding_side = 'right'
+            >>> template._pad_sequence(seqs, padding_value=0.)
+            tensor([[[1., 1.], [2., 2.]],
+                    [[3., 3.], [0., 0.]]])  # 右padding示例
         """
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
+            # 1> 右 padding：直接调用 pad_sequence，内部自动在序列尾部补齐到最大长度
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
-        max_len = max([s.shape[0] for s in sequences])
+        # 2> 左 padding：需手动在序列前补齐到相同长度
+        max_len = max(seq.shape[0] for seq in sequences)  # 批次中最长序列长度
 
         padded_sequences = []
         for seq in sequences:
-            pad_length = max_len - seq.shape[0]
+            pad_length = max_len - seq.shape[0]  # 当前序列需要补齐的时间步数
+            # pad_tuple 构造过程：
+            #   a) F.pad 需要为每一维提供成对的"左/右补齐"长度，顺序为 (dim_n_left, dim_n_right, ..., dim1_left, dim1_right)。
+            #   b) [0] * ((seq.dim() - 1) * 2) 生成除时间维以外所有维度的 padding 配置（全 0 表示不补齐）。
+            #   c) 最后拼接 [pad_length, 0]，只在时间维左侧补 pad_length 个 padding_value，右侧补 0。
+            #   d) 例1：seq.shape=(3,) 且 pad_length=2 ⇒ pad_tuple=[2, 0] ⇒ F.pad 后得到 [0, 0, x1, x2, x3]。
+            #      例2：seq.shape=(3, hidden) ⇒ pad_tuple=[0, 0, pad_length, 0] ⇒ 隐藏维保持原状，时间维左补 pad_length 行 0，输出 shape=(3+pad_length, hidden)。
             pad_tuple = [0] * ((seq.dim() - 1) * 2) + [pad_length, 0]
-            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)
+            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)  # 应用左 padding，shape 变为 (max_len, ...)
             padded_sequences.append(padded_seq)
 
+        # 3> 堆叠为批量张量，最终 shape=(batch_size, max_len, ...)
         return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+        """
+        功能：
+            安全解码 token 序列为可读文本，跳过特殊 token（如图像占位符 -100、多模态占位 token）。
+            将连续的普通 token 解码为文本，连续的特殊 token 表示为 `[token_id * count]` 格式。
+            用于调试和日志输出，避免 tokenizer 对无效 token 解码失败。
+
+        参数：
+            input_ids (List[int]): 待解码的 token ID 序列，可能包含特殊 token（负数、占位符等）。
+            **tokenizer_kwargs: 传递给 tokenizer.decode 的额外参数（如 skip_special_tokens）。
+
+        返回：
+            str: 解码后的字符串，特殊 token 用 `[token_id * count]` 表示。
+
+        示例：
+            >>> input_ids = [1, 2, -100, -100, 3, 4]
+            >>> template.safe_decode(input_ids)
+            'Hello[-100 * 2] world'  # 假设 [1,2]→'Hello', [3,4]→' world'
+        """
+        # 1> 兼容性处理：支持直接在 tokenizer 上调用（用于工具方法）
         if isinstance(self, Template):
             tokenizer = self.tokenizer
-            placeholder_tokens = self.placeholder_tokens
+            placeholder_tokens = self.placeholder_tokens  # 多模态占位 token 列表
         else:
             tokenizer = self
             placeholder_tokens = []
 
+        # 内部函数：判断是否为特殊 token
         def _is_special(token: int) -> bool:
-            if isinstance(token, float) or token < 0:
+            if isinstance(token, float) or token < 0:  # 负数或浮点数视为特殊
                 return True
-            return token in placeholder_tokens
+            return token in placeholder_tokens  # 多模态占位符
 
-        if isinstance(input_ids, torch.Tensor):
+        # 2> 输入预处理
+        if isinstance(input_ids, torch.Tensor):  # 支持 tensor 输入
             input_ids = input_ids.tolist()
-        if len(input_ids) == 0:
+        if len(input_ids) == 0:  # 空序列直接返回空字符串
             return ''
-        result_str = ''
+        
+        # 3> 状态追踪变量初始化
+        result_str = ''  # 累积结果字符串
+        # s: 特殊 token 连续段的起始索引
+        # e: 普通 token 连续段的起始索引
+        
+        # 4> 遍历 token 序列，按普通/特殊分段解码
         for i in range(len(input_ids)):
-            if i == 0:
+            if i == 0:  # 初始化：根据首个 token 类型设置起始索引
                 if _is_special(input_ids[i]):
-                    s = 0
+                    s = 0  # 首个是特殊 token，记录特殊段起点
                 else:
-                    e = 0
+                    e = 0  # 首个是普通 token，记录普通段起点
                 continue
+            
+            # 检测从普通→特殊的边界：解码之前累积的普通 token
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
-                s = i
-                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                s = i  # 记录特殊段起点
+                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)  # 解码 [e, s)
+            
+            # 检测从特殊→普通的边界：输出之前累积的特殊 token 统计
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
-                e = i
-                result_str += f'[{input_ids[i - 1]} * {e - s}]'
-        if _is_special(input_ids[i]):
+                e = i  # 记录普通段起点
+                result_str += f'[{input_ids[i - 1]} * {e - s}]'  # 格式：[token_id * 数量]
+
+        # 5> 处理序列末尾：根据最后一个 token 类型收尾
+        if _is_special(input_ids[i]):  # 末尾是特殊 token
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
-        else:
+        else:  # 末尾是普通 token
             result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+        
         return result_str
 
     @staticmethod
     @contextmanager
     def _patch_flash_attention_forward(modeling_module, position_ids, use_new_func: bool = False):
+        """
+        功能：
+            临时 patch（猴子补丁）模型的 `_flash_attention_forward` 方法，注入自定义 position_ids。
+            作为上下文管理器，进入时替换方法，退出时恢复原方法，确保不污染全局状态。
+            用于在推理或特殊训练场景下，向 Flash Attention 传递自定义位置编码。
+
+        参数：
+            modeling_module: 模型模块对象，需包含 `_flash_attention_forward` 方法（如 transformers 模型）。
+            position_ids: 自定义的位置编码张量，将注入到 Flash Attention 调用中。
+            use_new_func (bool): 是否使用 transformers 新版 Flash Attention 实现（默认 False 使用原方法）。
+
+        返回：
+            生成器（上下文管理器）：进入时 patch 生效，退出时自动恢复。
+
+        示例：
+            >>> with Template._patch_flash_attention_forward(model, position_ids):
+            ...     outputs = model(**inputs)  # 内部使用自定义 position_ids
+            >>> # 退出上下文后，model._flash_attention_forward 已恢复
+        """
+        # 1> 保存原始方法引用，用于退出时恢复
         _origin_flash_attention_forward = modeling_module._flash_attention_forward
 
+        # 2> 定义替换方法：包装原方法并注入 position_ids
         def _flash_attention_forward(*args, **kwargs):
-            if use_new_func:
+            if use_new_func:  # 使用 transformers 新版实现
                 from transformers.modeling_flash_attention_utils import (_flash_attention_forward as
                                                                          flash_attention_forward)
+                # 兼容性处理：部分调用会传 self，需移除
                 if args and isinstance(args[0], nn.Module):
                     args = args[1:]
+                # 设置默认 causal mask 行为
                 if 'is_causal' not in kwargs:
                     kwargs['is_causal'] = True
-            else:
+            else:  # 使用原方法
                 flash_attention_forward = _origin_flash_attention_forward
+            
+            # 注入自定义 position_ids 到参数中
             kwargs['position_ids'] = position_ids
             return flash_attention_forward(*args, **kwargs)
 
+        # 3> 替换模型方法为包装后的版本
         modeling_module._flash_attention_forward = _flash_attention_forward
         try:
-            yield
+            yield  # 上下文管理器：暂停执行，返回控制权给 with 块
         finally:
+            # 4> 退出时恢复原方法，确保不影响后续调用
             modeling_module._flash_attention_forward = _origin_flash_attention_forward

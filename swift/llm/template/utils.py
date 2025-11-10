@@ -110,18 +110,86 @@ def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[T
 
 
 def findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
-    """Find the index of a token in the token_list."""
+    """
+    函数功能：
+        在token列表中查找所有匹配的子序列位置，返回所有匹配位置的起始索引列表。该方法支持两种查找模式：
+        (1)查找单个token的所有出现位置；
+        (2)查找token子序列的所有出现位置。
+        使用滑动窗口方式遍历，首先定位子序列首个token的位置，然后验证从该位置开始的完整子序列是否匹配。
+        主要用于在token序列中定位特殊token（如EOS、分隔符）或特定的token模式。
+    
+    参数：
+        token_list (List[int]): 待搜索的token ID列表（通常是编码后的文本序列）
+            - 示例：[1, 2, 100, 3, 100, 4]
+        
+        sub_token_list (Union[int, List[int]]): 要查找的目标token或token子序列
+            - 若为int：表示查找单个token的所有出现位置
+            - 若为List[int]：表示查找token子序列的所有出现位置
+            - 示例：100（单个token）或[2, 3]（子序列）
+    
+    返回值：
+        List[int]: 所有匹配位置的起始索引列表
+            - 对于单个token：返回该token在列表中所有出现的索引
+            - 对于子序列：返回子序列起始位置的所有索引
+            - 若无任何匹配：返回空列表[]
+    
+    使用示例：
+        >>> # 示例1：查找单个token的所有位置
+        >>> token_list = [1, 2, 100, 3, 100, 4]
+        >>> result = findall(token_list, 100)
+        >>> print(result)  # [2, 4]（token 100出现在索引2和索引4）
+        
+        >>> # 示例2：查找token子序列的所有位置
+        >>> token_list = [1, 2, 3, 4, 2, 3, 5]
+        >>> result = findall(token_list, [2, 3])
+        >>> print(result)  # [1, 4]（子序列[2,3]在索引1和索引4开始出现）
+    """
+    # 类型统一化：若输入为单个整数，转换为单元素列表
+    # 例如：100 -> [100]，便于后续统一处理单token和子序列两种情况
     if isinstance(sub_token_list, int):
         sub_token_list = [sub_token_list]
+    
+    # 初始化结果列表，用于存储所有匹配位置的起始索引
     res = []
+    
+    # 初始化搜索起始位置为-1
+    # 首次调用token_list.index时从idx+1=0位置开始搜索
     idx = -1
+    
+    # 使用try-except结构处理查找结束的情况
+    # 当list.index找不到更多匹配时会抛出ValueError，通过捕获异常来优雅退出循环
     try:
+        # 无限循环，持续查找直到抛出ValueError异常
         while True:
+            # 查找sub_token_list的首个token在token_list中下一次出现的位置
+            # 参数idx+1确保从上次找到位置的下一个位置开始搜索，避免重复
+            # 例如：首次idx=-1，从0开始；若找到位置2，下次从3开始
             idx = token_list.index(sub_token_list[0], idx + 1)
+            
+            # 验证是否为完整匹配：
+            # 条件1：len(sub_token_list)==1 表示只查找单个token
+            #        首token匹配即代表完全匹配，直接添加索引
+            # 条件2：sub_token_list == token_list[idx:idx+len(sub_token_list)]
+            #        验证从idx位置开始的完整子序列是否与目标子序列完全相同
+            #        例如：idx=1, sub_token_list=[2,3], token_list[1:3]=[2,3] -> 匹配
             if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
+                # 完整匹配成功，将起始索引添加到结果列表
                 res.append(idx)
+            # 若首token匹配但完整子序列不匹配，继续下一轮循环查找下一个首token位置
+            # 例如：目标[2,3]，在位置找到2但后续是[2,4]，不匹配，继续搜索
+    
     except ValueError:
-        pass
+        # 当token_list.index找不到更多匹配时抛出ValueError
+        # 说明已遍历完整个列表，所有匹配都已找到
+        pass  # 捕获异常，优雅退出循环
+    
+    # 返回所有匹配位置的起始索引列表
+    # 完整执行示例：
+    # token_list=[1,2,100,3,100,4], sub_token_list=[100]
+    # 第1次循环：idx=2, res=[2]
+    # 第2次循环：idx=4, res=[2,4]
+    # 第3次循环：抛出ValueError，退出
+    # 返回：[2, 4]
     return res
 
 
