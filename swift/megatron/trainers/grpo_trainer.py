@@ -19,6 +19,7 @@ from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
+from torch._tensor import Tensor
 from torch.distributed.nn import all_reduce
 from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
@@ -1063,8 +1064,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 log_importance_weights = seq_level_log_weights
             else:
                 seq_level_log_weight = seq_level_log_weights.detach()
-                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight,
-                                                               completion_mask.shape[1]).unsqueeze(0)
+                seq_level_log_weight = torch.cat([
+                    torch.repeat_interleave(log_weight, length)
+                    for log_weight, length in zip(seq_level_log_weight, lengths.tolist())
+                ])
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
@@ -1081,10 +1084,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # We need to expand to [1, total_tokens] for token-level loss computation
             if self.importance_sampling_level == 'sequence':
                 # Expand sequence-level weights to token-level without gradient
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
+                coef_1 = torch.cat([
+                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
+                ])
+                coef_2 = torch.cat([
+                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_2, lengths.tolist())
+                ])
 
-            advantages = advantages[:coef_1.shape[1]]
+            # advantages = advantages[:coef_1.shape[1]]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
         else:
@@ -1176,10 +1183,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 df = pd.DataFrame(table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
-                if not self.init_custom_metric:
-                    wandb_writer.define_metric('completions', step_metric='gen_step')
-                    self.init_custom_metric = True
-                wandb_writer.log({'completions': wandb.Table(dataframe=df)}, self._step)
+                # if not self.init_custom_metric:
+                #     wandb_writer.define_metric('completions', step_metric='gen_step')
+                #     self.init_custom_metric = True
+                wandb_writer.log({'completions': wandb.Table(dataframe=df)})
 
         return loss, reporting_metric
 
