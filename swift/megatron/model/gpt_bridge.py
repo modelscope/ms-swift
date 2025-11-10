@@ -2,13 +2,16 @@
 from copy import copy
 from typing import Optional
 
+import megatron.core
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.training import get_args
+from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
+from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
@@ -40,6 +43,7 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
+        self.megatron_core_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
@@ -63,20 +67,23 @@ class GPTBridge:
             self.hf_model, self.processor = get_model_tokenizer(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
-    @staticmethod
-    def _get_tp_split_dim(mg_key: Optional[str]) -> Optional[int]:
+    def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
         if mg_key is None:
             return
         # ColumnLinear
         dim0_keys = {
             'word_embeddings',
-            'output_layer',
             'linear_qkv',
             # mla
             'linear_q_proj',
-            'linear_kv_down_proj',
+            'linear_q_up_proj',
             'linear_kv_up_proj'
         }
+        if self.args.task_type == 'causal_lm':
+            dim0_keys.add('output_layer')
+        if not self.megatron_core_014:
+            # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
+            dim0_keys.update({'linear_q_down_proj', 'linear_kv_down_proj'})
         # RowLinear
         dim1_keys = {'linear_proj', 'linear_fc2'}
         if 'lora_A' not in mg_key and 'lora_B' not in mg_key:
@@ -155,19 +162,20 @@ class GPTBridge:
             return {}
         else:
             hf_state_dict = None if mg_module is None else mg_module.state_dict()
-            new_state_dict = {}
-            for k, v in hf_state_dict.items():
-                if self._is_peft_format:
-                    if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
-                        k = k.replace(f'{self._adapter_name}.', '')
+            if hf_state_dict is not None:
+                new_state_dict = {}
+                for k, v in hf_state_dict.items():
+                    if self._is_peft_format:
+                        if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                            k = k.replace(f'{self._adapter_name}.', '')
+                            new_state_dict[k] = v
+                    else:
+                        if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                            continue
+                        k = k.replace('base_layer.', '')
+                        k = k.replace('original_module.', '')
                         new_state_dict[k] = v
-                else:
-                    if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
-                        continue
-                    k = k.replace('base_layer.', '')
-                    k = k.replace('original_module.', '')
-                    new_state_dict[k] = v
-            hf_state_dict = new_state_dict
+                hf_state_dict = new_state_dict
             if self.pp_size > 1:
                 src_rank = torch.tensor([0 if hf_state_dict is None else self.pp_rank],
                                         dtype=torch.int64,
@@ -854,6 +862,9 @@ class GPTBridge:
                              to_mcore)
         self._set_state_dict(mg_attn, 'linear_kv_up_proj.weight', hf_state_dict, 'kv_b_proj.weight', to_mcore)
         if self.args.qk_layernorm:
+            if self.args.q_lora_rank is not None:
+                self._set_state_dict(mg_attn, 'linear_q_up_proj.layer_norm_weight', hf_state_dict,
+                                     'q_a_layernorm.weight', to_mcore)
             self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict, 'kv_a_layernorm.weight',
                                  to_mcore)
         if to_mcore:
@@ -925,11 +936,12 @@ class GPTBridge:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.untie_embeddings_and_output_weights:
-            hf_lm_head_key = self.hf_lm_head_key
-            if not to_mcore and self.args.task_type == 'seq_cls':
-                hf_lm_head_key = self.hf_score_key
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
-        elif lm_model.output_layer.weight is not None:
+            if not to_mcore or self.args.task_type == 'causal_lm':
+                hf_lm_head_key = self.hf_lm_head_key
+                if not to_mcore and self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = self.hf_score_key
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
+        elif to_mcore and lm_model.output_layer.weight is not None:
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
                              to_mcore)
@@ -1024,7 +1036,6 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
-        from swift.llm import get_multimodal_target_regex
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
@@ -1035,6 +1046,7 @@ class GPTBridge:
         args = self.args
         if is_last_rank():
             if is_peft_format:
+                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.is_multimodal and 'all-linear' in args.target_modules:
                     peft_config.target_modules = get_multimodal_target_regex(
@@ -1053,6 +1065,8 @@ class GPTBridge:
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
+                if getattr(self.hf_model, '_auto_class') is not None:
+                    custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
                 save_checkpoint(
                     None,
                     self.processor,

@@ -448,6 +448,8 @@ class BaseMegatronTrainer(ABC):
     def _initialize_embedding(model):
         # compat new_special_tokens
         init_method = model.config.init_method
+        if hasattr(model, 'language_model'):
+            model = model.language_model
         for key in ['embedding.word_embeddings', 'output_layer']:
             if key == 'output_layer' and model.share_embeddings_and_output_weights:
                 continue
@@ -890,21 +892,27 @@ class BaseMegatronTrainer(ABC):
 
         return report_memory_flag
 
-    def merge_lora_adapters(self):
+    def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
         for model in self.unwrapped_models:
             for module in model.modules():
-                if isinstance(module, (LoraParallelLinear, ModulesToSaveWrapper)):
+                if isinstance(module, LoraParallelLinear):
                     # Merge all active adapters
-                    module.merge()
+                    module.merge(adapter_names=[adapter_name])
+                elif isinstance(module, ModulesToSaveWrapper):
+                    module._original_state_dict = module.original_module.state_dict()
+                    module.original_module.load_state_dict(module.modules_to_save[adapter_name].state_dict())
 
     def unmerge_lora_adapters(self):
         """Unmerge LoRA adapters to restore training state."""
         for model in self.unwrapped_models:
             for module in model.modules():
-                if isinstance(module, (LoraParallelLinear, ModulesToSaveWrapper)):
+                if isinstance(module, LoraParallelLinear):
                     # Unmerge to restore separate LoRA weights for training
                     module.unmerge()
+                elif isinstance(module, ModulesToSaveWrapper):
+                    module.original_module.load_state_dict(module._original_state_dict)
+                    del module._original_state_dict
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()

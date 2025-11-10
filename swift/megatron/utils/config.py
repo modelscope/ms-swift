@@ -24,13 +24,16 @@ config_mapping = {
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
-    'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk', 'moe_k'],
+    'moe_router_topk': ['num_experts_per_tok', 'moe_topk', 'moe_k'],
+    'moe_router_num_groups': ['n_group'],
+    'moe_router_group_topk': ['topk_group'],
     'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     # deepseek
     'q_lora_rank': ['q_lora_rank'],
     'kv_lora_rank': ['kv_lora_rank'],
     'moe_router_score_function': ['scoring_func'],
+    'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
