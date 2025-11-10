@@ -6,7 +6,9 @@ megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset 'swift/new_special_tokens' \
+    --load_from_cache_file true \
     --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
     --train_type lora \
     --lora_rank 8 \
@@ -44,6 +46,6 @@ megatron sft \
 
 # CUDA_VISIBLE_DEVICES=0,1 \
 # swift infer \
-#     --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+#     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
 #     --load_data_args true \
 #     --stream true
