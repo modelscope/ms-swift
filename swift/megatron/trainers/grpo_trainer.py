@@ -16,6 +16,7 @@ import torch.nn as nn
 from accelerate.utils import broadcast_object_list
 from dacite import from_dict
 from megatron.core import mpu
+from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, training
 from torch.distributed.nn import all_reduce
 from trl.trainer.grpo_trainer import nanstd
@@ -474,7 +475,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._buffered_inputs = mini_batch_data
         self._step += 1
         inputs = self._buffered_inputs[self._step % self.steps_per_generation]
-        return iter(inputs)
+        return RerunDataIterator(iter(inputs))
 
     def _generate_and_score_completions(self, batch):
         # Get or create the rollout group (TP×PP×CP)
@@ -1024,13 +1025,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
-            seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
+            seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0)
+                           for lr, m in zip(log_ratio_list[:micro_batch_size], mask_list[:micro_batch_size])]
             seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
             if self.importance_sampling_level == 'sequence':
                 log_importance_weights = seq_level_log_weights
             else:
                 seq_level_log_weight = seq_level_log_weights.detach()
-                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
+                seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight,
+                                                               completion_mask.shape[1]).unsqueeze(0)
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
@@ -1047,15 +1050,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # We need to expand to [1, total_tokens] for token-level loss computation
             if self.importance_sampling_level == 'sequence':
                 # Expand sequence-level weights to token-level without gradient
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths, dim=0).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths, dim=0).unsqueeze(0)
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
 
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
         else:
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            raise NotImplementedError
+            # per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            # per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
@@ -1093,6 +1097,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+            if self.args.context_parallel_size > 1:
+                all_reduce(loss, group=mpu.get_context_parallel_group())
+                loss = loss / self.args.context_parallel_size
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
         # loss = loss.mean()
