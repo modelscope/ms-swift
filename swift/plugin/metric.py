@@ -131,7 +131,7 @@ def compute_rouge_bleu(preds: List[str], labels: List[str]):
         scores = rouge.get_scores(' '.join(hypothesis), ' '.join(reference))[0]
         for k, v in scores.items():
             score_dict[k].update(v['f'])
-        bleu_score = sentence_bleu([list(label)], list(pred), smoothing_function=SmoothingFunction().method3)
+        bleu_score = sentence_bleu([reference], hypothesis, smoothing_function=SmoothingFunction().method3)
         score_dict['bleu-4'].update(bleu_score)
 
     return {k: round(v.compute()['value'] * 100, 6) for k, v in score_dict.items()}

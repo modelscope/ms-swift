@@ -200,6 +200,20 @@ class SequenceParallel:
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
+            def sdpa_mask(batch_size, cache_position, kv_length, *args, **kwargs):
+                cache_position = self.real_position_ids[0]
+                cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
+                kv_length = cache_position.shape[0]
+                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
+                                                                                                 cache_position,
+                                                                                                 kv_length, *args,
+                                                                                                 **kwargs)
+
+            masking_utils.sdpa_mask_recent_torch = sdpa_mask
+            masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping[
+                'sdpa_origin'] = masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa']
+            masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa'] = sdpa_mask
+
             def create_causal_mask(config, input_embeds, attention_mask, cache_position, *args, **kwargs):
                 input_embeds = torch.ones(
                     (input_embeds.shape[0], input_embeds.shape[1] * self.sp_world_size, input_embeds.shape[2]),
