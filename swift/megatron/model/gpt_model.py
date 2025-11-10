@@ -212,10 +212,14 @@ class GPTModel(McoreGPTModel):
                         packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
                     )
                 else:
+                    packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                     rotary_pos_emb = self.rotary_pos_emb(
                         rotary_seq_len,
-                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                        packed_seq=packed_seq,
                     )
+                    if packed_seq:
+                        assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+                        rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
         if (in_inference_mode and ((self.config.enable_cuda_graph and self.config.cuda_graph_scope != 'full_iteration')
                                    or self.config.flash_decode) and rotary_pos_cos is not None

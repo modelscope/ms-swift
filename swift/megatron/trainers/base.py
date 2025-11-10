@@ -32,7 +32,7 @@ from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm.auto import tqdm
 
-from swift.llm import dynamic_gradient_checkpointing
+from swift.llm import dynamic_gradient_checkpointing, to_device
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -899,9 +899,6 @@ class BaseMegatronTrainer(ABC):
                 if isinstance(module, LoraParallelLinear):
                     # Merge all active adapters
                     module.merge(adapter_names=[adapter_name])
-                elif isinstance(module, ModulesToSaveWrapper):
-                    module._original_state_dict = module.original_module.state_dict()
-                    module.original_module.load_state_dict(module.modules_to_save[adapter_name].state_dict())
 
     def unmerge_lora_adapters(self):
         """Unmerge LoRA adapters to restore training state."""
@@ -910,9 +907,6 @@ class BaseMegatronTrainer(ABC):
                 if isinstance(module, LoraParallelLinear):
                     # Unmerge to restore separate LoRA weights for training
                     module.unmerge()
-                elif isinstance(module, ModulesToSaveWrapper):
-                    module.original_module.load_state_dict(module._original_state_dict)
-                    del module._original_state_dict
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()

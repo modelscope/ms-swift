@@ -170,10 +170,10 @@ class GPTBridge:
                             k = k.replace(f'{self._adapter_name}.', '')
                             new_state_dict[k] = v
                     else:
-                        if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                        if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:
                             continue
                         k = k.replace('base_layer.', '')
-                        k = k.replace('original_module.', '')
+                        k = k.replace(f'modules_to_save.{self._adapter_name}.', '')
                         new_state_dict[k] = v
                 hf_state_dict = new_state_dict
             if self.pp_size > 1:
