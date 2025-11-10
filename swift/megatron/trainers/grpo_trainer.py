@@ -1067,7 +1067,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 seq_level_log_weight = torch.cat([
                     torch.repeat_interleave(log_weight, length)
                     for log_weight, length in zip(seq_level_log_weight, lengths.tolist())
-                ])
+                ]).unsqueeze(0)
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
@@ -1086,12 +1086,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 # Expand sequence-level weights to token-level without gradient
                 coef_1 = torch.cat([
                     torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
-                ])
+                ]).unsqueeze(0)
                 coef_2 = torch.cat([
                     torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_2, lengths.tolist())
-                ])
+                ]).unsqueeze(0)
 
-            # advantages = advantages[:coef_1.shape[1]]
+            advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
         else:
