@@ -12,6 +12,10 @@ megatron sft \
     --merge_lora false \
     --dataset 'tany0699/garbage265#20000' \
     --load_from_cache_file true \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
     --packing true \
@@ -26,9 +30,9 @@ megatron sft \
     --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
-    --lr 1e-5 \
+    --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
-    --min_lr 1e-6 \
+    --min_lr 1e-5 \
     --max_epochs 1 \
     --save megatron_output/Qwen3-VL-8B-Instruct \
     --save_interval 200 \
@@ -47,6 +51,6 @@ megatron sft \
 # FPS_MAX_FRAMES=16 \
 # CUDA_VISIBLE_DEVICES=0 \
 # swift infer \
-#     --model megatron_output/Qwen3-VL-8B-Instruct/vx-xxx \
+#     --adapters megatron_output/Qwen3-VL-8B-Instruct/vx-xxx \
 #     --load_data_args true \
 #     --stream true
