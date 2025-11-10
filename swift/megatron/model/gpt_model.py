@@ -242,7 +242,7 @@ class GPTModel(McoreGPTModel):
         self,
         input_ids: torch.Tensor,
         position_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
+        attention_mask: torch.Tensor = None,
         decoder_input: torch.Tensor = None,
         labels: torch.Tensor = None,
         inference_context: BaseInferenceContext = None,
