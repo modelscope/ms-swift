@@ -123,8 +123,8 @@ def compute_rouge_bleu(preds: List[str], labels: List[str]):
     score_dict = {key: MeanMetric() for key in ['rouge-1', 'rouge-2', 'rouge-l', 'bleu-4']}
 
     for pred, label in zip(preds, labels):
-        hypothesis = list(jieba.cut(pred))
-        reference = list(jieba.cut(label))
+        hypothesis = [w.strip() for w in jieba.cut(pred) if w.strip()]
+        reference = [w.strip() for w in jieba.cut(label) if w.strip()]
         if not hypothesis or not reference:
             continue
         rouge = Rouge()
