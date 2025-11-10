@@ -615,6 +615,7 @@ def _patch_mrope():
         return emb
 
     MultimodalRotaryEmbedding.forward = forward
+    _origin_apply_rotary_pos_emb_thd = rope_utils._apply_rotary_pos_emb_thd
 
     def _apply_rotary_pos_emb_thd(
         t: torch.Tensor,
