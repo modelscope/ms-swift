@@ -638,7 +638,6 @@ def _patch_mrope():
         Returns:
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
-        cu_seqlens_for_batched = cu_seqlens
         use_batched_rope = False
         if cp_group is not None:
             cp_size = cp_group.size()

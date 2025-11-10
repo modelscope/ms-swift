@@ -29,10 +29,9 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
-from peft.utils import ModulesToSaveWrapper
 from tqdm.auto import tqdm
 
-from swift.llm import dynamic_gradient_checkpointing, to_device
+from swift.llm import dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger

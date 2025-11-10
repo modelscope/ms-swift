@@ -205,14 +205,14 @@ class GPTModel(McoreGPTModel):
                     attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
                     if attention_scaling is not None:
                         self.attention_scaling = attention_scaling
+                packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
                     rotary_pos_emb = self.rotary_pos_emb(
                         position_ids,
                         mrope_section=self.mrope_section,
-                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                        packed_seq=packed_seq,
                     )
                 else:
-                    packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                     rotary_pos_emb = self.rotary_pos_emb(
                         rotary_seq_len,
                         packed_seq=packed_seq,
