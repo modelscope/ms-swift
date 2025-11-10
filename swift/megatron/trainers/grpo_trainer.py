@@ -11,31 +11,36 @@ from functools import partial
 from typing import Any, Dict, List, Tuple, Union
 
 import json
+import pandas as pd
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list
 from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.training import get_args, training
+from megatron.training import get_args, get_wandb_writer, training
 from torch.distributed.nn import all_reduce
 from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
 from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
 from swift.llm.infer.protocol import RolloutOutput
+from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, _create_parameter_buckets,
-                                               _process_bucket_with_flattened_tensor, aggressive_empty_cache,
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache,
                                                replace_assistant_response_with_ids, set_expandable_segments)
-from swift.utils import get_current_device, get_logger, is_master, is_vllm_available, remove_response
+from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
+                         remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
                     load_megatron_optimizer, log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
-                    profiling_context)
+                    patch_profiling_context, patch_profiling_decorator, profiling_context)
+
+if is_wandb_available():
+    import wandb
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -53,6 +58,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
+        self._prepare_metrics()
         self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
@@ -88,7 +94,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # distributed params
         self.world_size = torch.distributed.get_world_size()
         self.process_index = torch.distributed.get_rank()
-        self.is_main_process = is_master()
+        self.is_main_process = is_last_rank()
         self.device = get_current_device()
         # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
@@ -140,7 +146,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.use_vllm = args.use_vllm
         self.async_generate = args.async_generate
-        self.use_fast_infer = self.use_vllm  # whether to use the PT backend
+        self.use_fast_infer = self.use_vllm
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
@@ -200,6 +206,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._buffered_inputs = None
         return engine
 
+    @patch_profiling_decorator
     def _move_model_to_vllm(self):
         # Handle LoRA: merge adapters before exporting weights
         is_lora_training = self.args.train_type == 'lora'
@@ -209,7 +216,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.merge_lora_adapters()
 
             # Export and load weights incrementally to avoid memory spikes
-            self._export_and_load_weights_incrementally()
+            self._export_and_load_weights()
 
         finally:
             # Unmerge adapters to restore training state
@@ -222,7 +229,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
 
-    def _export_and_load_weights_incrementally(self):
+    @property
+    def bridge(self):
+        if self._bridge is None:
+            self._bridge = self.args.megatron_model_meta.bridge_cls(disable_tqmd=True)
+        return self._bridge
+
+    def _export_and_load_weights(self):
         """
         Export weights from Megatron models and load to vLLM incrementally.
 
@@ -230,7 +243,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         For server mode: Process weights in buckets to avoid memory spikes.
         """
         # Export weights returns an iterator
-        weight_iterator = self.bridge.export_weights(self.unwrapped_models)
+        with patch_profiling_context(self, 'export_weights'):
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models)
 
         if self.vllm_mode == 'colocate':
             # Colocate mode: load_weights supports iterator, pass directly
@@ -549,11 +563,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
             micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
             micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
-            micro_batch_data = self._maybe_compute_logps(micro_batch_data)
+            with patch_profiling_context(self, 'compute_ref_old_logps'):
+                micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
 
         return mini_batch_data
 
+    @patch_profiling_decorator
     def _generate_completions(self, batch):
         """
         Generate completions for a batch of rollout data using vLLM engine.
@@ -616,6 +632,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             rollout_outputs = self._server_rollout(batch, request_config)
         elif self.vllm_mode == 'colocate':
             rollout_outputs = self._colocate_rollout(batch, request_config)
+        # log prompt and completions
+        messages = gather_object([data['messages'] for data in batch])
+        completions = gather_object([data.response.choices[0].message.content for data in rollout_outputs])
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
+        self._logs['completion'].extend(completions)
+
         return rollout_outputs
 
     def postprocess_rollout_data(self, batch, outputs):
@@ -739,6 +761,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return outputs
 
+    @patch_profiling_decorator
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
         """Score completions using all reward functions.
 
@@ -827,7 +850,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
                 self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
 
-        log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=rewards_per_func)
+        log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=total_rewards_per_func)
+        self._logs['advantages'].extend(advantages.tolist())
+        for i, name in enumerate(self.reward_func_names):
+            self._logs['rewards'][name].extend(total_rewards_per_func[:, i].tolist())
 
         slice_start = self.process_index * len(batch)
         slice_end = slice_start + len(batch)
@@ -972,6 +998,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         finally:
             training.build_pretraining_data_loader = origin_build_pretraining_data_loader
 
+    @patch_profiling_decorator
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
@@ -987,6 +1014,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             output_tensor = model(**inputs)
         return output_tensor, partial(self.loss_func, data=data)
 
+    @patch_profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
         advantages = data['advantages']
         labels = data['labels']
@@ -1010,6 +1038,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if self.args.overlong_filter and truncated_mask.any():
             completion_mask = completion_mask & (~truncated_mask)
+            if not completion_mask.any():
+                logger.warning('All completions are truncated in this batch. Loss and grad_norm will be 0. '
+                               'Consider increasing max_completion_length')
 
         if self.beta != 0.0:
             ref_per_token_logps = data.get('ref_per_token_logps')
@@ -1053,7 +1084,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
                 coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), completion_mask.shape[1], dim=0).unsqueeze(0)
 
-            advantages = advantages[-coef_1.shape[1]:]
+            advantages = advantages[:coef_1.shape[1]]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
         else:
@@ -1105,41 +1136,51 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # loss = loss.mean()
         avg_metric = {
             'loss': loss.clone().detach(),
-            'completions/mean_length': lengths.float().mean(),
         }
-        max_metric = {
-            'completions/max_length': lengths.float().max(),
-        }
-        min_metric = {
-            'completions/min_length': lengths.float().min(),
-        }
+        custom_metrics = {}
+        if self.args.context_parallel_size == 1:
+            total_lengths = gather(lengths)
+            custom_metrics = {
+                'completions/mean_length': total_lengths.float().mean(),
+                'completions/max_length': total_lengths.float().max(),
+                'completions/min_length': total_lengths.float().min(),
+            }
+
         if self.beta != 0.0:
             avg_metric['kl'] = per_token_kl.mean().item()
         avg_reporting_metric = loss.new_tensor(list(avg_metric.values()))
-        max_reporting_metric = loss.new_tensor(list(max_metric.values()))
-        min_reporting_metric = loss.new_tensor(list(min_metric.values()))
         torch.distributed.all_reduce(
             avg_reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
 
-        torch.distributed.all_reduce(
-            max_reporting_metric, torch.distributed.ReduceOp.MAX, group=mpu.get_data_parallel_group())
-        torch.distributed.all_reduce(
-            min_reporting_metric, torch.distributed.ReduceOp.MIN, group=mpu.get_data_parallel_group())
         avg_reporting_metric = {k: avg_reporting_metric[i] for i, k in enumerate(avg_metric.keys())}
-        max_reporting_metric = {k: max_reporting_metric[i] for i, k in enumerate(max_metric.keys())}
-        min_reporting_metric = {k: min_reporting_metric[i] for i, k in enumerate(min_metric.keys())}
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
         addition_metrics = {
             key: torch.tensor(sum(val) / len(val), device=loss.device)
-            for key, val in self._metrics['train'].items()
+            for key, val in self._metrics[mode].items()
         }
 
-        reporting_metric = {**avg_reporting_metric, **max_reporting_metric, **min_reporting_metric, **addition_metrics}
-        # NOTE: For GRPO, CP loss aggregation is already handled in loss calculation (line 1046-1058)
-        # by aggregating numerator/denominator before division (Megatron standard pattern).
-        # DO NOT divide by CP size again here, or loss will be incorrect.
-        # For other loss types (bnpo), the aggregation is also handled inline (line 1064-1071).
-        # Only divide by CP size if there's a specific case that needs it (e.g., Megatron-LM bug fix
-        # for standard cross-entropy loss, but GRPO uses custom loss calculation).
+        reporting_metric = {**avg_reporting_metric, **addition_metrics, **custom_metrics}
+        # log_completions
+        if self.log_completions and self.is_main_process and self._step % self.steps_per_generation == 0:
+            table = {
+                'gen_step': [self._step] * len(self._logs['prompt']),
+                'prompt': list(self._logs['prompt']),
+                'completion': list(self._logs['completion']),
+                **{k: list(v)
+                   for k, v in self._logs['rewards'].items()},
+                'advantages': list(self._logs['advantages']),
+            }
+            self.jsonl_writer.append(table)
+            wandb_writer = get_wandb_writer()
+            if wandb_writer:
+                df = pd.DataFrame(table)
+                if self.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                if not self.init_custom_metric:
+                    wandb_writer.define_metric('completions', step_metric='gen_step')
+                    self.init_custom_metric = True
+                wandb_writer.log({'completions': wandb.Table(dataframe=df)}, self._step)
+
         return loss, reporting_metric
 
     def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
@@ -1308,3 +1349,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             yield
         finally:
             template.max_length = max_length
+
+    def _prepare_metrics(self):
+        args = self.args
+        from swift.utils import JsonlWriter
+        from collections import deque
+        self.log_completions = args.log_completions
+        self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'))
+        self.init_custom_metric = False
+        self._logs = {
+            'prompt': deque(maxlen=args.generation_batch_size),
+            'completion': deque(maxlen=args.generation_batch_size),
+            'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
+            'advantages': deque(maxlen=args.generation_batch_size),
+        }
+
+    def _apply_chat_template_to_messages_list(self, messages_list: DataType):
+        prompts_text = []
+        for messages in messages_list:
+            remove_response(messages)
+            template_inputs = TemplateInputs.from_dict({'messages': messages})
+            res = self.template.encode(template_inputs)
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
+        return prompts_text

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import functools
 import gc
 import time
 from contextlib import contextmanager
@@ -135,7 +136,28 @@ def profiling_context(trainer, name: str):
     if wandb_writer and trainer.is_main_process:
         wandb_writer.log(profiling_metrics)
 
-    # TODO: add swanlab support
+
+@contextmanager
+def patch_profiling_context(trainer, name: str):
+    start_time = time.perf_counter()
+    yield
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+
+    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
+    wandb_writer = get_wandb_writer()
+    if wandb_writer and trainer.is_main_process:
+        wandb_writer.log(profiling_metrics)
+
+
+def patch_profiling_decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        with patch_profiling_context(self, func.__name__):
+            return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):

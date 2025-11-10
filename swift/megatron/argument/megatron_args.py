@@ -35,7 +35,10 @@ class RLHFMegatronArgumentsMixin:
     undesirable_weight: float = 1.
     calculate_KL: Optional[bool] = None
 
-    # ===========================  GRPO  ===========================
+    # rm
+    center_rewards_coefficient: Optional[float] = None
+
+    # grpo
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
     num_generations: int = 8
@@ -43,17 +46,15 @@ class RLHFMegatronArgumentsMixin:
     # GSPO https://www.arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
-    # ───────────────────────────  Sampling  ───────────────────────────
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    # ───────────────────────────  VLLM  ───────────────────────────
     use_vllm: bool = False
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
-    # ──────────────  Internal VLLM (colocate)  ──────────────
+
     vllm_enable_prefix_caching: bool = True
     vllm_gpu_memory_utilization: float = 0.9
     vllm_tensor_parallel_size: int = 1
@@ -63,13 +64,11 @@ class RLHFMegatronArgumentsMixin:
     vllm_disable_cascade_attn: bool = False
     sleep_level: Literal[0, 1, 2] = 0
 
-    # ──────────────  External VLLM (server, not supported yet)  ──────────────
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
 
-    # ───────────────────────────  Reward  ───────────────────────────
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     # see details in swift/plugin/orm.py
@@ -85,6 +84,16 @@ class RLHFMegatronArgumentsMixin:
     # soft_overlong, https://arxiv.org/abs/2503.14476
     soft_max_length: Optional[int] = None
     soft_cache_length: Optional[int] = None
+    # DAPO, https://arxiv.org/abs/2503.14476
+    dynamic_sample: bool = False
+    max_resample_times: int = 3
+    overlong_filter: bool = False
+
+    # Dr. GRPO, https://arxiv.org/abs/2503.20783
+    scale_rewards: bool = True
+
+    wandb_log_unique_prompts: Optional[bool] = None
+    log_completions: bool = False
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
     # reward model
@@ -100,36 +109,22 @@ class RLHFMegatronArgumentsMixin:
     move_model_batches: Optional[int] = None
     offload_optimizer: bool = False
     offload_model: bool = False
-    gc_collect_after_offload: bool = False  # deprecated
 
     # multi turn
-    multi_turn_func: Optional[str] = None  # deprecated
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
-
-    # DAPO, https://arxiv.org/abs/2503.14476
-    dynamic_sample: bool = False
-    max_resample_times: int = 3
-    overlong_filter: bool = False
-
-    # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: bool = True
 
     # entropy
     log_entropy: bool = False
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
-    wandb_log_unique_prompts: Optional[bool] = None
     num_iterations: int = 1
 
     # dataset
     dataset_shuffle: Optional[bool] = True
-
-    # rm
-    center_rewards_coefficient: Optional[float] = None
 
     def _init_kto(self):
         if self.calculate_KL is None:
@@ -395,7 +390,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_load_rng: bool = False
     finetune: bool = False
     ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
-    no_initialization: bool = False
+    no_initialization: bool = True
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
     async_save: bool = False
