@@ -164,7 +164,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 
 ## Training Tips
-- Methods to increase training throughput: use packing, increase data parallelism (DP), reduce recomputation, and increase compute-communication overlap. MoE models can also be accelerated by dropping tokens.
+- Methods to increase training throughput: use packing (do not enable streaming), increase data parallelism (DP), reduce recomputation, and increase compute-communication overlap. MoE models can also be accelerated by dropping tokens.
 - Parallelism choices:
   - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.
   - DP is the fastest but consumes the most memory; use other parallel techniques to reduce memory usage.

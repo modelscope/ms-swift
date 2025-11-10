@@ -161,7 +161,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 
 ## 训练技巧
-- 增加训练吞吐量方法：使用packing、增加DP、减少重计算、增加计算通信overlap。MoE还可以通过丢弃tokens加速。
+- 增加训练吞吐量方法：使用packing（不要开启流式）、增加DP、减少重计算、增加计算通信overlap。MoE还可以通过丢弃tokens加速。
 - 并行技术选择：
   - Megatron-SWIFT的并行技术采用zero1（默认开启use_distributed_optimizer）+各种并行技术的组合。
   - DP的速度最快，但显存占用较多，使用其他并行技术以降低显存占用。
