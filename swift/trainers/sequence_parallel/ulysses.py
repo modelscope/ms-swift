@@ -211,7 +211,6 @@ class SequenceParallel:
                                                                                                  kv_length, *args,
                                                                                                  **kwargs)
 
-            masking_utils.sdpa_mask_recent_torch = sdpa_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping[
                 'sdpa_origin'] = masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa']
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa'] = sdpa_mask
