@@ -1,4 +1,4 @@
-# 50GiB
+# 2 * 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
