@@ -33,7 +33,7 @@ class GPTBridge:
     def __init__(self, disable_tqmd: bool = False):
         from .register import get_megatron_model_meta
         self.args = get_args()
-        self.disable_tqmd = disable_tqmd
+        self.disable_tqmd = disable_tqmd or not is_last_rank()
         self._target_device = None
         self._only_last_rank = False
         self._peft_target_modules = set()
@@ -170,10 +170,10 @@ class GPTBridge:
                             k = k.replace(f'{self._adapter_name}.', '')
                             new_state_dict[k] = v
                     else:
-                        if '.lora_A.' in k or '.lora_B.' in k or 'modules_to_save' in k:
+                        if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:
                             continue
                         k = k.replace('base_layer.', '')
-                        k = k.replace('original_module.', '')
+                        k = k.replace(f'modules_to_save.{self._adapter_name}.', '')
                         new_state_dict[k] = v
                 hf_state_dict = new_state_dict
             if self.pp_size > 1:
@@ -401,7 +401,7 @@ class GPTBridge:
                                                                    q_dim:-kv_dim, :].reshape(-1,
                                                                                              lora_B.shape[-1]).clone()
                     hf_state_dict['v_proj.lora_B.weight'] = lora_B[:, -kv_dim:, :].reshape(-1, lora_B.shape[-1]).clone()
-            else:
+            elif not self._is_peft_format:
                 mg_attn_weight = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.weight.data,
                                                   'linear_qkv.weight')
                 if mg_attn_weight is not None:
@@ -682,7 +682,7 @@ class GPTBridge:
                             hf_state_dict['up_proj.lora_A.weight'] = lora_A.clone()
                             hf_state_dict['gate_proj.lora_B.weight'] = lora_B[0].clone()
                             hf_state_dict['up_proj.lora_B.weight'] = lora_B[1].clone()
-            else:
+            elif not self._is_peft_format:
                 if mg_mlp is None:
                     fc1_weight = None
                 else:
@@ -809,7 +809,7 @@ class GPTBridge:
                             hf_i = i + ep_rank * num_local_experts
                             hf_state_dict[f'{hf_i}.down_proj.lora_A.weight'] = lora_A[i].clone()
                             hf_state_dict[f'{hf_i}.down_proj.lora_B.weight'] = lora_B[i].clone()
-                else:
+                elif not self._is_peft_format:
                     if mg_mlp is None:
                         fc2_weight = None
                     else:
