@@ -33,7 +33,7 @@ class GPTBridge:
     def __init__(self, disable_tqmd: bool = False):
         from .register import get_megatron_model_meta
         self.args = get_args()
-        self.disable_tqmd = disable_tqmd
+        self.disable_tqmd = disable_tqmd or not is_last_rank()
         self._target_device = None
         self._only_last_rank = False
         self._peft_target_modules = set()
