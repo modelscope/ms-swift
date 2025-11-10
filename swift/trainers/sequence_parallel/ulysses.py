@@ -201,8 +201,10 @@ class SequenceParallel:
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
             def sdpa_mask(batch_size, cache_position, kv_length, *args, **kwargs):
+                device = cache_position.device
                 cache_position = self.real_position_ids[0]
                 cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
+                cache_position = torch.arange(0, cache_position.shape[0], device=device)
                 kv_length = cache_position.shape[0]
                 return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
                                                                                                  cache_position,
