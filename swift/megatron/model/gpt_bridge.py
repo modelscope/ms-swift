@@ -73,13 +73,14 @@ class GPTBridge:
         # ColumnLinear
         dim0_keys = {
             'word_embeddings',
-            'output_layer',
             'linear_qkv',
             # mla
             'linear_q_proj',
             'linear_q_up_proj',
             'linear_kv_up_proj'
         }
+        if self.args.task_type == 'causal_lm':
+            dim0_keys.add('output_layer')
         if not self.megatron_core_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
             dim0_keys.update({'linear_q_down_proj', 'linear_kv_down_proj'})
@@ -935,10 +936,11 @@ class GPTBridge:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.untie_embeddings_and_output_weights:
-            hf_lm_head_key = self.hf_lm_head_key
-            if not to_mcore and self.args.task_type == 'seq_cls':
-                hf_lm_head_key = self.hf_score_key
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
+            if not to_mcore or self.args.task_type == 'causal_lm':
+                hf_lm_head_key = self.hf_lm_head_key
+                if not to_mcore and self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = self.hf_score_key
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
         elif to_mcore and lm_model.output_layer.weight is not None:
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
