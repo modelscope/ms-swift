@@ -46,6 +46,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.generation_config = model.generation_config
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
+        self.log_completions = args.log_completions
 
         # Initialize logging components
         self._prepare_logging()
@@ -192,15 +193,20 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
-        original_inputs = inputs  # Keep original inputs for logging
 
         if self._get_random_num() <= self.lmbda:
             # On-policy: student model generates responses
             if args.use_vllm:
                 processed_inputs = self._preprocess_inputs(inputs)
                 generated_inputs = self._fast_infer(processed_inputs)
-                # Log on-policy generations from vLLM (aligned with GRPO)
-                self._log_on_policy_vllm_generations(original_inputs, generated_inputs)
+                if self.log_completions:
+                    messages = [inp['messages'][:-1] for inp in generated_inputs]
+                    completions = [deepcopy(inp['messages'][-1]['content']) for inp in inputs]
+                    valid_messages = self._gather_and_flatten(messages, flatten_level=0)
+                    valid_completions = self._gather_and_flatten(completions, flatten_level=0)
+                    self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+                    self._logs['completion'].extend(valid_completions)
+                    self._logs['rollout_by'].extend(['student'] * len(valid_messages))
                 inputs = self._prepare_batch_inputs(generated_inputs)
             else:
                 inputs = self._prepare_batch_inputs(inputs)
@@ -214,8 +220,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 inputs['input_ids'] = new_input_ids
                 inputs['attention_mask'] = new_attention_mask
                 inputs['labels'] = new_labels
-                # Log on-policy generations from student model (aligned with GRPO)
-                self._log_on_policy_generations(original_inputs, new_input_ids)
 
         elif self.seq_kd:
             inputs = self._prepare_batch_inputs(inputs)
