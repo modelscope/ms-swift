@@ -217,7 +217,7 @@ class GPTModel(McoreGPTModel):
                         rotary_seq_len,
                         packed_seq=packed_seq,
                     )
-                    if packed_seq:
+                    if packed_seq and not self.config.apply_rope_fusion:
                         assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
                         rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
