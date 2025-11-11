@@ -1050,8 +1050,7 @@ def _infer_ernie_vl_thinking_hf(model, processor, messages):
     )
     device = next(model.parameters()).device
     inputs = inputs.to(device)
-    generated_ids = model.generate(
-        inputs=inputs['input_ids'].to(device), **inputs, max_new_tokens=1024, use_cache=False)
+    generated_ids = model.generate(inputs=inputs['input_ids'].to(device), **inputs, max_new_tokens=128, use_cache=False)
     output_text = processor.decode(generated_ids[0][len(inputs['input_ids'][0]):])
     return output_text
 
