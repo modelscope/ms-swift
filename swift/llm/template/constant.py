@@ -16,6 +16,7 @@ class LLMTemplateType:
     qwen3_thinking = 'qwen3_thinking'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
+    # preview: n.v. 预览；预告；提前观看
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
