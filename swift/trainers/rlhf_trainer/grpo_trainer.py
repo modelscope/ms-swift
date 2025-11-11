@@ -1014,12 +1014,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.template.padding_free:
             if self.importance_sampling_level == 'sequence':
                 # Expand sequence-level weights to token-level
-                coef_1 = torch.cat([
-                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
-                ]).unsqueeze(0)
-                coef_2 = torch.cat([
-                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_2, lengths.tolist())
-                ]).unsqueeze(0)
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
 
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
