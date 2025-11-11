@@ -1013,7 +1013,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.template.padding_free:
             if self.importance_sampling_level == 'sequence':
-                # Expand sequence-level weights to token-level without gradient
+                # Expand sequence-level weights to token-level
                 coef_1 = torch.cat([
                     torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
                 ]).unsqueeze(0)
