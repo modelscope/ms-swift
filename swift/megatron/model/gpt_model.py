@@ -165,8 +165,6 @@ class GPTModel(McoreGPTModel):
         Applies embeddings to input tokens, or uses `decoder_input` from a previous
         pipeline stage. Also sets up rotary positional embeddings.
         """
-        # Decoder embedding.
-
         # If decoder_input is provided (not None), then input_ids and position_ids are ignored.
         # Otherwise, apply embedding layer on input_ids and position_ids to get decoder_input.
         in_inference_mode = inference_context is not None and not self.training

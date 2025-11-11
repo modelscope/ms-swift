@@ -156,6 +156,8 @@ class MLLMTemplateType:
     llava_onevision1_5 = 'llava_onevision1_5'
 
     yi_vl = 'yi_vl'
+    ernie_vl = 'ernie_vl'
+    ernie_vl_thinking = 'ernie_vl_thinking'
 
     internvl = 'internvl'
     internvl_phi3 = 'internvl_phi3'

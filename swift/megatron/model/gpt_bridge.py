@@ -981,8 +981,11 @@ class GPTBridge:
         for layer_idx in tqdm(
                 range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd):
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
-            start_idx = lm_model.decoder.layers[0].layer_number - 1
-            mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
+            if len(lm_model.decoder.layers) > 0:
+                start_idx = lm_model.decoder.layers[0].layer_number - 1
+                mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
+            else:
+                mg_layer_available = False
             if mg_layer_available:
                 mg_layer = lm_model.decoder.layers[layer_idx - start_idx]
             else:
