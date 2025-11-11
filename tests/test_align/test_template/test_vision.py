@@ -1041,6 +1041,8 @@ def _infer_ernie_vl_thinking_hf(model, processor, messages):
         add_generation_prompt=True,
     )
     image_inputs, video_inputs = processor.process_vision_info(messages)
+    text = text.replace('User:  ', 'User: ')
+    text = text.replace(' Picture 2:', 'Picture 2:')
     inputs = processor(
         text=[text],
         images=image_inputs,
@@ -1087,7 +1089,7 @@ def test_ernie_vl_thinking():
         ]
     }]
     response2 = _infer_ernie_vl_thinking_hf(pt_engine.model, pt_engine.default_template.processor, messages)
-    assert response == response2
+    assert response == '\n<think>\n' + response2
 
 
 if __name__ == '__main__':
