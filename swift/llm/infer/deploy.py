@@ -249,6 +249,11 @@ def is_accessible(port: int):
     return True
 
 
+def _deploy_main(args):
+    args._init_custom_register()
+    args._import_external_plugins()
+    return deploy_main(args)
+
 @contextmanager
 def run_deploy(args: DeployArguments, return_url: bool = False):
     if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
@@ -262,7 +267,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
         deploy_args = DeployArguments(**args_dict)
 
     mp = multiprocessing.get_context('spawn')
-    process = mp.Process(target=deploy_main, args=(deploy_args, ))
+    process = mp.Process(target=_deploy_main, args=(deploy_args, ))
     process.start()
     try:
         while not is_accessible(deploy_args.port):
