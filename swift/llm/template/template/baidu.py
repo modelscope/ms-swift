@@ -204,20 +204,21 @@ class ERNIE_VLTemplate(Template):
             splited_tokens.append([])
             token_type_ids = []
             position_ids = []
-            text_i, image_i, n_text_token = -1, 0, 0
+            text_i, image_i, n_text_token = 0, 0, 0
             for i, idx in enumerate(idx_list):
                 image_idx = image_i + len(splited_tokens[i])
-                text_len = idx - text_i - 1
+                text_len = idx - text_i
                 token_type_ids.append(torch.tensor([0] * (text_len))[None])
                 token_type_ids.append(new_inputs['token_type_ids'][:, image_i:image_idx])
                 text_position_ids = torch.arange(0, text_len)[None, :, None]
-                start_idxs = [0, 0, 0]
+                start_idx = 0
                 if position_ids:
-                    start_idxs = position_ids[-1][0, -1] + 1
-                position_ids.append(torch.concat([text_position_ids + x for x in start_idxs], dim=2))
+                    start_idx = position_ids[-1][0, -1].max() + 1
+                position_ids.append(torch.concat([text_position_ids + start_idx for _ in range(3)], dim=2))
                 n_text_token += text_len
                 position_ids.append(new_inputs['position_ids'][:, image_i:image_idx] + n_text_token)
-                text_i = idx
+                text_i = idx + 1
+                n_text_token -= 1  # '\n'
                 image_i = image_idx + 1
             token_type_ids = torch.cat(token_type_ids, dim=1)
             position_ids = torch.cat(position_ids, dim=1)
