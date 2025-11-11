@@ -120,6 +120,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     lmbda: float = 0.5
     seq_kd: bool = False
     offload_teacher_model: bool = False
+    teacher_adapter: Optional[str] = None  # Teacher adapter plugin for conditional distillation
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 

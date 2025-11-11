@@ -103,8 +103,8 @@ def test_react_en():
         ' and the condition is sunny with a humidity of 50%.')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -112,8 +112,8 @@ def test_react_en():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_react_zh():
@@ -139,8 +139,8 @@ def test_qwen_en():
         'is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -148,8 +148,8 @@ def test_qwen_en():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_qwen_zh():
@@ -175,8 +175,8 @@ def test_qwen_en_parallel():
         'and the humidity is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -184,8 +184,8 @@ def test_qwen_en_parallel():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_qwen_zh_parallel():
@@ -213,8 +213,8 @@ def test_hermes():
         'and the humidity is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -222,12 +222,12 @@ def test_hermes():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
     assert encoded['input_ids'] == encoded2['input_ids'][:-1]
 
 
@@ -262,8 +262,8 @@ def test_glm4_0414():
     assert messages[-1]['content'] == '根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。'
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -271,8 +271,8 @@ def test_glm4_0414():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_llama3():
@@ -284,8 +284,8 @@ def test_llama3():
 
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -293,8 +293,8 @@ def test_llama3():
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_llama4():
@@ -305,8 +305,8 @@ def test_llama4():
     messages = _infer(engine)
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
 
 
 def test_hunyuan():
@@ -322,12 +322,12 @@ def test_hunyuan():
     template.template_backend = 'swift'
     template.set_mode('train')
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
     assert encoded['input_ids'][:-1] == encoded2['input_ids']
 
 
@@ -344,12 +344,12 @@ def test_glm4_5():
     template.template_backend = 'swift'
     template.set_mode('train')
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
     assert encoded['input_ids'][:-1] == encoded2['input_ids']
 
 
@@ -368,12 +368,12 @@ def test_qwen3_coder():
     template.template_backend = 'swift'
     template.set_mode('train')
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
     assert encoded['input_ids'] == encoded2['input_ids'][:-1]
 
 
@@ -392,12 +392,12 @@ def test_deepseek_v3_1():
     template.template_backend = 'swift'
     template.set_mode('train')
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
 
     expected_input_ids = (
         '<｜begin▁of▁sentence｜>\n\n## Tools\n'
@@ -499,15 +499,15 @@ def test_seed_oss():
     template.template_backend = 'swift'
     template.set_mode('train')
     encoded = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded['labels'])}')
     import re
     expected_input_ids = re.sub(
         r'<seed:think>.*?</seed:think>', '', template.safe_decode(encoded['input_ids']), flags=re.DOTALL)
     template.template_backend = 'jinja'
     encoded2 = template.encode(data)
-    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
-    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    print(f'input_ids: {template.safe_decode(encoded2['input_ids'])}')
+    print(f'labels: {template.safe_decode(encoded2['labels'])}')
     assert template.safe_decode(encoded2['input_ids']) == expected_input_ids
 
 

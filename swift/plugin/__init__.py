@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
+    from .teacher_adapter import teacher_adapters, TeacherAdapter
 
 else:
     _import_structure = {
@@ -33,6 +34,7 @@ else:
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],
+        'teacher_adapter': ['teacher_adapters', 'TeacherAdapter'],
     }
 
     import sys

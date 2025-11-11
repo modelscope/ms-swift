@@ -76,11 +76,11 @@ def get_multimodal_target_regex(
         if not target_modules:
             continue
         target_modules = [tm for tm in target_modules if tm]
-        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
-        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        target_pattern = rf'.*\.({'|'.join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({'|'.join(rejected_modules)}))' if rejected_modules else ''
         res.append(rf'{rejected_pattern}{module}{target_pattern}')
 
-    return rf'^({"|".join(res)})$'
+    return rf'^({'|'.join(res)})$'
 
 
 def get_target_modules(args, model):
