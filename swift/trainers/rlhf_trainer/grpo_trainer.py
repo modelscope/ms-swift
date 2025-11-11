@@ -106,6 +106,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
+            infer_template.sequence_parallel_size = 1
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the

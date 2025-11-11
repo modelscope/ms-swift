@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from functools import wraps
 from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
@@ -877,9 +878,10 @@ def _forward_qwen3_vl_or_qwen3_omni(
         media_inputs = processor.image_processor(images=images, return_tensors='pt')
         media_inputs = to_device(media_inputs, input_ids.device)
         pixel_values = media_inputs['pixel_values'].type(dtype)
-        image_embeds, deepstack_visual_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        image_embeds, _ = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
         inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         visual_pos_masks = None
+        deepstack_visual_embeds = None
     else:
         if pixel_values is None:
             pixel_values_mixed = pixel_values_videos
@@ -936,7 +938,8 @@ def _patch_deepstack_process(model):
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
         from swift.trainers.sequence_parallel import sequence_parallel
-        if sequence_parallel.world_size and visual_pos_masks is not None:
+        world_size = sequence_parallel.world_size
+        if world_size and world_size > 1 and visual_pos_masks is not None:
             visual_pos_masks, visual_embeds = sequence_parallel.pad_and_split_mm_tokens(visual_pos_masks, visual_embeds)
         if visual_pos_masks is None:
             return hidden_states + visual_embeds.mean() * 0
