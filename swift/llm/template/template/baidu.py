@@ -241,4 +241,14 @@ class ERNIE_VLTemplate(Template):
         return super().generate(model, *args, **kwargs)
 
 
-register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate))
+register_template(
+    ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, response_prefix='<think>'))
+
+ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
+                   'framework.')
+register_template(
+    ERNIETemplateMeta(
+        MLLMTemplateType.ernie_vl_thinking,
+        template_cls=ERNIE_VLTemplate,
+        response_prefix='\n<think>\n',
+        default_system=ERNIE_VL_SYSTEM))
