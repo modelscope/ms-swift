@@ -24,7 +24,8 @@ logger = get_logger()
 def find_all_linears(model):
 
     def _cond(name, module):
-        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
+        if name != 'output_layer' and isinstance(
+                module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
             return True
         return False
 
@@ -109,12 +110,12 @@ def get_target_modules(args, model):
 
 
 def get_modules_to_save(args, model):
+    if args.task_type == 'seq_cls':
+        args.modules_to_save.append('output_layer')
     modules_to_save = args.modules_to_save.copy()
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')
         modules_to_save += find_embedding(model)
-    if args.task_type == 'seq_cls':
-        modules_to_save.append('output_layer')
     return modules_to_save
 
 
@@ -247,6 +248,8 @@ def tuners_sharded_state_dict(
 
 
 def copy_original_module_weight(model):
+    if hasattr(model, 'language_model'):
+        model = model.language_model
     for module in model.modules():
         if isinstance(module, ModulesToSaveWrapper):
             original_module = module.original_module

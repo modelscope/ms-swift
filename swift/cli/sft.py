@@ -11,6 +11,8 @@ def try_init_unsloth():
 
 
 if __name__ == '__main__':
+    from swift.cli.utils import try_use_single_device_mode
+    try_use_single_device_mode()
     try_init_unsloth()
     from swift.ray import try_init_ray
     try_init_ray()
