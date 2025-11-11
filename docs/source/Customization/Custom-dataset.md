@@ -2,7 +2,7 @@
 
 自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加。例如，方案一最为方便，但对预处理函数的控制能力最弱，需要预先对数据集进行转换，传入特定格式的数据集：
 1. 【推荐】直接使用命令行传参的方式接入，即`--dataset <dataset_path1> <dataset_path2>`。这将使用AutoPreprocessor将数据集转换为标准格式（支持4种数据集格式，具体查看下面对AutoPreprocessor的介绍）。你可以使用`--columns`进行列名转换。支持传入csv、json、jsonl、txt、文件夹（例如git clone开源数据集）。该方案不需要修改dataset_info.json，适合刚接触ms-swift的用户，下面两种方案适合对ms-swift进行拓展的开发者。
-2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
+2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
 3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--custom_register_path xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
    - 方案一和二在实现中借助了方案三，只是注册的过程为自动发生。
 
@@ -86,7 +86,7 @@ alpaca格式:
 多模态数据的格式参考[多模态数据集](#多模态), 额外加入如`images`的列表示其他模态输入。当需要为偏好对数据关联不同的图片信息时，可通过`rejected_images`字段标注拒绝回答对应的图片信息。
 对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个
 
-> 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/人类对齐.md#rm)
+> 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
 
 当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
 
@@ -158,11 +158,11 @@ alpaca格式:
 
 ### Embedding
 
-请参考[embedding训练文档](../BestPractices/Embedding训练.md#数据集格式)
+请参考[embedding训练文档](../BestPractices/Embedding.md#数据集格式)
 
 ### Reranker
 
-请参考[Reranker训练文档](../BestPractices/Reranker训练.md#数据集格式)
+请参考[Reranker训练文档](../BestPractices/Reranker.md#数据集格式)
 
 ### 多模态
 
@@ -255,7 +255,7 @@ print(f'images: {encoded["template_inputs"].images}')
 - `{"role": "tool_response", ...}`也可以写成`{"role": "tool", ...}`，这两种写法是等价的。该部分也将根据`agent_template`自动转换格式。该部分在训练时将不进行损失的计算，角色类似于`{"role": "user", ...}`。
 - 该格式支持并行调用工具，例子参考第一条数据样本。多模态Agent数据样本中`<image>`标签数量应与"images"长度相同，其标签位置代表图像特征的插入位置。当然也支持其他模态，例如audios, videos。
 - 注意：您也可以手动将数据处理为role为system/user/assistant的messages格式。agent_template的作用是将其中的tools字段以及role为tool_call和tool_response的messages部分，自动映射为标准的role为system/user/assistant的messages格式。
-- 更多请参考[Agent文档](../Instruction/Agent支持.md)。
+- 更多请参考[Agent文档](../Instruction/Agent-support.md)。
 
 ### 文生图格式
 

@@ -9,7 +9,7 @@ Megatron 以其卓越的训练速度和丰富的并行技术而著称，但也�
 Mcore-Bridge 兼容 Dense/MoE/多模态等多种模型架构。训练完成后，转换后的模型可直接使用 transformers、vLLM、SGLang 等主流推理框架部署。
 
 ## 无缝训练
-目前Mcore-Bridge已支持TP/PP/EP/ETP/VPP等并行技术，支持所有Megatron-SWIFT支持的模型架构，参考[支持的模型文档](../Instruction/支持的模型和数据集.md)。以下介绍Mcore-Bridge的无缝训练能力，分别介绍Dense模型和Moe模型。
+目前Mcore-Bridge已支持TP/PP/EP/ETP/VPP等并行技术，支持所有Megatron-SWIFT支持的模型架构，参考[支持的模型文档](../Instruction/Supported-models-and-datasets.md)。以下介绍Mcore-Bridge的无缝训练能力，分别介绍Dense模型和Moe模型。
 
 ### Dense模型
 以下为多模态模型Qwen3-VL模型训练的例子:
@@ -286,18 +286,18 @@ from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_mo
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-4B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     torch_dtype=torch.bfloat16,
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 bridge = megatron_model_meta.bridge_cls()
@@ -329,23 +329,22 @@ from swift.megatron import (
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-30B-A3B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     pipeline_model_parallel_size=2,
     expert_model_parallel_size=2,
     sequence_parallel=True,
-    moe_grouped_gemm=True,
     torch_dtype=torch.bfloat16,
     train_type='lora',
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 # 加载权重

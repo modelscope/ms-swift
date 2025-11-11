@@ -101,7 +101,7 @@ swift eval \
     --extra_eval_args '{"ignore_errors": true, "debug": true}'
 ```
 
-详细评测的参数列表可以参考[这里](命令行参数.md#评测参数)。
+详细评测的参数列表可以参考[这里](Command-line-parameters.md#评测参数)。
 
 ## 训练中评测
 

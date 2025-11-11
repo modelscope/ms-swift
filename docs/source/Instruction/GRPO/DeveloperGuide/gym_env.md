@@ -138,7 +138,7 @@ swift rollout \
 ```json
 {"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
 ```
-2. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./多轮训练.md#损失掩码)
+2. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./multi_turn.md#损失掩码)
 
 3. 数据流程
 整个gym数据流程如下:

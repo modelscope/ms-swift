@@ -123,15 +123,15 @@ def compute_rouge_bleu(preds: List[str], labels: List[str]):
     score_dict = {key: MeanMetric() for key in ['rouge-1', 'rouge-2', 'rouge-l', 'bleu-4']}
 
     for pred, label in zip(preds, labels):
-        hypothesis = list(jieba.cut(pred))
-        reference = list(jieba.cut(label))
+        hypothesis = [w.strip(' ') for w in jieba.cut(pred) if w.strip(' ')]
+        reference = [w.strip(' ') for w in jieba.cut(label) if w.strip(' ')]
         if not hypothesis or not reference:
             continue
         rouge = Rouge()
         scores = rouge.get_scores(' '.join(hypothesis), ' '.join(reference))[0]
         for k, v in scores.items():
             score_dict[k].update(v['f'])
-        bleu_score = sentence_bleu([list(label)], list(pred), smoothing_function=SmoothingFunction().method3)
+        bleu_score = sentence_bleu([reference], hypothesis, smoothing_function=SmoothingFunction().method3)
         score_dict['bleu-4'].update(bleu_score)
 
     return {k: round(v.compute()['value'] * 100, 6) for k, v in score_dict.items()}

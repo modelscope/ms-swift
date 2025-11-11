@@ -1,6 +1,6 @@
 # Quick Start
 
-ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/qwen3_moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
+ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
 
 
 | Method                             | Full-parameter | LoRA | MoE  | Multimodal |
@@ -31,7 +31,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -39,8 +39,8 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
-# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
-git clone --branch core_r0.13.0 https://github.com/NVIDIA/Megatron-LM.git
+# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.14.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.14.0)).
+git clone --branch core_r0.14.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
@@ -65,7 +65,7 @@ Recommended Operating Environment:
 | torch        | >=2.0        | 2.7.1/2.8.0    |                    |
 | transformer_engine    | >=2.3       |         |                  |
 | apex |   |  0.1 | |
-| megatron_core    |        | 0.13      |                  |
+| megatron_core    |        | 0.14      |                  |
 | flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.1      |                    |
 | modelscope   | >=1.23       |             |                    |
@@ -164,7 +164,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 
 ## Training Tips
-- Methods to increase training throughput: use packing, increase data parallelism (DP), reduce recomputation, and increase compute-communication overlap. MoE models can also be accelerated by dropping tokens.
+- Methods to increase training throughput: use packing (do not enable streaming), increase data parallelism (DP), reduce recomputation, and increase compute-communication overlap. MoE models can also be accelerated by dropping tokens.
 - Parallelism choices:
   - Megatron-SWIFT uses ZeRO-1 (use_distributed_optimizer enabled by default) combined with various parallelism techniques.
   - DP is the fastest but consumes the most memory; use other parallel techniques to reduce memory usage.

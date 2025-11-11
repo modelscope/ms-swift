@@ -2,7 +2,7 @@
 
 Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
-环境准备请参考Megatron-SWIFT的[快速开始文档](./快速开始.md)。
+环境准备请参考Megatron-SWIFT的[快速开始文档](./Quick-start.md)。
 
 ## HF转换Mcore
 

@@ -28,7 +28,10 @@ def get_cache_mapping(fpath):
 
 
 def get_model_info_table():
-    fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-and-datasets.md']
+    fpaths = [
+        'docs/source/Instruction/Supported-models-and-datasets.md',
+        'docs/source_en/Instruction/Supported-models-and-datasets.md'
+    ]
     cache_mapping = get_cache_mapping(fpaths[0])
     end_words = [['### 多模态大模型', '## 数据集'], ['### Multimodal large models', '## Datasets']]
     result = [

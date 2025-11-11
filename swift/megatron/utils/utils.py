@@ -24,7 +24,8 @@ logger = get_logger()
 def find_all_linears(model):
 
     def _cond(name, module):
-        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
+        if name != 'output_layer' and isinstance(
+                module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
             return True
         return False
 
@@ -47,8 +48,10 @@ def get_multimodal_target_regex(
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
 ) -> str:
+    from ..model import get_megatron_model_meta
+    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
     modules = []
-    visual_cls = args.megatron_model_meta.visual_cls
+    visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
     aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
     if not freeze_llm:
@@ -86,7 +89,7 @@ def get_target_modules(args, model):
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             return get_multimodal_target_regex(
                 args,
                 model,
@@ -107,12 +110,12 @@ def get_target_modules(args, model):
 
 
 def get_modules_to_save(args, model):
+    if args.task_type == 'seq_cls':
+        args.modules_to_save.append('output_layer')
     modules_to_save = args.modules_to_save.copy()
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')
         modules_to_save += find_embedding(model)
-    if args.task_type == 'seq_cls':
-        modules_to_save.append('output_layer')
     return modules_to_save
 
 
@@ -245,6 +248,8 @@ def tuners_sharded_state_dict(
 
 
 def copy_original_module_weight(model):
+    if hasattr(model, 'language_model'):
+        model = model.language_model
     for module in model.modules():
         if isinstance(module, ModulesToSaveWrapper):
             original_module = module.original_module

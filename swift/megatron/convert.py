@@ -157,14 +157,14 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     _test_params_sum(mg_model)
 
     is_multimodal = template.model_meta.is_multimodal
-    inputs = template.encode(get_examples(is_multimodal))
-    hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
+        inputs = template.encode(get_examples(is_multimodal))
+        hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
         model_arch = hf_model.model_meta.model_arch
@@ -263,11 +263,13 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
-        **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
+        model=args.model,
+        model_type=args.model_type,
+        **kwargs,
+        **current_convert_kwargs,
+        save=args.output_dir,
+        torch_dtype=args.torch_dtype)
     extra_args = megatron_args.parse_to_megatron()
-    extra_args['model_info'] = args.model_info
-    extra_args['model_meta'] = args.model_meta
-    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
@@ -304,14 +306,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         extra_config['load'] = args.mcore_model
     kwargs.update(extra_config)
     megatron_args = MegatronArguments(
+        model=args.model,
+        model_type=args.model_type,
         **kwargs,
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
     extra_args = megatron_args.parse_to_megatron()
-    extra_args['model_info'] = args.model_info
-    extra_args['model_meta'] = args.model_meta
-    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
