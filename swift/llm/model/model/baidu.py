@@ -54,3 +54,29 @@ register_model(
         model_arch=ModelArch.keye_vl,
         architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
+
+
+def get_model_tokenizer_ernie_vl(*args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        model.add_image_preprocess(processor)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ernie_vl,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/ERNIE-4.5-VL-28B-A3B-PT', 'baidu/ERNIE-4.5-VL-28B-A3B-PT'),
+                Model('PaddlePaddle/ERNIE-4.5-VL-424B-A47B-PT', 'baidu/ERNIE-4.5-VL-424B-A47B-PT'),
+                Model('PaddlePaddle/ERNIE-4.5-VL-28B-A3B-Base-PT', 'baidu/ERNIE-4.5-VL-28B-A3B-Base-PT'),
+                Model('PaddlePaddle/ERNIE-4.5-VL-424B-A47B-Base-PT', 'baidu/ERNIE-4.5-VL-424B-A47B-Base-PT'),
+            ]),
+        ],
+        TemplateType.ernie_vl,
+        get_model_tokenizer_ernie_vl,
+        model_arch=ModelArch.ernie_vl,
+        architectures=['Ernie4_5_VLMoeForConditionalGeneration'],
+        requires=['transformers>=4.52'],
+    ))
