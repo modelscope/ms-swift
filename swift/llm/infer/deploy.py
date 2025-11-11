@@ -250,9 +250,11 @@ def is_accessible(port: int):
 
 
 def _deploy_main(args):
+
     args._init_custom_register()
     args._import_external_plugins()
     return deploy_main(args)
+
 
 @contextmanager
 def run_deploy(args: DeployArguments, return_url: bool = False):
