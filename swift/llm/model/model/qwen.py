@@ -878,10 +878,9 @@ def _forward_qwen3_vl_or_qwen3_omni(
         media_inputs = processor.image_processor(images=images, return_tensors='pt')
         media_inputs = to_device(media_inputs, input_ids.device)
         pixel_values = media_inputs['pixel_values'].type(dtype)
-        image_embeds, _ = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        image_embeds, deepstack_visual_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
         inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         visual_pos_masks = None
-        deepstack_visual_embeds = None
     else:
         if pixel_values is None:
             pixel_values_mixed = pixel_values_videos
