@@ -236,5 +236,9 @@ class ERNIE_VLTemplate(Template):
         res.update(super()._data_collator(batch, padding_to=padding_to))
         return res
 
+    def generate(self, model, *args, **kwargs):
+        kwargs['use_cache'] = False
+        return super().generate(model, *args, **kwargs)
+
 
 register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate))
