@@ -171,32 +171,62 @@ class PaddleOCRTemplate(Template):
 register_template(ERNIETemplateMeta(MLLMTemplateType.paddle_ocr, template_cls=PaddleOCRTemplate))
 
 
-class ERNIETemplate(Template):
+class ERNIE_VLTemplate(Template):
     placeholder_tokens = ['<|IMAGE_PLACEHOLDER|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        return [f'Picture {index+1}:<|IMAGE_START|><|IMAGE_PLACEHOLDER|><|IMAGE_END|>']
+        return [f'Picture {index+1}:<|IMAGE_PLACEHOLDER|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
-        if inputs.images:
-            text = self.processor.decode(input_ids).replace('<|IMAGE_PLACEHOLDER|>', '<|image@placeholder|>')
+        loss_scale = encoded['loss_scale']
+        image_token = self._tokenize('<|IMAGE_PLACEHOLDER|>')[0]
+        idx_list = findall(input_ids, image_token)
+        if idx_list:
+            split_token = self._tokenize('\n')[0]
             new_inputs = self.processor(
-                text=[text],
+                text=['\n'.join(['<|IMAGE_START|><|image@placeholder|><|IMAGE_END|>'] * len(idx_list))],
                 images=inputs.images,
                 videos=inputs.videos,
                 padding=True,
                 return_tensors='pt',
             )
+            splited_tokens = self._split_list(new_inputs['input_ids'][0].tolist(), split_token)
+            # Insert image tokens into input_ids
+            input_ids_len = len(input_ids)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda i: splited_tokens[i])
+            idx_list.append(input_ids_len)
+            splited_tokens.append([])
+            token_type_ids = []
+            position_ids = []
+            text_i, image_i, n_text_token = -1, 0, 0
+            for i, idx in enumerate(idx_list):
+                image_idx = image_i + len(splited_tokens[i])
+                text_len = idx - text_i - 1
+                token_type_ids.append(torch.tensor([0] * (text_len))[None])
+                token_type_ids.append(new_inputs['token_type_ids'][:, image_i:image_idx])
+                text_position_ids = torch.arange(0, text_len)[None, :, None]
+                start_idxs = [0, 0, 0]
+                if position_ids:
+                    start_idxs = position_ids[-1][0, -1] + 1
+                position_ids.append(torch.concat([text_position_ids + x for x in start_idxs], dim=2))
+                n_text_token += text_len
+                position_ids.append(new_inputs['position_ids'][:, image_i:image_idx] + n_text_token)
+                text_i = idx
+                image_i = image_idx + 1
+            token_type_ids = torch.cat(token_type_ids, dim=1)
+            position_ids = torch.cat(position_ids, dim=1)
             encoded.update(new_inputs)
-            new_input_ids = new_inputs['input_ids'][0].tolist()
-            encoded['input_ids'], encoded['labels'] = align_image_inputs(input_ids, labels, new_input_ids,
-                                                                         self.placeholder_tokens[0])
-            encoded['position_ids'] = encoded['position_ids'][0]
+            encoded['token_type_ids'] = token_type_ids
+            encoded['position_ids'] = position_ids
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -205,3 +235,6 @@ class ERNIETemplate(Template):
             res[key] = self.concat_tensor(batch, key, 0)
         res.update(super()._data_collator(batch, padding_to=padding_to))
         return res
+
+
+register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate))
