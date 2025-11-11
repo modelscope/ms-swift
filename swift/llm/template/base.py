@@ -524,8 +524,16 @@ class Template(ProcessorMixin):
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
-        if self.truncation_strategy == 'split':
-            return encoded
+        if isinstance(encoded, list):
+            processed_list = []
+            for sub_encoded in encoded:
+                for key in list(sub_encoded.keys()):
+                    if sub_encoded[key] is None:
+                        sub_encoded.pop(key)
+                if not return_length:
+                    sub_encoded.pop('length', None)
+                processed_list.append(sub_encoded)
+            return processed_list
 
         if chosen.channel is not None:
             encoded['channel'] = chosen.channel
