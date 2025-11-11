@@ -1012,6 +1012,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
         if self.template.padding_free:
+            if self.importance_sampling_level == 'sequence':
+                # Expand sequence-level weights to token-level without gradient
+                coef_1 = torch.cat([
+                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
+                ]).unsqueeze(0)
+                coef_2 = torch.cat([
+                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_2, lengths.tolist())
+                ]).unsqueeze(0)
+
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
