@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
@@ -10,11 +10,13 @@ class TeacherAdapter(ABC):
     """Base class for transforming student context to teacher context in GKD training."""
 
     @abstractmethod
-    def shape_context(self, history: 'Messages') -> 'Messages':
+    def shape_context(self, data_dict: Dict[str, Any]) -> 'Messages':
         """Transform student messages to teacher messages.
 
         Args:
-            history: Student model's messages (standard OpenAI messages format)
+            data_dict: Complete data dictionary containing:
+                - 'messages': Student model's messages (OpenAI format)
+                - Other fields like 'dataset', 'images', etc. for flexible usage
 
         Returns:
             Teacher model's messages
@@ -25,15 +27,16 @@ class TeacherAdapter(ABC):
 class DefaultTeacherAdapter(TeacherAdapter):
     """Default: teacher uses the same context as student."""
 
-    def shape_context(self, history: 'Messages') -> 'Messages':
-        return history
+    def shape_context(self, data_dict: Dict[str, Any]) -> 'Messages':
+        return data_dict['messages']
 
 
 class MathTeacherAdapter(TeacherAdapter):
     """Example: add extra instructions to system prompt for teacher."""
 
-    def shape_context(self, history: 'Messages') -> 'Messages':
+    def shape_context(self, data_dict: Dict[str, Any]) -> 'Messages':
         # Create a copy to avoid modifying original
+        history = data_dict['messages']
         teacher_history = history.copy()
 
         # Example: enhance system prompt for teacher

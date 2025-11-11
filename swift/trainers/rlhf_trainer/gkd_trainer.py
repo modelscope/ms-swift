@@ -274,8 +274,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             # Use teacher_adapter to generate teacher_history if available
             if self.teacher_adapter is not None:
+                # Prepare student messages (without final assistant response if present)
                 student_messages = data['messages'][:-1] if data['messages'][-1]['role'] == 'assistant' else data['messages']
-                teacher_history = self.teacher_adapter.shape_context(student_messages)
+                # Pass complete data dict to adapter (similar to GRPO's reward_model_plugin design)
+                # Temporarily replace messages with student_messages for adapter
+                original_messages = data['messages']
+                data['messages'] = student_messages
+                teacher_history = self.teacher_adapter.shape_context(data)
+                data['messages'] = original_messages  # Restore
                 data['teacher_history'] = teacher_history
 
             encoded = template.encode(data, return_length=True)
