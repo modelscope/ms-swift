@@ -10,6 +10,7 @@ from typing import Dict, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from accelerate.utils import gather_object
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -19,7 +20,7 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, patch_profiling_decorator, prepare_deepspeed
+from .utils import identity_data_collator, patch_profiling_context, patch_profiling_decorator, prepare_deepspeed
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -50,10 +51,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Initialize logging components
         self._prepare_logging()
-
+        self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
         # Initialize teacher model
         if self.is_deepspeed_enabled:
             if teacher_deepspeed_config is not None:
+                if teacher_deepspeed_config.get('zero_optimization', {}).get('stage') != 3:
+                    self.teacher_ds3_gather_for_generation = False
                 self.teacher_model = prepare_deepspeed(
                     teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
             else:
@@ -78,7 +81,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
 
     # Code borrowed from huggingface/trl
-    @patch_profiling_decorator
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
         # Generate output with respect to the prompt only
@@ -193,49 +195,49 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
+        with patch_profiling_context(self, 'get_completions'):
+            if self._get_random_num() <= self.lmbda:
+                # On-policy: student model generates responses
+                if args.use_vllm:
+                    processed_inputs = self._preprocess_inputs(inputs)
+                    generated_inputs = self._fast_infer(processed_inputs)
+                    if self.log_completions:
+                        messages = [inp['messages'][:-1] for inp in generated_inputs]
+                        completions = [deepcopy(inp['messages'][-1]['content']) for inp in generated_inputs]
+                        valid_messages = gather_object(messages)
+                        valid_completions = gather_object(completions)
+                        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+                        self._logs['completion'].extend(valid_completions)
+                    inputs = self._prepare_batch_inputs(generated_inputs)
+                else:
+                    inputs = self._prepare_batch_inputs(inputs)
+                    with unwrap_model_for_generation(
+                            model, self.accelerator,
+                            gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
+                        unwrapped_model.eval()
+                        new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
+                            unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+                        unwrapped_model.train()
+                    inputs['input_ids'] = new_input_ids
+                    inputs['attention_mask'] = new_attention_mask
+                    inputs['labels'] = new_labels
 
-        if self._get_random_num() <= self.lmbda:
-            # On-policy: student model generates responses
-            if args.use_vllm:
-                processed_inputs = self._preprocess_inputs(inputs)
-                generated_inputs = self._fast_infer(processed_inputs)
-                if self.log_completions:
-                    messages = [inp['messages'][:-1] for inp in generated_inputs]
-                    completions = [deepcopy(inp['messages'][-1]['content']) for inp in inputs]
-                    valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-                    valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-                    self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-                    self._logs['completion'].extend(valid_completions)
-                    self._logs['rollout_by'].extend(['student'] * len(valid_messages))
-                inputs = self._prepare_batch_inputs(generated_inputs)
-            else:
+            elif self.seq_kd:
                 inputs = self._prepare_batch_inputs(inputs)
-                with unwrap_model_for_generation(
-                        model, self.accelerator,
-                        gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
-                    unwrapped_model.eval()
+                load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+                with load_context, unwrap_model_for_generation(
+                        self.teacher_model,
+                        self.accelerator,
+                        gather_deepspeed3_params=self.teacher_ds3_gather_for_generation) as unwrapped_model:
                     new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                         unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
-                    unwrapped_model.train()
                 inputs['input_ids'] = new_input_ids
                 inputs['attention_mask'] = new_attention_mask
                 inputs['labels'] = new_labels
 
-        elif self.seq_kd:
-            inputs = self._prepare_batch_inputs(inputs)
-            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with load_context, unwrap_model_for_generation(
-                    self.teacher_model, self.accelerator,
-                    gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
-                new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
-                    unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
-            inputs['input_ids'] = new_input_ids
-            inputs['attention_mask'] = new_attention_mask
-            inputs['labels'] = new_labels
+            else:
+                inputs = self._prepare_batch_inputs(inputs)
 
-        else:
-            inputs = self._prepare_batch_inputs(inputs)
-        assert not isinstance(inputs, list)
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
@@ -305,10 +307,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
         # Initialize logs deque for storing rollout data (aligned with GRPO)
-        max_log_size = getattr(args, 'generation_batch_size', 1000)
         self._logs = {
-            'prompt': deque(maxlen=max_log_size),
-            'completion': deque(maxlen=max_log_size),
+            'prompt': deque(),
+            'completion': deque(),
         }
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
@@ -320,74 +321,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             res = self.template.encode(template_inputs)
             prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
-
-    @patch_profiling_decorator
-    def _log_on_policy_generations(self, inputs: DataType, generated_ids: torch.Tensor):
-        """Log on-policy generation results from student model (aligned with GRPO).
-
-        Args:
-            inputs: Original input data
-            generated_ids: Generated token IDs (full sequences including prompt)
-        """
-        if not self.log_completions:
-            return
-
-        # Extract messages (prompts without response)
-        messages = [deepcopy(inp['messages']) for inp in inputs]
-        for msg in messages:
-            if msg and msg[-1].get('role') == 'assistant':
-                msg.pop()  # Remove assistant response for prompt
-
-        # Convert to prompt text
-        prompts_text = self._apply_chat_template_to_messages_list(messages)
-
-        # Decode completions from generated tokens
-        completions = []
-        for i in range(len(inputs)):
-            if i < generated_ids.shape[0]:
-                completion_ids = generated_ids[i]
-                # Decode full sequence, the completion part will be after the prompt
-                completion_text = self.processing_class.decode(completion_ids, skip_special_tokens=True)
-                completions.append(completion_text)
-            else:
-                completions.append('')
-
-        # Store logs
-        self._logs['prompt'].extend(prompts_text)
-        self._logs['completion'].extend(completions)
-
-    @patch_profiling_decorator
-    def _log_on_policy_vllm_generations(self, original_inputs: DataType, generated_inputs: DataType):
-        """Log on-policy generation results from vLLM (aligned with GRPO).
-
-        Args:
-            original_inputs: Original input data
-            generated_inputs: Generated inputs with response_token_ids from vLLM
-        """
-        if not self.log_completions:
-            return
-
-        # Extract messages (prompts without response)
-        messages = [deepcopy(inp['messages']) for inp in original_inputs]
-        for msg in messages:
-            if msg and msg[-1].get('role') == 'assistant':
-                msg.pop()  # Remove assistant response for prompt
-
-        # Convert to prompt text
-        prompts_text = self._apply_chat_template_to_messages_list(messages)
-
-        # Decode completions from response_token_ids
-        completions = []
-        for i, gen_inp in enumerate(generated_inputs):
-            if 'response_token_ids' in gen_inp and gen_inp['response_token_ids']:
-                completion_text = self.processing_class.decode(gen_inp['response_token_ids'], skip_special_tokens=True)
-                completions.append(completion_text)
-            else:
-                completions.append('')
-
-        # Store logs
-        self._logs['prompt'].extend(prompts_text)
-        self._logs['completion'].extend(completions)
 
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         """Override log method to include completion table logging (aligned with GRPO)."""
@@ -411,14 +344,17 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # Write to jsonl
             self.jsonl_writer.append(table)
 
+            self._logs['prompt'].clear()
+            self._logs['completion'].clear()
             # Log to wandb if enabled
             report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
             if report_to_wandb:
+                wandb_table = table.copy()
                 import pandas as pd
-                df = pd.DataFrame(table)
+                df = pd.DataFrame(wandb_table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
-                wandb.log({'gkd_completions': wandb.Table(dataframe=df)})
+                wandb.log({'completions': wandb.Table(dataframe=df)})
 
             # Log to swanlab if enabled
             report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
@@ -429,4 +365,4 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 for i in range(len(table['step'])):
                     row = [table[header][i] for header in headers]
                     rows.append(row)
-                swanlab.log({'gkd_completions': swanlab.echarts.Table().add(headers, rows)})
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
