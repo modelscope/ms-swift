@@ -47,7 +47,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.generation_config = model.generation_config
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
-        self.log_completions = args.log_completions
 
         # Initialize logging components
         self._prepare_logging()
@@ -302,7 +301,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def _prepare_logging(self):
         """Initialize logging components for on-policy rollout tracking."""
         args = self.args
-        self.log_completions = getattr(args, 'log_completions', True)
+        self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = getattr(args, 'wandb_log_unique_prompts', False)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
