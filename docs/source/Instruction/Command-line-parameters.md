@@ -503,11 +503,16 @@ RLHF参数继承于[训练参数](#训练参数)。
 - center_rewards_coefficient: 用于RM训练。用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
 - loss_scale: 覆盖模板参数。rlhf训练时，默认为'last_round'。
 - temperature: 默认为0.9，该参数将在PPO、GRPO、GKD中使用。
+
+#### GKD参数
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
 - sft_alpha: 默认为0。控制GKD中加入sft_loss的权重。最后的loss为`gkd_loss + sft_alpha * sft_loss`。
 - seq_kd: 默认为False。该参数在GKD中使用。控制是否执行序列级知识蒸馏（Sequence-Level KD）的 seq_kd 参数（可视为对教师模型生成输出的监督式微调）。
   - 注意：你可以提前对数据集内容使用teacher模型进行推理（使用vllm/sglang/lmdeploy等推理引擎加速），并在训练时将`seq_kd`设置为False。或者将`seq_kd`设置为True，在训练时使用teacher模型生成序列（能保证多个epoch生成数据的不同，但效率较慢）。
 - offload_teacher_model: 卸载教师模型以节约显存，只在采样/计算logps时加载，默认为False。
+- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
+  - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
+  - 仅记录 vLLM 采样结果。
 
 #### Reward/Teacher模型参数
 reward模型参数将在PPO、GRPO中使用。
@@ -564,8 +569,8 @@ reward模型参数将在PPO、GRPO中使用。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`, 注意对于多模态模型，
 左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
-- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False。
-  - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
+- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
+  - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
 - vllm_mode server 参数

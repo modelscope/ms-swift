@@ -275,6 +275,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     offload_optimizer: bool = False
     offload_model: bool = False
 
+    wandb_log_unique_prompts: Optional[bool] = None
+
 
 @dataclass
 class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
@@ -330,7 +332,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # If false, add KL into loss, otherwise add into reward
     kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
 
-    wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
 

@@ -106,6 +106,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
+            infer_template.sequence_parallel_size = 1
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -1012,6 +1013,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
         if self.template.padding_free:
+            if self.importance_sampling_level == 'sequence':
+                # Expand sequence-level weights to token-level
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
