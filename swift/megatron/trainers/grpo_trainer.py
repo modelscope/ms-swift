@@ -1145,28 +1145,29 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'loss': loss.clone().detach(),
         }
         custom_metrics = {}
-        if self.args.context_parallel_size == 1:
-            total_lengths = gather(lengths)
-            custom_metrics = {
-                'completions/mean_length': total_lengths.float().mean(),
-                'completions/max_length': total_lengths.float().max(),
-                'completions/min_length': total_lengths.float().min(),
-            }
-
-        # if self.beta != 0.0:
-        #     avg_metric['kl'] = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0).item()
-        avg_reporting_metric = loss.new_tensor(list(avg_metric.values()))
-        torch.distributed.all_reduce(
-            avg_reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-
-        avg_reporting_metric = {k: avg_reporting_metric[i] for i, k in enumerate(avg_metric.keys())}
-        mode = 'train' if self.unwrapped_models[0].training else 'eval'
-        addition_metrics = {
-            key: torch.tensor(sum(val) / len(val), device=loss.device)
-            for key, val in self._metrics[mode].items()
+        total_lengths = gather(lengths, group=mpu.get_data_parallel_group(with_context_parallel=True))
+        total_lengths *= self.args.context_parallel_size
+        custom_metrics = {
+            'completions/mean_length': total_lengths.float().mean(),
+            'completions/max_length': total_lengths.float().max(),
+            'completions/min_length': total_lengths.float().min(),
         }
 
-        reporting_metric = {**avg_reporting_metric, **addition_metrics, **custom_metrics}
+        if self.beta != 0.0:
+            avg_metric['kl'] = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0).item()
+
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        if self._metrics[mode]:
+            addition_metrics = {
+                key: torch.tensor(sum(val) / len(val), device=loss.device)
+                for key, val in self._metrics[mode].items()
+            }
+            avg_metric.update(addition_metrics)
+
+        avg_metric = self._all_reduce_metric(avg_metric)
+
+        reporting_metric = {**avg_metric, **custom_metrics}
+
         # log_completions
         if self.log_completions and self.is_main_process and self._step % self.steps_per_generation == 0:
             table = {
