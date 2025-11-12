@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import importlib
+import importlib.metadata
 import os
 from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
@@ -768,7 +768,7 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
             qwen_vl_utils_version = importlib.metadata.version('qwen_vl_utils')
         except importlib.metadata.PackageNotFoundError:
             raise importlib.metadata.PackageNotFoundError(
-                f"The '{requirement}' distribution was not found and is required by this application. {hint}")
+                "The 'qwen_vl_utils' distribution was not found and is required by this application.")
         if version.parse(qwen_vl_utils_version) >= version.parse('0.0.14'):
             compat_qwen_vl_utils(image_patch_size=14)
         else:
