@@ -907,7 +907,7 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
@@ -932,8 +932,42 @@ class SwiftMixin:
 
             if isinstance(positive_token_id, int) and isinstance(negative_token_id, int) \
                     and positive_token_id >= 0 and negative_token_id >= 0:
-                positive_logits = logits[:, -1, positive_token_id]
-                negative_logits = logits[:, -1, negative_token_id]
+                # Handle right padding by finding the last valid token position
+                batch_size = logits.shape[0]
+                seq_len = logits.shape[1]
+                
+                if attention_mask is not None:
+                    # Detect padding direction and find last valid token position
+                    # For left padding: padding tokens are on the left, last valid token is at the end
+                    # For right padding: padding tokens are on the right, last valid token is before padding starts
+                    
+                    # Check if it's left padding by looking at the first position
+                    # If first position is 0 (padding) for any sample, it's likely left padding
+                    is_left_padding = (attention_mask[:, 0] == 0).any()
+                    
+                    if is_left_padding:
+                        # For left padding, the last valid token is always at position (seq_len - 1)
+                        # since valid tokens are aligned to the right
+                        seq_indices = torch.full((batch_size, 1), seq_len - 1, device=logits.device)
+                    else:
+                        # For right padding, find the last valid position for each sample
+                        seq_lengths = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
+                        seq_indices = seq_lengths.unsqueeze(1)
+                    
+                    # Gather logits at the last valid position for each sample
+                    batch_indices = torch.arange(batch_size, device=logits.device).unsqueeze(1)
+                    
+                    # Extract logits at last valid positions for all tokens
+                    # Use advanced indexing to get [batch_size, vocab_size]
+                    last_valid_logits = logits[batch_indices, seq_indices, :].squeeze(1)
+                    
+                    positive_logits = last_valid_logits[:, positive_token_id]
+                    negative_logits = last_valid_logits[:, negative_token_id]
+                else:
+                    # Fallback to original behavior if attention_mask is not available
+                    positive_logits = logits[:, -1, positive_token_id]
+                    negative_logits = logits[:, -1, negative_token_id]
+                
                 binary_preds = (positive_logits > negative_logits).long()
                 metrics = compute_acc(
                     binary_preds,
