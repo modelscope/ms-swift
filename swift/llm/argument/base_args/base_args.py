@@ -85,7 +85,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     packing: bool = False
     packing_length: Optional[int] = None
     lazy_tokenize: Optional[bool] = None
-    cached_dataset: List[str] = field(default_factory=list)
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -179,8 +178,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.max_length = self.model_info.max_model_len
         if self.packing and self.packing_length is None:
             self.packing_length = self.max_length
-        if isinstance(self.cached_dataset, str):
-            self.cached_dataset = [self.cached_dataset]
         self._init_lazy_tokenize()
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
