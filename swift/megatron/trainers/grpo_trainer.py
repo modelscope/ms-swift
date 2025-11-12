@@ -1057,17 +1057,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
-            seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0)
-                           for lr, m in zip(log_ratio_list[:micro_batch_size], mask_list[:micro_batch_size])]
-            seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
+            # Optimized: compute weighted sum for each sequence (avoid list comprehension overhead)
+            # Use torch.stack on results instead of intermediate lists
+            seq_weights = torch.stack([(lr * m).sum() / m.sum().clamp(min=1.0)
+                                       for lr, m in zip(log_ratio_list, mask_list)])
+            seq_level_log_weights = seq_weights.to(log_ratio.dtype).unsqueeze(-1)
             if self.importance_sampling_level == 'sequence':
                 log_importance_weights = seq_level_log_weights
             else:
                 seq_level_log_weight = seq_level_log_weights.detach()
-                seq_level_log_weight = torch.cat([
-                    torch.repeat_interleave(log_weight, length)
-                    for log_weight, length in zip(seq_level_log_weight, lengths.tolist())
-                ]).unsqueeze(0)
+                # Vectorized: use repeat_interleave with tensor directly
+                seq_level_log_weight = torch.repeat_interleave(
+                    seq_level_log_weight.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
@@ -1083,13 +1084,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # In padding_free + sequence mode, coef_1 is [num_samples, 1]
             # We need to expand to [1, total_tokens] for token-level loss computation
             if self.importance_sampling_level == 'sequence':
-                # Expand sequence-level weights to token-level without gradient
-                coef_1 = torch.cat([
-                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_1, lengths.tolist())
-                ]).unsqueeze(0)
-                coef_2 = torch.cat([
-                    torch.repeat_interleave(log_weight, length) for log_weight, length in zip(coef_2, lengths.tolist())
-                ]).unsqueeze(0)
+                # Vectorized: expand sequence-level weights to token-level without gradient
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
 
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
@@ -1108,7 +1105,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
             # In CP mode, aggregate numerator and denominator before division (Megatron standard)
             if self.args.context_parallel_size > 1:
-                # Compute sum and count for each sample on this CP rank
+                # Optimized: compute sum and count for each sample, then stack results
                 sample_sum_and_count = torch.stack([
                     torch.stack([(loss * mask).sum(), mask.sum().clamp(min=1.0)])
                     for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
@@ -1121,9 +1118,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 sample_loss = sample_sum_and_count[:, 0] / sample_sum_and_count[:, 1]
                 loss = sample_loss.mean()
             else:
-                sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0)
-                               for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])]
-                loss = torch.stack(sample_loss).mean()
+                # Optimized: compute sample loss, then stack results
+                sample_loss = torch.stack([
+                    (loss * mask).sum() / mask.sum().clamp(min=1.0)
+                    for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
+                ])
+                loss = sample_loss.mean()
         elif self.loss_type == 'bnpo':
             if self.args.context_parallel_size > 1:
                 # Aggregate numerator and denominator across CP ranks
@@ -1153,8 +1153,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'completions/min_length': total_lengths.float().min(),
             }
 
-        if self.beta != 0.0:
-            avg_metric['kl'] = per_token_kl.mean().item()
+        # if self.beta != 0.0:
+        #     avg_metric['kl'] = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0).item()
         avg_reporting_metric = loss.new_tensor(list(avg_metric.values()))
         torch.distributed.all_reduce(
             avg_reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
@@ -1371,6 +1371,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }
+        if is_wandb_available():
+            from wandb.sdk.wandb_run import Run
+            origin_log = Run.log
+            from functools import wraps
+
+            @wraps(origin_log)
+            def log(self, data: dict[str, Any], step: int | None = None, commit: bool | None = None):
+                return origin_log(self, data, None, commit)
+
+            # Directly replace the class method, no need for MethodType
+            Run.log = log
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         prompts_text = []
