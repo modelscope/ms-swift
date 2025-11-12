@@ -96,6 +96,7 @@ class LLMTemplateType:
     bluelm = 'bluelm'
     orion = 'orion'
     moonlight = 'moonlight'
+    kimi_k2 = 'kimi_k2'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
     hunyuan_moe = 'hunyuan_moe'

@@ -44,6 +44,7 @@ register_megatron_model(
             ModelType.mimo,
             ModelType.mimo_rl,
             ModelType.moonlight,
+            ModelType.kimi_k2,
             ModelType.deepseek_moe,
             ModelType.deepseek_v2,
             ModelType.deepseek_v2_5,

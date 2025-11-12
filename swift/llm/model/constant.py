@@ -130,6 +130,7 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
     moonlight = 'moonlight'
+    kimi_k2 = 'kimi_k2'
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
