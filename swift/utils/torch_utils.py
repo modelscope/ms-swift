@@ -394,9 +394,8 @@ def get_last_valid_indices(attention_mask: torch.Tensor) -> torch.Tensor:
     """
     Get the last valid (non-padding) token position indices for each sample.
 
-    This function handles both left-padding and right-padding cases:
-    - Left padding: padding tokens are on the left, valid tokens aligned to the right
-    - Right padding: padding tokens are on the right, valid tokens aligned to the left
+    This function correctly handles sequences with different padding directions (left/right/none)
+    within the same batch by computing the last valid index for each sequence individually.
 
     Args:
         attention_mask: Attention mask [batch_size, seq_len] where 1=valid, 0=padding
@@ -415,20 +414,14 @@ def get_last_valid_indices(attention_mask: torch.Tensor) -> torch.Tensor:
         >>> get_last_valid_indices(attention_mask)
         tensor([4, 4])
     """
-    batch_size = attention_mask.shape[0]
     seq_len = attention_mask.shape[1]
 
-    # Detect padding direction by checking if first position contains padding
-    # If any sample has padding (0) at position 0, it's likely left padding
-    is_left_padding = (attention_mask[:, 0] == 0).any()
+    # Flip the mask horizontally to bring the last elements to the front.
+    # `argmax` will then find the index of the first '1', which corresponds to the last valid token.
+    last_valid_indices = torch.fliplr(attention_mask).argmax(dim=1)
 
-    if is_left_padding:
-        # For left padding, the last valid token is always at position (seq_len - 1)
-        # since valid tokens are aligned to the right
-        indices = torch.full((batch_size, ), seq_len - 1, dtype=torch.long, device=attention_mask.device)
-    else:
-        # For right padding, find the last valid position for each sample
-        indices = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
+    # Convert the index from the right-to-left frame to the original left-to-right frame.
+    indices = seq_len - 1 - last_valid_indices
 
     return indices
 
