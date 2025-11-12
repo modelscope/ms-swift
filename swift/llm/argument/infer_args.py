@@ -127,7 +127,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
-        self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset or self.cached_dataset)
+        self.eval_human = not self._val_dataset_exists
         logger.info(f'Setting args.eval_human: {self.eval_human}')
         if self.stream is None:
             self.stream = self.eval_human
