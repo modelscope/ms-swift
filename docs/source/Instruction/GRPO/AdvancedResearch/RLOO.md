@@ -91,4 +91,4 @@ $$
 - **`--beta`**：KL 散度正则化系数 $\beta$
   - 控制策略更新的保守程度
 
-其他参数与 [GRPO参数](../../命令行参数.md#grpo参数)一致
+其他参数与 [GRPO参数](../../Command-line-parameters.md#grpo参数)一致

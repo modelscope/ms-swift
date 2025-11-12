@@ -78,14 +78,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
+        self._prepare_algorithm_params()
         super().__init__(model, ref_model, *_args, **kwargs)
         self.prepare_rollout()
         self._prepare_rewards(reward_funcs, reward_model, **kwargs)
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
-
-        self._prepare_algorithm_params()
 
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
@@ -107,6 +106,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
+            infer_template.sequence_parallel_size = 1
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -1013,6 +1013,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
         if self.template.padding_free:
+            if self.importance_sampling_level == 'sequence':
+                # Expand sequence-level weights to token-level
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+
             advantages = advantages[-coef_1.shape[1]:]
             per_token_loss1 = coef_1 * advantages.unsqueeze(0)
             per_token_loss2 = coef_2 * advantages.unsqueeze(0)
@@ -1825,6 +1830,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
             self._logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        config = {
+            'dynamic_sample': str(self.dynamic_sample),
+            'importance_sampling_level': str(self.importance_sampling_level),
+            'advantage_estimator': str(self.advantage_estimator),
+            'chord_sft_enabled': str(self.chord_sft_dataset is not None),
+        }
+        return config
 
     def _prepare_algorithm_params(self):
         args = self.args

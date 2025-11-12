@@ -82,10 +82,18 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
+        from .constant import MLLMModelType, RMModelType, RerankerModelType
         if self.template is None:
             self.template = 'dummy'
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
+
+        if self.model_type in MLLMModelType.__dict__:
+            self.is_multimodal = True
+        if self.model_type in RMModelType.__dict__:
+            self.is_reward = True
+        if self.model_type in RerankerModelType.__dict__:
+            self.is_reranker = True
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
@@ -124,13 +132,6 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType, RMModelType, RerankerModelType
-    if model_type in MLLMModelType.__dict__:
-        model_meta.is_multimodal = True
-    if model_type in RMModelType.__dict__:
-        model_meta.is_reward = True
-    if model_type in RerankerModelType.__dict__:
-        model_meta.is_reranker = True
     if model_meta.model_arch:
         model_meta.model_arch = get_model_arch(model_meta.model_arch)
     MODEL_MAPPING[model_type] = model_meta
@@ -211,41 +212,41 @@ def _patch_awq_compat(model_info):
         pass
 
 
-def deepspeed_set_z3_leaf_modules(model):
+def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
     if not is_deepspeed_zero3_enabled():
         return
     try:
         architecture = model.config.architectures[0]
     except Exception:
         return
-    z3_leaf_modules = None
-    if architecture == 'Qwen3VLMoeForConditionalGeneration':
-        from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
-        z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
-    elif architecture == 'Qwen3OmniMoeForConditionalGeneration':
-        from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerTextSparseMoeBlock
-        z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
-    elif architecture == 'Qwen2MoeForCausalLM':
-        from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
-        z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
-    elif architecture == 'Qwen3MoeForCausalLM':
-        from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
-        z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
-    elif architecture == 'Glm4MoeForCausalLM':
-        from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
-        z3_leaf_modules = [Glm4MoeMoE]
-    elif architecture == 'Glm4vMoeForConditionalGeneration':
-        from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
-        z3_leaf_modules = [Glm4vMoeTextMoE]
-    elif architecture == 'GptOssForCausalLM':
-        from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
-        z3_leaf_modules = [GptOssMLP]
-    elif architecture == 'Llama4ForCausalLM':
-        from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
-        z3_leaf_modules = [Llama4TextMoe]
-    elif architecture == 'Qwen3NextForCausalLM':
-        from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
-        z3_leaf_modules = [Qwen3NextSparseMoeBlock]
+    if z3_leaf_modules is None:
+        if architecture == 'Qwen3VLMoeForConditionalGeneration':
+            from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
+            z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
+        elif architecture == 'Qwen3OmniMoeForConditionalGeneration':
+            from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerTextSparseMoeBlock
+            z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
+        elif architecture == 'Qwen2MoeForCausalLM':
+            from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
+            z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
+        elif architecture == 'Qwen3MoeForCausalLM':
+            from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
+            z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+        elif architecture == 'Glm4MoeForCausalLM':
+            from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
+            z3_leaf_modules = [Glm4MoeMoE]
+        elif architecture == 'Glm4vMoeForConditionalGeneration':
+            from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
+            z3_leaf_modules = [Glm4vMoeTextMoE]
+        elif architecture == 'GptOssForCausalLM':
+            from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
+            z3_leaf_modules = [GptOssMLP]
+        elif architecture == 'Llama4ForCausalLM':
+            from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
+            z3_leaf_modules = [Llama4TextMoe]
+        elif architecture == 'Qwen3NextForCausalLM':
+            from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
+            z3_leaf_modules = [Qwen3NextSparseMoeBlock]
 
     if z3_leaf_modules:
         from deepspeed.utils import set_z3_leaf_modules
@@ -378,7 +379,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
         if leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
-            deepspeed_set_z3_leaf_modules(model)
+            deepspeed_set_z3_leaf_modules(model, leaf_modules)
 
     return model, tokenizer
 

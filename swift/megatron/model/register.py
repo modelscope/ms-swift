@@ -1,12 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from argparse import ArgumentParser
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Callable, List, Optional, Type
 
 import torch.nn as nn
-from transformers import PretrainedConfig
 
 from swift.llm import MODEL_MAPPING
+from .constant import MLLMMegatronModelType
+from .gpt_bridge import GPTBridge
+from .gpt_model import GPTModel
+from .mm_gpt_model import MultimodalGPTModel
 from .model_provider import model_provider as model_provider_func
 
 MEGATRON_MODEL_MAPPING = {}
@@ -17,16 +20,20 @@ class MegatronModelMeta:
     megatron_model_type: str
     model_types: List[str]
 
-    convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
-    convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
-
-    model_cls: Type[nn.Module]
-    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
+    is_multimodal: bool = False
+    bridge_cls: Type[GPTBridge] = GPTBridge
+    model_cls: Optional[Type[nn.Module]] = None
     get_transformer_layer_spec: Optional[Callable] = None
     model_provider: Callable[[], nn.Module] = model_provider_func
     visual_cls: Optional[Type[nn.Module]] = None
 
     extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
+
+    def __post_init__(self):
+        if self.megatron_model_type in MLLMMegatronModelType.__dict__:
+            self.is_multimodal = True
+        if self.model_cls is None:
+            self.model_cls = MultimodalGPTModel if self.is_multimodal else GPTModel
 
 
 def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):
@@ -36,7 +43,6 @@ def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok:
         model_meta.support_megatron = True
     if not exist_ok and megatron_model_type in MEGATRON_MODEL_MAPPING:
         raise ValueError(f'The `{megatron_model_type}` has already been registered in the MODEL_MAPPING.')
-
     MEGATRON_MODEL_MAPPING[megatron_model_type] = megatron_model_meta
 
 

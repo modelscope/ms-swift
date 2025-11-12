@@ -1,28 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
-from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
-from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
-from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
-def convert_hf2mcore_internvl3(hf_model, mg_model):
+class Internvl3Bridge(GPTBridge):
+    hf_layers_prefix = 'language_model.model.layers'
+    hf_embed_key = 'language_model.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'language_model.model.norm.weight'
+    hf_lm_head_key = 'language_model.lm_head.weight'
+    hf_score_key = 'language_model.score.weight'
 
-    convert_hf2mcore(hf_model.language_model, mg_model.language_model)
-    mg_model.visual.vision_model.load_state_dict(hf_model.vision_model.state_dict())
-    mg_model.visual.mlp1.load_state_dict(hf_model.mlp1.state_dict())
-
-
-def convert_mcore2hf_internvl3(hf_model, mg_model):
-    convert_mcore2hf(hf_model.language_model, mg_model.language_model)
-    hf_model.vision_model.load_state_dict(mg_model.visual.vision_model.state_dict())
-    hf_model.mlp1.load_state_dict(mg_model.visual.mlp1.state_dict())
+    def _init_meta_hf_model(self):
+        internvl3_vit = Internvl3Vit(None)
+        self.hf_model = internvl3_vit._hf_model[0]
+        self.hf_model.vision_model = None
+        self.processor = internvl3_vit.processor
 
 
 class Internvl3Vit(HuggingFaceModule):
@@ -63,44 +60,22 @@ class Internvl3Vit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
+    MegatronModelMeta(
         MegatronModelType.internvl3, [
             ModelType.internvl3,
             ModelType.internvl3_5,
         ],
-        convert_hf2mcore=convert_hf2mcore_internvl3,
-        convert_mcore2hf=convert_mcore2hf_internvl3,
+        bridge_cls=Internvl3Bridge,
         visual_cls=Internvl3Vit))
 
 
-def convert_hf2mcore_internvl_hf(hf_model, mg_model):
-    language_model = hf_model.language_model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
-    if args.untie_embeddings_and_output_weights:
-        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.vision_tower.load_state_dict(hf_model.vision_tower.state_dict())
-    mg_model.visual.multi_modal_projector.load_state_dict(hf_model.multi_modal_projector.state_dict())
-
-
-def convert_mcore2hf_internvl_hf(hf_model, mg_model):
-    language_model = hf_model.language_model
-    mg_language_model = mg_model.language_model
-    args = get_args()
-    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
-    if args.untie_embeddings_and_output_weights:
-        lm_head_weight = hf_model.score.weight if args.task_type == 'seq_cls' else hf_model.lm_head.weight
-        lm_head_weight.data.copy_(mg_language_model.output_layer.weight)
-    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
-    for layer_idx in range(args.num_layers):
-        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-
-    hf_model.vision_tower.load_state_dict(mg_model.visual.vision_tower.state_dict())
-    hf_model.multi_modal_projector.load_state_dict(mg_model.visual.multi_modal_projector.state_dict())
+class InternvlHfBridge(MultimodalGPTBridge):
+    hf_state_dict_mapping = {
+        'language_model.lm_head': 'lm_head',
+        'language_model.model': 'model.language_model',
+        'vision_tower': 'model.vision_tower',
+        'multi_modal_projector': 'model.multi_modal_projector',
+    }
 
 
 class InternvlHfVit(HuggingFaceModule):
@@ -152,10 +127,7 @@ class InternvlHfVit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
+    MegatronModelMeta(
         MegatronModelType.internvl_hf, [
             ModelType.internvl_hf,
-        ],
-        convert_hf2mcore=convert_hf2mcore_internvl_hf,
-        convert_mcore2hf=convert_mcore2hf_internvl_hf,
-        visual_cls=InternvlHfVit))
+        ], bridge_cls=InternvlHfBridge, visual_cls=InternvlHfVit))

@@ -2,8 +2,6 @@
 import os
 from typing import Optional, Tuple
 
-import torch
-import torch.distributed as dist
 from transformers.utils import strtobool
 
 from .logger import get_logger
@@ -68,10 +66,13 @@ def is_mp() -> bool:
     from swift.utils import get_device_count
     n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
-    assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
-    if n_gpu // local_world_size >= 2:
-        return True
-    return False
+    if os.environ.get('SWIFT_SINGLE_DEVICE_MODE', '0') != '1':
+        assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
+        if n_gpu // local_world_size >= 2:
+            return True
+        return False
+    else:
+        return False
 
 
 def is_mp_ddp() -> bool:

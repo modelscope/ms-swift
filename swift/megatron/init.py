@@ -379,6 +379,15 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_megatron_tokenizer():
+    from megatron.training import global_vars
+
+    def build_tokenizer(args):
+        return 'dummy_tokenizer'
+
+    global_vars.build_tokenizer = build_tokenizer
+
+
 def _patch_peft_ModulesToSaveWrapper():
     if version.parse(peft.__version__) >= version.parse('0.16'):
         from peft.utils import other as peft_module
@@ -509,6 +518,16 @@ def _patch_torch_FileSystemReader():
     FileSystemReader.read_data = read_data
 
 
+def _patch_validate_non_overlapping_shards_metadata():
+    # too slow
+    from torch.distributed._shard.sharded_tensor import api
+
+    def validate_non_overlapping_shards_metadata(*args, **kwargs):
+        pass
+
+    api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
+
+
 def _patch_TELinear():
     from megatron.core.extensions.transformer_engine import TELinear
 
@@ -619,25 +638,22 @@ def _patch_mrope():
         Returns:
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
-        args = get_args()
-        cu_seqlens_for_batched = cu_seqlens
-        use_batched_mrope = False
+        use_batched_rope = False
         if cp_group is not None:
             cp_size = cp_group.size()
             cu_seqlens_for_batched = cu_seqlens // cp_size
-            use_batched_mrope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
-        if args.position_embedding_type != 'mrope' and not use_batched_mrope:
+            use_batched_rope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
+        if not use_batched_rope:
             logger.warning_once('Using non-batched RoPE, which may affect performance.')
             return _origin_apply_rotary_pos_emb_thd(
                 t,
-                cu_seqlens_for_batched,
+                cu_seqlens,
                 freqs,
                 rotary_interleaved=rotary_interleaved,
                 multi_latent_attention=multi_latent_attention,
                 mscale=mscale,
                 cp_group=cp_group,
             )
-
         if cp_group is None:
             raise ValueError('cp_group must be provided for THD format RoPE')
 
@@ -664,12 +680,18 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    _patch_megatron_tokenizer()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
         logger.info('Patch FileSystemReader successfully applied.')
     except Exception:
+        pass
+    try:
+        _patch_validate_non_overlapping_shards_metadata()
+    except Exception:
+        logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
     try:
         _patch_peft_BaseTuner()
@@ -687,7 +709,7 @@ def init_megatron_env() -> None:
         # TODO: Synchronization issues may occur in DDP scenarios
         # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.14.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])

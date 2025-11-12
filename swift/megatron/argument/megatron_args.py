@@ -9,7 +9,7 @@ import json
 import torch
 from transformers.utils.versions import require_version
 
-from swift.llm.argument.base_args import to_abspath
+from swift.llm import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
@@ -91,9 +91,23 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
-    torch_dtype: Optional[torch.dtype] = None
+    torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
+    # mcore-bridge
+    model: Optional[str] = None
+    model_type: Optional[str] = None
+    load_safetensors: bool = False
+    save_safetensors: bool = False
+    adapters: List[str] = field(default_factory=list)
+    ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
+    use_hf: bool = False
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
+    merge_lora: Optional[bool] = None
+    max_shard_size: str = '5GB'
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
@@ -113,6 +127,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # visual
     vit_gradient_checkpointing: bool = True
+    vit_lr: Optional[float] = None
+    aligner_lr: Optional[float] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     # qwen3_next
     linear_num_value_heads: Optional[int] = None
@@ -141,7 +157,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                     res[key] = old_value
             res.pop('adapter_load', None)
             if res['train_type'] != 'lora':
-                res.pop('load')
+                res.pop('load', None)
         return res
 
 
@@ -268,10 +284,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_shared_expert_intermediate_size: Optional[int] = None
 
     moe_router_topk: Optional[int] = None
+    moe_router_num_groups: Optional[int] = None
+    moe_router_group_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = None
-    moe_router_bias_update_rate: float = 1e-3
+    moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
@@ -280,7 +298,7 @@ class MegatronArguments(ExtraMegatronArguments):
     expert_tensor_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
-    moe_grouped_gemm: bool = False
+    moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
     moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
@@ -436,6 +454,9 @@ class MegatronArguments(ExtraMegatronArguments):
         MegatronTunerMixin.__post_init__(self)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
+        self.model_info, self.model_meta = get_model_info_meta(
+            self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
+        self.model_type = self.model_info.model_type
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self._patch_megatron_timeout(self.distributed_timeout_minutes)
@@ -444,6 +465,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+        if self.task_type != 'causal_lm':
+            self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         if self.eval_interval is None:
@@ -452,12 +475,17 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.position_embedding_type is None:
             self.position_embedding_type = 'rope'
-        if self.tensorboard_dir is None and self.save is not None:
-            self.tensorboard_dir = f'{self.save}/runs'
+        if self.merge_lora is None:
+            self.merge_lora = self.save_safetensors
+        if self.adapters or self.adapter_load or self.ref_adapter_load:
+            if self.train_type == 'full':
+                self.train_type = 'lora'
+                logger.info('Setting args.train_type: lora')
+        if self.adapters:
+            self._load_adapter_config()
         self._init_moe()
         self._init_mixed_precision()
 
-        self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         self._init_no_rope_fusion()
 
@@ -475,6 +503,10 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
+        extra_args['model_dir'] = self.model_info.model_dir
+        extra_args['is_multimodal'] = self.model_meta.is_multimodal
+        # model_type may be overridden by megatron
+        extra_args['hf_model_type'] = self.model_type
         megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')
         args_dict.update(megatron_extra_kwargs)
         for k, value in args_dict.items():
@@ -498,3 +530,22 @@ class MegatronArguments(ExtraMegatronArguments):
         # parameter conflict
         extra_args.pop('loss_scale', None)
         return extra_args
+
+    def _load_adapter_config(self):
+        assert len(self.adapters) == 1, 'Currently only support one adapter'
+        adapter_path = self.adapters[0]
+        adapter_config_path = os.path.join(adapter_path, 'adapter_config.json')
+        adapter_config = {}
+        if os.path.exists(adapter_config_path):
+            with open(adapter_config_path, 'r') as f:
+                adapter_config = json.load(f)
+        mapping = {'r': 'lora_rank', 'bias': 'lora_bias'}
+        for k in ['lora_alpha', 'lora_dropout', 'use_rslora']:
+            mapping[k] = k
+        for k, v in adapter_config.items():
+            if k not in mapping:
+                continue
+            k = mapping[k]
+            if v != getattr(self, k):
+                setattr(self, k, v)
+                logger.info(f'Setting {k}: {v}')

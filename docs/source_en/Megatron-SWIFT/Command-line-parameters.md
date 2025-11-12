@@ -197,10 +197,12 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - moe_ffn_hidden_size: Hidden layer size of the feedforward network (ffn) for each expert. Default is None and will be automatically read from config.json. If not found and `num_experts` is not None, it will be set to ffn_hidden_size.
 - moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
+- moe_router_num_groups: Number of groups to divide experts into for group-limited routing. Refers to DeepSeek-V2 and DeepSeek-V3. Default is None. Automatically read from config.json.
+- moe_router_group_topk: Number of selected groups for group-limited routing. Default is None. Automatically read from config.json.
 - moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
 - 🔥moe_router_dtype: Data type used for routing computation and expert output weighted averaging. Options are 'none', 'fp32', and 'fp64', which enhances numerical stability, especially when the number of experts is large. When used together with `moe_permute_fusion`, the performance impact is negligible. Default is 'fp32'. 'none' means no change to data type.
 - moe_router_score_function: Scoring function for MoE TopK routing. Can be "softmax" or "sigmoid". Default is None and is read from config.json.
-- moe_router_bias_update_rate: Update rate of expert bias in the auxiliary-loss-free load balancing strategy. Expert bias is updated based on the number of tokens each expert is assigned in the global batch: bias increases for experts assigned fewer tokens, and decreases for those assigned more tokens. Default is 1e-3, same as used in DeepSeekV3.
+- moe_router_bias_update_rate: Update rate of expert bias in the auxiliary-loss-free load balancing strategy. Expert bias is updated based on the number of tokens each expert is assigned in the global batch: bias increases for experts assigned fewer tokens, and decreases for those assigned more tokens. Default is None and is read from config.json.
 - moe_router_enable_expert_bias: TopK routing with dynamic expert bias in the auxiliary-loss-free load balancing strategy. Routing decisions are based on the sum of routing scores and expert bias. See details at: https://arxiv.org/abs/2408.15664. Default is None and is automatically read from config.json.
 - moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
 - moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
@@ -208,7 +210,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥expert_tensor_parallel_size: expert tensor-parallel size. Default is 1.
   - In "ms-swift<3.9", its default is `None`, which means it equals the value of `--tensor_model_parallel_size`. This default will be changed in "ms-swift>=3.9".
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
-- 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.
+- 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is True.
+  - In "ms-swift>=3.10", the default value of this parameter was changed from False to True.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
 - 🔥moe_aux_loss_coeff: Defaults to 0, meaning the auxiliary loss is not used. **Generally, a higher value leads to worse training performance but more balanced MoE expert utilization.** Please choose an appropriate value based on experimental results.
   - Note: In ms-swift versions earlier than 3.7.1, the default is None and the value is automatically loaded from config.json.
@@ -248,6 +251,7 @@ LoRA Training:
 - 🔥target_modules: Specifies the suffixes of modules to apply LoRA to. For example, you can set it as `--target_modules linear_qkv linear_proj`. The default is `['all-linear']`, which means all linear layers will be set as target modules.
   - Note: The behavior of `'all-linear'` differs between LLMs and multimodal LLMs. For standard LLMs, it automatically finds all linear layers except `lm_head` and attaches tuners. **For multimodal LLMs, tuners are by default only attached to the LLM component; this behavior can be controlled via `freeze_llm`, `freeze_vit`, and `freeze_aligner`**.
   - Note: If you want to set all router layers as target modules, you can specify `--target_modules all-router ...`. For example: `--target_modules all-router all-linear`.
+  - The suffix names of Linear layers differ between transformers and Megatron. In Megatron, `linear_proj` represents `o_proj`, `linear_qkv` represents the concatenation of `q_proj, k_proj, v_proj`, `linear_fc1` represents the concatenation of `gate_proj` and `up_proj`, and `linear_fc2` represents `down_proj`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`. For example, setting `--modules_to_save word_embeddings output_layer` will unfreeze the `word_embeddings` and `output_layer` layers during LoRA training, and the weights of these modules will be saved in the final checkpoint.
 - 🔥lora_rank: Default is `8`.
@@ -278,6 +282,20 @@ LoRA Training:
 **RM Parameters**:
 - center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 
+**Mcore-Bridge Parameters**
+
+- 🔥load_safetensors: Defaults to False. Whether to load weights directly from safetensors.
+- 🔥save_safetensors: Defaults to False. Whether to save directly as safetensors weights. Note: if this parameter is set to True, optimizer weights, random number states, and other checkpoint resumption contents will not be stored.
+- model: The model_id or model_path of safetensors weights. Defaults to None.
+- model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
+- adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
+- ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO or KTO algorithms with full-parameter training. Default is None, set to `--model`.
+- ref_adapters: List of adapter_id or adapter_path of ref_adapters safetensors weights (currently only supports length of 1). Default is `[]`.
+- use_hf: Controls whether to use ModelScope or HuggingFace for model download, dataset download, and model push. Default is False, using ModelScope.
+- hub_token: Hub token. ModelScope hub token can be found [here](https://modelscope.cn/my/myaccesstoken). Default is None.
+- merge_lora: Whether to store merged weights. Defaults to None. If `save_safetensors` is set to True, this parameter defaults to `True`; otherwise, it defaults to False. That is, by default, LoRA will be merged when storing in safetensors format; LoRA will not be merged when storing in torch_dist format.
+- max_shard_size: Maximum file size for safetensors format storage, defaults to '5GB'.
+
 
 ## Training Parameters
 
@@ -289,6 +307,9 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - Note: **The Megatron-SWIFT training feature prioritizes support for the padding-free format**. Unless under special circumstances, please do not modify this value.
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT (Vision Transformer) component during multimodal model training. Defaults to `True`. (**The ViT implementation in Megatron-SWIFT uses the Hugging Face `transformers` library.**)
+- vit_lr: Specifies the learning rate for the ViT module when training multimodal models. Default is `None`, same as `learning_rate`.
+  - Typically used together with `--freeze_vit false` and `--freeze_aligner false`.
+- aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to `None`. This parameter only takes effect when `vit_gradient_checkpointing` is enabled.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency (achieving better load balancing across nodes and processes, and higher GPU utilization), at the cost of additional preprocessing time, while also stabilizing GPU memory usage. Defaults to `False`. Currently supported for CPT, SFT, DPO, KTO and RM.
   - Note: **Sequences within the same batch remain mutually invisible**, except for Qwen3-Next.
@@ -315,3 +336,15 @@ In addition to inheriting the training parameters, the following parameters are 
 - 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'kto', and 'rm' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
+
+
+## Export Parameters
+
+This section introduces the parameters for `megatron export` (requires "ms-swift>=3.10"). To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
+- 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
+- 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
+- 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.
+  - Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot be converted (though Qwen3-VL-Moe can be converted if only linear_proj and linear_qkv are set for LoRA training). However, most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+- 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
+- test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
+- exist_ok: If `args.save` exists, do not throw an exception and perform overwriting. Defaults to False.

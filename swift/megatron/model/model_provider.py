@@ -14,14 +14,46 @@ from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
 if TYPE_CHECKING:
     from .gpt_model import GPTModel
-    from .mm_gpt_model import MultimodalGPTModel
+
+
+def _get_transformer_layer_spec(use_te, config):
+    """Get transformer layer specification based on configuration.
+
+    Args:
+        use_te (bool): Whether to use Transformer Engine
+        args: Training arguments
+        config: Model configuration
+
+    Returns:
+        transformer_layer_spec: The transformer layer specification
+    """
+    args = get_args()
+    if use_te:
+        return get_gpt_layer_with_transformer_engine_spec(
+            args.num_experts,
+            args.moe_grouped_gemm,
+            args.qk_layernorm,
+            args.multi_latent_attention,
+            moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
+            qk_l2_norm=args.qk_l2_norm,
+            use_kitchen=config.use_kitchen,
+        )
+    else:
+        return get_gpt_layer_local_spec(
+            args.num_experts,
+            args.moe_grouped_gemm,
+            args.qk_layernorm,
+            args.multi_latent_attention,
+            moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
+            normalization=args.normalization,
+            use_kitchen=config.use_kitchen,
+        )
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def model_provider(
-        pre_process=True,
-        post_process=True,
-        vp_stage: Optional[int] = None) -> Union['GPTModel', 'MultimodalGPTModel', megatron.legacy.model.GPTModel]:
+def model_provider(pre_process=True,
+                   post_process=True,
+                   vp_stage: Optional[int] = None) -> Union['GPTModel', megatron.legacy.model.GPTModel]:
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
@@ -34,15 +66,16 @@ def model_provider(
     Returns:
         Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
     """
+    from .register import get_megatron_model_meta
     args = get_args()
     use_te = args.transformer_impl == 'transformer_engine'
+    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
 
     if args.record_memory_history:
         torch.cuda.memory._record_memory_history(
             True,
             # keep 100,000 alloc/free events from before the snapshot
             trace_alloc_max_entries=100000,
-
             # record stack information for the trace events
             trace_alloc_record_context=True)
 
@@ -73,8 +106,8 @@ def model_provider(
     else:  # using core models
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
-        elif args.megatron_model_meta.get_transformer_layer_spec is not None:
-            transformer_layer_spec = args.megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
+        elif megatron_model_meta.get_transformer_layer_spec is not None:
+            transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
                 # Define the decoder block spec
@@ -88,28 +121,23 @@ def model_provider(
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
             else:
                 # Define the decoder layer spec
-                if use_te:
-                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-                        args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention,
-                        args.moe_use_legacy_grouped_gemm)
-                else:
-                    transformer_layer_spec = get_gpt_layer_local_spec(
-                        args.num_experts,
-                        args.moe_grouped_gemm,
-                        args.qk_layernorm,
-                        args.multi_latent_attention,
-                        args.moe_use_legacy_grouped_gemm,
-                        normalization=args.normalization)
+                transformer_layer_spec = _get_transformer_layer_spec(use_te, config)
         mtp_block_spec = None
         if args.mtp_num_layers is not None:
+            if hasattr(transformer_layer_spec, 'layer_specs') and len(transformer_layer_spec.layer_specs) == 0:
+                # Get the decoder layer spec explicitly if no decoder layer in the last stage,
+                # Only happens with block spec (TransformerBlockSubmodules) when using MoE.
+                transformer_layer_spec_for_mtp = _get_transformer_layer_spec(use_te, config)
+            else:
+                transformer_layer_spec_for_mtp = transformer_layer_spec
             mtp_block_spec = get_gpt_mtp_block_spec(
-                config, transformer_layer_spec, use_transformer_engine=use_te, vp_stage=vp_stage)
+                config, transformer_layer_spec_for_mtp, use_transformer_engine=use_te, vp_stage=vp_stage)
 
         if args.use_shared_expert_gate and args.num_experts and args.moe_shared_expert_intermediate_size:
             # qwen2_moe
             for layer_spec in transformer_layer_spec.layer_specs:
                 layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
-        model = args.megatron_model_meta.model_cls(
+        model = megatron_model_meta.model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
             vocab_size=args.padded_vocab_size,

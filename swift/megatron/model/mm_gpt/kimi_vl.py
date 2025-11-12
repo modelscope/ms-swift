@@ -6,22 +6,17 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
-from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
+from ..gpt_bridge import MultimodalGPTBridge
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import HuggingFaceModule
 
 
-def convert_hf2mcore_kimi_vl(hf_model, mg_model):
-    convert_hf2mcore(hf_model.language_model, mg_model.language_model)
-    mg_model.visual.vision_tower.load_state_dict(hf_model.vision_tower.state_dict())
-    mg_model.visual.multi_modal_projector.load_state_dict(hf_model.multi_modal_projector.state_dict())
-
-
-def convert_mcore2hf_kimi_vl(hf_model, mg_model):
-    convert_mcore2hf(hf_model.language_model, mg_model.language_model)
-    hf_model.vision_tower.load_state_dict(mg_model.visual.vision_tower.state_dict())
-    hf_model.multi_modal_projector.load_state_dict(mg_model.visual.multi_modal_projector.state_dict())
+class KimiVLBridge(MultimodalGPTBridge):
+    hf_layers_prefix = 'language_model.model.layers'
+    hf_embed_key = 'language_model.model.embed_tokens.weight'
+    hf_final_layernorm_key = 'language_model.model.norm.weight'
+    hf_lm_head_key = 'language_model.lm_head.weight'
+    hf_score_key = 'language_model.score.weight'
 
 
 class KimiVLVit(HuggingFaceModule):
@@ -31,8 +26,7 @@ class KimiVLVit(HuggingFaceModule):
 
     def __init__(self, config):
         args = get_args()
-        model_dir = args.model_info.model_dir
-        model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', model_dir)
+        model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', args.model_dir)
         super().__init__(config, [model_cls])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
@@ -55,10 +49,6 @@ class KimiVLVit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MMGPTMegatronModelMeta(
-        MegatronModelType.kimi_vl, [
-            ModelType.kimi_vl,
-        ],
-        convert_hf2mcore=convert_hf2mcore_kimi_vl,
-        convert_mcore2hf=convert_mcore2hf_kimi_vl,
-        visual_cls=KimiVLVit))
+    MegatronModelMeta(MegatronModelType.kimi_vl, [
+        ModelType.kimi_vl,
+    ], bridge_cls=KimiVLBridge, visual_cls=KimiVLVit))
