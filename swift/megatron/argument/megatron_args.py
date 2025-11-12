@@ -91,7 +91,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
-    torch_dtype: Optional[torch.dtype] = None
+    torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
     # mcore-bridge
@@ -284,10 +284,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_shared_expert_intermediate_size: Optional[int] = None
 
     moe_router_topk: Optional[int] = None
+    moe_router_num_groups: Optional[int] = None
+    moe_router_group_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = None
-    moe_router_bias_update_rate: float = 1e-3
+    moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
@@ -463,6 +465,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+        if self.task_type != 'causal_lm':
+            self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         if self.eval_interval is None:

@@ -788,7 +788,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with patch_profiling_context(self, 'generate'):
+        with patch_profiling_context(self, 'generate'), self._disable_sp_context():
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
@@ -1025,6 +1025,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
                     request['images'], list) else _process_image_data(request['images']))
 
+        # load tools json
+        for request_data in requests_dicts:
+            if 'tools' in request_data and isinstance(request_data['tools'], str):
+                from json import JSONDecodeError
+                try:
+                    request_data['tools'] = json.loads(request_data['tools'])
+                except JSONDecodeError:
+                    pass
+
         return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
 
     def async_generate_rollout(self, all_inputs):
@@ -1091,3 +1100,36 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self._last_loaded_step = self.state.global_step
         results = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(results))
+
+    @contextmanager
+    def _disable_sp_context(self):
+        from swift.trainers.sequence_parallel import sequence_parallel
+        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+
+        # Save original SP state
+        origin_size = sequence_parallel.world_size
+
+        # Save and restore original attention functions
+        flash_attn_backup = None
+        sdpa_backup = None
+        if 'flash_attention_2_origin' in ALL_ATTENTION_FUNCTIONS:
+            flash_attn_backup = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
+            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin']
+        if 'sdpa_origin' in ALL_ATTENTION_FUNCTIONS:
+            sdpa_backup = ALL_ATTENTION_FUNCTIONS['sdpa']
+            ALL_ATTENTION_FUNCTIONS['sdpa'] = ALL_ATTENTION_FUNCTIONS['sdpa_origin']
+
+        # Disable SP
+        sequence_parallel.world_size = 1
+
+        try:
+            yield
+        finally:
+            # Restore SP state
+            sequence_parallel.world_size = origin_size
+
+            # Restore patched attention functions
+            if flash_attn_backup is not None:
+                ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = flash_attn_backup
+            if sdpa_backup is not None:
+                ALL_ATTENTION_FUNCTIONS['sdpa'] = sdpa_backup

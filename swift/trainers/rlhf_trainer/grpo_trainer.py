@@ -78,10 +78,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
+        reward_templates = kwargs.pop('reward_template', None)
         self._prepare_algorithm_params()
         super().__init__(model, ref_model, *_args, **kwargs)
         self.prepare_rollout()
-        self._prepare_rewards(reward_funcs, reward_model, **kwargs)
+        self._prepare_rewards(reward_funcs, reward_model, reward_templates)
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -106,6 +107,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
+            infer_template.sequence_parallel_size = 1
             self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -1026,16 +1028,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            if self.template.padding_free:
-                advantages = advantages[-coef_1.shape[1]:]
-                per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-                per_token_loss2 = coef_2 * advantages.unsqueeze(0)
-            else:
-                per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-                per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.template.padding_free:
+            if self.importance_sampling_level == 'sequence':
+                # Expand sequence-level weights to token-level
+                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+
+            advantages = advantages[-coef_1.shape[1]:]
+            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
         else:
-            raise ValueError(f'Unknown loss type: {self.loss_type}')
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
@@ -1916,7 +1921,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.chord_sft_dataset:
             self.chord_sft_iterator = make_chord_sft_dataset(self, self.chord_sft_dataset)
 
-    def _prepare_rewards(self, reward_funcs, reward_model=None, **kwargs):
+    def _prepare_rewards(self, reward_funcs, reward_model=None, reward_templates=None):
         args = self.args
         device = self.accelerator.device
 
@@ -1950,7 +1955,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
         if reward_model is not None:
-            reward_template = kwargs.pop('reward_template')
             reward_plugins = args.reward_model_plugin
             if reward_plugins is None:
                 reward_plugins = ['default'] * len(reward_model)
@@ -1958,7 +1962,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 f"The number of 'reward_model_plugin' ({len(reward_plugins)}) does not match "
                 f"the number of 'reward_model' ({len(reward_model)}). "
                 "Please provide a corresponding 'reward_model_plugin' for each 'reward_model'.")
-            for rm, rm_plugin, rm_template in zip(reward_model, reward_plugins, reward_template):
+            for rm, rm_plugin, rm_template in zip(reward_model, reward_plugins, reward_templates):
                 # Set encoding mode train(see details in Template.encode).
                 # Set max_length to None to disable truncation, as the input length has already been truncated earlier.
                 rm_template.set_mode('train')

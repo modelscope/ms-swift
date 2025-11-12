@@ -1021,6 +1021,77 @@ def test_paddle_ocr():
                         '-ui功能了。')
 
 
+def test_ernie_vl():
+    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-VL-28B-A3B-PT')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def _infer_ernie_vl_thinking_hf(model, processor, messages):
+    text = processor.tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    image_inputs, video_inputs = processor.process_vision_info(messages)
+    text = text.replace('User:  ', 'User: ')
+    text = text.replace(' Picture 2:', 'Picture 2:')
+    inputs = processor(
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors='pt',
+    )
+    device = next(model.parameters()).device
+    inputs = inputs.to(device)
+    generated_ids = model.generate(inputs=inputs['input_ids'].to(device), **inputs, max_new_tokens=128, use_cache=False)
+    output_text = processor.decode(generated_ids[0][len(inputs['input_ids'][0]):])
+    return output_text
+
+
+def test_ernie_vl_thinking():
+    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-VL-28B-A3B-Thinking')
+    query = 'What is the difference between the two images?'
+    messages = [{'role': 'user', 'content': query}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    messages = [{
+        'role':
+        'user',
+        'content': [
+            {
+                'type': 'image_url',
+                'image_url': {
+                    'url': images[0]
+                }
+            },
+            {
+                'type': 'image_url',
+                'image_url': {
+                    'url': images[1]
+                }
+            },
+            {
+                'type': 'text',
+                'text': query,
+            },
+        ]
+    }]
+    response2 = _infer_ernie_vl_thinking_hf(pt_engine.model, pt_engine.default_template.processor, messages)
+    assert response == '\n<think>\n' + response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1079,7 +1150,7 @@ if __name__ == '__main__':
     # test_kimi_vl()
     # test_kimi_vl_thinking()
     # test_glm4_1v()
-    test_glyph()
+    # test_glyph()
     # test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
@@ -1096,3 +1167,5 @@ if __name__ == '__main__':
     # test_deepseek_ocr()
     # test_llava_onevision1_5()
     # test_paddle_ocr()
+    # test_ernie_vl()
+    test_ernie_vl_thinking()
