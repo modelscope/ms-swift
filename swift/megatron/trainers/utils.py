@@ -105,10 +105,6 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
             keys.append('decoder_input')
         else:
             keys.append('input_ids')
-        if hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo':
-            keys.append('truncated_mask')
-            keys.append('advantages')
-            keys.append('completion_mask')
 
         packed_seq_params = batch.get('packed_seq_params')
         if packed_seq_params is None:
@@ -377,39 +373,3 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
         logger.info_once(log_msg, hash_id=prefix)
     else:
         logger.info(log_msg)
-
-
-def should_filter_lora_parameter(name: str) -> bool:
-    if 'lora_' in name:
-        return True
-
-    if 'original_module' in name:
-        return True
-    return False
-
-
-def patch_model_for_lora_export(model):
-    original_named_parameters = model.named_parameters
-    original_state_dict = model.state_dict
-
-    def filtered_named_parameters(*args, **kwargs):
-        for name, param in original_named_parameters(*args, **kwargs):
-            if not should_filter_lora_parameter(name):
-                yield name, param
-
-    def filtered_state_dict(*args, **kwargs):
-        state_dict = original_state_dict(*args, **kwargs)
-        filtered = {}
-        for name, param in state_dict.items():
-            if not should_filter_lora_parameter(name):
-                filtered[name] = param
-        return filtered
-
-    model.named_parameters = filtered_named_parameters
-    model.state_dict = filtered_state_dict
-
-    def restore():
-        model.named_parameters = original_named_parameters
-        model.state_dict = original_state_dict
-
-    return restore

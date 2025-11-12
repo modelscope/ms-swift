@@ -1023,17 +1023,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         packed_seq_params = data['packed_seq_params']
         truncated_mask = data['truncated_mask']
         micro_batch_size = self.micro_batch_size
+        # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
         lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
         lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
-        if mpu.get_context_parallel_world_size() > 1:
-            # When using Context Parallel, each rank only processes a portion of the sequence
-            # So we need to divide the lengths by CP size
-            cp_size = mpu.get_context_parallel_world_size()
-            cu_seqlens_cp = packed_seq_params.cu_seqlens_q // cp_size
-            lengths_with_padding = cu_seqlens_cp[1:] - cu_seqlens_cp[:-1]
-            lengths = cu_seqlens_cp[1:micro_batch_size + 1] - cu_seqlens_cp[:micro_batch_size]
 
+        # get_logps with per_token=True now returns full sequences (all_gather in CP mode)
         per_token_logps = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
 
@@ -1103,50 +1098,22 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
 
-            # In CP mode, aggregate numerator and denominator before division (Megatron standard)
-            if self.args.context_parallel_size > 1:
-                # Optimized: compute sum and count for each sample, then stack results
-                sample_sum_and_count = torch.stack([
-                    torch.stack([(loss * mask).sum(), mask.sum().clamp(min=1.0)])
-                    for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
-                ])  # Shape: [micro_batch_size, 2]
-
-                # All-reduce to aggregate across CP ranks
-                all_reduce(sample_sum_and_count, group=mpu.get_context_parallel_group())
-
-                # Now compute per-sample loss and average
-                sample_loss = sample_sum_and_count[:, 0] / sample_sum_and_count[:, 1]
-                loss = sample_loss.mean()
-            else:
-                # Optimized: compute sample loss, then stack results
-                sample_loss = torch.stack([
-                    (loss * mask).sum() / mask.sum().clamp(min=1.0)
-                    for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
-                ])
-                loss = sample_loss.mean()
+            sample_loss = torch.stack([(loss * mask).sum() / mask.sum().clamp(min=1.0)
+                                       for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
+                                       ])
+            loss = sample_loss.mean()
         elif self.loss_type == 'bnpo':
-            if self.args.context_parallel_size > 1:
-                # Aggregate numerator and denominator across CP ranks
-                loss_and_count = torch.stack([(per_token_loss * completion_mask).sum(),
-                                              completion_mask.sum().clamp(min=1.0)])
-                all_reduce(loss_and_count, group=mpu.get_context_parallel_group())
-                loss = loss_and_count[0] / loss_and_count[1]
-            else:
-                loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
-            if self.args.context_parallel_size > 1:
-                all_reduce(loss, group=mpu.get_context_parallel_group())
-                loss = loss / self.args.context_parallel_size
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
-        # loss = loss.mean()
+
         avg_metric = {
             'loss': loss.clone().detach(),
         }
         custom_metrics = {}
         total_lengths = gather(lengths, group=mpu.get_data_parallel_group(with_context_parallel=True))
-        total_lengths *= self.args.context_parallel_size
         custom_metrics = {
             'completions/mean_length': total_lengths.float().mean(),
             'completions/max_length': total_lengths.float().max(),
@@ -1154,7 +1121,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         }
 
         if self.beta != 0.0:
-            avg_metric['kl'] = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0).item()
+            # Unified processing (no CP-specific logic needed)
+            kl_value = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+            avg_metric['kl'] = kl_value.item()
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         if self._metrics[mode]:
