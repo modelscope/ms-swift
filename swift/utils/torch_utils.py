@@ -390,6 +390,49 @@ def get_position_ids_from_cu_seqlens(cu_seqlens: torch.LongTensor):
     return position_ids.unsqueeze(0)
 
 
+def get_last_valid_indices(attention_mask: torch.Tensor) -> torch.Tensor:
+    """
+    Get the last valid (non-padding) token position indices for each sample.
+
+    This function handles both left-padding and right-padding cases:
+    - Left padding: padding tokens are on the left, valid tokens aligned to the right
+    - Right padding: padding tokens are on the right, valid tokens aligned to the left
+
+    Args:
+        attention_mask: Attention mask [batch_size, seq_len] where 1=valid, 0=padding
+
+    Returns:
+        torch.Tensor: Indices of last valid positions [batch_size]
+
+    Examples:
+        >>> # Right padding
+        >>> attention_mask = torch.tensor([[1, 1, 1, 0, 0], [1, 1, 1, 1, 0]])
+        >>> get_last_valid_indices(attention_mask)
+        tensor([2, 3])
+
+        >>> # Left padding
+        >>> attention_mask = torch.tensor([[0, 0, 1, 1, 1], [0, 1, 1, 1, 1]])
+        >>> get_last_valid_indices(attention_mask)
+        tensor([4, 4])
+    """
+    batch_size = attention_mask.shape[0]
+    seq_len = attention_mask.shape[1]
+
+    # Detect padding direction by checking if first position contains padding
+    # If any sample has padding (0) at position 0, it's likely left padding
+    is_left_padding = (attention_mask[:, 0] == 0).any()
+
+    if is_left_padding:
+        # For left padding, the last valid token is always at position (seq_len - 1)
+        # since valid tokens are aligned to the right
+        indices = torch.full((batch_size, ), seq_len - 1, dtype=torch.long, device=attention_mask.device)
+    else:
+        # For right padding, find the last valid position for each sample
+        indices = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
+
+    return indices
+
+
 class Serializer:
 
     @staticmethod

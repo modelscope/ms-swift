@@ -42,7 +42,8 @@ from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
+from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker)
 from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -933,34 +934,12 @@ class SwiftMixin:
             if isinstance(positive_token_id, int) and isinstance(negative_token_id, int) \
                     and positive_token_id >= 0 and negative_token_id >= 0:
                 # Handle right padding by finding the last valid token position
-                batch_size = logits.shape[0]
-                seq_len = logits.shape[1]
-
                 if attention_mask is not None:
-                    # Detect padding direction and find last valid token position
-                    # For left padding: padding tokens are on the left, last valid token is at the end
-                    # For right padding: padding tokens are on the right, last valid token is before padding starts
-
-                    # Check if it's left padding by looking at the first position
-                    # If first position is 0 (padding) for any sample, it's likely left padding
-                    is_left_padding = (attention_mask[:, 0] == 0).any()
-
-                    if is_left_padding:
-                        # For left padding, the last valid token is always at position (seq_len - 1)
-                        # since valid tokens are aligned to the right
-                        seq_indices = torch.full((batch_size, 1), seq_len - 1, device=logits.device)
-                    else:
-                        # For right padding, find the last valid position for each sample
-                        seq_lengths = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
-                        seq_indices = seq_lengths.unsqueeze(1)
-
-                    # Gather logits at the last valid position for each sample
-                    batch_indices = torch.arange(batch_size, device=logits.device).unsqueeze(1)
-
-                    # Extract logits at last valid positions for all tokens
-                    # Use advanced indexing to get [batch_size, vocab_size]
-                    last_valid_logits = logits[batch_indices, seq_indices, :].squeeze(1)
-
+                    # Extract logits at the last valid (non-padding) token position for each sample
+                    batch_size = logits.shape[0]
+                    last_valid_indices = get_last_valid_indices(attention_mask)
+                    batch_indices = torch.arange(batch_size, device=logits.device)
+                    last_valid_logits = logits[batch_indices, last_valid_indices, :]
                     positive_logits = last_valid_logits[:, positive_token_id]
                     negative_logits = last_valid_logits[:, negative_token_id]
                 else:

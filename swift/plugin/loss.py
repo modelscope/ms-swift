@@ -11,6 +11,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
+from swift.utils import get_last_valid_indices
+
 
 def cross_entropy_loss_func(outputs, labels, num_items_in_batch=None, **kwargs):
     # You need to return a scalar representing the loss.
@@ -572,33 +574,11 @@ def generative_reranker_loss(outputs,
         raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
                          f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
 
-    # Extract logits for positive and negative tokens
+    # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    seq_len = attention_mask.shape[1]
-
-    # Detect padding direction and find last valid token position
-    # For left padding: padding tokens are on the left, last valid token is at the end
-    # For right padding: padding tokens are on the right, last valid token is before padding starts
-
-    # Check if it's left padding by looking at the first position
-    # If first position is 0 (padding) for any sample, it's likely left padding
-    is_left_padding = (attention_mask[:, 0] == 0).any()
-
-    if is_left_padding:
-        # For left padding, the last valid token is always at position (seq_len - 1)
-        # since valid tokens are aligned to the right
-        seq_indices = torch.full((batch_size, 1), seq_len - 1, device=logits.device)
-    else:
-        # For right padding, find the last valid position for each sample
-        seq_lengths = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
-        seq_indices = seq_lengths.unsqueeze(1)
-
-    # Gather logits at the last valid position for each sample
-    batch_indices = torch.arange(batch_size, device=logits.device).unsqueeze(1)
-
-    # Extract logits at last valid positions for all tokens
-    # Use advanced indexing to get [batch_size, vocab_size]
-    last_valid_logits = logits[batch_indices, seq_indices, :].squeeze(1)
+    last_valid_indices = get_last_valid_indices(attention_mask)
+    batch_indices = torch.arange(batch_size, device=logits.device)
+    last_valid_logits = logits[batch_indices, last_valid_indices, :]
 
     positive_logits = last_valid_logits[:, positive_token_id]  # [batch_size]
     negative_logits = last_valid_logits[:, negative_token_id]  # [batch_size]
@@ -762,33 +742,11 @@ def listwise_generative_reranker_loss(outputs,
         raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
                          f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
 
-    # Extract logits for positive and negative tokens
+    # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    seq_len = attention_mask.shape[1]
-
-    # Detect padding direction and find last valid token position
-    # For left padding: padding tokens are on the left, last valid token is at the end
-    # For right padding: padding tokens are on the right, last valid token is before padding starts
-
-    # Check if it's left padding by looking at the first position
-    # If first position is 0 (padding) for any sample, it's likely left padding
-    is_left_padding = (attention_mask[:, 0] == 0).any()
-
-    if is_left_padding:
-        # For left padding, the last valid token is always at position (seq_len - 1)
-        # since valid tokens are aligned to the right
-        seq_indices = torch.full((batch_size, 1), seq_len - 1, device=logits.device)
-    else:
-        # For right padding, find the last valid position for each sample
-        seq_lengths = attention_mask.sum(dim=1) - 1  # -1 to get last valid index (0-indexed)
-        seq_indices = seq_lengths.unsqueeze(1)
-
-    # Gather logits at the last valid position for each sample
-    batch_indices = torch.arange(batch_size, device=logits.device).unsqueeze(1)
-
-    # Extract logits at last valid positions for all tokens
-    # Use advanced indexing to get [batch_size, vocab_size]
-    last_valid_logits = logits[batch_indices, seq_indices, :].squeeze(1)
+    last_valid_indices = get_last_valid_indices(attention_mask)
+    batch_indices = torch.arange(batch_size, device=logits.device)
+    last_valid_logits = logits[batch_indices, last_valid_indices, :]
 
     positive_logits = last_valid_logits[:, positive_token_id]  # [batch_size]
     negative_logits = last_valid_logits[:, negative_token_id]  # [batch_size]
