@@ -92,7 +92,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
         infer_backend (Literal): Backend to use for inference. Default is 'pt'.
             Allowed values are 'vllm', 'pt', 'lmdeploy'.
-        result_path (Optional[str]): Directory to store inference results. Default is None.
+        result_path (Optional[str]): File path to store inference results. Default is None.
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
         reranker_use_activation (bool): reranker use activation after calculating. Default is True.
