@@ -1,8 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
+
+from datasets import load_from_disk
 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import extra_tuners
@@ -151,3 +154,14 @@ def prepare_model_template(args, **kwargs):
         model = prepare_adapter(args, model, adapters=adapters)
         update_generation_config_eos_token(model.generation_config, template)
     return model, template
+
+
+def get_cached_dataset(args):
+    train_datasets, val_datasets = [], []
+    for cached_dataset in args.cached_dataset:
+        train_path = os.path.join(cached_dataset, 'train')
+        val_path = os.path.join(cached_dataset, 'val')
+        train_datasets.append(load_from_disk(train_path))
+        if os.path.exists(val_path):
+            val_datasets.append(load_from_disk(val_path))
+    return train_datasets, val_datasets
