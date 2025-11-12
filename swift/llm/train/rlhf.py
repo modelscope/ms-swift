@@ -55,13 +55,12 @@ class SwiftRLHF(SwiftSft):
         model_id_or_path = getattr(args, f'{key}_model')
         if model_id_or_path is None:
             return
+
         if model_type is None:
-            try:
-                from swift.llm.model.register import get_model_info_meta
-                model_info, _ = get_model_info_meta(model_id_or_path)
-                model_type = model_info.model_type
-            except Exception:
-                pass
+            from swift.llm.model.register import get_model_info_meta
+            model_info, _ = get_model_info_meta(model_id_or_path)
+            model_type = model_info.model_type
+
         if isinstance(model_id_or_path, list):
             # value model in PPO
             model_id_or_path = model_id_or_path[0]
