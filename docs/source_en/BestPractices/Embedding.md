@@ -108,8 +108,8 @@ The evaluation of InfoNCE loss includes the following metrics:
 
 SWIFT provides two scaffold training scripts:
 
-- [GTE Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
-- [GME Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
+- [Qwen3-Embedding model](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_emb.sh)
+- [GME model](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh)
 
 ## Inference
 
