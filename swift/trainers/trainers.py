@@ -108,7 +108,7 @@ class RerankerTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.args.include_for_metrics = ["inputs"]
+        self.args.include_for_metrics = ['inputs']
         self.compute_metrics = self.calculate_metric
         self.label_names = ['labels']
 
@@ -185,7 +185,12 @@ class RerankerTrainer(Trainer):
 
             if labels is not None:
                 # Call custom loss function
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self, attention_mask=inputs['attention_mask'])
+                loss = self.compute_loss_func(
+                    outputs,
+                    labels,
+                    num_items_in_batch=num_items_in_batch,
+                    trainer=self,
+                    attention_mask=inputs['attention_mask'])
             else:
                 # Fallback to model's loss
                 loss = outputs.loss
