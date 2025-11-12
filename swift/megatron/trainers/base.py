@@ -309,7 +309,7 @@ class BaseMegatronTrainer(ABC):
                     if visual is not None:
                         is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner or [])
                         is_vit = any(unwrapped_name.startswith(f'visual.{k}')
-                                    for k in visual._vision_tower) and not is_aligner
+                                     for k in visual._vision_tower) and not is_aligner
                     else:
                         is_aligner, is_vit = False, False
                     if is_vit and self.args.vit_lr:
