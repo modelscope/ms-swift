@@ -27,10 +27,11 @@ class ExportCachedDataset(SwiftSft):
             self._prepare_model_tokenizer(**kwargs)
         self._prepare_template()
 
+    def _post_process_datasets(self, datasets: List) -> List:
+        return datasets
+
     def main(self):
-        train_dataset, val_dataset = self._get_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-        self._show_dataset(train_dataset, val_dataset)
+        train_dataset, val_dataset = self._prepare_dataset()
         train_dataset.save_to_disk(os.path.join(self.args.output_dir, 'train'))
         if val_dataset is not None:
             val_dataset.save_to_disk(os.path.join(self.args.output_dir, 'val'))

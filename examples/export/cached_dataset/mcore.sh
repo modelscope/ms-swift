@@ -14,7 +14,10 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --cached_dataset './qwen3_cached_dataset' \
     --train_type lora \
     --lora_rank 32 \
@@ -48,3 +51,12 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --attention_backend flash
+
+
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --adapters megatron_output/Qwen3-30B-A3B-Base/vx-xxx/checkpoint-xxx \
+    --load_data_args true \
+    --attn_impl flash_attn \
+    --stream true \
+    --max_new_tokens 512

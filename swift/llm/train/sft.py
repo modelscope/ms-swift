@@ -128,7 +128,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if not pre_process:
             return datasets
         datasets = self._post_process_datasets(datasets)
-
+        self._show_dataset(*datasets)
         return datasets
 
     def _post_process_datasets(self, datasets: List) -> List:
@@ -160,7 +160,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict)
             datasets[i] = dataset
-        self._show_dataset(*datasets)
         return datasets
 
     @RayHelper.function(group='default')
