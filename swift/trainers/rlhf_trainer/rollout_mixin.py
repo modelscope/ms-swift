@@ -1025,6 +1025,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
                     request['images'], list) else _process_image_data(request['images']))
 
+        # load tools json
+        for request_data in requests_dicts:
+            if 'tools' in request_data and isinstance(request_data['tools'], str):
+                from json import JSONDecodeError
+                try:
+                    request_data['tools'] = json.loads(request_data['tools'])
+                except JSONDecodeError:
+                    pass
+
         return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
 
     def async_generate_rollout(self, all_inputs):
