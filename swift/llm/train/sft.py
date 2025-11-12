@@ -11,7 +11,8 @@ from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
+from ..dataset import (AddLengthPreprocessor, EncodePreprocessor, IterablePackingDataset, LazyLLMDataset,
+                       PackingDataset, load_dataset)
 from ..dataset.loader import DatasetLoader
 from ..infer import get_cached_dataset, prepare_generation_config
 from .tuner import TunerMixin
@@ -323,7 +324,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 continue
             if not args.lazy_tokenize and not args.streaming:
                 # Compatible with cached_dataset, only additionally write length here.
-                preprocessor = EncodePreprocessor(template=template, pre_tokenize=True)
+                preprocessor = AddLengthPreprocessor(template=template)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
