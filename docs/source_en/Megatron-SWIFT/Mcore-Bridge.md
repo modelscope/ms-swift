@@ -203,6 +203,7 @@ swift infer \
 ## Export and Conversion Precision Testing
 
 In addition to supporting safetensors conversion and saving during training, Mcore-Bridge also supports the `megatron export` command for standalone weight export. `megatron export` supports conversion precision testing during weight conversion, which is very helpful for verifying accuracy when integrating new models. Typically, models already integrated into Megatron-SWIFT will not have precision misalignment issues, so you can confidently set `--test_convert_precision false`.
+- Note: For multimodal models, please focus on the `mean_diff (with loss)` field. The `mean_diff` may show a large difference because it includes image tokens, and loss is not calculated for that portion.
 
 Full parameter weights:
 
