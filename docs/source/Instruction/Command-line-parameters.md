@@ -740,6 +740,8 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
 参数含义与`qwen_vl_utils<0.0.12`或者`qwen_omni_utils`库中含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。ms-swift通过修改这些常数值来控制图片分辨率和视频帧率，避免训练时OOM。
+- 注意：在"ms-swift>=3.10.1"，兼容了"qwen_vl_utils>=0.0.14"。
+
 
 - IMAGE_FACTOR: 默认为28。
 - MIN_PIXELS: 默认为`4 * 28 * 28`。图像的最小分辨率。建议设置为28*28的倍数。
