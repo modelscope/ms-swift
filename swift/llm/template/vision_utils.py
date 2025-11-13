@@ -19,65 +19,225 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def _build_transform(input_size):
+    """
+    功能：
+        构建用于 InternVL 等多模态模型的图像预处理变换管道。
+        该管道依次执行：RGB 转换 → 双三次插值缩放 → 张量化 → ImageNet 标准化。
+        使用 ImageNet 预训练的均值和标准差进行归一化，确保与预训练模型对齐。
+
+    参数：
+        input_size (int): 目标图像尺寸（正方形边长）。
+            - 示例：448, 224
+
+    返回：
+        torchvision.transforms.Compose: 组合变换对象，可直接应用于 PIL 图像。
+
+    示例：
+        >>> from PIL import Image
+        >>> transform = _build_transform(448)
+        >>> img = Image.open('cat.jpg')
+        >>> tensor = transform(img)  # 输出 shape=(3, 448, 448)
+    """
     import torchvision.transforms as T
     from torchvision.transforms.functional import InterpolationMode
+    
+    # 使用 ImageNet 数据集的均值和标准差
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
+    
+    # 构建变换管道（按顺序执行）
     transform = T.Compose([
+        # 1> RGB 转换：确保图像为 3 通道 RGB 模式
+        # 如果已是 RGB 则不变，否则转换（如 RGBA、L 等模式）
         T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+        
+        # 2> 缩放：调整图像到目标尺寸（正方形）
+        # 使用双三次插值（BICUBIC）保证高质量缩放
         T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+        
+        # 3> 张量化：PIL.Image → torch.Tensor
+        # 像素值从 [0, 255] 归一化到 [0.0, 1.0]
+        # ToTensor 方法实际上做了3件事：
+        # 1. 改变数据布局：HWC → CHW
+        #    PIL.Image: (height, width, channels)
+        #    Tensor:    (channels, height, width)
+        
+        # 2. 改变数据类型：uint8 → float32
+        #    PIL:    uint8  [0, 255]
+        #    Tensor: float32
+        
+        # 3. 归一化数值：除以 255
+        #    [0, 255] → [0.0, 1.0]
         T.ToTensor(),
+        
+        # 4> 标准化：使用 ImageNet 均值和标准差
+        # 公式：(x - mean) / std
+        # 输出范围约 [-2, 2]（取决于原始像素值）
         T.Normalize(mean=MEAN, std=STD)
     ])
+    
     return transform
 
 
 def _find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
+    """
+    功能：
+        从候选宽高比列表中找到与输入图像宽高比最接近的目标宽高比。
+        用于动态分辨率处理（如 InternVL 的 dynamic preprocess），选择最合适的切分策略。
+        当多个候选宽高比差异相同时，优先选择面积更大的（更接近原始图像面积）。
+
+    参数：
+        aspect_ratio (float): 输入图像的宽高比（width / height）。
+            - 示例：1.5 (宽1.5倍于高)
+        target_ratios (List[Tuple[int, int]]): 候选宽高比列表，每个元素为 (width_ratio, height_ratio)。
+            - 示例：[(1,1), (1,2), (2,1), (2,2), ...]
+        width (int): 输入图像的宽度（像素）。
+        height (int): 输入图像的高度（像素）。
+        image_size (int): 单个块的基准尺寸（如 448）。
+
+    返回：
+        Tuple[int, int]: 最接近的目标宽高比 (width_ratio, height_ratio)。
+
+    示例：
+        >>> # 示例1：横向图像（宽高比 2.0）
+        >>> target_ratios = [(1,1), (2,1), (1,2), (2,2)]
+        >>> _find_closest_aspect_ratio(2.0, target_ratios, 800, 400, 448)
+        (2, 1)  # 宽高比 2:1 最接近输入的 2.0
+        
+        >>> # 示例2：纵向图像（宽高比 0.5）
+        >>> _find_closest_aspect_ratio(0.5, target_ratios, 400, 800, 448)
+        (1, 2)  # 宽高比 1:2 最接近输入的 0.5
+    """
+    # 初始化最佳匹配：差异为无穷大，默认宽高比 1:1
     best_ratio_diff = float('inf')
     best_ratio = (1, 1)
+    
+    # 计算输入图像的总像素面积
     area = width * height
+    
+    # 遍历所有候选宽高比，寻找最接近的
     for ratio in target_ratios:
+        # 计算候选宽高比的数值（如 (2,1) → 2.0）
         target_aspect_ratio = ratio[0] / ratio[1]
+        
+        # 计算与输入宽高比的绝对差异
+        # 例如：输入 2.0，候选 2.0 → diff=0.0
         ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+        
+        # 情况1：找到更接近的宽高比
         if ratio_diff < best_ratio_diff:
-            best_ratio_diff = ratio_diff
-            best_ratio = ratio
+            best_ratio_diff = ratio_diff  # 更新最小差异
+            best_ratio = ratio  # 更新最佳宽高比
+        
+        # 情况2：差异相同，选择面积更大的
+        # 条件：area > 0.5 * (目标总面积)
+        # 目标总面积 = image_size² * ratio[0] * ratio[1]
+        # 例如：image_size=448, ratio=(2,2) → 目标面积=448²*4=802816
+        # 如果输入面积 > 0.5*802816=401408，则选择这个更大的宽高比
         elif ratio_diff == best_ratio_diff:
+            # 核心思想：只有当输入图像足够大时，才使用更多的块
             if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
-                best_ratio = ratio
+                best_ratio = ratio  # 更新为面积更大的候选
+    
     return best_ratio
 
 
 def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
-    orig_width, orig_height = image.size
-    aspect_ratio = orig_width / orig_height
+    """
+    thumbnail: 缩略图
+    功能：
+        动态分辨率预处理图像，根据宽高比自适应切分为多个块。
+        用于 InternVL 等多模态模型，保留高分辨率图像细节的同时控制计算量。
+        核心思路：找到最接近输入宽高比的切分策略，将图像切分为 N×M 个块，
+        每个块缩放到 image_size×image_size，可选添加缩略图用于全局信息。
 
-    # calculate the existing image aspect ratio
+    参数：
+        image (PIL.Image.Image): 输入图像。
+        min_num (int): 最小块数（默认 1）。
+        max_num (int): 最大块数（默认 12）。
+        image_size (int): 单个块的尺寸（默认 448）。
+        use_thumbnail (bool): 是否添加缩略图（默认 False）。
+
+    返回：
+        List[PIL.Image.Image]: 处理后的图像块列表。
+            - 长度 = blocks（或 blocks+1，若启用缩略图）
+            - 每个块尺寸 = image_size × image_size
+
+    示例：
+        >>> from PIL import Image
+        >>> img = Image.open('photo.jpg')  # 假设 1600×800（宽高比 2:1）
+        >>> blocks = _dynamic_preprocess(img, max_num=6, image_size=448)
+        >>> len(blocks)
+        2  # 选择 2×1 切分策略，共 2 个块
+        >>> blocks[0].size
+        (448, 448)
+    """
+    # 1> 获取原始图像尺寸和宽高比
+    orig_width, orig_height = image.size
+    aspect_ratio = orig_width / orig_height  # 例如：1600/800 = 2.0
+
+    # 2> 生成候选宽高比列表
+    # 目标：找到所有可能的 (i, j) 组合，满足 min_num ≤ i×j ≤ max_num
+    # 例如：max_num=6 → 候选包括 (1,1), (2,1), (1,2), (2,2), (3,2), (2,3), (3,3) 等
+    # 生成逻辑：
+    # - 遍历总块数 n (从 min_num 到 max_num)
+    # - 对于每个 n，枚举所有 i, j 使得 i×j ≤ max_num
+    # - 使用 set 去重（如 (2,3) 和 (3,2) 是不同的宽高比）
     target_ratios = set((i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1)
                         if min_num <= i * j <= max_num)
+    
+    # 按块数排序（从小到大），优先考虑块数少的（计算量小）
+    # 例如：[(1,1), (2,1), (1,2), (2,2), (3,1), (1,3), ...] 按 i×j 排序
     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
-    # find the closest aspect ratio to the target
+    # 3> 找到最接近的宽高比
+    # 调用 _find_closest_aspect_ratio 从候选中选择最佳匹配
+    # 例如：输入 2.0 → 可能选择 (2,1) 表示 2×1 切分
     target_aspect_ratio = _find_closest_aspect_ratio(aspect_ratio, target_ratios, orig_width, orig_height, image_size)
 
-    # calculate the target width and height
+    # 4> 计算目标尺寸和块数
+    # 如果选择 (2,1)，image_size=448 → target_width=896, target_height=448
     target_width = image_size * target_aspect_ratio[0]
     target_height = image_size * target_aspect_ratio[1]
-    blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
+    blocks = target_aspect_ratio[0] * target_aspect_ratio[1]  # 总块数 = 2×1 = 2
 
-    # resize the image
+    # 5> 缩放图像到目标尺寸
+    # 例如：1600×800 → 896×448
     resized_img = image.resize((target_width, target_height))
+    
+    # 6> 切分为多个块
     processed_images = []
     for i in range(blocks):
-        box = ((i % (target_width // image_size)) * image_size, (i // (target_width // image_size)) * image_size,
-               ((i % (target_width // image_size)) + 1) * image_size, ((i //
-                                                                        (target_width // image_size)) + 1) * image_size)
-        # split the image
+        # 计算当前块的裁剪坐标 (left, top, right, bottom)
+        # 布局：按行优先顺序（从左到右，从上到下）
+        # 
+        # 关键计算：
+        # - 每行块数 = target_width // image_size
+        # - 当前块的列索引 = i % (每行块数)
+        # - 当前块的行索引 = i // (每行块数)
+        # 
+        # 例如：2×1 切分 (target_width=896, target_height=448, image_size=448)
+        # 每行块数 = 896 // 448 = 2
+        # i=0: 列=0%2=0, 行=0//2=0 → box=(0, 0, 448, 448)     # 左块
+        # i=1: 列=1%2=1, 行=1//2=0 → box=(448, 0, 896, 448)   # 右块
+        box = ((i % (target_width // image_size)) * image_size, 
+               (i // (target_width // image_size)) * image_size,
+               ((i % (target_width // image_size)) + 1) * image_size, 
+               ((i // (target_width // image_size)) + 1) * image_size)
+        
+        # 裁剪出当前块
         split_img = resized_img.crop(box)
         processed_images.append(split_img)
+    
+    # 验证块数正确
     assert len(processed_images) == blocks
+    
+    # 7> 可选添加缩略图（用于保留全局信息）
+    # 仅当启用 use_thumbnail 且块数 > 1 时添加
+    # 缩略图：将原图缩放到 image_size×image_size（不保持宽高比）
     if use_thumbnail and len(processed_images) != 1:
         thumbnail_img = image.resize((image_size, image_size))
         processed_images.append(thumbnail_img)
+    
     return processed_images
 
 
@@ -87,7 +247,7 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
     """
     功能：
-        按比例缩放图像以满足最大像素数限制，同时保持原始宽高比。具体地，
+        按比例缩放图像以满足最大像素数限制，同时保持原始宽高比。
         如果图像的总像素数超过指定的最大像素数，则等比例缩放至满足限制；
         否则返回原图不做修改。此方法常用于减少显存占用和加速模型推理。
     
@@ -97,10 +257,10 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
             - 如果为 None 或 <= 0，不进行缩放
             - 如果图像像素数 <= max_pixels，不进行缩放
     
-    返回值：
+    返回：
         Image.Image: 缩放后的 PIL 图像对象（如果需要缩放）或原图（如果不需要缩放）
     
-    使用示例：
+    示例：
         # 示例1：缩放超大图像
         from PIL import Image
         img = Image.open('large_image.jpg')  # 假设尺寸为 2000x1500 (3,000,000 像素)

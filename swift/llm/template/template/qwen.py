@@ -1,4 +1,35 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+"""
+模块功能：
+    该模块实现了 Qwen 系列模型（包括 Qwen、Qwen2、Qwen2.5、QwQ、Qwen3 等）的模板类。
+    提供了文本模型（LLM）和多模态模型（MLLM）的统一输入预处理、编码、解码等功能。
+    支持视觉-语言、音频-语言、视频-语言等多模态任务，以及推理链（Thinking）、重排序（Reranker）等特殊任务。
+
+主要类：
+    - QwenTemplateMeta: Qwen 系列模板元数据基类
+    - Qwen2_5TemplateMeta: Qwen2.5 模板元数据
+    - Qwen2_5MathTemplateMeta: Qwen2.5 数学模型模板元数据
+    - QwenVLTemplate: Qwen-VL 视觉语言模型模板
+    - QwenAudioTemplate: Qwen-Audio 音频模型模板
+    - Qwen2AudioTemplate: Qwen2-Audio 音频模型模板
+    - Qwen2VLTemplate: Qwen2-VL 视觉语言模型模板（支持图像和视频）
+    - Qwen2_5VLTemplate: Qwen2.5-VL 视觉语言模型模板
+    - Qwen2_5OmniTemplate: Qwen2.5-Omni 全模态模型模板（支持图像、视频、音频）
+    - Ovis1_6Template: Ovis 1.6 视觉语言模型模板
+    - Ovis2Template: Ovis2 视觉语言模型模板（支持图像和视频）
+    - Qwen3RerankerTemplate: Qwen3 重排序模型模板
+    - QwenPRMTemplate: Qwen PRM（Process Reward Model）模板
+
+应用场景：
+    1. 对话生成：使用 Qwen/Qwen2/Qwen2.5/QwQ/Qwen3 等模型进行文本对话
+    2. 视觉问答：使用 Qwen-VL/Qwen2-VL/Qwen2.5-VL 处理图像+文本输入
+    3. 音频理解：使用 Qwen-Audio/Qwen2-Audio 处理音频+文本输入
+    4. 视频理解：使用 Qwen2-VL/Qwen2.5-VL 处理视频+文本输入
+    5. 全模态理解：使用 Qwen2.5-Omni 处理图像+视频+音频+文本输入
+    6. 数学推理：使用 Qwen2.5-Math 进行数学问题求解
+    7. 文档重排序：使用 Qwen3-Reranker 进行文档相关性排序
+    8. 过程奖励建模：使用 Qwen-PRM 评估推理步骤质量
+"""
 import os
 from dataclasses import dataclass, field
 from functools import partial
@@ -24,36 +55,111 @@ from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
 
 @dataclass
 class QwenTemplateMeta(ChatmlTemplateMeta):
+    """
+    类功能：
+        Qwen 系列模型的模板元数据类。定义了 Qwen 模型的默认系统提示词、停止词、BOS 处理等配置。
+        作为 Qwen 系列模板的基础配置类，被其他变体（如 Qwen2.5、QwQ 等）继承使用。
+
+    继承关系：
+        继承自 ChatmlTemplateMeta，采用 ChatML 格式的对话模板（如 <|im_start|>、<|im_end|>）。
+
+    应用场景：
+        用于配置 Qwen/Qwen2/Qwen-VL/Qwen2-VL 等模型的输入格式和行为。
+
+    属性：
+        default_system (Optional[str]): 默认系统提示词，定义模型的角色和行为准则。
+        auto_add_bos (bool): 是否自动添加 BOS（Beginning of Sequence）token，默认 False。
+        stop_words (List[Word]): 停止词列表，当生成这些词时停止生成，默认为 ['<|endoftext|>']。
+        agent_template (str): Agent 模式使用的模板类型，默认为 'hermes'（Hermes Agent 格式）。
+
+    示例：
+        >>> # 创建 Qwen 模板元数据
+        >>> meta = QwenTemplateMeta(LLMTemplateType.qwen)
+        >>> meta.default_system
+        'You are a helpful assistant.'
+        >>> meta.stop_words
+        ['<|endoftext|>']
+    """
+    # 默认系统提示词：定义模型的基本身份和角色
     default_system: Optional[str] = DEFAULT_SYSTEM
+    
+    # 是否自动添加 BOS token：Qwen 不需要自动添加，由 tokenizer 处理
     auto_add_bos: bool = False
+    
+    # 停止词列表：当生成 <|endoftext|> 时停止生成
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
+    
+    # Agent 模板类型：使用 Hermes 格式的 Agent 对话模板
     agent_template: str = 'hermes'
 
 
 @dataclass
 class Qwen2_5TemplateMeta(QwenTemplateMeta):
+    """
+    类功能：
+        Qwen2.5 模型的模板元数据类。继承自 QwenTemplateMeta，仅覆盖默认系统提示词。
+
+    继承关系：
+        继承自 QwenTemplateMeta，保留其他配置不变。
+
+    应用场景：
+        专用于 Qwen2.5 系列模型，提供更明确的模型身份说明。
+
+    示例：
+        >>> meta = Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5)
+        >>> meta.default_system
+        'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
+    """
+    # 默认系统提示词：明确说明模型是由阿里云创建的 Qwen
     default_system: Optional[str] = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
 @dataclass
 class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
+    """
+    类功能：
+        Qwen2.5-Math 数学模型的模板元数据类。专为数学推理任务定制系统提示词。
+
+    继承关系：
+        继承自 QwenTemplateMeta，仅覆盖默认系统提示词。
+
+    应用场景：
+        专用于 Qwen2.5-Math 模型，指导模型进行逐步推理并用 LaTeX 格式输出答案。
+
+    示例：
+        >>> meta = Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math)
+        >>> meta.default_system
+        'Please reason step by step, and put your final answer within \\\\boxed{}.'
+    """
+    # 默认系统提示词：要求模型逐步推理，并将最终答案放在 \boxed{} 中（LaTeX 格式）
     default_system: Optional[str] = 'Please reason step by step, and put your final answer within \\boxed{}.'
 
 
+# QwQ Preview 模型的系统提示词：强调逐步思考能力
 qwq_preview_system = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                       'You should think step-by-step.')
 
+# 注册 Qwen 基础模板：用于 Qwen/Qwen2 等基础对话模型
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
+
+# 注册 Qwen2.5 模板：用于 Qwen2.5 系列模型
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
+
+# 注册 QwQ Preview 模板：用于 QwQ 预览版模型，强调逐步思考
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
+# 注册 QwQ 模板：使用 ThinkingTemplate，在响应前添加 <think> 标签
+# response_prefix='<think>\n' 表示模型输出会以 <think> 开头，用于显式的思考过程
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
 
-# '<think>\n\n</think>\n\n'
+# 注册 Qwen3 模板：使用 ThinkingTemplate，自动识别 '<think>\n\n</think>\n\n' 格式
+# 不指定 response_prefix，模型会自动在输出中插入思考标签
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
 
+# 注册 Qwen3 Thinking 模板：明确指定思考前缀为 '<think>\n'
+# 与 qwen3 的区别在于显式指定 response_prefix
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
@@ -61,19 +167,79 @@ register_template(
 
 
 class Qwen3RerankerTemplate(Template):
+    """
+    类功能：
+        Qwen3 重排序（Reranker）模型的模板类。用于文档检索任务中对候选文档进行相关性排序。
+        通过特定的输入格式（Instruct、Query、Document）引导模型判断文档是否与查询相关。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        信息检索、问答系统中的文档重排序，判断给定文档是否能回答用户查询。
+
+    使用示例：
+        >>> # 输入查询和文档，模型判断文档是否相关
+        >>> inputs = {
+        ...     'messages': [
+        ...         {'role': 'user', 'content': 'What is Python?'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... }
+        >>> # 处理后的格式类似：
+        >>> # <Instruct>: Given a web search query, retrieve relevant passages that answer the query
+        >>> # <Query>: What is Python?
+        >>> # <Document>: {doc}
+    """
+    # 指令模板：定义重排序任务的指令
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        """
+        功能：
+            预处理输入，将用户查询转换为重排序任务的标准格式。
+            格式化为：<Instruct>: ... <Query>: ... <Document>: {doc}
+
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含 messages 列表。
+                - messages[-2]: 倒数第二条消息（用户查询）
+                - messages[-1]: 最后一条消息（助手响应）
+
+        返回：
+            None: 直接修改 inputs.messages
+
+        示例：
+            >>> inputs = StdTemplateInputs(messages=[
+            ...     {'role': 'user', 'content': 'machine learning'},
+            ...     {'role': 'assistant', 'content': ''}
+            ... ])
+            >>> template._preprocess_inputs(inputs)
+            >>> inputs.messages[-2]['content']
+            '<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: machine learning\\n<Document>: {doc}'
+        """
+        # 1> 调用父类预处理方法，进行基础处理
         super()._preprocess_inputs(inputs)
+        
+        # 2> 提取用户查询：从倒数第二条消息中获取查询内容
+        # 例如：'machine learning'
         query = inputs.messages[-2]['content']
+        
+        # 3> 构建重排序格式的用户消息：
+        # 格式：<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}
+        # {doc} 是占位符，在实际使用时会被替换为候选文档内容
         user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
+        
+        # 4> 更新用户消息：将原始查询替换为格式化的消息
         inputs.messages[-2]['content'] = user_message
 
 
+# Qwen3 Reranker 的系统提示词：指导模型进行二元判断（yes/no）
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
     'Note that the answer can only be \"yes\" or \"no\".')
 
+# 注册 Qwen3 Reranker 模板：用于文档重排序任务
+# response_prefix='<think>\n\n</think>\n\n' 表示模型会先思考再给出判断结果
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwen3_reranker,
@@ -81,238 +247,954 @@ register_template(
         response_prefix='<think>\n\n</think>\n\n',
         template_cls=Qwen3RerankerTemplate))
 
+# 注册 Qwen2.5-Math 模板：用于数学推理任务
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 
 class QwenPRMTemplate(Template):
+    """
+    类功能：
+        Qwen PRM（Process Reward Model，过程奖励模型）的模板类。
+        用于评估推理链（Chain-of-Thought）中每个推理步骤的质量，为强化学习提供细粒度的奖励信号。
+        通过在推理步骤之间插入特殊标记（<extra_0>），模型可以为每个步骤打分。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        强化学习训练中的奖励建模、推理过程质量评估、步骤级别的反馈生成。
+
+    使用示例：
+        >>> # 输入带有推理步骤的文本
+        >>> inputs = StdTemplateInputs(messages=[
+        ...     {'role': 'user', 'content': 'Solve: 2+3*4'},
+        ...     {'role': 'assistant', 'content': 'Step1: 3*4=12<extra_0>Step2: 2+12=14<extra_0>'}
+        ... ])
+        >>> # 模型会在每个 <extra_0> 位置输出该步骤的质量分数
+    """
+    # CoT 过程分隔符：用于标记推理步骤的边界
     cot_process_placeholder = '<extra_0>'
 
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
     ) -> None:
+        """
+        功能：
+            预处理输入，确保最后一条消息以 CoT 过程分隔符结尾。
+            如果输入中没有分隔符，会自动在最后添加一个。
+
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象。
+                - messages: 消息列表，每条消息包含 'content' 字段
+
+        返回：
+            None: 直接修改 inputs.messages
+
+        示例：
+            >>> inputs = StdTemplateInputs(messages=[
+            ...     {'role': 'user', 'content': 'Calculate 5+3'},
+            ...     {'role': 'assistant', 'content': 'The answer is 8'}
+            ... ])
+            >>> template._preprocess_inputs(inputs)
+            >>> inputs.messages[-1]['content']
+            'The answer is 8<extra_0>'
+        """
+        # 1> 调用父类预处理方法
         super()._preprocess_inputs(inputs)
+        
+        # 2> 拼接所有消息内容：用 '\n' 连接所有消息的内容
+        # 例如：'User: Calculate 5+3\nAssistant: The answer is 8'
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        
+        # 3> 检查是否包含分隔符：如果没有 <extra_0>，则在最后添加
+        # 这确保至少有一个步骤边界用于评分
         if self.cot_process_placeholder not in total_content:
             inputs.messages[-1]['content'] = inputs.messages[-1]['content'] + self.cot_process_placeholder
 
     @staticmethod
     def make_step_rewards(logits, token_masks):
+        """
+        功能：
+            从模型 logits 中提取每个推理步骤的奖励分数。
+            通过识别步骤分隔符位置，计算对应位置的"正向"概率作为奖励。
+
+        参数：
+            logits (torch.Tensor): 模型输出的 logits。
+                - shape: (batch_size, seq_len, num_labels)
+                - 通常 num_labels=2（负向、正向）
+            token_masks (torch.Tensor): 步骤分隔符的掩码。
+                - shape: (batch_size, seq_len)
+                - 值为 1 的位置表示是步骤分隔符
+
+        返回：
+            List[List[float]]: 每个样本的步骤奖励列表。
+                - 外层 list 长度 = batch_size
+                - 内层 list 长度 = 该样本的步骤数
+
+        示例：
+            >>> # 假设有 2 个样本，第一个有 3 步，第二个有 2 步
+            >>> logits = torch.randn(2, 20, 2)  # batch=2, seq=20, labels=2
+            >>> token_masks = torch.zeros(2, 20)
+            >>> token_masks[0, [5, 10, 15]] = 1  # 第 1 个样本在 5,10,15 位置有分隔符
+            >>> token_masks[1, [8, 16]] = 1      # 第 2 个样本在 8,16 位置有分隔符
+            >>> rewards = QwenPRMTemplate.make_step_rewards(logits, token_masks)
+            >>> len(rewards)
+            2
+            >>> len(rewards[0]), len(rewards[1])
+            (3, 2)  # 第 1 个样本 3 步，第 2 个样本 2 步
+        """
+        # 1> 计算概率分布：对 logits 进行 softmax，得到每个 token 的类别概率
+        # shape: (batch_size, seq_len, num_labels)
+        # 例如：probabilities[i, j, 0] 表示第 i 个样本第 j 个 token 的负向概率
+        #      probabilities[i, j, 1] 表示第 i 个样本第 j 个 token 的正向概率
         probabilities = F.softmax(logits, dim=-1)
+        
+        # 2> 应用掩码：只保留步骤分隔符位置的概率
+        # token_masks.unsqueeze(-1): (batch_size, seq_len, 1)
+        # 广播相乘后，非分隔符位置的概率被置为 0
         probabilities = probabilities * token_masks.unsqueeze(-1)  # bs, seq_len, num_labels
 
+        # 3> 遍历批次中的每个样本，提取步骤奖励
         all_scores_res = []
         for i in range(probabilities.size(0)):
+            # 4> 获取当前样本的概率：shape (seq_len, num_labels)
             sample = probabilities[i]  # seq_len, num_labels
+            
+            # 5> 提取有效位置的正向概率：
+            # sample[sample != 0]: 过滤掉所有为 0 的元素（非分隔符位置）
+            # view(-1, 2): 重塑为 (num_steps, 2) 形状
+            # [:, 1]: 提取正向概率（第 2 列，索引为 1）
+            # 例如：如果有 3 个步骤，positive_probs shape=(3,)，值为 [0.8, 0.6, 0.9]
+            # 技巧：PyTorch 张量布尔索引机制
             positive_probs = sample[sample != 0].view(-1, 2)[:, 1]  # valid_tokens, num_labels
+            
+            # 6> 转换为 Python 列表：将 tensor 转换为 CPU 上的列表
             non_zero_elements_list = positive_probs.cpu().tolist()
+            
+            # 7> 添加到结果列表
             all_scores_res.append(non_zero_elements_list)
+        
         return all_scores_res
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        """
+        功能：
+            解码 PRM 输出，从 input_ids 中定位步骤分隔符，并计算对应的奖励分数。
+
+        参数：
+            input_ids (torch.Tensor): 输入的 token IDs。
+                - shape: (batch_size, seq_len)
+            logits (torch.Tensor): 模型输出的 logits。
+                - shape: (batch_size, seq_len, num_labels)
+
+        返回：
+            List[List[float]]: 每个样本的步骤奖励列表。
+
+        示例：
+            >>> # 假设 <extra_0> 的 token id 是 151643
+            >>> input_ids = torch.tensor([[1, 2, 151643, 4, 151643, 6]])  # 1 个样本，2 个步骤
+            >>> logits = torch.randn(1, 6, 2)
+            >>> rewards = template.decode_prm(input_ids, logits)
+            >>> len(rewards[0])
+            2  # 2 个步骤的奖励
+        """
+        # 1> 编码步骤分隔符：获取 <extra_0> 对应的 token ID
+        # 例如：step_sep_id = 151643
         step_sep_id = self.tokenizer.encode(self.cot_process_placeholder)[0]
+        
+        # 2> 创建掩码：标记出所有步骤分隔符的位置
+        # token_masks shape: (batch_size, seq_len)
+        # 值为 True 的位置表示是步骤分隔符
         token_masks = (input_ids == step_sep_id)
+        
+        # 3> 计算步骤奖励：调用 make_step_rewards 提取奖励分数
         return self.make_step_rewards(logits, token_masks)
 
 
+# 注册 Qwen2.5-Math PRM 模板：用于数学推理过程的奖励建模
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math_prm, template_cls=QwenPRMTemplate))
 
 
 class QwenVLTemplate(Template):
+    """
+    类功能：
+        Qwen-VL 视觉语言模型的模板类。处理图像+文本的多模态输入，支持图像标注（grounding）任务。
+        使用自定义的图像占位符格式 <img>...</img>，兼容不同的推理后端（vLLM、LMDeploy 等）。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        图像问答、图像描述、视觉定位（grounding）、目标检测等视觉-语言任务。
+
+    使用示例：
+        >>> # 图像问答示例
+        >>> inputs = StdTemplateInputs(
+        ...     images=['path/to/image.jpg'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<image>描述这张图片'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+        >>> # 处理后格式：Picture 1: <img>path/to/image.jpg</img>\n描述这张图片
+    """
+    # 不提前加载图像：图像路径以字符串形式传递
     load_images = False
 
     @staticmethod
     def _load_image(image, load_images: bool):
+        """
+        功能：
+            自定义图像加载逻辑。检测图像是否为 base64 编码或长字符串，决定是否需要加载。
+
+        参数：
+            image: 图像对象，可能是路径字符串、URL 或 PIL.Image。
+            load_images (bool): 是否加载图像。
+
+        返回：
+            加载后的图像对象。
+
+        示例：
+            >>> # 普通路径：不加载
+            >>> QwenVLTemplate._load_image('/path/to/img.jpg', False)
+            '/path/to/img.jpg'
+            
+            >>> # Base64 编码：强制加载
+            >>> QwenVLTemplate._load_image('data:image/png;base64,iVBORw...', False)
+            <PIL.Image.Image object>
+        """
+        # 检测是否为 base64 编码或长字符串（可能是嵌入的图像数据）
+        # 1> 如果是字符串且以 'data:' 开头，说明是 base64 编码的图像
+        # 2> 如果字符串长度超过 200，可能也是嵌入的图像数据
+        # 这两种情况下需要强制加载图像
         if not load_images and isinstance(image, str) and (image.startswith('data:') or len(image) > 200):
             load_images = True
+        
+        # 调用父类的图像加载方法
         return Template._load_image(image, load_images)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换媒体标签为 Qwen-VL 特定的格式。根据不同的推理模式生成对应的图像占位符。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，仅支持 'image'。
+            index (int): 图像在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 上下文列表，包含图像占位符和换行符。
+
+        示例：
+            >>> # LMDeploy 模式
+            >>> template.mode = 'lmdeploy'
+            >>> template.replace_tag('image', 0, inputs)
+            ['Picture 1: ', [-100], '\n']
+            
+            >>> # vLLM 模式
+            >>> template.mode = 'vllm'
+            >>> template.replace_tag('image', 0, inputs)
+            ['Picture 1: <img></img>\n']
+            
+            >>> # 普通模式
+            >>> template.mode = 'pt'
+            >>> inputs.images = ['/path/to/img.jpg']
+            >>> template.replace_tag('image', 0, inputs)
+            ['Picture 1: <img>/path/to/img.jpg</img>\n']
+        """
+        # 确保只处理图像类型
         assert media_type == 'image'
+        
+        # 根据推理模式生成不同的占位符
         if self.mode == 'lmdeploy':
+            # LMDeploy 模式：使用特殊 token [-100] 作为图像占位符
             return [f'Picture {index + 1}: ', [-100], '\n']
         else:
+            # 获取当前图像
             image = inputs.images[index]
             if self.mode == 'vllm':
+                # vLLM 模式：使用空标签 <img></img>
                 return [f'Picture {index + 1}: <img></img>\n']
             else:
+                # 普通模式（PyTorch）：在标签中嵌入图像路径
                 assert isinstance(image, str)
                 return [f'Picture {index + 1}: <img>{image}</img>\n']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换引用标签（grounding 任务中的目标引用）。
+
+        参数：
+            ref (str): 引用文本（如 "person"、"car"）。
+            index (int): 引用的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的引用标签。
+
+        示例：
+            >>> template.replace_ref('person', 0, inputs)
+            ['<ref>person</ref>']
+        """
+        # 使用 <ref>...</ref> 标签包裹引用文本
         return [f'<ref>{ref}</ref>']
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换边界框标签（grounding 任务中的目标位置）。
+
+        参数：
+            bbox (List[int]): 边界框坐标 [x1, y1, x2, y2]。
+            index (int): 边界框的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的边界框标签。
+
+        示例：
+            >>> template.replace_bbox([100, 200, 300, 400], 0, inputs)
+            ['<box>(100,200),(300,400)</box>']
+        """
+        # 使用 <box>...</box> 标签包裹边界框坐标字符串
         return [f'<box>{self._get_bbox_str(bbox)}</box>']
 
 
+# 注册 Qwen-VL 模板：用于视觉-语言任务
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
 
 
 class QwenAudioTemplate(Template):
+    """
+    类功能：
+        Qwen-Audio 音频语言模型的模板类。处理音频+文本的多模态输入，支持语音识别、音频问答等任务。
+        使用自定义的音频占位符格式 <audio>...</audio>，通过 processor 处理音频信息。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        语音识别、音频描述、音乐分析、声音事件检测等音频-语言任务。
+
+    使用示例：
+        >>> inputs = StdTemplateInputs(
+        ...     audios=['path/to/audio.wav'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<audio>这段音频的内容是什么？'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+        >>> # 处理后格式：Audio 1:<audio>path/to/audio.wav</audio>\n这段音频的内容是什么？
+    """
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换音频标签为 Qwen-Audio 特定的格式。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，仅支持 'audio'。
+            index (int): 音频在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 包含音频占位符的上下文列表。
+
+        示例：
+            >>> inputs.audios = ['audio.wav']
+            >>> template.replace_tag('audio', 0, inputs)
+            ['Audio 1:<audio>audio.wav</audio>\\n']
+        """
+        # 确保只处理音频类型
         assert media_type == 'audio'
+        # 获取音频列表和当前音频
         audios = inputs.audios
         audio = audios[index]
+        # 确保音频是路径字符串
         assert isinstance(audio, str)
+        # 返回格式化的音频标签
         return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _tokenize(self, context, **tokenizer_kwargs):
+        """
+        功能：
+            tokenize 上下文，附加音频信息。通过 processor 处理音频标签，提取音频元数据。
+
+        参数：
+            context (str): 待 tokenize 的文本上下文（包含 <audio> 标签）。
+            **tokenizer_kwargs: 传递给 tokenizer 的额外参数。
+
+        返回：
+            tokenize 后的结果。
+
+        示例：
+            >>> context = 'Audio 1:<audio>/path/audio.wav</audio>\\n描述这段音频'
+            >>> tokens = template._tokenize(context)
+        """
+        # 1> 处理音频信息：从上下文中提取音频路径并处理
         audio_info = self.processor.process_audio(context)
+        # 2> 调用父类 tokenize 方法，附加音频信息
         return super()._tokenize(context, audio_info=audio_info)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码输入，生成模型可用的张量。处理音频信息并添加到编码结果中。
+
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            Dict[str, Any]: 编码结果字典，包含 input_ids、audio_info 等。
+
+        示例：
+            >>> inputs = StdTemplateInputs(audios=['audio.wav'], messages=[...])
+            >>> encoded = template._encode(inputs)
+            >>> 'audio_info' in encoded
+            True
+        """
+        # 1> 调用父类编码方法，获取基础编码结果（input_ids、labels 等）
         encoded = super()._encode(inputs)
+        
+        # 2> 构建音频文本：将所有音频路径包裹在 <audio> 标签中
+        # 例如：'<audio>audio1.wav</audio><audio>audio2.wav</audio>'
         text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
+        
+        # 3> 处理音频信息：从构建的文本中提取音频元数据
         audio_info = self.processor.process_audio(text)
+        
+        # 4> 添加音频信息到编码结果：如果有音频信息，添加到字典中
         if audio_info:
             tokenizer_kwargs = {'audio_info': audio_info}
             encoded.update(tokenizer_kwargs)
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
+        
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        功能：
+            批处理数据整理器，将批次中的样本合并为模型输入。收集音频信息到批次级别。
+
+        参数：
+            batch (List[Dict[str, Any]]): 批次样本列表。
+            padding_to (Optional[int]): 填充到的目标长度。
+
+        返回：
+            Dict[str, Any]: 批次级别的输入字典。
+
+        示例：
+            >>> batch = [{'input_ids': [...], 'audio_info': {...}}, ...]
+            >>> collated = template._data_collator(batch)
+            >>> 'audio_info' in collated
+            True
+        """
+        # 1> 调用父类数据整理器，处理文本部分（input_ids、attention_mask 等）
         res = super()._data_collator(batch, padding_to=padding_to)
+        
+        # 2> 收集音频信息：如果批次中有音频信息，收集到列表中
         if batch[0].get('audio_info') is not None:
             res['audio_info'] = [b['audio_info'] for b in batch]
+        
         return res
 
 
+# 注册 Qwen-Audio 模板：用于音频-语言任务
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=QwenAudioTemplate))
 
 
 class Qwen2AudioTemplate(Template):
+    """
+    类功能：
+        Qwen2-Audio 音频语言模型的模板类（第二代音频模型）。
+        使用标准的音频标记格式 <|audio_bos|><|AUDIO|><|audio_eos|>，通过 feature extractor 提取音频特征。
+        相比 Qwen-Audio，使用更标准化的音频处理流程。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        语音识别、音频理解、音频描述等音频-语言任务，支持更长的音频输入。
+
+    使用示例：
+        >>> inputs = StdTemplateInputs(
+        ...     audios=['speech.wav'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<audio>识别这段语音'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+        >>> # 处理后格式：<|audio_bos|><|AUDIO|><|audio_eos|>\n识别这段语音
+    """
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换音频标签为 Qwen2-Audio 的标准格式。根据是否使用 chat 模板选择不同的格式。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，仅支持 'audio'。
+            index (int): 音频在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 包含音频占位符的上下文列表。
+
+        示例：
+            >>> # 不使用 chat 模板
+            >>> template.use_chat_template = False
+            >>> template.replace_tag('audio', 0, inputs)
+            ['<|audio_bos|><|AUDIO|><|audio_eos|>\\n']
+            
+            >>> # 使用 chat 模板
+            >>> template.use_chat_template = True
+            >>> template.replace_tag('audio', 0, inputs)
+            ['Audio 1: <|audio_bos|><|AUDIO|><|audio_eos|>\\n']
+        """
+        # 确保只处理音频类型
         assert media_type == 'audio'
+        
+        # 根据是否使用 chat 模板选择格式
         if not self.use_chat_template:
+            # 基础格式：只有音频标记
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
         else:
+            # Chat 格式：添加 "Audio N:" 前缀
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码输入，提取音频特征并生成模型输入。使用 feature extractor 将音频转换为特征向量。
+
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            Dict[str, Any]: 编码结果，包含 input_ids、input_features、feature_attention_mask 等。
+
+        示例：
+            >>> inputs = StdTemplateInputs(audios=['audio.wav'], messages=[...])
+            >>> encoded = template._encode(inputs)
+            >>> 'input_features' in encoded  # 音频特征
+            True
+            >>> encoded['input_features'].shape  # (batch, time, feature_dim)
+            torch.Size([1, 3000, 128])
+        """
+        # 1> 调用父类编码方法，处理文本部分
         encoded = super()._encode(inputs)
+        
+        # 2> 处理音频：如果有音频输入，提取特征
         if inputs.audios:
+            # 3> 获取采样率：优先使用环境变量，否则使用默认值
             sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+            
+            # 4> 批量加载音频：使用 load_audio 函数加载所有音频文件
+            # load_batch 并行加载多个音频，提高效率
             audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
+            
+            # 5> 提取音频特征：使用 feature extractor 将音频波形转换为特征向量
+            # return_attention_mask=True: 返回注意力掩码，处理变长音频
+            # return_tensors='pt': 返回 PyTorch 张量
             audio_inputs = self.processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
+            
+            # 6> 重命名 attention_mask：避免与文本的 attention_mask 冲突
+            # 将 'attention_mask' 改名为 'feature_attention_mask'
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
+            
+            # 7> 更新编码结果：添加音频特征到字典中
             encoded.update(audio_inputs)
+        
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        功能：
+            批处理数据整理器，合并音频特征和注意力掩码。
+
+        参数：
+            batch (List[Dict[str, Any]]): 批次样本列表。
+            padding_to (Optional[int]): 填充到的目标长度。
+
+        返回：
+            Dict[str, Any]: 批次级别的输入字典。
+
+        示例：
+            >>> batch = [
+            ...     {'input_ids': [1,2,3], 'input_features': tensor(...), 'feature_attention_mask': tensor(...)},
+            ...     {'input_ids': [4,5,6], 'input_features': tensor(...), 'feature_attention_mask': tensor(...)}
+            ... ]
+            >>> collated = template._data_collator(batch)
+            >>> collated['input_features'].shape  # (2, max_time, feature_dim)
+            torch.Size([2, 3000, 128])
+        """
+        # 1> 调用父类数据整理器，处理文本部分
         res = super()._data_collator(batch, padding_to=padding_to)
+        
+        # 2> 收集音频特征：从批次中提取所有非空的 input_features
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        
+        # 3> 收集特征注意力掩码：标记音频中的有效部分
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
         ]
+        
+        # 4> 合并音频数据：如果有音频特征，拼接成批次张量
         if input_features:
+            # concat 沿批次维度拼接：(batch, time, feature_dim)
             res['input_features'] = torch.concat(input_features)
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
+        
         return res
 
 
+# 注册 Qwen2-Audio 模板：用于音频-语言任务
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
 
 
 class Qwen2VLTemplate(Template):
+    """
+    类功能：
+        Qwen2-VL 视觉语言模型的模板类。支持图像和视频输入，使用动态分辨率处理。
+        采用 Vision Transformer 架构，将图像/视频切分为多个 patch，每个 patch 用特定 token 表示。
+        支持 grounding 任务（目标定位），可以输出边界框坐标。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        图像问答、视频理解、视觉定位、OCR、图表分析等视觉-语言任务。
+
+    使用示例：
+        >>> # 图像问答
+        >>> inputs = StdTemplateInputs(
+        ...     images=['cat.jpg'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<image>这是什么动物？'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+        >>> 
+        >>> # 视频理解
+        >>> inputs = StdTemplateInputs(
+        ...     videos=['video.mp4'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<video>描述视频内容'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+    """
+    # 图像 token ID：用于标记图像 patch 的特殊 token
     image_token_id = 151655
+    
+    # 视频 token ID：用于标记视频帧 patch 的特殊 token
     video_token_id = 151656
+    
+    # 占位符 tokens：在 tokenize 时临时使用，后续会被替换为实际数量的 token
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
+    
+    # 模板版本：'v2' 表示 Qwen2-VL
     version = 'v2'
+    
+    # 是否使用模型对象：需要访问模型来获取视觉编码器
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换媒体标签为 Qwen2-VL 的格式。处理图像和视频输入，使用 qwen_vl_utils 加载媒体。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，支持 'image' 和 'video'。
+            index (int): 媒体在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的视觉标签。
+
+        示例：
+            >>> # 图像模式
+            >>> inputs.images = ['cat.jpg']
+            >>> template.replace_tag('image', 0, inputs)
+            ['<|vision_start|><|image_pad|><|vision_end|>']
+            
+            >>> # 视频模式
+            >>> inputs.videos = ['video.mp4']
+            >>> template.replace_tag('video', 0, inputs)
+            ['<|vision_start|><|video_pad|><|vision_end|>']
+        """
+        # 导入 qwen_vl_utils：用于加载和预处理图像/视频
         from qwen_vl_utils import fetch_image, fetch_video
+        
+        # 确保媒体类型是图像或视频
         assert media_type in {'image', 'video'}
+        
         if media_type == 'image':
+            # 1> 加载图像：使用 fetch_image 获取图像数据（PIL.Image 或 numpy array）
+            # 支持多种格式：本地路径、URL、base64 等
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            
+            # 2> 生成图像占位符：根据推理模式选择格式
             if self.mode == 'lmdeploy':
+                # LMDeploy 模式：使用特殊 token [-100]
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
+                # 普通模式：使用占位符 token，后续会被替换为实际数量的图像 tokens
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
+            # 3> 处理视频输入
             video = inputs.videos[index]
+            
+            # 4> 如果视频是目录（包含帧图像），收集所有帧文件
             if os.path.isdir(video):
                 video = [os.path.join(video, fname) for fname in os.listdir(video)]
+            
+            # 5> 加载视频：fetch_video 返回视频张量和元数据（如 fps）
+            # return_video_sample_fps=True: 返回视频采样帧率
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
+            
+            # 6> 转换视频数据类型：确保是 uint8 格式（0-255 范围）
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
+            
+            # 7> 更新视频数据：存储为 (video_tensor, metadata) 元组
             inputs.videos[index] = (video, video_kwargs)
+            
+            # 8> 生成视频占位符：后续会被替换为实际数量的视频 tokens
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换引用标签（用于 grounding 任务中的目标引用）。
+
+        参数：
+            ref (str): 引用文本（如 "cat"、"person"）。
+            index (int): 引用的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的引用标签。
+
+        示例：
+            >>> template.replace_ref('cat', 0, inputs)
+            ['<|object_ref_start|>cat<|object_ref_end|>']
+        """
+        # 使用 Qwen2-VL 的引用标签格式
         return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换边界框标签（用于 grounding 任务中的目标位置）。
+
+        参数：
+            bbox (List[int]): 边界框坐标 [x1, y1, x2, y2]。
+            index (int): 边界框的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的边界框标签。
+
+        示例：
+            >>> template.replace_bbox([100, 200, 300, 400], 0, inputs)
+            ['<|box_start|>(100,200),(300,400)<|box_end|>']
+        """
+        # 使用 Qwen2-VL 的边界框标签格式
         return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码输入，处理图像和视频，将占位符 token 替换为实际数量的媒体 tokens。
+            核心步骤：
+            1. 使用 processor 提取图像/视频特征和网格信息（grid_thw）
+            2. 根据网格尺寸计算实际需要的 token 数量
+            3. 将单个占位符 token 扩展为多个实际 token
+            
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            Dict[str, Any]: 编码结果，包含：
+                - input_ids: 扩展后的 token IDs
+                - labels: 扩展后的标签
+                - pixel_values/pixel_values_videos: 图像/视频像素值
+                - image_grid_thw/video_grid_thw: 网格尺寸 (temporal, height, width)
+
+        示例：
+            >>> # 假设图像被切分为 2×3 的网格，merge_size=2
+            >>> # 原始 input_ids: [1, 2, 151655, 3]  (151655 是图像占位符)
+            >>> # grid_thw: (1, 2, 3) -> 6 个 grid cells
+            >>> # merge_length: 2×2 = 4
+            >>> # token_len: 6 // 4 = 1 (但实际会根据 merge 策略计算)
+            >>> # 扩展后: [1, 2, 151655, 151655, ..., 3]  (多个图像 tokens)
+        """
+        # 1> 调用父类编码方法，获取基础编码结果（文本部分）
         encoded = super()._encode(inputs)
         processor = self.processor
-        input_ids = encoded['input_ids']
-        labels = encoded['labels']
-        loss_scale = encoded.get('loss_scale', None)
+        
+        # 2> 提取编码后的文本信息
+        input_ids = encoded['input_ids']  # token IDs 列表
+        labels = encoded['labels']         # 标签列表（训练时使用）
+        loss_scale = encoded.get('loss_scale', None)  # 损失缩放因子（可选）
+        
+        # 3> 准备图像和视频数据
         images = inputs.images
+        # 从 (video_tensor, metadata) 元组中提取视频张量
         videos = [video[0] for video in inputs.videos]
+        # 提取视频帧率信息
         fps = [video[1] for video in inputs.videos]
+        
+        # 4> 处理图像和视频（依次处理）
         for media_type in ['images', 'videos']:
+            # 检查当前媒体类型是否有数据
             if locals()[media_type]:
                 if media_type == 'images':
+                    # 5> 处理图像
+                    # 图像 token ID
                     media_token = self.image_token_id
+                    
+                    # 使用 image_processor 处理图像，提取特征
+                    # do_resize=False: 不调整大小（已经在 fetch_image 中处理）
                     media_inputs = processor.image_processor(images=images, return_tensors='pt', do_resize=False)
+                    
+                    # 提取网格尺寸信息：shape (num_images, 3)，3个维度为 (temporal, height, width)
+                    # 对于图像，temporal=1
+                    # 例如：tensor([[1, 16, 16]])  表示 1 帧，16×16 个 patches
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
+                    # 6> 处理视频
                     kwargs = {}
+                    # 检查是否有专用的 video_processor
                     if hasattr(processor, 'video_processor'):
                         processor_func = processor.video_processor
                     else:
+                        # 使用 image_processor 处理视频（逐帧处理）
                         processor_func = processor.image_processor
-                        kwargs['images'] = None
+                        kwargs['images'] = None  # 明确指定不处理图像
+                    
+                    # 处理视频，提取特征
                     media_inputs = processor_func(videos=videos, return_tensors='pt', do_resize=False, **kwargs)
+                    
+                    # 提取视频网格尺寸：shape (num_videos, 3)，3个维度为 (temporal, height, width)
+                    # 例如：tensor([[8, 16, 16]])  表示 8 帧，每帧 16×16 个 patches
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
+                    
+                    # 7> Qwen2.5-VL 特殊处理：计算每个 grid 的时间步长
                     if self.version == 'v2_5':
+                        # temporal_patch_size: 时间维度的 patch 大小（如 2 表示每 2 帧合并）
+                        # fps: 视频采样帧率
+                        # second_per_grid_ts: 每个时间 grid 对应的秒数
                         media_inputs['second_per_grid_ts'] = [
                             processor.image_processor.temporal_patch_size / tmp for tmp in fps
                         ]
+                
+                # 8> 查找占位符 token 的位置
+                # findall 返回所有 media_token 在 input_ids 中的索引列表
+                # 例如：[2, 15]  表示第 2 和第 15 个位置是媒体占位符
                 idx_list = findall(input_ids, media_token)
+                
+                # 9> 计算合并长度：merge_size×merge_size
+                # merge_size: 合并相邻 patches 的窗口大小（如 2 表示 2×2 合并）
+                # 例如：merge_size=2 → merge_length=4，即 4 个 patches 合并为 1 个 token
                 merge_length = processor.image_processor.merge_size**2
 
+                # 10> 定义 token 扩展函数：计算每个媒体需要的 token 数量
                 def _get_new_tokens(i):
+                    """
+                    计算第 i 个媒体需要的 token 数量。
+                    
+                    公式：token_len = (T × H × W) // merge_length
+                    - T: temporal 维度（帧数）
+                    - H: height 维度（patch 行数）
+                    - W: width 维度（patch 列数）
+                    - merge_length: 合并因子（如 4 表示 2×2 合并）
+                    
+                    示例：
+                        grid_thw[i] = (8, 16, 16)  # 8 帧，16×16 patches
+                        merge_length = 4           # 2×2 合并
+                        token_len = 8×16×16 // 4 = 512
+                        返回：[media_token] × 512
+                    """
+                    # 计算总 patch 数量并除以合并因子
                     token_len = (media_grid_thw[i].prod() // merge_length)
+                    # 返回对应数量的 media_token
                     return [media_token] * token_len
 
+                # 11> 扩展 tokens：将占位符替换为实际数量的 tokens
+                # _extend_tokens 会在每个 idx_list 位置替换为 _get_new_tokens 返回的 tokens
+                # 同时同步扩展 labels 和 loss_scale
                 input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                     _get_new_tokens)
+                
+                # 12> 更新编码结果：添加媒体特征（pixel_values 等）
                 encoded.update(media_inputs)
 
+        # 13> 更新编码结果：保存扩展后的 input_ids、labels、loss_scale
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         return encoded
 
     def forward_context(self, model, inputs):
+        """
+        功能：
+            设置模型前向传播的上下文环境。处理位置编码（position_ids），支持 packing 模式和 Flash Attention。
+            在 packing 模式下，使用真实的位置 ID（real_position_ids）来正确处理打包序列。
+
+        参数：
+            model: 模型对象。
+            inputs (dict): 输入字典，包含 input_ids、position_ids 等。
+
+        返回：
+            上下文管理器或 None。
+
+        示例：
+            >>> # 普通模式
+            >>> with template.forward_context(model, inputs):
+            ...     output = model(**inputs)
+            
+            >>> # Packing 模式：使用 real_position_ids
+            >>> inputs = {'real_position_ids': tensor(...), ...}
+            >>> with template.forward_context(model, inputs):
+            ...     output = model(**inputs)
+        """
+        # 1> 检查是否为 packing 模式：如果没有 real_position_ids，使用默认行为
         if 'real_position_ids' not in inputs:
             return super().forward_context(model, inputs)
+        
+        # 2> Packing 模式：替换位置 ID
+        # position_ids 是原始的（可能被padding的）位置 ID
         position_ids = inputs['position_ids']
+        # 使用真实的位置 ID（未padding的）
         inputs['position_ids'] = inputs.pop('real_position_ids')
+        
+        # 3> 检查 transformers 版本：>=4.53 原生支持 packing
         transformers_ge_453 = version.parse(transformers.__version__) >= version.parse('4.53')
         if transformers_ge_453:
+            # 新版本：使用 get_packed_seq_params 获取 packing 参数
             inputs.update(get_packed_seq_params(position_ids))
             return super().forward_context(model, inputs)
+        
+        # 4> 旧版本：手动patch Flash Attention，根据版本加载对应的模块
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':
             from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
         elif self.version == 'omni':
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
+        
+        # 5> 应用 Flash Attention patch
         return self._patch_flash_attention_forward(modeling_module, position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -437,12 +1319,31 @@ register_template(
 
 
 class Qwen2_5VLTemplate(Qwen2VLTemplate):
+    """
+    类功能：
+        Qwen2.5-VL 视觉语言模型的模板类。继承自 Qwen2VLTemplate，使用更新的版本配置。
+
+    继承关系：
+        继承自 Qwen2VLTemplate。
+
+    应用场景：
+        与 Qwen2-VL 相同，支持图像和视频理解任务。
+
+    使用示例：
+        >>> # 与 Qwen2VLTemplate 使用方式相同
+        >>> inputs = StdTemplateInputs(images=['image.jpg'], messages=[...])
+    """
+    # 版本标识：v2_5 表示 Qwen2.5-VL
     version = 'v2_5'
+    
+    # 边界框归一化方式：'none' 表示不进行归一化
     norm_bbox = 'none'
 
 
+# 注册 Qwen2.5-VL 模板
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
+# 注册 MiMo-VL 模板：小米开发的视觉语言模型，基于 Qwen2.5-VL 架构
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.mimo_vl,
@@ -451,42 +1352,151 @@ register_template(
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
+    """
+    类功能：
+        Qwen2.5-Omni 全模态模型的模板类。支持图像、视频、音频三种模态的输入。
+        相比 Qwen2.5-VL，增加了音频理解能力，并支持视频中的音频提取。
+        采用统一的编码器架构处理所有模态。
+
+    继承关系：
+        继承自 Qwen2_5VLTemplate。
+
+    应用场景：
+        全模态理解任务，包括图像+音频、视频+音频、多模态混合等复杂场景。
+
+    使用示例：
+        >>> # 图像+音频混合输入
+        >>> inputs = StdTemplateInputs(
+        ...     images=['photo.jpg'],
+        ...     audios=['speech.wav'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<image><audio>图片和音频的内容是什么？'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+    """
+    # 版本标识：omni 表示全模态
     version = 'omni'
+    
+    # 占位符 tokens：分别对应图像、音频、视频
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
     def init_processor(self, processor) -> None:
+        """
+        功能：
+            初始化 processor，加载全模态处理相关配置。
+
+        参数：
+            processor: Qwen2.5-Omni 的 processor 对象。
+
+        返回：
+            None
+
+        示例：
+            >>> template.init_processor(processor)
+            >>> template.seconds_per_chunk  # 视频块的时长（秒）
+            2.0
+        """
+        # 如果 processor 为空，直接返回
         if processor is None:
             return
+        
+        # 1> 调用父类初始化方法
         super().init_processor(processor)
+        
+        # 2> 导入 Qwen2.5-Omni 的默认配置
         from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
         default = Qwen2_5OmniProcessorKwargs._defaults
+        
+        # 3> 设置视频处理参数
+        # seconds_per_chunk: 每个视频块的时长（秒），用于分块处理长视频
         self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
+        
+        # position_id_per_seconds: 每秒对应的位置 ID 数量，用于时间位置编码
         self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        
+        # 4> 设置音频处理参数（可通过环境变量覆盖）
+        # use_audio_in_video: 是否从视频中提取音频（默认 False）
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
+        
+        # sampling_rate: 音频采样率（Hz），默认使用 processor 的配置
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换媒体标签为 Qwen2.5-Omni 的格式。支持图像、音频、视频三种模态。
+            特别支持从视频中提取音频（use_audio_in_video=True 时）。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型。
+            index (int): 媒体在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的媒体标签。
+
+        示例：
+            >>> # 图像
+            >>> template.replace_tag('image', 0, inputs)
+            ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+            
+            >>> # 音频
+            >>> template.replace_tag('audio', 0, inputs)
+            ['<|audio_bos|><|AUDIO|><|audio_eos|>']
+            
+            >>> # 视频（带音频）
+            >>> template.use_audio_in_video = True
+            >>> template.replace_tag('video', 0, inputs)
+            ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
+        """
+        # 导入 qwen_omni_utils：用于加载图像和视频
         from qwen_omni_utils import fetch_image, fetch_video
+        
         if media_type == 'image':
+            # 1> 处理图像：使用 fetch_image 加载图像数据
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            # 返回图像标签格式
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+        
         elif media_type == 'audio':
+            # 2> 处理音频：非 vLLM 模式需要预加载音频
             if self.mode != 'vllm':
+                # 使用 load_audio 加载音频文件，指定采样率
                 inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
+            # 返回音频标签格式
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
+        
         elif media_type == 'video':
+            # 3> 处理视频
             video = inputs.videos[index]
+            
+            # 4> 加载视频数据：转换为 uint8 格式
             inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
+            
+            # 5> 如果启用视频音频提取
             if self.use_audio_in_video:
                 import librosa
+                
+                # 6> 处理网络视频：需要使用 audioread 读取远程音频流
                 if video.startswith('http://') or video.startswith('https://'):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
+                
+                # 7> 使用 librosa 加载音频：返回 (audio_data, sampling_rate)
+                # [0] 提取音频数据（numpy array）
                 video = librosa.load(video, sr=self.sampling_rate)[0]
+                
+                # 8> 将音频插入到 audios 列表：标记为来自视频的音频
+                # (video, 'video') 元组中的 'video' 标记表示音频来源
                 inputs.audios.insert(inputs.audio_idx, (video, 'video'))
-                inputs.audio_idx += 1
+                inputs.audio_idx += 1  # 更新音频索引
+                
+                # 9> 返回视频+音频标签格式
                 return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
+            
+            # 10> 仅视频（无音频）：返回纯视频标签格式
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -631,16 +1641,58 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         return super().generate(model, *args, **kwargs)
 
 
+# 注册 Qwen2.5-Omni 模板：用于全模态理解任务
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
 class Ovis1_6Template(Template):
+    """
+    类功能：
+        Ovis 1.6 视觉语言模型的模板类。使用特殊的视觉 tokenizer 动态生成图像 tokens。
+        支持动态分辨率和多分区处理（max_partition）。
+
+    继承关系：
+        继承自 Template 基类。
+
+    应用场景：
+        高分辨率图像理解、细粒度视觉任务、OCR 等需要保留图像细节的场景。
+
+    使用示例：
+        >>> inputs = StdTemplateInputs(
+        ...     images=['high_res_image.jpg'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<image>详细描述图片内容'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+    """
+    # 是否跳过提示词：False 表示保留提示词
     skip_prompt = False
+    
+    # 是否使用模型对象：需要访问模型的 visual_tokenizer
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换图像标签为 Ovis 特定的占位符。使用 [-200] 作为临时占位符，后续会被替换。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，仅支持 'image'。
+            index (int): 图像在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 包含特殊占位符的上下文列表。
+
+        示例：
+            >>> template.replace_tag('image', 0, inputs)
+            [[-200], '\\n']
+        """
+        # 确保只处理图像类型
         assert media_type == 'image'
+        # 返回特殊占位符：[-200] 会在 _encode 中被替换为实际的图像 tokens
         return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -705,6 +1757,7 @@ register_template(
         template_cls=Ovis1_6Template,
     ))
 
+# 注册 Ovis 1.6 模板：使用 Llama3 格式
 register_template(
     Llama3TemplateMeta(
         MLLMTemplateType.ovis1_6_llama3,
@@ -714,21 +1767,79 @@ register_template(
 
 
 class Ovis2Template(Ovis1_6Template):
+    """
+    类功能：
+        Ovis2 视觉语言模型的模板类。继承自 Ovis1_6Template，增加了视频处理能力。
+        将视频转换为多帧图像序列进行处理。
+
+    继承关系：
+        继承自 Ovis1_6Template。
+
+    应用场景：
+        图像理解、视频理解，支持高分辨率输入和多帧视频处理。
+
+    使用示例：
+        >>> # 视频理解
+        >>> inputs = StdTemplateInputs(
+        ...     videos=['video.mp4'],
+        ...     messages=[
+        ...         {'role': 'user', 'content': '<video>描述视频内容'},
+        ...         {'role': 'assistant', 'content': ''}
+        ...     ]
+        ... )
+    """
+    # 占位符 tokens：用于图像和视频
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
+    
+    # 默认视频帧数：从视频中提取的帧数
     nframes = 12
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        """
+        功能：
+            替换媒体标签。支持图像和视频，视频会被转换为多帧图像。
+
+        参数：
+            media_type (Literal['image', 'video', 'audio']): 媒体类型，支持 'image' 和 'video'。
+            index (int): 媒体在列表中的索引。
+            inputs (StdTemplateInputs): 标准模板输入对象。
+
+        返回：
+            List[Context]: 格式化的媒体标签。
+
+        示例：
+            >>> # 图像
+            >>> template.replace_tag('image', 0, inputs)
+            [[-200], '\\n']
+            
+            >>> # 视频（12 帧）
+            >>> template.replace_tag('video', 0, inputs)
+            [[-200, -200, ..., -200], '\\n']  # 12 个 -200
+        """
         if media_type == 'image':
+            # 1> 处理图像
             if self.mode == 'vllm':
+                # vLLM 模式：使用文本标签
                 return ['<image>\n']
+            # 普通模式：使用特殊占位符
             return [[-200], '\n']
+        
         elif media_type == 'video':
+            # 2> 处理视频
+            # 获取帧数：可通过环境变量覆盖默认值
             nframes = get_env_args('nframes', int, self.nframes)
+            
+            # 3> 加载视频帧：将视频转换为图像列表
+            # load_video_ovis2 返回 nframes 个图像
             inputs.images = load_video_ovis2(inputs.videos[index], nframes)
+            
+            # 4> 返回多个占位符：每帧一个
+            # 例如：nframes=12 → [-200] * 12
             return [[-200] * nframes, '\n']
 
 
+# 注册 Ovis2 模板：使用 Qwen 格式
 register_template(QwenTemplateMeta(
     MLLMTemplateType.ovis2,
     template_cls=Ovis2Template,
@@ -737,6 +1848,32 @@ register_template(QwenTemplateMeta(
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
+    """
+    类功能：
+        Marco-O1 模型的模板元数据类。专为推理任务设计，采用 <Thought>/<Output> 格式分离思考和输出。
+        由阿里国际数字商业集团开发，强调逐步推理能力。
+
+    继承关系：
+        继承自 QwenTemplateMeta。
+
+    应用场景：
+        需要显式推理过程的任务，如数学推理、逻辑推理、复杂问题求解等。
+
+    使用示例：
+        >>> meta = MarcoO1TemplateMeta(LLMTemplateType.marco_o1)
+        >>> # 模型输出格式：
+        >>> # <Thought>
+        >>> # Let's think step by step...
+        >>> # </Thought>
+        >>> # <Output>
+        >>> # 最终答案
+        >>> # </Output>
+    """
+    # 默认系统提示词：定义 Marco-O1 的行为准则
+    # 关键点：
+    # 1. 思考过程在 <Thought> 标签内，尽可能使用英文
+    # 2. 最终输出在 <Output> 标签内，使用用户输入的语言
+    # 3. 特例：原文引用和数学公式可在 <Thought> 中使用其他语言
     default_system: Optional[str] = """
 你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
         \n## 重要！！！！！
@@ -745,4 +1882,5 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
         """
 
 
+# 注册 Marco-O1 模板：用于推理任务
 register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
