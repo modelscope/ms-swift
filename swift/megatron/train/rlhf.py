@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 
 from swift.llm.train.kto import prepare_kto_dataset
 from swift.trainers.rlhf_trainer.utils import identity_data_collator
-from swift.utils import get_current_device, get_logger, is_master
+from swift.utils import get_current_device, get_logger, is_last_rank
 from ..argument import MegatronRLHFArguments
 from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer, MegatronRewardTrainer
 from .sft import MegatronSft
@@ -53,7 +53,7 @@ class MegatronRLHF(MegatronSft):
             return
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         vllm_client = None
-        if is_master():
+        if is_last_rank():
             logger.info('Start connecting to vLLM server')
             vllm_client = VLLMClient(
                 base_urls=self.args.vllm_server_base_url,

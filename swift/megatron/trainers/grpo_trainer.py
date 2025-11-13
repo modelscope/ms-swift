@@ -551,6 +551,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'completion_mask': labels != -100,
                 'truncated_mask': truncated_mask,
                 'advantages': advantages,
+                'num_samples': len(rollout_batch),
             })
 
             return encoded_batch
