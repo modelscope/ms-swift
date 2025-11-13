@@ -50,7 +50,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
 
     def loss_func(self, output_tensor, *, data, kl_data, label):
-        length = data['packed_seq_params'].cu_seqlens_q[-1]
+        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
         policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
         ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
         if self.args.calculate_KL:
@@ -121,8 +121,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
 
-        length = data['packed_seq_params'].cu_seqlens_q[-1]
-
+        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:
