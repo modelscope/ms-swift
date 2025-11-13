@@ -763,6 +763,7 @@ In addition to the parameters listed above, some models support additional model
 These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen_omni_utils` library. See [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24) for details. MS-Swift adjusts these constant values to control image resolution and video frame rate, preventing out-of-memory (OOM) errors during training.
 - Note: "ms-swift>=3.10.1" is compatible with "qwen_vl_utils>=0.0.14".
 
+
 - IMAGE_FACTOR: Default is 28.
 - MIN_PIXELS: Default is `4 * 28 * 28`. Minimum image resolution. It is recommended to set this as a multiple of 28×28.
 - 🔥MAX_PIXELS: Default is `16384 * 28 * 28`. Maximum image resolution. It is recommended to set this as a multiple of 28×28.
