@@ -169,7 +169,7 @@ class PackingDataset(Dataset):
                 offset += len(chunked_lengths[i])
             self.packed_idx = [[] for _ in range(self.packing_num_proc)]
             self.packed_length = [[] for _ in range(self.packing_num_proc)]
-            desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}):'
+            desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
             with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
                 finished_workers = 0
                 while finished_workers < self.packing_num_proc:
