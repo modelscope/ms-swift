@@ -392,11 +392,14 @@ class LLMTrain(BaseUI):
             kwargs.pop('use_liger_kernel')
         if other_kwargs.get('use_muon'):
             kwargs['use_muon'] = other_kwargs.pop('use_muon')
+        if other_kwargs.get('use_muonclip'):
+            kwargs['use_muonclip'] = other_kwargs.pop('use_muonclip')
 
         # filter kwargs
         tabs_relation_dict = cls.prepare_sub_to_filter()
         cls.remove_useless_args(kwargs, tabs_relation_dict)
         use_muon = kwargs.pop('use_muon', None)
+        use_muonclip = kwargs.pop('use_muonclip', None)
         if cls.group == 'llm_rlhf':
             cls.filter_rlhf_args(kwargs)
         try:
@@ -431,6 +434,9 @@ class LLMTrain(BaseUI):
         if use_muon:
             params += f'--optimizer {cls.quote}muon{cls.quote} '
             command.extend(['--optimizer', 'muon'])
+        if use_muonclip:
+            params += f'--optimizer {cls.quote}muonclip{cls.quote} '
+            command.extend(['--optimizer', 'muonclip'])
         more_params_cmd = more_params_cmd.strip()
         if more_params_cmd != '':
             params += f'{more_params_cmd} '
@@ -566,6 +572,9 @@ class LLMTrain(BaseUI):
                     target_value = 'multimodal'
                 if uncleaned_kwargs.get('use_muon'):
                     target_value = 'muon'
+                if uncleaned_kwargs.get('use_muonclip'):
+                    target_value = 'muonclip'
+
 
             for tab_key in tabs_to_filter.keys():
                 if tab_key == 'lora' and target_value in ('longlora', 'adalora'):

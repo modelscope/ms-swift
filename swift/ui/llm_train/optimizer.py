@@ -85,6 +85,22 @@ class Optimizer(BaseUI):
                 'en': 'Using the Muon optimizer, set `--optimizer muon` in the command line'
             }
         },
+        'muonclip_tab': {
+            'label': {
+                'zh': 'MuonClip参数设置',
+                'en': 'MuonClip Settings'
+            },
+        },
+        'use_muonclip': {
+            'label': {
+                'zh': '使用MuonClip',
+                'en': 'Use MuonClip'
+            },
+            'info': {
+                'zh': '使用MuonClip优化器，将在命令行参数中设置`--optimizer muonclip`',
+                'en': 'Using the MuonClip optimizer, set `--optimizer muonclip` in the command line'
+            }
+        },
         'multimodal_tab': {
             'label': {
                 'zh': '多模态参数设置',
@@ -115,7 +131,8 @@ class Optimizer(BaseUI):
         'galore': ['use_galore', 'galore_with_embedding', 'galore_rank', 'galore_update_proj_gap'],
         'lorap': ['lorap_lr_ratio'],
         'multimodal': ['vit_lr', 'aligner_lr'],
-        'muon': ['use_muon']
+        'muon': ['use_muon'],
+        'muonclip': ['use_muonclip']
     }
 
     @classmethod
@@ -138,3 +155,10 @@ class Optimizer(BaseUI):
                 with gr.TabItem(elem_id='muon_tab'):
                     with gr.Row():
                         gr.Checkbox(elem_id='use_muon', scale=4)
+                with gr.TabItem(elem_id='multimodal_tab'):
+                    with gr.Row():
+                        gr.Textbox(elem_id='vit_lr', lines=1, scale=20)
+                        gr.Textbox(elem_id='aligner_lr', lines=1, scale=20)
+                with gr.TabItem(elem_id='muonclip_tab'):
+                    with gr.Row():
+                        gr.Checkbox(elem_id='use_muonclip', scale=4)
