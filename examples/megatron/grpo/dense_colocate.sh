@@ -1,7 +1,7 @@
 # DP size = world_size // (context_parallel_size * tensor_model_parallel_size * pipeline_model_parallel_size)
 #         = 8 // (1 * 1 * 1) = 8
 
-# NOTE: global_batch_size / micro_batch_size is completion-level
+# NOTE: global_batch_size and micro_batch_size are completion-level
 # global_batch_size = micro_batch_size * DP size * gradient_accumulation_steps (128)
 # generation_batch_size = global_batch_size * steps_per_generation (128 * 4 = 512)
 # num_of_prompt_to_rollout = generation_batch_size / num_generations (512 / 8 = 64)

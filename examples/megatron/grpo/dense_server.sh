@@ -1,14 +1,21 @@
+# MAX_PIXELS=602112 \
+# CUDA_VISIBLE_DEVICES=6,7 \
+# swift rollout \
+#     --model Qwen/Qwen2.5-VL-3B-Instruct \
+#     --vllm_data_parallel_size 2 \
+#     --vllm_max_model_len 10240
+
 # DP size = world_size // (context_parallel_size * tensor_model_parallel_size * pipeline_model_parallel_size)
-#         = 6 // (1 * 1 * 1) = 8
+#         = 6 // (1 * 1 * 1) = 6
 
-# NOTE: global_batch_size / micro_batch_size is completion-level
-# global_batch_size = micro_batch_size * DP size * gradient_accumulation_steps (128)
-# generation_batch_size = global_batch_size * steps_per_generation (128 * 4 = 512)
-# num_of_prompt_to_rollout = generation_batch_size / num_generations (512 / 8 = 64)
-# num_of_prompt_to_train = generation_batch_size / num_generations (128 / 8 = 16)
+# NOTE: global_batch_size and micro_batch_size are completion-level
+# global_batch_size = micro_batch_size * DP size * gradient_accumulation_steps (96)
+# generation_batch_size = global_batch_size * steps_per_generation (96 * 4 = 384)
+# num_of_prompt_to_rollout = generation_batch_size / num_generations (384 / 8 = 48)
+# num_of_prompt_to_train = generation_batch_size / num_generations (96 / 8 = 12)
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
+NPROC_PER_NODE=6 \
 MAX_PIXELS=602112 \
 MASTER_PORT=29600 \
 megatron rlhf \
@@ -21,7 +28,7 @@ megatron rlhf \
     --pipeline_model_parallel_size 1 \
     --dataset AI-ModelScope/clevr_cogen_a_train#10000 \
     --max_epochs 1 \
-    --global_batch_size 128 \
+    --global_batch_size 96 \
     --micro_batch_size 4 \
     --steps_per_generation 4 \
     --num_generations 8 \
