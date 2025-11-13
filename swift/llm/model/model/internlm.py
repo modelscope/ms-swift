@@ -585,6 +585,7 @@ register_model(
         ],
         TemplateType.internlm2_reward,
         get_model_tokenizer_reward_model,
+        is_reward=True,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForRewardModel'],
     ))

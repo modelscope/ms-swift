@@ -165,8 +165,6 @@ class GPTModel(McoreGPTModel):
         Applies embeddings to input tokens, or uses `decoder_input` from a previous
         pipeline stage. Also sets up rotary positional embeddings.
         """
-        # Decoder embedding.
-
         # If decoder_input is provided (not None), then input_ids and position_ids are ignored.
         # Otherwise, apply embedding layer on input_ids and position_ids to get decoder_input.
         in_inference_mode = inference_context is not None and not self.training
@@ -205,17 +203,21 @@ class GPTModel(McoreGPTModel):
                     attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
                     if attention_scaling is not None:
                         self.attention_scaling = attention_scaling
+                packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
                     rotary_pos_emb = self.rotary_pos_emb(
                         position_ids,
                         mrope_section=self.mrope_section,
-                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                        packed_seq=packed_seq,
                     )
                 else:
                     rotary_pos_emb = self.rotary_pos_emb(
                         rotary_seq_len,
-                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                        packed_seq=packed_seq,
                     )
+                    if packed_seq and not self.config.apply_rope_fusion:
+                        assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+                        rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
         if (in_inference_mode and ((self.config.enable_cuda_graph and self.config.cuda_graph_scope != 'full_iteration')
                                    or self.config.flash_decode) and rotary_pos_cos is not None
