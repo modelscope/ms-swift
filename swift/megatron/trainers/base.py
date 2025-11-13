@@ -471,8 +471,7 @@ class BaseMegatronTrainer(ABC):
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
                            reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
-        values = list(metric.values())
-        reporting_metric = values[0].new_tensor(values)
+        reporting_metric = torch.stack(list(metric.values()), dim=0)
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 

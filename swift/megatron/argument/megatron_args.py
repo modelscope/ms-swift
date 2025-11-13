@@ -126,7 +126,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     use_shared_expert_gate: Optional[bool] = None
 
     # visual
-    vit_gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     vit_lr: Optional[float] = None
     aligner_lr: Optional[float] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
@@ -413,6 +413,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_layer_freq = '1'
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
+
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = not self.freeze_vit
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments

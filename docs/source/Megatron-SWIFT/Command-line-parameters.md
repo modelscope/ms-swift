@@ -289,7 +289,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 若要自定义attention_mask，你可以设置`--padding_free false`。
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
-- vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
+- vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为None，当设置为`--freeze_vit false`时，默认值为True，否则默认值为False。（**Megatron-SWIFT的vit实现使用transformers实现**）
+  - 注意："ms-swift<3.11"默认值为True。
 - vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。
   - 通常与`--freeze_vit false`、`--freeze_aligner false`参数结合使用。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
