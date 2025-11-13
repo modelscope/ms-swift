@@ -978,8 +978,9 @@ class GPTBridge:
         else:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
-        for layer_idx in tqdm(
-                range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd):
+        layer_idx = 0
+        prog_bar = tqdm(range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd)
+        while layer_idx < self.args.num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             if len(lm_model.decoder.layers) > 0:
                 start_idx = lm_model.decoder.layers[0].layer_number - 1
@@ -990,6 +991,8 @@ class GPTBridge:
                 mg_layer = lm_model.decoder.layers[layer_idx - start_idx]
             else:
                 if to_mcore:
+                    layer_idx += 1
+                    prog_bar.update()
                     continue
                 else:
                     mg_layer = None
@@ -997,9 +1000,11 @@ class GPTBridge:
                 has_model = torch.tensor([mg_layer is not None], dtype=torch.bool, device='cuda')
                 dist.all_reduce(has_model, group=self.pp_group)
                 if not has_model:
-                    mg_model = next(mg_models)
+                    mg_model = next(mg_models)  # compat vpp
                     continue
             res = self._set_layer_state(mg_layer, hf_state_dict, f'{self.hf_layers_prefix}.', layer_idx, to_mcore)
+            layer_idx += 1
+            prog_bar.update()
             if to_mcore:
                 yield
             else:
