@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import multiprocessing as mp
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
@@ -152,29 +153,32 @@ class PackingDataset(Dataset):
         self.load_from_cache_file = load_from_cache_file
         self.packing_length = packing_length or self.template.max_length
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
-        self.workers = []
         self._out_queue = mp.Queue()
         if is_master():
             lengths = self.dataset['length']
             chunked_lengths = split_list(lengths, self.packing_num_proc)
             for i in range(self.packing_num_proc):
-                worker = mp.Process(target=self.create_packed_idx, args=(chunked_lengths[i], ), daemon=True)
+                worker = mp.Process(
+                    target=self.create_packed_idx, args=(
+                        i,
+                        chunked_lengths[i],
+                    ), daemon=True)
                 worker.start()
-                self.workers.append(worker)
-            self.packed_idx, self.packed_length = [], []
+            self.packed_idx = [[] for _ in range(self.packing_num_proc)]
+            self.packed_length = [[] for _ in range(self.packing_num_proc)]
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}):'
             with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
                 finished_workers = 0
                 while finished_workers < self.packing_num_proc:
-                    sequences, data_len = self._out_queue.get()
+                    rank, sequences, data_len = self._out_queue.get()
                     if data_len == -1:
                         finished_workers += 1
                         continue
                     prog_bar.update(data_len)
-                    self.packed_idx += [[x[0] for x in seq] for seq in sequences]
-                    self.packed_length += [sum(x[1] for x in seq) for seq in sequences]
-            for worker in self.workers:
-                worker.terminate()
+                    self.packed_idx[rank] += [[x[0] for x in seq] for seq in sequences]
+                    self.packed_length[rank] += [sum(x[1] for x in seq) for seq in sequences]
+            self.packed_idx = list(chain.from_iterable(self.packed_idx))
+            self.packed_length = list(chain.from_iterable(self.packed_length))
         else:
             self.packed_idx, self.packed_length = None, None
         if dist.is_initialized() and is_dist():
@@ -182,7 +186,7 @@ class PackingDataset(Dataset):
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
 
-    def create_packed_idx(self, lengths):
+    def create_packed_idx(self, rank, lengths):
         data = [(i, length) for i, length in enumerate(lengths)]
         i = 0
         input_data = []
@@ -195,8 +199,8 @@ class PackingDataset(Dataset):
             is_finished = i >= len(data)
             sequences, input_data = calculate_matched_group(
                 self.template, input_data, self.packing_length, is_finished=is_finished)
-            self._out_queue.put((sequences, len(new_data)))
-        self._out_queue.put(([], -1))
+            self._out_queue.put((rank, sequences, len(new_data)))
+        self._out_queue.put((rank, [], -1))
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
