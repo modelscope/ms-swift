@@ -742,14 +742,16 @@ def patch_qwen_vl_utils(vision_process):
 def compat_qwen_vl_utils(image_patch_size: int):
     spatial_merge_size = int(os.getenv('SPATIAL_MERGE_SIZE', '2'))
     image_factor = image_patch_size * spatial_merge_size
-    if os.getenv('MAX_PIXELS'):
-        os.environ['IMAGE_MAX_TOKEN_NUM'] = str(int(os.getenv('MAX_PIXELS')) * image_factor**2)
-    if os.getenv('MIN_PIXELS'):
-        os.environ['IMAGE_MIN_TOKEN_NUM'] = str(int(os.getenv('MIN_PIXELS')) * image_factor**2)
-    if os.getenv('VIDEO_MAX_PIXELS'):
-        os.environ['VIDEO_MAX_TOKEN_NUM'] = str(int(os.getenv('VIDEO_MAX_PIXELS')) * image_factor**2)
-    if os.getenv('VIDEO_MIN_PIXELS'):
-        os.environ['VIDEO_MIN_TOKEN_NUM'] = str(int(os.getenv('VIDEO_MIN_PIXELS')) * image_factor**2)
+    env_vars_to_process = {
+        'MAX_PIXELS': 'IMAGE_MAX_TOKEN_NUM',
+        'MIN_PIXELS': 'IMAGE_MIN_TOKEN_NUM',
+        'VIDEO_MAX_PIXELS': 'VIDEO_MAX_TOKEN_NUM',
+        'VIDEO_MIN_PIXELS': 'VIDEO_MIN_TOKEN_NUM',
+    }
+    for source_var, target_var in env_vars_to_process.items():
+        value = os.getenv(source_var)
+        if value and not os.getenv(target_var):
+            os.environ[target_var] = str(int(value) // image_factor**2)
 
 
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):

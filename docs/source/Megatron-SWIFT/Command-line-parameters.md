@@ -36,6 +36,7 @@
   - **注意：推荐flash_attn版本：2.7.4.post1/2.8.1**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
+  - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
