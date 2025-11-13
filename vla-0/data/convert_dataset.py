@@ -69,7 +69,7 @@ def convert_dataset_format(input_file_path, output_file_path):
 
 # 定义输入和输出文件名
 source_file = '/home/yuquan002/ssd/libero_vl_dataset/libero_spatial_vla/train.jsonl'
-destination_file = '/home/yuquan002/ssd/libero_vl_dataset/libero_spatial_vla/train_converted.jsonl'
+destination_file = '/home/yuquan002/ssd/libero_vl_dataset/libero_spatial_vla/train_converted_4.jsonl'
 
 # 执行转换
 convert_dataset_format(source_file, destination_file)

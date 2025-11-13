@@ -3,7 +3,6 @@ import collections
 import dataclasses
 import logging
 import pathlib
-import pandas as pd
 
 import imageio
 from libero.libero import benchmark
@@ -45,7 +44,7 @@ class Args:
     # Video output path
     video_out_path: str = f"data/{current_date}/vla0_eval_videos"
     seed: int = 42
-
+    prompt_template: str = "robot state: '{robot_state}'. task description: {instruction}. image:<image><image>"
 def eval_libero(args: Args) -> None:
     np.random.seed(args.seed)
     benchmark_dict = benchmark.get_benchmark_dict()
@@ -119,27 +118,52 @@ def eval_libero(args: Args) -> None:
                     resize_with_pad(wrist_img, args.resize_size, args.resize_size)
                 )
 
+                # Construct the prompt
+                # build robot state: [eef_pos(mm) *3, axis_angle(3), gripper_flag(1)] -> total 7 dims
+                axis_angle = _quat2axisangle(obs["robot0_eef_quat"])
+                # ensure axis_angle is a 1-D numpy array
+                axis_angle = np.asarray(axis_angle).reshape(-1)
+                robot_state = np.concatenate(
+                    (np.asarray(obs["robot0_eef_pos"]) * 100.0, axis_angle, np.array([1.0]))
+                )
+                if obs["robot0_gripper_qpos"][1] > -0.01:
+                    robot_state[6] = 1.0  # closed
+                else:
+                    robot_state[6] = -1.0  # open
+
+                robot_state_str = np.array2string(robot_state, precision=3, separator=',', suppress_small=True)
+
+
+                prompt = args.prompt_template.format(
+                    robot_state=robot_state_str,
+                    instruction=task.language
+                )
+
                 replay_images.append(main_img)
 
                 # Prepare observation data to send to the server
                 obs_dict = {
                     "observation/image": main_img_processed,
                     "observation/wrist_image": wrist_img_processed,
-                    "prompt": str(task.language),
+                    "prompt": prompt,
                 }
 
                 # get action from the server
-                action = client.infer(obs_dict)["actions"]
+                # action = client.infer(obs_dict)["actions"]
+                action = client.infer(obs_dict)
                 obs, reward, done, info = env.step(action)
                 
-                if info["success"]:
+                if done:
+                    task_episodes += 1
                     total_episodes += 1
                     task_successes += 1
                     break
 
             # Save video of the episode
-            video_name = f"{args.task_suite_name}_task{task_id}_trial{episode_idx}_{'success' if info['success'] else 'fail'}.mp4"
-            imageio.mimwrite(pathlib.Path(args.video_out_path) / video_name, replay_images, fps=10)
+            is_success = info.get("success", False)
+            video_name = f"{args.task_suite_name}_task{task_id}_trial{episode_idx}_{'success' if is_success else 'fail'}.mp4"
+            imageio.mimwrite(pathlib.Path(args.video_out_path) / video_name, replay_images, fps=30)
+            logging.info(f"Episode {'succeeded' if is_success else 'failed'}. Video saved to {video_name}")
             
         total_successes += task_successes
         total_episodes += args.num_trials_per_task
@@ -153,11 +177,12 @@ def eval_libero(args: Args) -> None:
     logging.info(f"Total number of failures: {total_episodes - total_successes}")
 
     # save the detailed evaluation results to a csv file
-    df = pd.DataFrame({
-        "task_id": [task_id] * len(success_rate_list_per_task),
-        "success_rate": success_rate_list_per_task
-    })
-    df.to_csv(pathlib.Path(args.video_out_path) / f"{args.task_suite_name}_task{task_id}_evaluation.csv", index=False)
+    results_csv_path = pathlib.Path(args.video_out_path) / f"{args.task_suite_name}_detailed_results.csv"
+    with open(results_csv_path, 'w') as f:
+        f.write("task_id,success_rate\n")
+        for task_id, success_rate in enumerate(success_rate_list_per_task):
+            f.write(f"{task_id},{success_rate}\n")
+    logging.info(f"Detailed evaluation results saved to {results_csv_path}")
 
 def get_libero_env(task, resolution, seed):
     """Initializes and returns the LIBERO environment, along with the task description."""
