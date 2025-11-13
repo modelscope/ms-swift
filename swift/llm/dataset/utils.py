@@ -161,7 +161,8 @@ class PackingDataset(Dataset):
             for i in range(self.packing_num_proc):
                 worker = mp.Process(
                     target=self.create_packed_idx, args=(
-                        i, offset,
+                        i,
+                        offset,
                         chunked_lengths[i],
                     ), daemon=True)
                 worker.start()
