@@ -113,7 +113,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         # Defer encoding to the training phase
         pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
         if args.cached_dataset:
-            assert not args.streaming and not args.lazy_tokenize
+            assert not args.streaming, 'Cached dataset does not support streaming.'
             train_datasets, val_datasets = get_cached_dataset(self.args)
         else:
             train_datasets, val_datasets = [], []

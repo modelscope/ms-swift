@@ -592,8 +592,9 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         architectures = HfConfigFactory.get_config_attr(config, 'architectures')
         model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
-            raise ValueError('Please explicitly pass the model_type. For reference, '
-                             f'the available model_types: {model_types}.')
+            raise ValueError('Failed to automatically match `model_type`. '
+                             f'Please explicitly pass the `model_type` for `{model_dir}`. '
+                             f'Recommended `model_types` include: {model_types}.')
         elif len(model_types) == 1:
             model_type = model_types[0]
     elif model_type not in MODEL_MAPPING:

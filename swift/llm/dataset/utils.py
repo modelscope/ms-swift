@@ -157,7 +157,7 @@ class PackingDataset(Dataset):
 
     def create_packed_idx(self):
         lengths = self.dataset['length']
-        data = [(i, length) for i, length in enumerate(lengths)]
+        data = [(i, self.template._get_megatron_cp_length(length)) for i, length in enumerate(lengths)]
         i = 0
         PACKING_BATCH_SIZE = 1000
         input_data, packed_idx, packed_length = [], [], []
