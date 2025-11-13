@@ -150,31 +150,44 @@ class RLHFMegatronArgumentsMixin:
             pass
 
         def _check_batch_params():
+            # Set default values if both are None
             if self.generation_batch_size is None and self.steps_per_generation is None:
                 self.steps_per_generation = 1
                 self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-            elif self.generation_batch_size is not None and self.steps_per_generation is None:
-                # Just ensure the value is divisible by the global batch size
+            # Both configured - error
+            elif self.generation_batch_size is not None and self.steps_per_generation is not None:
+                raise ValueError("'generation_batch_size' and 'steps_per_generation' cannot be both configured")
+            # Only generation_batch_size configured
+            elif self.generation_batch_size is not None:
                 if self.generation_batch_size % self.global_batch_size != 0:
                     raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
-                                     f'must be divisible by the global batch size ({self.global_batch_size}).')
+                                     f'must be divisible by global_batch_size ({self.global_batch_size})')
                 self.steps_per_generation = self.generation_batch_size // self.global_batch_size
-            elif self.generation_batch_size is None and self.steps_per_generation is not None:
-                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+            # Only steps_per_generation configured
             else:
-                raise ValueError(
-                    "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
+                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+
             world_size = torch.distributed.get_world_size()
-            # total_model_size = TP × PP × CP,
-            # data_parallel_size = world_size // total_model_size
             dp_size = world_size // (
                 self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
             num_rollout_prompt = self.generation_batch_size // self.num_generations
-            assert num_rollout_prompt % dp_size == 0, (
-                f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
-                f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
-                f'must be divisible by the dp size ({dp_size})'
-                f'please adjust generation_batch_size/steps_per_generation/num_generations to make it divisible')
+            if num_rollout_prompt % dp_size != 0:
+                raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
+                                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
+                                 f'must be divisible by dp_size ({dp_size}). '
+                                 f'Please adjust generation_batch_size/steps_per_generation/num_generations.')
+
+            per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+
+            if per_device_num_rollout_prompt % self.micro_batch_size != 0:
+                raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
+                                 f'(generation_batch_size ({self.generation_batch_size}) // '
+                                 f'num_generations ({self.num_generations})) // dp_size ({dp_size}) '
+                                 f'must be divisible by micro_batch_size ({self.micro_batch_size}). '
+                                 f'Please adjust arguments to satisfy: '
+                                 f'(generation_batch_size // num_generations) // dp_size % '
+                                 f'micro_batch_size == 0')
+
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
 
         _check_not_supported()
