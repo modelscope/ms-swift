@@ -734,7 +734,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             all_outputs = [None] * len(all_requests)
 
         if not is_global_inputs:
-            all_outputs = broadcast_object_list(all_outputs, from_process=0)
+            all_outputs = broadcast_object_list(all_outputs, from_process=self.world_size - 1)
             start_idx = sum(all_requests_lengths[:self.process_index])
             end_idx = start_idx + all_requests_lengths[self.process_index]
             outputs = all_outputs[start_idx:end_idx]

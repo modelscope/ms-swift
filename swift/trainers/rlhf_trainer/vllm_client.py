@@ -213,7 +213,7 @@ class VLLMClient:
 
             pg = StatelessProcessGroup.create(
                 host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
-            comm = PyNcclCommunicator(pg, device=0)
+            comm = PyNcclCommunicator(pg, device=device)
             self.pynccl_comms.append(comm)
 
         atexit.register(self.close_communicator)
