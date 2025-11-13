@@ -5,6 +5,7 @@
 **训练参数**:
 - 🔥micro_batch_size: 每个device的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
+  - 其中，`数据并行大小 (DP) = 总GPU数 / (TP × PP × CP)`。
 - 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
   - 当你设置为'selective'时，你可以通过指定`--recompute_modules`来选择对哪些部分进行重新计算。
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
@@ -36,6 +37,7 @@
   - **注意：推荐flash_attn版本：2.7.4.post1/2.8.1**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
+  - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
