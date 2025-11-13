@@ -84,6 +84,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     # dataset
     packing: bool = False
     packing_length: Optional[int] = None
+    packing_num_proc: int = 1
     lazy_tokenize: Optional[bool] = None
     cached_dataset: List[str] = field(default_factory=list)
     custom_register_path: List[str] = field(default_factory=list)  # .py

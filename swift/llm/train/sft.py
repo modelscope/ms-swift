@@ -162,6 +162,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     dataset,
                     num_proc=args.dataset_num_proc,
                     packing_length=args.packing_length,
+                    packing_num_proc=args.packing_num_proc,
                     strict=args.strict,
                     load_from_cache_file=args.load_from_cache_file)
             elif args.streaming:
