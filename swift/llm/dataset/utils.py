@@ -156,14 +156,16 @@ class PackingDataset(Dataset):
         self._out_queue = mp.Queue()
         if is_master():
             lengths = self.dataset['length']
+            offset = 0
             chunked_lengths = split_list(lengths, self.packing_num_proc)
             for i in range(self.packing_num_proc):
                 worker = mp.Process(
                     target=self.create_packed_idx, args=(
-                        i,
+                        i, offset,
                         chunked_lengths[i],
                     ), daemon=True)
                 worker.start()
+                offset += len(chunked_lengths[i])
             self.packed_idx = [[] for _ in range(self.packing_num_proc)]
             self.packed_length = [[] for _ in range(self.packing_num_proc)]
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}):'
@@ -186,8 +188,8 @@ class PackingDataset(Dataset):
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
 
-    def create_packed_idx(self, rank, lengths):
-        data = [(i, length) for i, length in enumerate(lengths)]
+    def create_packed_idx(self, rank, offset, lengths):
+        data = [(i + offset, length) for i, length in enumerate(lengths)]
         i = 0
         input_data = []
         while True:
