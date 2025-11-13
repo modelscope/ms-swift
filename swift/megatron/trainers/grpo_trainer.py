@@ -628,6 +628,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return batch
 
     def _rollout(self, batch) -> List[RolloutOutput]:
+        batch = self._set_inputs_system(batch)
         request_config = self._get_request_config()
         # TODO: server mode
         if self.vllm_mode == 'server':
@@ -1106,7 +1107,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
-            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+            loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1343,6 +1344,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'advantages': deque(maxlen=args.generation_batch_size),
         }
         if is_wandb_available():
+            # when log profiling, the step is different from the step in the training loop
+            # here patch wandb log to pop the step argument
             from wandb.sdk.wandb_run import Run
             origin_log = Run.log
             from functools import wraps
@@ -1351,7 +1354,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             def log(self, data: dict[str, Any], step: int | None = None, commit: bool | None = None):
                 return origin_log(self, data, None, commit)
 
-            # Directly replace the class method, no need for MethodType
             Run.log = log
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
@@ -1362,3 +1364,40 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             res = self.template.encode(template_inputs)
             prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
+
+    def _set_inputs_system(self, batch: DataType) -> DataType:
+        """
+        Ensures the system message is consistently set for all conversations in the batch.
+
+        The template handles the user-defined system message. However, in server mode,
+        tokenization occurs on the rollout side. To prevent a mismatch where the system
+        message is set only during training but missing during rollout, this method
+        injects the default system message into each conversation if not already present.
+
+        Args:
+            batch: A list of data items, each containing a 'messages' list.
+
+        Returns:
+            The updated batch with the default system message inserted at the beginning
+            of each conversation that lacks one.
+        """
+
+        if self.vllm_mode != 'server':
+            return batch
+
+        # Return early if no default system message is defined
+        if not self.template.template_meta.default_system:
+            return batch
+
+        # Return early if all conversations already start with a system message
+        if all(data['messages'][0]['role'] == 'system' for data in batch):
+            return batch
+
+        # Insert the default system message at the beginning of each conversation
+        # that doesn't already have one
+        for data in batch:
+            messages = data['messages']
+            if messages[0]['role'] != 'system':
+                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
+
+        return batch
