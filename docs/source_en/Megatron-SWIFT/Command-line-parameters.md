@@ -6,6 +6,7 @@
 
 - 🔥micro_batch_size: Batch size per device, default is 1.
 - 🔥global_batch_size: Total batch size, equivalent to `micro_batch_size * data parallel size * gradient accumulation steps`. Default is 16.
+  - Here, `Data Parallelism size (DP) = Total number of GPUs / (TP × PP × CP)`.
 - 🔥recompute_granularity: Granularity of activation recomputation, options are 'full', 'selective'. 'full' means recomputing the entire transformer layer, while 'selective' means only recomputing the core attention part of the transformer layer. 'selective' is generally recommended. Default is 'selective'.
   - When you set it to 'selective', you can specify `--recompute_modules` to choose which parts to recompute.
 - 🔥recompute_method: This parameter takes effect only when recompute_granularity is set to 'full', options are 'uniform', 'block'. Default is None.
