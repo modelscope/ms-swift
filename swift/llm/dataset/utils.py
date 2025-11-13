@@ -164,9 +164,11 @@ class PackingDataset(Dataset):
             self.packed_idx, self.packed_length = [], []
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}):'
             with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
-                while prog_bar.n < prog_bar.total:
+                finished_workers = 0
+                while finished_workers < self.packing_num_proc:
                     sequences, data_len = self._out_queue.get()
                     if data_len == -1:
+                        finished_workers += 1
                         continue
                     prog_bar.update(data_len)
                     self.packed_idx += [[x[0] for x in seq] for seq in sequences]
