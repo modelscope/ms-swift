@@ -299,7 +299,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
 - 🔥packing: 是否使用序列packing提升计算效率（不同节点与进程更负载均衡，GPU利用率更高；但需要额外的预处理时间）并稳定显存占用，默认为False。当前支持CPT/SFT/DPO/KTO/RM。
   - 注意：**同一batch的不同序列之间依旧是不可见的**，除了Qwen3-Next。
-  - 注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+  - 注意：**packing会导致数据集样本数减少，请自行调节global_batch_size和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）
 - streaming: 流式读取并处理数据集，默认False。

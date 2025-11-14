@@ -357,11 +357,16 @@ class Template(ProcessorMixin):
         else:
             return model
 
-    def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+    def _rlhf_encode(self, inputs: TemplateInputs, check_rejected=True) -> Dict[str, Any]:
         chosen = inputs.chosen
         margin = chosen.margin
         chosen_encoded = self._encode_truncated(chosen)
-        rejected_encoded = self._encode_truncated(inputs.rejected)
+        if inputs.rejected is None:
+            if check_rejected:
+                raise ValueError('inputs.rejected is None')
+            rejected_encoded = {}
+        else:
+            rejected_encoded = self._encode_truncated(inputs.rejected)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -373,7 +378,7 @@ class Template(ProcessorMixin):
         return encoded
 
     def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        encoded = self._rlhf_encode(inputs)
+        encoded = self._rlhf_encode(inputs, check_rejected=False)
         encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
@@ -1493,7 +1498,10 @@ class Template(ProcessorMixin):
         kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
 
         res = self._data_collator(new_batch, padding_to=padding_to)
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        if any(kl_batch):
+            kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        else:
+            kl_res = {}
         res = {
             **{f'completion_{k}': v
                for k, v in res.items()},
