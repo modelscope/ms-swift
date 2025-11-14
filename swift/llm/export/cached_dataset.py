@@ -17,6 +17,7 @@ class ExportCachedDataset(SwiftSft):
 
     def __init__(self, args: Optional[Union[List[str], ExportArguments]] = None) -> None:
         super(SwiftSft, self).__init__(args)
+        args = self.args
         self.train_msg = {}  # dummy
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
         if template_cls and template_cls.use_model:
@@ -26,6 +27,7 @@ class ExportCachedDataset(SwiftSft):
         with torch.device('meta'):
             self._prepare_model_tokenizer(**kwargs)
         self._prepare_template()
+        self.template.set_mode(args.template_mode)
 
     def _post_process_datasets(self, datasets: List) -> List:
         return datasets
