@@ -76,7 +76,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss.mean()
         mean_metric = {
             'loss': loss.detach().clone(),
-            'kl': kl.detach(),
+            'kl': kl.squeeze().detach(),
         }
         metric = self._all_reduce_metric(mean_metric)
         sum_metric = {
@@ -159,7 +159,11 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         num_samples = data.pop('num_samples')
         for key in ['completion_', 'KL_completion_']:
             _data = {k[len(key):]: v for k, v in data.items() if k.startswith(key)}
-            res.append(super()._prepare_batch(_data, vp_stage, num_samples))
+            if not self.args.calculate_KL and key == 'KL_completion_':
+                _data = {}
+            else:
+                _data = super()._prepare_batch(_data, vp_stage, num_samples)
+            res.append(_data)
         res[0]['label'] = data['label']
         return res
 
