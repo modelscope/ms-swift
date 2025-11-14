@@ -5,6 +5,7 @@
 **训练参数**:
 - 🔥micro_batch_size: 每个device的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
+  - 其中，`数据并行大小 (DP) = 总GPU数 / (TP × PP × CP)`。
 - 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
   - 当你设置为'selective'时，你可以通过指定`--recompute_modules`来选择对哪些部分进行重新计算。
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
@@ -300,6 +301,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：**同一batch的不同序列之间依旧是不可见的**，除了Qwen3-Next。
   - 注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
+- packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）
 - streaming: 流式读取并处理数据集，默认False。
   - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`max_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
