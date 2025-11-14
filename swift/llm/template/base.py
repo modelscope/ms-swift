@@ -1490,7 +1490,10 @@ class Template(ProcessorMixin):
         kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
 
         res = self._data_collator(new_batch, padding_to=padding_to)
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        if any(kl_batch):
+            kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        else:
+            kl_res = {}
         res = {
             **{f'completion_{k}': v
                for k, v in res.items()},
