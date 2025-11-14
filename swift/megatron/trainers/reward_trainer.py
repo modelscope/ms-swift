@@ -16,6 +16,7 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
     def __init__(self, args, template):
         super().__init__(args, template)
         assert args.padding_free, 'Currently `rlhf_type="rm"` only supports padding_free.'
+        assert args.context_parallel_size == 1, 'Currently `rlhf_type="rm"` does not support context parallelism.'
 
     def loss_func(self, output_tensor, *, data):
         packed_seq_params = data.get('packed_seq_params')
