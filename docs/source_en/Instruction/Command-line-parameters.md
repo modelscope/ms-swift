@@ -717,6 +717,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - group_size: Group size for quantization, default is 128.
 - to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
   - Note: data packing is performed during training, not in this step.
+- template_mode: Used to support the `cached_dataset` feature for `swift rlhf` training. This parameter only takes effect when `--to_cached_dataset true` is set. Available options include: 'train', 'rlhf', and 'kto'. Among them, `swift pt/sft` uses 'train', `swift rlhf --rlhf_type kto` uses 'kto', and other rlhf algorithms use 'rlhf'. Note: Currently, 'gkd', 'ppo', and 'grpo' algorithms do not support the `cached_dataset` feature. Default is 'train'.
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.
@@ -761,8 +762,6 @@ In addition to the parameters listed above, some models support additional model
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
 These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen_omni_utils` library. See [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24) for details. MS-Swift adjusts these constant values to control image resolution and video frame rate, preventing out-of-memory (OOM) errors during training.
-- Note: "ms-swift>=3.10.1" is compatible with "qwen_vl_utils>=0.0.14".
-
 
 - IMAGE_FACTOR: Default is 28.
 - MIN_PIXELS: Default is `4 * 28 * 28`. Minimum image resolution. It is recommended to set this as a multiple of 28×28.
