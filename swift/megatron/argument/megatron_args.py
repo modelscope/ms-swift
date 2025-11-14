@@ -10,8 +10,7 @@ import torch
 from transformers.utils.versions import require_version
 
 from swift.llm import get_model_info_meta
-from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_current_device, get_dist_setting, get_logger, is_master, json_parse_to_dict
+from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 

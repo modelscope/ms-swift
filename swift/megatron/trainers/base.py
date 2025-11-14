@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Callable, Dict, List, Literal, Optional
 
@@ -29,10 +29,7 @@ from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from packaging import version
-from peft.utils import ModulesToSaveWrapper
-from torch.distributed.nn import all_reduce
 from tqdm.auto import tqdm
-from transformers.utils import ContextManagers
 
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
