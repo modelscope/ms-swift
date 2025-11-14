@@ -308,7 +308,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - If you wish to customize the attention_mask, you can set `--padding_free false`.
   - Note: **The Megatron-SWIFT training feature prioritizes support for the padding-free format**. Unless under special circumstances, please do not modify this value.
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
-- vit_gradient_checkpointing: Whether to enable gradient_checkpointing for the ViT part during multimodal model training. Default is None. When set to `--freeze_vit false`, the default value is True; otherwise, the default value is False. (**Megatron-SWIFT's ViT implementation uses the transformers implementation**)
+- vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT (Vision Transformer) component during multimodal model training. Defaults to `True`. (**The ViT implementation in Megatron-SWIFT uses the Hugging Face `transformers` library.**)
   - Note: In "ms-swift<3.11", the default value is True.
 - vit_lr: Specifies the learning rate for the ViT module when training multimodal models. Default is `None`, same as `learning_rate`.
   - Typically used together with `--freeze_vit false` and `--freeze_aligner false`.
