@@ -20,6 +20,8 @@ from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
 
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
@@ -43,7 +45,7 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
-        self.megatron_core_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
+        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
@@ -81,7 +83,7 @@ class GPTBridge:
         }
         if self.args.task_type == 'causal_lm':
             dim0_keys.add('output_layer')
-        if not self.megatron_core_014:
+        if not self.mcore_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
             dim0_keys.update({'linear_q_down_proj', 'linear_kv_down_proj'})
         # RowLinear
@@ -971,7 +973,13 @@ class GPTBridge:
             hf_state_dict = {}
         mg_models = iter(mg_models)
         mg_model = next(mg_models)
-        if not to_mcore or mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+        if mcore_013:
+            is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage)
+            is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage)
+        else:
+            is_pp_first_stage = mpu.is_pipeline_first_stage()
+            is_pp_last_stage = mpu.is_pipeline_last_stage()
+        if not to_mcore or is_pp_first_stage:
             hf_state_dict.update(self._convert_pre_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
             yield
@@ -1010,7 +1018,7 @@ class GPTBridge:
             else:
                 yield from list(self._add_prefix(res, hf_prefix).items())
                 hf_state_dict = {}
-        if not to_mcore or mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+        if not to_mcore or is_pp_last_stage:
             hf_state_dict.update(self._convert_post_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
             yield
