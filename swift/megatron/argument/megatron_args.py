@@ -19,7 +19,6 @@ logger = get_logger()
 @dataclass
 class RLHFMegatronArgumentsMixin:
     rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = None
-    perform_initialization: bool = True
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -230,15 +229,6 @@ class RLHFMegatronArgumentsMixin:
                 self.soft_max_length = self.max_completion_length
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
         assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
-        # set vllm mode
-        if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
-            if self.vllm_mode != 'server':
-                self.vllm_mode = 'server'
-                logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
-        else:
-            if self.vllm_mode != 'colocate':
-                self.vllm_mode = 'colocate'
-                logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
 
 @dataclass
@@ -384,7 +374,6 @@ class MegatronArguments(ExtraMegatronArguments):
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
-    use_mbridge: bool = False
 
     # learning rate
     lr: Optional[float] = None

@@ -5,9 +5,7 @@ from dataclasses import dataclass
 import json
 
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank, is_master
-from ..model import get_megatron_model_meta
-from .megatron_args import MegatronArguments, RLHFMegatronArgumentsMixin
+from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank
 from .megatron_base_args import MegatronBaseArguments
 
 logger = get_logger()
