@@ -14,7 +14,7 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups, param_group_identifier_keys
+from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import MegatronModule
@@ -40,6 +40,11 @@ from ..utils import adapter_state_dict_context, copy_original_module_weight, pat
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
 
+try:
+    from megatron.core.optimizer import param_group_identifier_keys
+except ImportError:
+    param_group_identifier_keys = None
+
 logger = get_logger()
 
 
@@ -64,7 +69,7 @@ class BaseMegatronTrainer(ABC):
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     @property
     def bridge(self):
@@ -363,7 +368,8 @@ class BaseMegatronTrainer(ABC):
             }
             # Ensure param_group has required keys for matching when loading optimizer state
             # See MegatronOptimizer._filter_and_reorder_param_groups.
-            assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            if param_group_identifier_keys is not None:
+                assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
             param_groups.append(param_group)
 
         param_groups = _update_min_and_max_lr_in_param_groups(
@@ -471,8 +477,7 @@ class BaseMegatronTrainer(ABC):
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
                            reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
-        values = list(metric.values())
-        reporting_metric = values[0].new_tensor(values)
+        reporting_metric = torch.stack(list(metric.values()), dim=0)
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
@@ -559,7 +564,7 @@ class BaseMegatronTrainer(ABC):
                     torch.cuda.empty_cache()
 
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    if self.megatron_core_013:
+                    if self.mcore_013:
                         for key in loss_dicts[0].keys():
                             if key not in total_loss_dict:
                                 total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
