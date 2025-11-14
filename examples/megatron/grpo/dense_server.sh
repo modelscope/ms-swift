@@ -69,5 +69,4 @@ megatron rlhf \
     --wandb_exp_name megatron_grpo \
     --train_iters 100 \
     --eval_interval 1000 \
-    --save_interval 1000 \
-    --scale_rewards group
+    --save_interval 1000
