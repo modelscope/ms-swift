@@ -616,7 +616,7 @@ reward模型参数将在PPO、GRPO中使用。
 - log_entropy: 记录训练中的熵值变化动态，默认为False，具体参考[文档](./GRPO/GetStarted/GRPO.md#logged-metrics)
 
 ##### 奖励函数参数
-内置的奖励函数参考[文档](./GRPO/DeveloperGuide/奖励函数.md)
+内置的奖励函数参考[文档](./GRPO/DeveloperGuide/reward_function.md)
 cosine 奖励参数
 - cosine_min_len_value_wrong：cosine 奖励函数参数，生成错误答案时，最小长度对应的奖励值。默认值为-0.5。
 - cosine_max_len_value_wrong：生成错误答案时，最大长度对应的奖励值。默认值为0.0。
