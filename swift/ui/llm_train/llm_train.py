@@ -467,8 +467,8 @@ class LLMTrain(BaseUI):
             else:
                 cuda_param = ''
         if envs:
-            envs = envs.split(' ')
-            for env in envs:
+            env_list = envs.split(' ')
+            for env in env_list:
                 k, v = env.split('=')
                 all_envs[k] = v
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
