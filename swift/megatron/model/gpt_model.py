@@ -24,7 +24,7 @@ from .rope import dynamic_rope_update, get_rope_inv_freq
 
 logger = get_logger()
 
-megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class OutputLayerLinear(TELinear):
@@ -81,10 +81,11 @@ class GPTModel(McoreGPTModel):
                 config.mscale_all_dim = hf_rope_scaling['mscale_all_dim']
                 config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
-        if megatron_core_013:
+        if mcore_013:
             kwargs = {'vp_stage': vp_stage}
         else:
             self.vp_stage = vp_stage
+            assert vp_stage is None, 'megatron-core==0.12 does not support vp_stage'
             kwargs = {}
         super().__init__(
             config,
@@ -302,25 +303,53 @@ class GPTModel(McoreGPTModel):
             )
 
         args = get_args()
-        return self._postprocess(
-            hidden_states=hidden_states,
-            input_ids=input_ids,
-            position_ids=position_ids,
-            labels=labels if args.task_type == 'causal_lm' else None,
-            rotary_pos_emb=rotary_pos_emb,
-            rotary_pos_cos=rotary_pos_cos,
-            rotary_pos_sin=rotary_pos_sin,
-            mtp_in_postprocess=self.mtp_process,
-            loss_mask=loss_mask,
-            decoder_input=decoder_input,
-            attention_mask=attention_mask,
-            inference_params=inference_params,
-            packed_seq_params=packed_seq_params,
-            sequence_len_offset=sequence_len_offset,
-            runtime_gather_output=runtime_gather_output,
-            extra_block_kwargs=extra_block_kwargs,
-            inference_context=inference_context,
-        )
+        labels = labels if args.task_type == 'causal_lm' else None
+        if mcore_013:
+            return self._postprocess(
+                hidden_states=hidden_states,
+                input_ids=input_ids,
+                position_ids=position_ids,
+                labels=labels,
+                rotary_pos_emb=rotary_pos_emb,
+                rotary_pos_cos=rotary_pos_cos,
+                rotary_pos_sin=rotary_pos_sin,
+                mtp_in_postprocess=self.mtp_process,
+                loss_mask=loss_mask,
+                decoder_input=decoder_input,
+                attention_mask=attention_mask,
+                inference_params=inference_params,
+                packed_seq_params=packed_seq_params,
+                sequence_len_offset=sequence_len_offset,
+                runtime_gather_output=runtime_gather_output,
+                extra_block_kwargs=extra_block_kwargs,
+                inference_context=inference_context,
+            )
+        else:
+            if not self.post_process:
+                return hidden_states
+
+            # logits and loss
+            output_weight = None
+            if self.share_embeddings_and_output_weights:
+                output_weight = self.shared_embedding_or_output_weight()
+            logits, _ = self.output_layer(
+                hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
+            if has_config_logger_enabled(self.config):
+                payload = OrderedDict({
+                    'input_ids': input_ids,
+                    'position_ids': position_ids,
+                    'attention_mask': attention_mask,
+                    'decoder_input': decoder_input,
+                    'logits': logits,
+                })
+                log_config_to_disk(self.config, payload, prefix='input_and_logits')
+            if labels is None:
+                # [s b h] => [b s h]
+                return logits.transpose(0, 1).contiguous()
+
+            loss = self.compute_language_model_loss(labels, logits)
+
+            return loss
 
     def get_input_tensor(self):
         return self.decoder.input_tensor

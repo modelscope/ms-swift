@@ -69,7 +69,7 @@ class BaseMegatronTrainer(ABC):
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     @property
     def bridge(self):
@@ -564,7 +564,7 @@ class BaseMegatronTrainer(ABC):
                     torch.cuda.empty_cache()
 
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    if self.megatron_core_013:
+                    if self.mcore_013:
                         for key in loss_dicts[0].keys():
                             if key not in total_loss_dict:
                                 total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()

@@ -14,7 +14,7 @@ from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 from packaging import version
 
-megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 if TYPE_CHECKING:
     from .gpt_model import GPTModel
@@ -33,7 +33,7 @@ def _get_transformer_layer_spec(use_te, config):
     """
     args = get_args()
     if use_te:
-        if megatron_core_013:
+        if mcore_013:
             kwargs = {'qk_l2_norm': args.qk_l2_norm, 'use_kitchen': config.use_kitchen}
         else:
             kwargs = {}
