@@ -21,6 +21,8 @@ The following parameters or features will be gradually supported in future versi
 - **KL Divergence in Reward** (`kl_in_reward`)
 - **Virtual Pipeline Parallelism** (VPP)
 - **Reference Model Synchronization** (`sync_ref_model`)
+- **Async Generate** (`async_generate`)
+- **num_iterations**
 - **SwanLab Logging Integration**
 
 ⚠️ **Note**: The following parameters are not effective in Megatron GRPO:

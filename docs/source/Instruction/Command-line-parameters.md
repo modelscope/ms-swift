@@ -547,15 +547,6 @@ reward模型参数将在PPO、GRPO中使用。
 
 #### GRPO参数
 - beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
-- epsilon: clip 系数，默认为0.2。
-- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
-- delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
-- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
-- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
-- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
-- top_entropy_quantile: 仅对熵值处于前指定分位的 token 参与损失计算，默认为1.0，即不过滤低熵 token，具体参考[文档](./GRPO/AdvancedResearch/entropy_mask.md)
-- log_entropy: 记录训练中的熵值变化动态，默认为False，具体参考[文档](./GRPO/GetStarted/GRPO.md#logged-metrics)
-- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 、 `sequence` 和 `sequence_token`，默认为`token`。具体参考[GSPO文档](./GRPO/AdvancedResearch/GSPO.md)
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
 - generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_batch_size * gradient_accumulation_steps * num_processes

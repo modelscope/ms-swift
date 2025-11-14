@@ -52,7 +52,7 @@ class RLHFMegatronArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    use_vllm: bool = False
+    use_vllm: bool = True
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
 
     vllm_enable_prefix_caching: bool = True
@@ -63,6 +63,8 @@ class RLHFMegatronArgumentsMixin:
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_disable_cascade_attn: bool = False
     sleep_level: Literal[0, 1, 2] = 0
+    offload_optimizer: bool = False
+    offload_model: bool = False
 
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
@@ -107,8 +109,6 @@ class RLHFMegatronArgumentsMixin:
     async_generate: bool = False
 
     move_model_batches: Optional[int] = None
-    offload_optimizer: bool = False
-    offload_model: bool = False
 
     # multi turn
     multi_turn_scheduler: Optional[str] = None
@@ -147,7 +147,20 @@ class RLHFMegatronArgumentsMixin:
     def _init_grpo(self):
 
         def _check_not_supported():
-            pass
+            if self.async_generate:
+                raise ValueError('async_generate is not supported for Megatron GRPO right now')
+            if self.sync_ref_model:
+                raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
+            if not self.dataset_shuffle:
+                raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
+            if self.multi_turn_scheduler:
+                raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
+            if self.log_entropy:
+                raise ValueError('log_entropy is not supported for Megatron GRPO right now')
+            if self.top_entropy_quantile < 1:
+                raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
+            if self.num_iterations > 1:
+                raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
         def _check_batch_params():
             # Set default values if both are None
@@ -195,8 +208,6 @@ class RLHFMegatronArgumentsMixin:
         # default loss_type if no loss_type is provided
         assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
             f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
-        if self.async_generate or not self.use_vllm:
-            self.sleep_level = 0
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
@@ -218,16 +229,16 @@ class RLHFMegatronArgumentsMixin:
             if self.soft_max_length is None:
                 self.soft_max_length = self.max_completion_length
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
-        if self.use_vllm:
-            # set vllm mode
-            if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
-                if self.vllm_mode != 'server':
-                    self.vllm_mode = 'server'
-                    logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
-            else:
-                if self.vllm_mode != 'colocate':
-                    self.vllm_mode = 'colocate'
-                    logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+        assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
+        # set vllm mode
+        if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
+            if self.vllm_mode != 'server':
+                self.vllm_mode = 'server'
+                logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
+        else:
+            if self.vllm_mode != 'colocate':
+                self.vllm_mode = 'colocate'
+                logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
 
 @dataclass
