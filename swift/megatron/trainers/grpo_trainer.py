@@ -43,11 +43,6 @@ from .utils import (gather, gather_object, get_swift_datasets_provider, load_meg
 if is_wandb_available():
     import wandb
 
-try:
-    from trl.trainer.utils import entropy_from_logits
-except ImportError:
-    from swift.trainers.rlhf_trainer.utils import entropy_from_logits
-
 logger = get_logger()
 
 
@@ -65,8 +60,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._prepare_rewards()
         self._prepare_scheduler()  # TODO
         self._prepare_rollout_engine()
-
-        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
     def train(self, train_dataset, val_dataset, data_collator):
         # Store dataset provider for lazy resample iterator initialization
@@ -1344,6 +1337,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 return origin_log(self, data, None, commit)
 
             Run.log = log
+
+        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         prompts_text = []
