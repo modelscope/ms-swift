@@ -637,6 +637,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if self.engine.inner_model_executor.is_sleeping:
                 wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
                 kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+                aggressive_empty_cache()
                 self.engine.engine.wake_up(**kwargs)
 
         if self.state.global_step != self._last_loaded_step:

@@ -428,6 +428,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
     def unmerge(self) -> None:
         """
         Unmerge all merged adapter weights from the base weights.
+
         This method reverses the merge operation by subtracting the LoRA delta weights
         from the base layer weights, restoring the original base weights.
         """

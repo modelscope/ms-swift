@@ -566,13 +566,13 @@ reward模型参数将在PPO、GRPO中使用。
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
 - vllm_mode server 参数
+  - vllm_server_host: vLLM server host地址，默认为None。
+  - vllm_server_port: vLLM server 服务端口，默认为8000。
   - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
-  - vllm_server_host：vLLM server host地址，默认为None。
-  - vllm_server_port vLLM server 服务端口，默认为8000。
-  - vllm_server_timeout 连接vLLM server的超时时间，默认为 240s。
+  - vllm_server_timeout: 连接vLLM server的超时时间，默认为 240s。
   - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
-  - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE：环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
+  - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
 - vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
   - vllm_max_model_len: vllm透传参数，默认为None。
@@ -581,7 +581,7 @@ reward模型参数将在PPO、GRPO中使用。
   - vllm_enable_prefix_caching: vllm透传参数，默认为True。
   - vllm_tensor_parallel_size: tp并行数，默认为`1`。
   - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
-  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放。
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1, 2], 默认为0，不释放。
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
   - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
@@ -593,7 +593,7 @@ reward模型参数将在PPO、GRPO中使用。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
-- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://www.arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
+- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
 - advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)。
 - kl_in_reward: 控制 KL 散度正则项的处理位置；`false`表示作为损失函数的独立正则项，`true`表示将 KL 直接并入奖励（从奖励中扣除）。默认情况与advantage_estimator绑定，`grpo`下默认为`false`，`rloo` 和 `reinforce_plus_plus` 下默认为 `true`。
 - scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
@@ -606,6 +606,8 @@ reward模型参数将在PPO、GRPO中使用。
 - top_entropy_quantile: 仅对熵值处于前指定分位的 token 参与损失计算，默认为1.0，即不过滤低熵 token，具体参考[文档](./GRPO/AdvancedResearch/entropy_mask.md)
 - log_entropy: 记录训练中的熵值变化动态，默认为False，具体参考[文档](./GRPO/GetStarted/GRPO.md#logged-metrics)
 
+##### 奖励函数参数
+内置的奖励函数参考[文档](./GRPO/DeveloperGuide/reward_function.md)
 cosine 奖励参数
 - cosine_min_len_value_wrong：cosine 奖励函数参数，生成错误答案时，最小长度对应的奖励值。默认值为-0.5。
 - cosine_max_len_value_wrong：生成错误答案时，最大长度对应的奖励值。默认值为0.0。
