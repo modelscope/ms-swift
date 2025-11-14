@@ -2,6 +2,7 @@
 from copy import deepcopy
 from typing import Optional, Tuple, Union
 
+import megatron.core
 import torch
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -17,6 +18,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
+from packaging import version
 
 from swift.llm import ModelType
 from swift.utils import get_logger
@@ -24,6 +26,7 @@ from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
     from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
@@ -418,16 +421,17 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
-    from megatron.core.transformer.enums import LayerType
-    num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
+    kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
+    num_layers_to_build = get_num_layers_to_build(config, **kwargs)
 
     if config.pipeline_model_parallel_layout is not None:
+        from megatron.core.transformer.enums import LayerType
         local_layer_specs = [
             layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
-                layer_type=LayerType.decoder, vp_stage=vp_stage)
+                layer_type=LayerType.decoder, **kwargs)
         ]
     else:
-        offset = get_transformer_layer_offset(config, vp_stage=vp_stage)
+        offset = get_transformer_layer_offset(config, **kwargs)
         local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
     return local_layer_specs
 
@@ -446,13 +450,14 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
 
     layer_norm_impl = TENorm
+    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
         moe_grouped_gemm=config.moe_grouped_gemm,
         qk_layernorm=config.qk_layernorm,
         multi_latent_attention=config.multi_latent_attention,
         moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        use_kitchen=config.use_kitchen,
+        **kwargs,
     )
     layer_specs = []
     for layer_type in args.layer_types:
