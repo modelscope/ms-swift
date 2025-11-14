@@ -55,7 +55,6 @@ megatron rlhf \
     --offload_optimizer true \
     --log_interval 1 \
     --recompute_granularity selective \
-    --max_epochs 1 \
     --finetune \
     --num_workers 8 \
     --dataset_num_proc 8 \
@@ -70,4 +69,5 @@ megatron rlhf \
     --wandb_exp_name megatron_grpo \
     --train_iters 100 \
     --eval_interval 1000 \
-    --save_interval 1000
+    --save_interval 1000 \
+    --scale_rewards group
