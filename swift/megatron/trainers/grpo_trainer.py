@@ -19,8 +19,6 @@ from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
-from torch._tensor import Tensor
-from torch.distributed.nn import all_reduce
 from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
@@ -139,8 +137,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.use_vllm = args.use_vllm
-        self.async_generate = args.async_generate
-        self.use_fast_infer = self.use_vllm
+        self.async_generate = args.async_generate  # TODO
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
