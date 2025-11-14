@@ -361,9 +361,9 @@ class Template(ProcessorMixin):
         chosen = inputs.chosen
         margin = chosen.margin
         chosen_encoded = self._encode_truncated(chosen)
-        if check_rejected and inputs.rejected is None:
-            raise ValueError('inputs.rejected is None')
         if inputs.rejected is None:
+            if check_rejected:
+                raise ValueError('inputs.rejected is None')
             rejected_encoded = {}
         else:
             rejected_encoded = self._encode_truncated(inputs.rejected)
