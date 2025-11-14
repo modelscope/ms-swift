@@ -35,9 +35,9 @@ megatron rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
-    --vllm_mode colocate \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 10240 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --max_length 8192 \
     --max_completion_length 2048 \
     --train_type full \
