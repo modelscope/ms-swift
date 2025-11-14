@@ -434,6 +434,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_gkd(self):
         if self.rlhf_type != 'gkd':
             return
+        # Preserve extra dataset fields for conditional distillation
+        self.remove_unused_columns = False
+        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+
         if is_mp() and self.use_vllm:
             raise ValueError('GKD with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')

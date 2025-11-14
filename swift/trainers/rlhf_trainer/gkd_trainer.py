@@ -134,112 +134,25 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # compute student output
         outputs_student = model(**model_inputs)
 
-        model_inputs.pop('labels', None)
-        model_inputs.pop('logits_to_keep', None)
-
         # Prepare teacher model inputs
         teacher_model_inputs = model_inputs.copy()
-        if 'teacher_prompts' in inputs:
-            # Conditional distillation: replace student prompts with teacher prompts
-            # Use labels to identify response tokens (where labels != -100)
-            batch_size = inputs['input_ids'].shape[0]
-
-            # Get teacher prompt lengths
-            if 'teacher_prompt_attention_mask' in inputs:
-                teacher_prompts_len = inputs['teacher_prompt_attention_mask'].sum(dim=1)  # [batch_size]
-            else:
-                teacher_prompts_len = torch.full((inputs['teacher_prompts'].shape[0],),
-                                                 inputs['teacher_prompts'].shape[1],
-                                                 device=inputs['teacher_prompts'].device)
-
-            # Build teacher_input_ids: teacher_prompt + response_tokens
-            # Extract response tokens using labels (where labels != -100)
-            teacher_input_ids_list = []
-            teacher_attention_mask_list = []
-
-            for i in range(batch_size):
-                # When use_logits_to_keep=True, labels is truncated to the relevant portion
-                # Extract the corresponding tokens from input_ids (last N tokens)
-                # Reference: grpo_trainer.py line 1355, 1459
-                labels_len = inputs['labels'][i].shape[0]
-                relevant_input_ids = inputs['input_ids'][i, -labels_len:]
-
-                # Find response tokens using labels (where labels != -100)
-                response_mask = inputs['labels'][i] != -100
-                response_tokens = relevant_input_ids[response_mask]
-
-                # Get teacher prompt (without padding)
-                teacher_prompt_len = teacher_prompts_len[i].item()
-                teacher_prompt = inputs['teacher_prompts'][i, :teacher_prompt_len]
-
-                # Concatenate: teacher_prompt + response_tokens
-                teacher_seq = torch.cat([teacher_prompt, response_tokens])
-                teacher_input_ids_list.append(teacher_seq)
-
-                # Create attention mask (all 1s for valid tokens)
-                teacher_attn = torch.ones(len(teacher_seq), dtype=torch.long, device=teacher_seq.device)
-                teacher_attention_mask_list.append(teacher_attn)
-
-            # Pad to same length
-            max_len = max(len(seq) for seq in teacher_input_ids_list)
-            pad_token_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else 0
-
-            teacher_input_ids = torch.full((batch_size, max_len), pad_token_id,
-                                          dtype=inputs['input_ids'].dtype,
-                                          device=inputs['input_ids'].device)
-            teacher_attention_mask = torch.zeros((batch_size, max_len),
-                                                dtype=torch.long,
-                                                device=inputs['input_ids'].device)
-
-            for i, (seq, attn) in enumerate(zip(teacher_input_ids_list, teacher_attention_mask_list)):
-                teacher_input_ids[i, :len(seq)] = seq
-                teacher_attention_mask[i, :len(attn)] = attn
-
-            teacher_model_inputs['input_ids'] = teacher_input_ids
-            teacher_model_inputs['attention_mask'] = teacher_attention_mask
-
-            # Recalculate position_ids if present
-            if 'position_ids' in teacher_model_inputs:
-                teacher_model_inputs['position_ids'] = teacher_attention_mask.cumsum(dim=1) - 1
-                teacher_model_inputs['position_ids'][teacher_model_inputs['position_ids'] < 0] = 0
+        if 'teacher_input_ids' in inputs:
+            # Conditional distillation: use pre-concatenated teacher_input_ids
+            teacher_model_inputs['input_ids'] = inputs['teacher_input_ids']
+            teacher_model_inputs['attention_mask'] = inputs['teacher_attention_mask']
+            if 'teacher_position_ids' in inputs:
+                teacher_model_inputs['position_ids'] = inputs['teacher_position_ids']
 
         load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
         with torch.no_grad(), load_context:
-            outputs_teacher = self.teacher_model(**teacher_model_inputs)
+             outputs_teacher = self.teacher_model(**teacher_model_inputs)
 
         # Extract logits for distillation
-        if 'teacher_prompts' in inputs:
-            # Different prompt lengths: need to extract logits carefully
-            # Student logits: from response part only
-            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
-            student_mask = shifted_labels != -100
-            shifted_student_logits = outputs_student.logits[student_mask][None]
-
-            # Teacher logits: also from response part, but at different positions
-            # Calculate where teacher's response starts
-            if 'teacher_prompt_attention_mask' in inputs:
-                teacher_prompts_len = inputs['teacher_prompt_attention_mask'].sum(dim=1)  # [batch_size]
-            else:
-                teacher_prompts_len = torch.full((inputs['teacher_prompts'].shape[0],),
-                                                 inputs['teacher_prompts'].shape[1],
-                                                 device=inputs['teacher_prompts'].device)
-
-            # Create labels for teacher based on response length
-            teacher_labels = torch.full_like(teacher_model_inputs['input_ids'], -100)
-            response_len = student_mask.sum(dim=1)  # Length of response for each sample
-            for i in range(batch_size):
-                start_pos = teacher_prompts_len[i].item()
-                teacher_labels[i, start_pos:start_pos + response_len[i].item()] = 1
-
-            shifted_teacher_labels = torch.roll(teacher_labels, shifts=-1, dims=1)
-            teacher_mask = shifted_teacher_labels != -100
-            shifted_teacher_logits = outputs_teacher.logits[teacher_mask][None]
-        else:
-            # Standard case: same prompts for both
-            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
-            mask = shifted_labels != -100
-            shifted_student_logits = outputs_student.logits[mask][None]
-            shifted_teacher_logits = outputs_teacher.logits[mask][None]
+        # With use_logits_to_keep, both student and teacher logits are aligned with labels
+        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+        mask = shifted_labels != -100
+        shifted_student_logits = outputs_student.logits[mask][None]
+        shifted_teacher_logits = outputs_teacher.logits[mask][None]
 
         # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
         stu_dim = shifted_student_logits.shape[-1]
@@ -268,6 +181,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         batch_encoded_inputs = []
 
         for data in inputs:
+            # Save response_token_ids for later use in conditional distillation
+            response_token_ids = data.get('response_token_ids')
+            print(f"<debug>{self.tokenizer.decode(response_token_ids)}</debug>")
             if 'response_token_ids' in data and data['response_token_ids']:
                 from .utils import replace_assistant_response_with_ids
                 data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
@@ -283,8 +199,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_history = self.teacher_adapter.shape_context(data)
                 data['messages'] = original_messages  # Restore
                 data['teacher_history'] = teacher_history
-
             encoded = template.encode(data, return_length=True)
+
+            # Preserve response_token_ids for conditional distillation
+            if response_token_ids is not None:
+                encoded['response_token_ids'] = response_token_ids
+
             batch_encoded_inputs.append(encoded)
 
         from swift.llm import to_device

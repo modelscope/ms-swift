@@ -1532,12 +1532,23 @@ class Template(ProcessorMixin):
             res['prompts'] = prompts_res.pop('input_ids')
             res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
 
-        # Handle teacher_prompts for conditional distillation
-        teacher_prompts_batch = [{'input_ids': b['teacher_prompts']} for b in batch if b.get('teacher_prompts') is not None]
-        if teacher_prompts_batch:
-            teacher_prompts_res = self._data_collator(teacher_prompts_batch, padding_to=padding_to)
-            res['teacher_prompts'] = teacher_prompts_res.pop('input_ids')
-            res.update({f'teacher_prompt_{k}': v for k, v in teacher_prompts_res.items()})
+        # Handle teacher_prompts + response for conditional distillation
+        if any(b.get('teacher_prompts') is not None for b in batch):
+            # Extract response tokens from input_ids using labels (includes all tokens like <|im_end|>)
+            teacher_input_ids_batch = []
+            for b in batch:
+                if b.get('teacher_prompts') is not None:
+                    # Extract response tokens from input_ids where labels != -100
+                    response_mask = [label != -100 for label in b['labels']]
+                    response_tokens = [token for token, keep in zip(b['input_ids'], response_mask) if keep]
+                    # Concatenate teacher_prompts + response_tokens
+                    teacher_input_ids = b['teacher_prompts'] + response_tokens
+                    teacher_input_ids_batch.append({'input_ids': teacher_input_ids})
+
+            if teacher_input_ids_batch:
+                teacher_res = self._data_collator(teacher_input_ids_batch, padding_to=padding_to)
+                res['teacher_input_ids'] = teacher_res.pop('input_ids')
+                res.update({f'teacher_{k}': v for k, v in teacher_res.items()})
 
         return res
 
