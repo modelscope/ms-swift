@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import TYPE_CHECKING, Optional, Union
 
+import megatron.core
 import megatron.legacy
 import torch
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec, get_gpt_layer_local_spec,
@@ -11,6 +12,9 @@ from megatron.core.transformer.spec_utils import import_module
 from megatron.training import get_args, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
+from packaging import version
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 if TYPE_CHECKING:
     from .gpt_model import GPTModel
@@ -29,14 +33,17 @@ def _get_transformer_layer_spec(use_te, config):
     """
     args = get_args()
     if use_te:
+        if mcore_013:
+            kwargs = {'qk_l2_norm': args.qk_l2_norm, 'use_kitchen': config.use_kitchen}
+        else:
+            kwargs = {}
         return get_gpt_layer_with_transformer_engine_spec(
             args.num_experts,
             args.moe_grouped_gemm,
             args.qk_layernorm,
             args.multi_latent_attention,
             moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
-            qk_l2_norm=args.qk_l2_norm,
-            use_kitchen=config.use_kitchen,
+            **kwargs,
         )
     else:
         return get_gpt_layer_local_spec(
@@ -110,13 +117,13 @@ def model_provider(pre_process=True,
             transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
+                if mcore_013:
+                    kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage}
+                else:
+                    kwargs = {}
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config,
-                    use_transformer_engine=use_te,
-                    normalization=args.normalization,
-                    qk_l2_norm=args.qk_l2_norm,
-                    vp_stage=vp_stage)
+                    config, use_transformer_engine=use_te, normalization=args.normalization, **kwargs)
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
             else:

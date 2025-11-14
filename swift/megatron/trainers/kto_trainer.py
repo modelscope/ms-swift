@@ -143,7 +143,11 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
         with self.stimer:
             output_tensor = model(**data)
-        dim = 1 if mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage) else 0
+        if self.mcore_013:
+            is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
+        else:
+            is_pp_last_stage = mpu.is_pipeline_last_stage()
+        dim = 1 if is_pp_last_stage else 0
         if self.args.calculate_KL:
             res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=dim)
         else:
