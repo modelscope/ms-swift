@@ -269,7 +269,7 @@ LoRA Training:
 - model: The model_id or model_path of safetensors weights. Defaults to None.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
-- ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO or KTO algorithms with full-parameter training. Default is None, set to `--model`.
+- ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, set to `--model`.
 - ref_adapters: List of adapter_id or adapter_path of ref_adapters safetensors weights (currently only supports length of 1). Default is `[]`.
 - use_hf: Controls whether to use ModelScope or HuggingFace for model download, dataset download, and model push. Default is False, using ModelScope.
 - hub_token: Hub token. ModelScope hub token can be found [here](https://modelscope.cn/my/myaccesstoken). Default is None.
@@ -291,7 +291,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - Typically used together with `--freeze_vit false` and `--freeze_aligner false`.
 - aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to `None`. This parameter only takes effect when `vit_gradient_checkpointing` is enabled.
-- 🔥packing: Whether to use sequence packing to improve computational efficiency (achieving better load balancing across nodes and processes, and higher GPU utilization), at the cost of additional preprocessing time, while also stabilizing GPU memory usage. Defaults to `False`. Currently supported for CPT, SFT, DPO, KTO and RM.
+- 🔥packing: Whether to use sequence packing to improve computational efficiency (achieving better load balancing across nodes and processes, and higher GPU utilization), at the cost of additional preprocessing time, while also stabilizing GPU memory usage. Defaults to `False`. Currently supported for CPT, SFT, GRPO, DPO, KTO and RM.
   - Note: **Sequences within the same batch remain mutually invisible**, except for Qwen3-Next.
   - Note: **Packing will reduce the number of dataset samples. Please adjust global_batch_size and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
@@ -315,7 +315,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'kto', and 'rm' are available.
+- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', and 'rm' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
 

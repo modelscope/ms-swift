@@ -252,7 +252,7 @@ lora训练：
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
-- ref_model: ref_model safetensors权重的model_id或者model_path。采用dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
+- ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
 - use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
@@ -295,7 +295,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
-- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'kto'和'rm'。
+- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'和'rm'。
 - loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
