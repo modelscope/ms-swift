@@ -57,6 +57,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥val_dataset: A list of validation dataset IDs or paths. Default is `[]`.
 - cached_dataset: Use cached dataset (generated using `swift export --to_cached_dataset true ...` command) to avoid GPU time consumed by the tokenization process during large dataset training/inference. Default is `[]`. For examples, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
   - Note: In "ms-swift>=3.11", cached_dataset only stores an additional length field in the dataset (to avoid storage pressure) and filters out data samples that would cause errors. During training/inference, the `--max_length` parameter is supported for filtering/truncating excessively long data and the `--packing` parameter is supported. The actual data preprocessing process occurs synchronously during training and overlaps with the training process, which does not affect training speed.
+  - cached_dataset is compatible between `ms-swift` and `Megatron-SWIFT`, and supports pt/sft/infer/rlhf (requires "ms-swift>=3.11").
 - 🔥split_dataset_ratio: The ratio for splitting a validation set from the training set when `val_dataset` is not specified. Default is `0.`, meaning no splitting occurs.
   - Note: In "ms-swift<3.6", the default value was `0.01`.
 - data_seed: Random seed for dataset operations. Default is `42`.
