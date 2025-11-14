@@ -3,6 +3,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional, Tuple
 
+import megatron.core
 import torch
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
@@ -16,11 +17,14 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
 from megatron.training import get_args
+from packaging import version
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
 logger = get_logger()
+
+megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class OutputLayerLinear(TELinear):
@@ -77,6 +81,11 @@ class GPTModel(McoreGPTModel):
                 config.mscale_all_dim = hf_rope_scaling['mscale_all_dim']
                 config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
+        if megatron_core_013:
+            kwargs = {'vp_stage': vp_stage}
+        else:
+            self.vp_stage = vp_stage
+            kwargs = {}
         super().__init__(
             config,
             transformer_layer_spec,
@@ -95,7 +104,7 @@ class GPTModel(McoreGPTModel):
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
-            vp_stage=vp_stage,
+            **kwargs,
         )
         if config.multi_latent_attention:
             self.rotary_pos_emb = RotaryEmbedding(
