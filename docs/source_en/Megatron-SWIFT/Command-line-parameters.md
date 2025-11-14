@@ -362,9 +362,9 @@ In addition to inheriting the training parameters, the following parameters are 
 - log_completions: Whether to log model-generated content during training. Default is False.
 - vllm_mode: vLLM integration mode. Options are `server` and `colocate`. Server mode uses the vLLM server launched by `swift rollout` for sampling, while colocate mode deploys vLLM within the program. When using server mode:
 - vllm_mode server parameters:
-  - vllm_server_base_url: Base URL of the vLLM server (e.g., http://local_host:8000). Default is None. When set, host and port settings are ignored.
   - vllm_server_host: vLLM server host address. Default is None.
   - vllm_server_port: vLLM server port. Default is 8000.
+  - vllm_server_base_url: Base URL of the vLLM server (e.g., http://local_host:8000). Default is None. When set, host and port settings are ignored.
   - vllm_server_timeout: Timeout for connecting to the vLLM server. Default is 240s.
   - vllm_server_pass_dataset: Pass additional dataset information to the vLLM server for multi-round training.
   - async_generate: Asynchronous rollout to improve training speed. Note: When enabled, sampling uses the model from the previous round update, and multi-round scenarios are not supported. Default is `false`.
