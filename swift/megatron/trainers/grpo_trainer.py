@@ -1129,7 +1129,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0:
             # Unified processing (no CP-specific logic needed)
             kl_value = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
-            avg_metric['kl'] = kl_value.item()
+            avg_metric['kl'] = kl_value.clone().detach()
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         if self._metrics[mode]:
