@@ -246,36 +246,13 @@ lora训练：
 - lora_bias: 默认为`'none'`，可以选择的值: 'none'、'all'。如果你要将bias全都设置为可训练，你可以设置为`'all'`。
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
 
-
-**DPO参数**:
-- ref_load: ref_model的加载路径。采用DPO/KTO算法且使用全参数训练时需要传入。默认为None，即设置为`load`。
-- ref_adapter_load: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`。
-- beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
-- 🔥rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
-  - **注意**：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
-- reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
-- label_smoothing: 默认为0.。
-- f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
-- loss_type: 默认为'sigmoid'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)。
-
-**KTO参数**:
-- ref_load: 含义同DPO。
-- ref_adapter_load: 含义同DPO。
-- beta: 控制与 ref_model 偏离程度的参数。较高的 beta 表示与 ref_model 偏离更小。默认为`0.1`。
-- loss_type: 默认为'kto'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type)。
-- desirable_weight: 抵消 desirable 和 undesirable 数量不均衡的影响，对 desirable 损失按该系数进行加权，默认为`1.`。
-- undesirable_weight: 抵消 desirable 和 undesirable 数量不均衡的影响，对 undesirable 损失按该系数进行加权，默认为`1.`。
-
-**RM参数**:
-- center_rewards_coefficient: 用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
-
 **Mcore-Bridge参数**
 - 🔥load_safetensors: 默认为False，是否直接从safetensors加载权重。
 - 🔥save_safetensors: 默认为False，是否直接保存成safetensors权重。注意，若该参数设置为True，则不会存储优化器权重、随机数状态等断点续训内容。
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
-- ref_model: ref_model safetensors权重的model_id或者model_path。采用dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
+- ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
 - use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
@@ -318,10 +295,78 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
-- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'kto'和'rm'。
+- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'和'rm'。
 - loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
+
+### DPO参数
+- ref_load: ref_model的加载路径。采用DPO/GRPO/KTO算法且使用全参数训练时需要传入。默认为None，即设置为`load`。
+- ref_adapter_load: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`。
+- beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
+- 🔥rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
+  - **注意**：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
+- reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
+- label_smoothing: 默认为0.。
+- f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
+- loss_type: 默认为'sigmoid'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)。
+
+### KTO参数
+- ref_load: 含义同DPO。
+- ref_adapter_load: 含义同DPO。
+- beta: 控制与 ref_model 偏离程度的参数。较高的 beta 表示与 ref_model 偏离更小。默认为`0.1`。
+- loss_type: 默认为'kto'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type)。
+- desirable_weight: 抵消 desirable 和 undesirable 数量不均衡的影响，对 desirable 损失按该系数进行加权，默认为`1.`。
+- undesirable_weight: 抵消 desirable 和 undesirable 数量不均衡的影响，对 undesirable 损失按该系数进行加权，默认为`1.`。
+
+### RM参数
+- center_rewards_coefficient: 用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
+
+### GRPO参数
+- ref_load: 含义同DPO。
+- ref_adapter_load: 含义同DPO。
+- beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
+- micro_batch_size: 每个device的批次大小，默认为1。
+- global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
+- steps_per_generation：每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
+- generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
+- num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
+- reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
+- reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
+  - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
+- log_completions: 是否记录训练中的模型生成内容，默认为False。
+- vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
+- vllm_mode server 参数
+  - vllm_server_host: vLLM server host地址，默认为None。
+  - vllm_server_port: vLLM server 服务端口，默认为8000。
+  - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
+  - vllm_server_timeout: 连接vLLM server的超时时间，默认为 240s。
+  - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
+  - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
+  - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
+- vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
+  - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
+  - vllm_max_model_len: vllm透传参数，默认为None。
+  - vllm_enforce_eager: vllm透传参数，默认为False。
+  - vllm_limit_mm_per_prompt: vllm透传参数，默认为None。
+  - vllm_enable_prefix_caching: vllm透传参数，默认为True。
+  - vllm_tensor_parallel_size: tp并行数，默认为`1`。
+  - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](../Instruction/GRPO/GetStarted/GRPO.md#权重同步加速)。
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1, 2], 默认为0，不释放。
+  - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+  - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
+- num_iterations: 每条数据的更新次数，[GRPO论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
+- epsilon: clip 系数，默认为0.2。
+- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
+- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
+- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
+- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
+- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+
+内置奖励函数参数参考[文档](../Instruction/Command-line-parameters.md#奖励函数参数)
 
 ## 导出参数
 这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。
