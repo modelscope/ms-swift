@@ -105,6 +105,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.max_resample_times = args.max_resample_times
         self.overlong_filter = args.overlong_filter
 
+        # Dr. GRPO / RLOO / REINFORCE++
+        self.scale_rewards = args.scale_rewards
+        self.advantage_estimator = args.advantage_estimator  # TODO
+        self.kl_in_reward = args.kl_in_reward  # TODO
+
         # Entropy mask settings, TODO
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
@@ -795,9 +800,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _compute_advantages(self, batch: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
         """Compute advantages for RL training."""
 
-        def maybe_normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
+        def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
             """Normalize advantages if configured; otherwise, return as-is."""
-            if self.args.scale_rewards:
+            if self.scale_rewards != 'none':
                 return advantages / (rewards_std + 1e-4)
             return advantages
 
@@ -806,16 +811,28 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         total_rewards_per_func = gather(rewards_per_func)
         rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
         grouped_rewards = rewards.view(-1, self.num_generations)
+
+        # Compute group statistics
         group_rewards_mean = grouped_rewards.mean(dim=1)
-        group_rewards_std = grouped_rewards.std(dim=1)
 
         # Broadcast stats back to the original shape
         group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
-        group_rewards_std = group_rewards_std.repeat_interleave(self.num_generations)
 
         # Compute advantages relative to group mean
         advantages = rewards - group_rewards_mean
-        advantages = maybe_normalize_advantages(advantages, group_rewards_std)
+
+        # Normalize advantages based on scale_rewards setting
+        if self.scale_rewards == 'batch':
+            # Global batch-level normalization
+            rewards_std = rewards.std().expand_as(rewards)
+        elif self.scale_rewards == 'group':
+            # Group-level normalization (default)
+            rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+        else:  # 'none'
+            rewards_std = None
+
+        if rewards_std is not None:
+            advantages = normalize_advantages(advantages, rewards_std)
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
@@ -823,7 +840,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
             group_rewards = rewards.view(-1, self.num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
-            rewards_std = group_rewards.std(-1).mean().item()
+            # Compute std based on scale_rewards setting for logging
+            if self.scale_rewards in ['group', 'none']:
+                rewards_std = group_rewards.std(-1).mean().item()
+            elif self.scale_rewards == 'batch':
+                rewards_std = rewards.std().item()
             is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
 
             self._metrics[mode]['reward'].append(rewards_mean)

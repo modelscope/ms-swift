@@ -90,12 +90,15 @@ class RLHFMegatronArgumentsMixin:
     overlong_filter: bool = False
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: bool = True
+    scale_rewards: Literal['none', 'group', 'batch'] = 'group'
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
+    # RLOO / REINFORCE++
+    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
+    kl_in_reward: bool = False
     # reward model
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
@@ -159,6 +162,10 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
+            if self.kl_in_reward:
+                raise ValueError('kl_in_reward is not supported for Megatron GRPO right now')
+            if self.advantage_estimator != 'grpo':
+                raise ValueError('advantage_estimator must be grpo for Megatron GRPO right now')
 
         def _check_batch_params():
             # Set default values if both are None
