@@ -313,9 +313,12 @@ class BaseMegatronTrainer(ABC):
                     scale_lr = False
                     # Handling multimodal models: vit_lr, aligner_lr
                     unwrapped_name = name.removeprefix('module.').removeprefix('module.')
-                    is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner)
-                    is_vit = any(unwrapped_name.startswith(f'visual.{k}')
-                                 for k in visual._vision_tower) and not is_aligner
+                    if visual is not None:
+                        is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner or [])
+                        is_vit = any(unwrapped_name.startswith(f'visual.{k}')
+                                     for k in visual._vision_tower) and not is_aligner
+                    else:
+                        is_aligner, is_vit = False, False
                     if is_vit and self.args.vit_lr:
                         scale_lr = True
                         _lr_mult = self.args.vit_lr / lr

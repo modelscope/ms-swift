@@ -130,6 +130,7 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
     moonlight = 'moonlight'
+    kimi_k2 = 'kimi_k2'
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
@@ -215,6 +216,8 @@ class MLLMModelType:
     llava_next_video_yi_hf = 'llava_next_video_yi_hf'
     llava_onevision_hf = 'llava_onevision_hf'
     yi_vl = 'yi_vl'
+    ernie_vl = 'ernie_vl'
+    ernie_vl_thinking = 'ernie_vl_thinking'
 
     llava_llama3_1_hf = 'llava_llama3_1_hf'  # DaozeZhang
     llava_llama3_hf = 'llava_llama3_hf'  # xtuner

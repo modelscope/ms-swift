@@ -106,8 +106,8 @@ infonce loss的评测会有下面几个指标：
 
 SWIFT提供了两个脚手架训练脚本：
 
-- [gte模型](https://github.com/modelscope/swift/blob/main/examples/train/embedding/train_gte.sh)
-- [gme模型](https://github.com/modelscope/swift/blob/main/examples/train/embedding/train_gme.sh)
+- [Qwen3-Embedding模型](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_emb.sh)
+- [GME模型](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh)
 
 ## 推理
 
