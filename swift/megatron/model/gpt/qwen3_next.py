@@ -61,6 +61,7 @@ class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
+        kwargs = {'tp_group': self.model_comm_pgs.tp} if mcore_013 else {}
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -72,7 +73,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='qkv',
-            tp_group=self.model_comm_pgs.tp,
+            **kwargs,
         )
 
         if submodules.q_layernorm is not None:
@@ -424,7 +425,7 @@ def get_local_layer_specs(config, layer_specs, vp_stage=None):
     kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
     num_layers_to_build = get_num_layers_to_build(config, **kwargs)
 
-    if config.pipeline_model_parallel_layout is not None:
+    if getattr(config, 'pipeline_model_parallel_layout', None) is not None:
         from megatron.core.transformer.enums import LayerType
         local_layer_specs = [
             layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
