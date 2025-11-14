@@ -1,14 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
+import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args
+from packaging import version
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -37,9 +41,15 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
     batch = to_device(data, 'cuda', non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         return batch
-    if not mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage):
+    if mcore_013:
+        is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
+        is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
+    else:
+        is_pp_first_stage = mpu.is_pipeline_first_stage()
+        is_pp_last_stage = mpu.is_pipeline_last_stage()
+    if not is_pp_first_stage:
         batch['input_ids'] = None
-    if not mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage):
+    if not is_pp_last_stage:
         batch['labels'] = None
         batch['loss_scale'] = None
 
