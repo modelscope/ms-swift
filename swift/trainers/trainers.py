@@ -108,6 +108,7 @@ class RerankerTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.args.include_for_metrics = ['inputs']
         self.compute_metrics = self.calculate_metric
         self.label_names = ['labels']
 
@@ -124,8 +125,6 @@ class RerankerTrainer(Trainer):
         Extract only the yes/no token logits at the last valid (non -100) timestep
         for each sample, avoiding padded timesteps created by multi-GPU gather.
         """
-        import torch
-        import os
 
         # Get token IDs for positive and negative tokens
         positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
@@ -146,21 +145,8 @@ class RerankerTrainer(Trainer):
         # Extract only the yes/no token logits from the last non -100 position per sample
         # Shapes: logits [batch, seq_len, vocab]
         if len(logits.shape) == 3:
-            batch_size, _, vocab_size = logits.shape
-
-            # Identify padded rows whose entire vocab logits are -100
-            row_is_pad = (logits == -100).all(dim=-1)  # [batch, seq_len]
-            valid_mask = ~row_is_pad
-            lengths = valid_mask.long().sum(dim=1) - 1
-            lengths = torch.clamp(lengths, min=0)
-            last_indices = lengths.to(device=logits.device)
-
-            # Gather the logits at the last valid index for each sample: [batch, vocab]
-            gather_index = last_indices.view(batch_size, 1, 1).expand(batch_size, 1, vocab_size)
-            last_step_logits = torch.gather(logits, dim=1, index=gather_index).squeeze(1)
-
-            positive_logits = last_step_logits[:, positive_token_id]
-            negative_logits = last_step_logits[:, negative_token_id]
+            positive_logits = logits[:, :, positive_token_id]
+            negative_logits = logits[:, :, negative_token_id]
             logits = positive_logits - negative_logits
             return logits
         else:
@@ -173,8 +159,19 @@ class RerankerTrainer(Trainer):
         return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
+        import numpy as np
         from swift.plugin.loss import calculate_reranker_metrics
-        return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
+        input_ids = eval_prediction.inputs
+        logits = eval_prediction.predictions
+        labels = eval_prediction.label_ids
+
+        if logits.ndim == 2 and logits.shape[1] > 1:
+            pad_token_id = self.tokenizer.pad_token_id
+            valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
+            last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
+            last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
+            logits = logits[np.arange(logits.shape[0]), last_valid_indices]
+        return calculate_reranker_metrics(logits, labels)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
@@ -188,7 +185,12 @@ class RerankerTrainer(Trainer):
 
             if labels is not None:
                 # Call custom loss function
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self)
+                loss = self.compute_loss_func(
+                    outputs,
+                    labels,
+                    num_items_in_batch=num_items_in_batch,
+                    trainer=self,
+                    attention_mask=inputs['attention_mask'])
             else:
                 # Fallback to model's loss
                 loss = outputs.loss
@@ -197,7 +199,7 @@ class RerankerTrainer(Trainer):
                 loss = loss / self.args.gradient_accumulation_steps
 
             if labels is not None:
-                self._compute_acc(outputs, labels)
+                self._compute_acc(outputs, labels, attention_mask=inputs.get('attention_mask'))
 
             return (loss, outputs) if return_outputs else loss
         else:
