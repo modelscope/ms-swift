@@ -592,7 +592,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_enable_prefix_caching: A pass-through parameter for vLLM, default is True.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
-  - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
+  - sleep_level: make vllm sleep when model is training. Options are 0/1/2, default is 0, no sleep
   - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
   - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
   - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.

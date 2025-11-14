@@ -581,7 +581,7 @@ reward模型参数将在PPO、GRPO中使用。
   - vllm_enable_prefix_caching: vllm透传参数，默认为True。
   - vllm_tensor_parallel_size: tp并行数，默认为`1`。
   - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
-  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放。
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1, 2], 默认为0，不释放。
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
   - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
