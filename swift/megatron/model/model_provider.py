@@ -117,13 +117,13 @@ def model_provider(pre_process=True,
             transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
+                if mcore_013:
+                    kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage}
+                else:
+                    kwargs = {}
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config,
-                    use_transformer_engine=use_te,
-                    normalization=args.normalization,
-                    qk_l2_norm=args.qk_l2_norm,
-                    vp_stage=vp_stage)
+                    config, use_transformer_engine=use_te, normalization=args.normalization, **kwargs)
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
             else:
