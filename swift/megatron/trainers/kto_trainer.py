@@ -76,7 +76,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss.mean()
         mean_metric = {
             'loss': loss.detach().clone(),
-            'kl': kl.detach(),
+            'kl': kl.squeeze().detach(),
         }
         metric = self._all_reduce_metric(mean_metric)
         sum_metric = {
