@@ -134,12 +134,22 @@ class Qwen3NextSelfAttention(SelfAttention):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
-        from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        try:
+            from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        except ImportError:
+
+            def nvtx_range_pop(*args, **kwargs):
+                return
+
+            def nvtx_range_push(*args, **kwargs):
+                return
+
         # Check if we need to skip RoPE
         # no_rope is 0-indexed array and self.layer_number is 1-indexed
-        no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
-        if no_rope:
-            rotary_pos_emb = None
+        if hasattr(self.config, 'no_rope_freq'):
+            no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
+            if no_rope:
+                rotary_pos_emb = None
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
@@ -198,17 +208,20 @@ class Qwen3NextSelfAttention(SelfAttention):
         if (in_decode_mode and self.config.enable_cuda_graph and inference_context.is_static_batching()):
             raise ValueError('CUDA graphs must use flash decode with static batching!')
 
-        query, key, value, rotary_pos_emb, attn_mask_type, block_table = (
-            self._adjust_key_value_for_inference(
-                inference_context,
-                query,
-                key,
-                value,
-                rotary_pos_emb,
-                rotary_pos_cos,
-                rotary_pos_sin,
-                sequence_len_offset,
-            ))
+        result = self._adjust_key_value_for_inference(
+            inference_context,
+            query,
+            key,
+            value,
+            rotary_pos_emb,
+            rotary_pos_cos,
+            rotary_pos_sin,
+            sequence_len_offset,
+        )
+        if mcore_013:
+            query, key, value, rotary_pos_emb, attn_mask_type, block_table = result
+        else:
+            query, key, value, rotary_pos_emb, attn_mask_type = result
 
         if packed_seq_params is not None:
             query = query.squeeze(1)
@@ -219,6 +232,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
+        kwargs = {'cp_group': self.model_comm_pgs.cp} if mcore_013 else {}
         nvtx_range_push(suffix='rotary_pos_emb')
         if rotary_pos_emb is not None and not self.config.flash_decode:
             q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -243,18 +257,18 @@ class Qwen3NextSelfAttention(SelfAttention):
                         q_pos_emb,
                         config=self.config,
                         cu_seqlens=cu_seqlens_q,
-                        cp_group=self.model_comm_pgs.cp,
+                        **kwargs,
                     )
                 else:
                     query = inference_context.apply_rotary_emb_query(query, q_pos_emb, self.config, cu_seqlens_q,
-                                                                     self.model_comm_pgs.cp)
+                                                                     **kwargs)
             if k_pos_emb is not None:
                 key = apply_rotary_pos_emb(
                     key,
                     k_pos_emb,
                     config=self.config,
                     cu_seqlens=cu_seqlens_kv,
-                    cp_group=self.model_comm_pgs.cp,
+                    **kwargs,
                 )
 
             # TODO, can apply positional embedding to value_layer so it has
