@@ -3,7 +3,7 @@ import functools
 import gc
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import torch
 from accelerate.utils import gather as hf_gather
@@ -133,24 +133,11 @@ def profiling_context(trainer, name: str):
         wandb_writer.log(profiling_metrics)
 
 
-@contextmanager
-def patch_profiling_context(trainer, name: str):
-    start_time = time.perf_counter()
-    yield
-    end_time = time.perf_counter()
-    duration = end_time - start_time
-
-    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
-    wandb_writer = get_wandb_writer()
-    if wandb_writer and trainer.is_main_process:
-        wandb_writer.log(profiling_metrics)
-
-
-def patch_profiling_decorator(func):
+def profiling_decorator(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        with patch_profiling_context(self, func.__name__):
+        with profiling_context(self, func.__name__):
             return func(self, *args, **kwargs)
 
     return wrapper

@@ -37,8 +37,8 @@ from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
-                    load_megatron_optimizer, log_gpu_memory, offload_megatron_model_to_cpu, offload_megatron_optimizer,
-                    patch_profiling_context, patch_profiling_decorator, profiling_context)
+                    load_megatron_optimizer, offload_megatron_model_to_cpu, offload_megatron_optimizer,
+                    profiling_context, profiling_decorator)
 
 if is_wandb_available():
     import wandb
@@ -172,7 +172,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.engine = self.prepare_vllm()
                 if self.args.sleep_level > 0:
                     self.engine.engine.sleep(self.args.sleep_level)
-                    log_gpu_memory('after sleep vLLM engine')
                 set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
@@ -207,7 +206,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._buffered_inputs = None
         return engine
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _move_model_to_vllm(self):
         # Handle LoRA: merge adapters before exporting weights
         is_lora_training = self.args.train_type == 'lora'
@@ -244,7 +243,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         For server mode: Process weights in buckets to avoid memory spikes.
         """
         # Export weights returns an iterator
-        with patch_profiling_context(self, 'export_weights'):
+        with profiling_context(self, 'export_weights'):
             weight_iterator = self.bridge.export_weights(self.unwrapped_models)
 
         if self.vllm_mode == 'colocate':
@@ -565,13 +564,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
             micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
             micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
-            with patch_profiling_context(self, 'compute_ref_old_logps'):
+            with profiling_context(self, 'compute_ref_old_logps'):
                 micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
 
         return mini_batch_data
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _generate_completions(self, batch):
         """
         Generate completions for a batch of rollout data using vLLM engine.
@@ -593,9 +592,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-            log_gpu_memory(f'before wake up vLLM engine {kwargs}')
             self.engine.engine.wake_up(**kwargs)
-            log_gpu_memory(f'after wake up vLLM engine {kwargs}')
 
         # Step 2: Load model weights
         if self._step != self._last_loaded_step:
@@ -608,9 +605,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
                 aggressive_empty_cache()
                 set_expandable_segments(False)
-                log_gpu_memory('before wake up vLLM engine kv_cache')
                 self.engine.engine.wake_up(tags=['kv_cache'])
-                log_gpu_memory('after wake up vLLM engine kv_cache')
 
             # Step3: Rollout
             outputs: List[RolloutOutput] = self._rollout(batch)
@@ -618,11 +613,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step4: Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
                 self.engine.engine.reset_prefix_cache()
-                log_gpu_memory('before sleep vLLM engine')
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 aggressive_empty_cache()
                 set_expandable_segments(True)
-                log_gpu_memory('after sleep vLLM engine')
             batch = self.postprocess_rollout_data(batch, outputs)
 
         return batch
@@ -764,7 +757,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return outputs
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
         """Score completions using all reward functions.
 
@@ -1001,7 +994,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         finally:
             training.build_pretraining_data_loader = origin_build_pretraining_data_loader
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
@@ -1017,7 +1010,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             output_tensor = model(**inputs)
         return output_tensor, partial(self.loss_func, data=data)
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
         advantages = data['advantages']
         labels = data['labels']
@@ -1182,10 +1175,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             offload_megatron_model_to_cpu(self.wrapped_models)
             if hasattr(self, 'ref_models') and self.ref_models:
                 offload_megatron_model_to_cpu(self.ref_models)
-            log_gpu_memory('after offload model to cpu')
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             offload_megatron_optimizer(self.optimizer)
-            log_gpu_memory('after offload optimizer to cpu')
 
         try:
             yield
@@ -1195,10 +1186,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 load_megatron_model_to_gpu(self.wrapped_models)
                 if hasattr(self, 'ref_models') and self.ref_models:
                     load_megatron_model_to_gpu(self.ref_models)
-                log_gpu_memory('after load model to gpu')
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
-                log_gpu_memory('after load optimizer to gpu')
 
     def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
