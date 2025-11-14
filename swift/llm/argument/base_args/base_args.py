@@ -105,8 +105,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _init_lazy_tokenize(self):
         if self.lazy_tokenize is None:
-            if (self.model_meta is not None and self.model_meta.is_multimodal and not self.streaming
-                    and not self.packing):
+            if self.cached_dataset:
+                self.lazy_tokenize = False
+            elif (self.model_meta is not None and self.model_meta.is_multimodal and not self.streaming
+                  and not self.packing):
                 self.lazy_tokenize = True
             else:
                 self.lazy_tokenize = False

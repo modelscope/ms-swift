@@ -700,6 +700,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - quant_batch_size: 量化batch_size，默认为1。
 - group_size: 量化group大小，默认为128。
 - to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。更多介绍请查看`cached_dataset`。
+  - 提示：cached_dataset需提前区分好训练集和验证集。你可以通过`--split_dataset_ratio`或者`--val_dataset`指定验证集内容。
 - template_mode: 用于支持对`swift rlhf`训练的`cached_dataset`功能。该参数只在`--to_cached_dataset true`时生效。可选项包括: 'train'、'rlhf'和'kto'。其中`swift pt/sft`使用'train'，`swift rlhf --rlhf_type kto`使用'kto'，其他rlhf算法使用'rlhf'。注意：当前'gkd', 'ppo', 'grpo'算法不支持`cached_dataset`功能。默认为'train'。
 - to_ollama: 产生ollama所需的Modelfile文件。默认为False。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。

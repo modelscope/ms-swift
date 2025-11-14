@@ -718,6 +718,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
 - to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset). For more information, please refer to cached_dataset.
+  - Note: cached_dataset requires the training set and validation set to be distinguished in advance. You can specify the validation set content through `--split_dataset_ratio` or `--val_dataset`.
 - template_mode: Used to support the `cached_dataset` feature for `swift rlhf` training. This parameter only takes effect when `--to_cached_dataset true` is set. Available options include: 'train', 'rlhf', and 'kto'. Among them, `swift pt/sft` uses 'train', `swift rlhf --rlhf_type kto` uses 'kto', and other rlhf algorithms use 'rlhf'. Note: Currently, 'gkd', 'ppo', and 'grpo' algorithms do not support the `cached_dataset` feature. Default is 'train'.
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
