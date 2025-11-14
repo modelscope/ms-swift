@@ -49,7 +49,7 @@ def prepare_kto_dataset(args, train_dataset, val_dataset):
             total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
         if total_batch_size <= 1:
             raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
-                            'will be equivalent to the implied reward.')
+                             'will be equivalent to the implied reward.')
         train_dataset = _get_kl_dataset(train_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
         val_dataset = _get_kl_dataset(val_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
 
