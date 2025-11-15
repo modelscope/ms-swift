@@ -212,3 +212,78 @@ We can achieve the [On-Policy Distillation](https://thinkingmachines.ai/blog/on-
 ```
 
 For a complete implementation, refer to the example script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh).
+
+## Conditional Distillation
+
+Conditional distillation enables the teacher and student models to use **different contexts or prompts** during training, allowing for more flexible knowledge transfer strategies. For example:
+- Teacher model receives prompts with additional expert guidance
+- Teacher model receives task-reformulated inputs (e.g., summaries, translations)
+- Teacher model uses longer context information
+
+### TeacherAdapter Plugin System
+
+You can customize the teacher model's context transformation logic by implementing the `TeacherAdapter` interface:
+
+```python
+# swift/plugin/teacher_adapter.py
+from swift.plugin import TeacherAdapter
+
+class MyTeacherAdapter(TeacherAdapter):
+    def shape_context(self, history):
+        """Transform student messages to teacher messages
+
+        Args:
+            history: Student model's message list (OpenAI format)
+
+        Returns:
+            Teacher model's message list
+        """
+        # Add extra system prompt for teacher
+        teacher_history = history.copy()
+        if teacher_history and teacher_history[0]['role'] == 'system':
+            teacher_history[0]['content'] += '\n\nYou are an expert with extensive knowledge.'
+        else:
+            teacher_history.insert(0, {
+                'role': 'system',
+                'content': 'You are an expert with extensive knowledge.'
+            })
+        return teacher_history
+
+# Register to plugin system
+from swift.plugin import teacher_adapters
+teacher_adapters['my_adapter'] = MyTeacherAdapter
+```
+
+### Built-in Adapters
+
+SWIFT provides two built-in teacher adapters:
+
+| Adapter | Description |
+|---------|-------------|
+| `default` | Default: teacher uses the same context as student |
+| `example` | Example: adds extra instructions to system prompt for teacher |
+
+### Usage
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --teacher_model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_adapter example \
+    --dataset your_dataset.jsonl \
+    ...
+```
+
+### How It Works
+
+In conditional distillation:
+
+1. **Student model** processes original input: `[prompt_student] + [response]`
+2. **Teacher model** processes transformed input: `[prompt_teacher] + [response]`
+3. Both models compute logits on the **same response tokens**
+4. Distillation loss is calculated using these logits
+
+Where `prompt_teacher` is transformed from `prompt_student` by `teacher_adapter.shape_context()`, while the `response` part remains unchanged.
+
+Training script reference [here](../../../examples/train/on_policy_condition_distillation.sh)

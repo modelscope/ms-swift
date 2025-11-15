@@ -31,11 +31,11 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         return functions
 
     def _get_tool_responses(self, tool_messages):
-        return ''.join(f'<｜tool▁output▁begin｜>{tool_message["content"]}<｜tool▁output▁end｜>'
+        return ''.join(f'<｜tool▁output▁begin｜>{tool_message['content']}<｜tool▁output▁end｜>'
                        for tool_message in tool_messages)
 
     def _get_tool_calls(self, tool_calls: List[str]):
-        return f'<｜tool▁calls▁begin｜>{"".join(tool_calls)}<｜tool▁calls▁end｜>'
+        return f'<｜tool▁calls▁begin｜>{''.join(tool_calls)}<｜tool▁calls▁end｜>'
 
     def _format_tool_responses(
         self,

@@ -143,7 +143,7 @@ class ModelArguments:
         if self.max_model_len is None:
             self.max_model_len = rope_model_len
         elif self.max_model_len > rope_model_len:
-            logger.warning(f'rope config ({rope_model_len} = {rope_scaling["factor"]} * '
+            logger.warning(f'rope config ({rope_model_len} = {rope_scaling['factor']} * '
                            f'{origin_max_model_len}) should be bigger than max_model_len '
                            f'from command line ({self.max_model_len})')
         self.rope_scaling = rope_scaling

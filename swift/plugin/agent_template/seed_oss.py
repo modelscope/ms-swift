@@ -80,7 +80,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
         ]
         param_str = ','.join(params)
 
-        docstring_parts = ['    """', f'    {func.get("description", "").strip()}']
+        docstring_parts = ['    """', f'    {func.get('description', '').strip()}']
 
         if properties:
             docstring_parts.append('\n    Args:')
@@ -135,7 +135,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
             doubao_prompt = ('You are Doubao, a helpful AI assistant. '
                              'You may call one or more functions to assist with the user query.')
             return (f'{doubao_prompt}\n\n{tool_defs_joined}\n{tool_call_format_instruction}\n'
-                    f'{split_token}\n{system or ""}')
+                    f'{split_token}\n{system or ''}')
 
     def _format_tool_calls(self, tool_call_messages: List[dict]) -> str:
         formatted_calls = []

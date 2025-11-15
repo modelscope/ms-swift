@@ -47,7 +47,7 @@ class MistralAgentTemplate(BaseAgentTemplate):
         for tool_message in tool_messages:
             tool_content = tool_message['content']
             # append `[TOOL_RESULTS]{"content": {{ .Content }}}[/TOOL_RESULTS]` to res_tool
-            res_tool.append(f'[TOOL_RESULTS]{json.dumps({"content": tool_content}, ensure_ascii=False)}[/TOOL_RESULTS]')
+            res_tool.append(f'[TOOL_RESULTS]{json.dumps({'content': tool_content}, ensure_ascii=False)}[/TOOL_RESULTS]')
         total_tool = '\n'.join(res_tool)
         for context in prompt:
             if isinstance(context, str):

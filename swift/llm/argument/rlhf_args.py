@@ -120,6 +120,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     lmbda: float = 0.5
     seq_kd: bool = False
     offload_teacher_model: bool = False
+    teacher_adapter: Optional[str] = None  # Teacher adapter plugin for conditional distillation
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
@@ -433,6 +434,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_gkd(self):
         if self.rlhf_type != 'gkd':
             return
+        # Preserve extra dataset fields for conditional distillation
+        self.remove_unused_columns = False
+        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+
         if is_mp() and self.use_vllm:
             raise ValueError('GKD with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
