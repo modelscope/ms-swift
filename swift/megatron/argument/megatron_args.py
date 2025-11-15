@@ -598,9 +598,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
 
-        if self.vit_gradient_checkpointing is None:
-            self.vit_gradient_checkpointing = not self.freeze_vit
-
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         ModelArguments._init_mixed_precision(self)
