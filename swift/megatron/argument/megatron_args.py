@@ -642,7 +642,7 @@ class MegatronArguments(ExtraMegatronArguments):
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         if self.optimizer_cpu_offload:
-            require_version('megatron-core>=0.13')
+            require_version('megatron-core>=0.13.0rc0')
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
