@@ -1295,6 +1295,7 @@ class Template(ProcessorMixin):
             if encoded.get('length') is not None:
                 encoded['length'] += padding_len
 
+
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
             return

@@ -578,9 +578,9 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
 - vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `server` or `colocate`
 - vllm_mode server parameter
-  - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
   - vllm_server_host: The host address of the vLLM server. Default is None.
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
+  - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - vllm_server_pass_dataset: pass additional dataset information through to the vLLM server for multi-turn training.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
@@ -593,7 +593,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_enable_prefix_caching: A pass-through parameter for vLLM, default is True.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
-  - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
+  - sleep_level: make vllm sleep when model is training. Options are 0/1/2, default is 0, no sleep
   - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
   - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
   - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
@@ -608,7 +608,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 - delta: Delta value for the upper clipping bound in two-sided GRPO. Recommended to be > 1 + epsilon. This method was introduced in the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291).
-- importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://www.arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
+- importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md), [`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md).
 - kl_in_reward: Controls where the KL regularization is applied. `false`: KL is a separate loss term. `true`: KL is subtracted from the reward. The default is bound to `advantage_estimator`: `false` for `grpo`, and `true` for `rloo` and `reinforce_plus_plus`.
 - scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling). In ms-swift < 3.10, this was a boolean where `true` corresponds to `group` and `false` to `none`. The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
@@ -622,6 +622,8 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - log_entropy: Logs the entropy values during training. The default is False. For more information, refer to the [documentation](./GRPO/GetStarted/GRPO.md#logged-metrics).
 
 
+##### Reward function parameters
+Refer to the [documentation](./GRPO/DeveloperGuide/reward_function.md) for built-in reward functions.
 
 cosine reward function arguments
 - cosine_min_len_value_wrong (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect.
