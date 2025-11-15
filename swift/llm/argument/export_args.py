@@ -43,6 +43,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     # cached_dataset
     to_cached_dataset: bool = False
+    template_mode: Literal['train', 'rlhf', 'kto'] = 'train'
 
     # ollama
     to_ollama: bool = False

@@ -56,6 +56,9 @@
   - 子数据集: 该参数只有当dataset为ID或者文件夹时生效。若注册时指定了subsets，且只有一个子数据集，则默认选择注册时指定的子数据集，否则默认为'default'。你可以使用`/`来选择多个子数据集，例如：`<dataset_id>:subset1/subset2`。你也可以使用'all'来选择注册时指定的所有子数据集，例如：`<dataset_id>:all`。注册例子可以参考[这里](https://modelscope.cn/datasets/swift/garbage_competition)。
   - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
+- 🔥cached_dataset: 使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练/推理时，tokenize过程占用gpu时间。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
+  - 提示：在"ms-swift>=3.11"，cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。
+  - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf（需"ms-swift>=3.11"）。
 - 🔥split_dataset_ratio: 不指定val_dataset时从训练集拆分验证集的比例，默认为0.，即不从训练集切分验证集。
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
 - data_seed: 数据集随机种子，默认为42。
@@ -450,8 +453,6 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
   - 注意：若你要进行图像的数据增强，你需要将lazy_tokenize（或streaming）设置为True，并修改Template类中的encode方法。
-- cached_dataset: 训练中使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练时，tokenize过程占用gpu时间。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
-  - 注意：cached_dataset支持`--packing`，但不支持`--lazy_tokenize`和`--streaming`。
 - use_logits_to_keep: 通过在`forward`中根据labels传入logits_to_keep，减少无效logits的计算与存储，从而减少显存占用并加快训练速度。默认为None，进行自动选择。
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
@@ -700,8 +701,9 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - max_length: 校准集的max_length, 默认值2048。
 - quant_batch_size: 量化batch_size，默认为1。
 - group_size: 量化group大小，默认为128。
-- to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
-  - 注意：数据packing在训练时进行，而不在此处。
+- to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。更多介绍请查看`cached_dataset`。
+  - 提示：cached_dataset需提前区分好训练集和验证集。你可以通过`--split_dataset_ratio`或者`--val_dataset`指定验证集内容。
+- template_mode: 用于支持对`swift rlhf`训练的`cached_dataset`功能。该参数只在`--to_cached_dataset true`时生效。可选项包括: 'train'、'rlhf'和'kto'。其中`swift pt/sft`使用'train'，`swift rlhf --rlhf_type kto`使用'kto'，其他rlhf算法使用'rlhf'。注意：当前'gkd', 'ppo', 'grpo'算法不支持`cached_dataset`功能。默认为'train'。
 - to_ollama: 产生ollama所需的Modelfile文件。默认为False。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - to_hf: Megatron格式权重转成HF格式。默认为False。

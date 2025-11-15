@@ -70,9 +70,6 @@ class DeployArguments(InferArguments):
     def _init_stream(self):
         return BaseArguments._init_stream(self)
 
-    def _init_eval_human(self):
-        pass
-
     def _init_result_path(self, folder_name: str) -> None:
         if folder_name == 'infer_result':
             folder_name = 'deploy_result'

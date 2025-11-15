@@ -177,8 +177,8 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        model_mapping = {'kto': 'kto', 'gkd': 'gkd', 'ppo': 'pt', 'grpo': 'train'}
-        self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
+        mode_mapping = {'kto': 'kto', 'gkd': 'gkd', 'ppo': 'pt', 'grpo': 'train'}
+        self.template.set_mode(mode_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'ppo':
             args.training_args.stop_token_id = self.template.template_meta.stop_token_id
