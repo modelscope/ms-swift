@@ -87,7 +87,7 @@ class BaseMegatronTrainer(ABC):
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
-            num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
+            num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
