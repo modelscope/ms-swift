@@ -32,7 +32,7 @@ class TemplateArguments:
     system: Optional[str] = None  # Override the default_system in the template.
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'left', 'right', None] = None
+    truncation_strategy: Literal['delete', 'left', 'right', 'split', None] = None
     max_pixels: Optional[int] = None
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
