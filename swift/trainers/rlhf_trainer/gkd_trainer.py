@@ -152,41 +152,43 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             student_outputs = base_student(**model_inputs, use_cache=False)
 
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with torch.no_grad(), load_context:
-                teacher_outputs = base_teacher(**model_inputs, use_cache=False)
+            with load_context:
+                with torch.no_grad():
+                    teacher_outputs = base_teacher(**model_inputs, use_cache=False)
 
-            # Get hidden states (shifted)
-            student_hidden = student_outputs.last_hidden_state[:, :-1]
-            teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
+                # Get hidden states (shifted)
+                student_hidden = student_outputs.last_hidden_state[:, :-1]
+                teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
 
-            # Release full outputs to free memory
-            del student_outputs, teacher_outputs
+                # Release full outputs to free memory
+                del student_outputs, teacher_outputs
 
-            # Prepare labels (shifted)
-            labels_mask = inputs['labels'] != -100
-            masked_input_ids = torch.where(labels_mask, inputs['input_ids'], torch.full_like(inputs['input_ids'], -100))
-            true_labels = masked_input_ids[:, 1:].contiguous()
+                # Prepare labels (shifted)
+                labels_mask = inputs['labels'] != -100
+                masked_input_ids = torch.where(labels_mask, inputs['input_ids'],
+                                               torch.full_like(inputs['input_ids'], -100))
+                true_labels = masked_input_ids[:, 1:].contiguous()
 
-            # Release intermediate tensors
-            del labels_mask, masked_input_ids
+                # Release intermediate tensors
+                del labels_mask, masked_input_ids
 
-            # Get output heads
-            student_head = unwrapped_student.get_output_embeddings()
-            teacher_head = unwrapped_teacher.get_output_embeddings()
+                # Get output heads
+                student_head = unwrapped_student.get_output_embeddings()
+                teacher_head = unwrapped_teacher.get_output_embeddings()
 
-            # Compute liger fused JSD loss
-            loss = self.liger_jsd_loss(
-                student_input=student_hidden,
-                student_weight=student_head.weight,
-                teacher_input=teacher_hidden,
-                teacher_weight=teacher_head.weight,
-                true_labels=true_labels,
-                student_bias=getattr(student_head, 'bias', None),
-                teacher_bias=getattr(teacher_head, 'bias', None),
-            )
+                # Compute liger fused JSD loss
+                loss = self.liger_jsd_loss(
+                    student_input=student_hidden,
+                    student_weight=student_head.weight,
+                    teacher_input=teacher_hidden,
+                    teacher_weight=teacher_head.weight,
+                    true_labels=true_labels,
+                    student_bias=getattr(student_head, 'bias', None),
+                    teacher_bias=getattr(teacher_head, 'bias', None),
+                )
 
-            # Release hidden states after loss computation
-            del student_hidden, teacher_hidden, true_labels
+                # Release hidden states after loss computation
+                del student_hidden, teacher_hidden, true_labels
         else:
             # Standard loss computation
             if self.args.sft_alpha > 0:
