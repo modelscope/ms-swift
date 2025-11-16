@@ -1,7 +1,7 @@
+# ms-swift>=3.11
 swift export \
     --model Qwen/Qwen2.5-7B \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
-    --max_length 8192 \
     --dataset_num_proc 64 \
     --split_dataset_ratio 0.01 \
     --to_cached_dataset true \
@@ -16,7 +16,6 @@ swift sft \
     --train_type full \
     --cached_dataset './qwen2_5_cached_dataset' \
     --num_train_epochs 3 \
-    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
