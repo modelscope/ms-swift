@@ -1099,7 +1099,6 @@ class Template(ProcessorMixin):
 
         assert len(inputs.messages) > 0, f'inputs.messages: {inputs.messages}'
         n_round = len(inputs.messages) // 2
-        add_eos = inputs.extra_kwargs.get('add_eos')
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
@@ -1140,6 +1139,7 @@ class Template(ProcessorMixin):
                     if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
+                add_eos = inputs.extra_kwargs.get('add_eos')
                 if add_eos is None:
                     add_eos = (self.is_training
                                or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words
