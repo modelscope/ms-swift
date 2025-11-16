@@ -158,7 +158,10 @@ def prepare_model_template(args, **kwargs):
 
 def _select_dataset(dataset, max_length):
     idxs = [i for i, length in enumerate(dataset['length']) if length <= max_length]
-    return dataset.select(idxs)
+    new_dataset = dataset.select(idxs)
+    if len(new_dataset) < len(dataset):
+        logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(new_dataset)}')
+    return new_dataset
 
 
 def get_cached_dataset(args):
