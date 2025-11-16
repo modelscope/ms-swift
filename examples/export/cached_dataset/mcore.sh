@@ -2,7 +2,6 @@
 swift export \
     --model Qwen/Qwen3-30B-A3B-Base \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
-    --max_length 8192 \
     --split_dataset_ratio 0.01 \
     --dataset_num_proc 64 \
     --to_cached_dataset true \
@@ -23,12 +22,11 @@ megatron sft \
     --lora_rank 32 \
     --lora_alpha 64 \
     --target_modules all-linear \
-    --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-3 \
+    --moe_aux_loss_coeff 1e-6 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --recompute_granularity full \
