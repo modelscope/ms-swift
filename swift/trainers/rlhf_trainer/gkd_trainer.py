@@ -140,17 +140,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # Get base models (exclude lm_head to save memory)
             unwrapped_student = self.accelerator.unwrap_model(model)
             if is_peft_model(unwrapped_student):
-                base_student = unwrapped_student.base_model.model
-            else:
-                base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
-                                       unwrapped_student)
+                unwrapped_student = unwrapped_student.base_model.model
+            base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
+                                   unwrapped_student)
 
             unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
-            if is_peft_model(unwrapped_teacher):
-                base_teacher = unwrapped_teacher.base_model.model
-            else:
-                base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
-                                       unwrapped_teacher)
+            base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
+                                   unwrapped_teacher)
 
             # Forward through base models
             student_outputs = base_student(**model_inputs, use_cache=False)
@@ -383,6 +379,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             if not _liger_kernel_available:
                 raise ImportError(
                     'Liger kernel is not installed. Please install liger-kernel by running: pip install liger-kernel')
+            assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
 
             self.liger_jsd_loss = LigerFusedLinearJSDLoss(
                 beta=self.beta,
@@ -391,7 +388,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 compiled=False,
             )
             self.use_liger_gkd_loss = True
-        assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
 
     def _prepare_logging(self):
         """Initialize logging components for on-policy rollout tracking."""
