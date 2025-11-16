@@ -1,3 +1,4 @@
+# ms-swift>=3.11
 swift export \
     --model Qwen/Qwen2.5-7B \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \

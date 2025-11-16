@@ -1,3 +1,4 @@
+# ms-swift>=3.11
 swift export \
     --model Qwen/Qwen2.5-7B \
     --dataset 'AI-ModelScope/ruozhiba:all' \
