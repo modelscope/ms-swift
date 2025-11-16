@@ -385,6 +385,33 @@ class Template(ProcessorMixin):
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
         encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
+
+        # If teacher_history exists, encode teacher's prompt
+        if 'teacher_history' in inputs.extra_kwargs:
+            teacher_inputs = deepcopy(inputs)
+            teacher_history = inputs.extra_kwargs['teacher_history']
+
+            # Construct teacher messages: teacher_history + empty assistant response
+            if teacher_history and teacher_history[-1]['role'] != 'assistant':
+                teacher_messages = teacher_history + [{'role': 'assistant', 'content': ''}]
+            else:
+                teacher_messages = teacher_history
+
+            # Handle system message
+            if teacher_messages and teacher_messages[0]['role'] == 'system':
+                teacher_inputs.system = teacher_messages[0]['content']
+                teacher_messages = teacher_messages[1:]
+            else:
+                teacher_inputs.system = None
+
+            teacher_inputs.messages = teacher_messages
+            teacher_encoded = self._encode_truncated(teacher_inputs)
+            teacher_answer_len = len(teacher_encoded.get('answer_input_ids', []))
+            if teacher_answer_len > 0:
+                encoded['teacher_prompts'] = teacher_encoded['input_ids'][:-teacher_answer_len]
+            else:
+                encoded['teacher_prompts'] = teacher_encoded['input_ids']
+
         for k in list(encoded.keys()):
             if k.startswith('prompt_') or k.endswith('answer_'):
                 encoded.pop(k, None)
@@ -1524,6 +1551,25 @@ class Template(ProcessorMixin):
             prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
             res['prompts'] = prompts_res.pop('input_ids')
             res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
+
+        # Handle teacher_prompts + response for conditional distillation
+        if any(b.get('teacher_prompts') is not None for b in batch):
+            # Extract response tokens from input_ids using labels (includes all tokens like <|im_end|>)
+            teacher_input_ids_batch = []
+            for b in batch:
+                if b.get('teacher_prompts') is not None:
+                    # Extract response tokens from input_ids where labels != -100
+                    response_mask = [label != -100 for label in b['labels']]
+                    response_tokens = [token for token, keep in zip(b['input_ids'], response_mask) if keep]
+                    # Concatenate teacher_prompts + response_tokens
+                    teacher_input_ids = b['teacher_prompts'] + response_tokens
+                    teacher_input_ids_batch.append({'input_ids': teacher_input_ids})
+
+            if teacher_input_ids_batch:
+                teacher_res = self._data_collator(teacher_input_ids_batch, padding_to=padding_to)
+                res['teacher_input_ids'] = teacher_res.pop('input_ids')
+                res.update({f'teacher_{k}': v for k, v in teacher_res.items()})
+
         return res
 
     def _embedding_data_collator(self,
@@ -1705,7 +1751,7 @@ class Template(ProcessorMixin):
                 seq_len = max(seq_lens) if padding_to is None else padding_to
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
-                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res['attention_mask'].dtype}'
                 for i, seq_len in enumerate(seq_lens):
                     res['attention_mask'][i, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']

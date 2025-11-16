@@ -16,8 +16,9 @@ version_file = 'swift/version.py'
 
 def get_version():
     with open(version_file, 'r', encoding='utf-8') as f:
-        exec(compile(f.read(), version_file, 'exec'))
-    return locals()['__version__']
+        version_globals = {}
+        exec(compile(f.read(), version_file, 'exec'), version_globals)
+    return version_globals['__version__']
 
 
 def parse_requirements(fname='requirements.txt', with_version=True):

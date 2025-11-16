@@ -38,6 +38,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_model = kwargs.pop('teacher_model')
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
+        rlhf_args = kwargs.pop('rlhf_args', None)
         kwargs['data_collator'] = identity_data_collator
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
@@ -45,6 +46,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.temperature = args.temperature
         self.seq_kd = args.seq_kd
         self.generation_config = model.generation_config
+
+        # Initialize teacher adapter for conditional distillation
+        teacher_adapter_name = getattr(rlhf_args, 'teacher_adapter', None) if rlhf_args else getattr(args, 'teacher_adapter', None)
+        self.teacher_adapter = None
+        if teacher_adapter_name is not None:
+            from swift.plugin import teacher_adapters
+            adapter_cls = teacher_adapters.get(teacher_adapter_name)
+            if adapter_cls is None:
+                raise ValueError(f'Unknown teacher_adapter: {teacher_adapter_name}. '
+                                 f'Available adapters: {list(teacher_adapters.keys())}')
+            self.teacher_adapter = adapter_cls()
+            logger.info(f"Loaded teacher_adapter: {type(self.teacher_adapter).__name__}")
+
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
@@ -83,7 +97,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
         # Generate output with respect to the prompt only
-        model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
+        model_inputs = {k: v for k, v in inputs.items()
+                       if not k.startswith('prompt')
+                       and not k.startswith('teacher_prompt')
+                       and k not in ('labels', 'teacher_prompts')}
         model_inputs['input_ids'] = inputs['prompts']
         model_inputs.update({k[len('prompt_'):]: v for k, v in inputs.items() if k.startswith('prompt_')})
         model_inputs.pop('position_ids', None)
@@ -118,7 +135,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
+        model_inputs = {k: v for k, v in inputs.items()
+                       if k not in {'prompt', 'labels', 'teacher_prompts'}
+                       and not k.startswith('prompt_')
+                       and not k.startswith('teacher_prompt_')}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
@@ -129,11 +149,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # compute student output
         outputs_student = model(**model_inputs)
 
-        model_inputs.pop('labels', None)
+        # Prepare teacher model inputs
+        teacher_model_inputs = model_inputs.copy()
+        if 'teacher_input_ids' in inputs:
+            # Conditional distillation: use pre-concatenated teacher_input_ids
+            teacher_model_inputs['input_ids'] = inputs['teacher_input_ids']
+            teacher_model_inputs['attention_mask'] = inputs['teacher_attention_mask']
+            if 'teacher_position_ids' in inputs:
+                teacher_model_inputs['position_ids'] = inputs['teacher_position_ids']
+
         load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
         with torch.no_grad(), load_context:
-            outputs_teacher = self.teacher_model(**model_inputs)
+             outputs_teacher = self.teacher_model(**teacher_model_inputs)
 
+        # Extract logits for distillation
+        # With use_logits_to_keep, both student and teacher logits are aligned with labels
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
         mask = shifted_labels != -100
         shifted_student_logits = outputs_student.logits[mask][None]
@@ -166,11 +196,30 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         batch_encoded_inputs = []
 
         for data in inputs:
+            # Save response_token_ids for later use in conditional distillation
+            response_token_ids = data.get('response_token_ids')
+            print(f"<debug>{self.tokenizer.decode(response_token_ids)}</debug>")
             if 'response_token_ids' in data and data['response_token_ids']:
                 from .utils import replace_assistant_response_with_ids
                 data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
 
+            # Use teacher_adapter to generate teacher_history if available
+            if self.teacher_adapter is not None:
+                # Prepare student messages (without final assistant response if present)
+                student_messages = data['messages'][:-1] if data['messages'][-1]['role'] == 'assistant' else data['messages']
+                # Pass complete data dict to adapter (similar to GRPO's reward_model_plugin design)
+                # Temporarily replace messages with student_messages for adapter
+                original_messages = data['messages']
+                data['messages'] = student_messages
+                teacher_history = self.teacher_adapter.shape_context(data)
+                data['messages'] = original_messages  # Restore
+                data['teacher_history'] = teacher_history
             encoded = template.encode(data, return_length=True)
+
+            # Preserve response_token_ids for conditional distillation
+            if response_token_ids is not None:
+                encoded['response_token_ids'] = response_token_ids
+
             batch_encoded_inputs.append(encoded)
 
         from swift.llm import to_device

@@ -210,3 +210,78 @@ swift rlhf \
 ```
 
 相关脚本可以参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh)
+
+## 条件蒸馏（Conditional Distillation）
+
+条件蒸馏允许教师模型和学生模型使用**不同的上下文或提示词**进行训练，从而实现更灵活的知识迁移策略。例如：
+- 教师模型接收包含额外专家指导的提示词
+- 教师模型接收任务重构后的输入（如摘要、翻译等）
+- 教师模型使用更长的上下文信息
+
+### TeacherAdapter 插件系统
+
+通过实现 `TeacherAdapter` 接口，可以自定义教师模型的上下文转换逻辑：
+
+```python
+# swift/plugin/teacher_adapter.py
+from swift.plugin import TeacherAdapter
+
+class MyTeacherAdapter(TeacherAdapter):
+    def shape_context(self, history):
+        """将学生的消息转换为教师的消息
+
+        Args:
+            history: 学生模型的消息列表（OpenAI 格式）
+
+        Returns:
+            教师模型的消息列表
+        """
+        # 为教师添加额外的系统提示
+        teacher_history = history.copy()
+        if teacher_history and teacher_history[0]['role'] == 'system':
+            teacher_history[0]['content'] += '\n\n你是一位专业领域专家。'
+        else:
+            teacher_history.insert(0, {
+                'role': 'system',
+                'content': '你是一位专业领域专家。'
+            })
+        return teacher_history
+
+# 注册到插件系统
+from swift.plugin import teacher_adapters
+teacher_adapters['my_adapter'] = MyTeacherAdapter
+```
+
+### 内置 Adapter
+
+SWIFT 提供两个内置的 teacher adapter：
+
+| Adapter | 说明 |
+|---------|------|
+| `default` | 默认：教师使用与学生相同的上下文 |
+| `example` | 示例：为教师添加额外的系统提示 |
+
+### 使用方法
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --teacher_model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_adapter example \
+    --dataset your_dataset.jsonl \
+    ...
+```
+
+### 工作原理
+
+在条件蒸馏中：
+
+1. **学生模型**处理原始输入：`[prompt_student] + [response]`
+2. **教师模型**处理转换后的输入：`[prompt_teacher] + [response]`
+3. 两个模型在**相同的 response tokens** 上计算 logits
+4. 使用这些 logits 计算蒸馏损失
+
+其中 `prompt_teacher` 由 `teacher_adapter.shape_context()` 从 `prompt_student` 转换而来，而 `response` 部分保持不变。
+
+训练脚本参考[这里](../../../examples/train/on_policy_condition_distillation.sh)
