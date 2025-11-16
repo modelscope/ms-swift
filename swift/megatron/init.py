@@ -669,6 +669,7 @@ def _patch_mrope():
 
 
 def _patch_megatron():
+    os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
