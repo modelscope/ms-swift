@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
+import megatron.core
 import torch
 from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -9,8 +10,11 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
+from packaging import version
 
 from .gpt_model import GPTModel
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class MultimodalGPTModel(MegatronModule):
@@ -63,7 +67,8 @@ class MultimodalGPTModel(MegatronModule):
                 res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
-                res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
+                kwargs = {'group': _self.tp_group} if mcore_013 else {}
+                res = scatter_to_sequence_parallel_region(res, **kwargs)
             return res
 
         VocabParallelEmbedding.forward = forward
