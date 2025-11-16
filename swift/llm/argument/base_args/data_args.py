@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
@@ -29,6 +30,7 @@ class DataArguments:
     # dataset_id or dataset_dir or dataset_path
     dataset: List[str] = field(default_factory=list)
     val_dataset: List[str] = field(default_factory=list)
+    cached_dataset: List[str] = field(default_factory=list)
     split_dataset_ratio: float = 0.
 
     data_seed: int = 42
@@ -68,6 +70,18 @@ class DataArguments:
                 msg = 'args.streaming is True'
             logger.info(f'Because {msg}, setting split_dataset_ratio: {self.split_dataset_ratio}')
         self._init_custom_dataset_info()
+        if isinstance(self.cached_dataset, str):
+            self.cached_dataset = [self.cached_dataset]
+        self._init_val_dataset_exists()
+
+    def _init_val_dataset_exists(self):
+        exists = self.dataset and self.split_dataset_ratio > 0 or self.val_dataset
+        if not exists and self.cached_dataset:
+            for dataset in self.cached_dataset:
+                if os.path.exists(os.path.join(dataset, 'val')):
+                    exists = True
+                    break
+        self._val_dataset_exists = exists
 
     def get_dataset_kwargs(self):
         return {
