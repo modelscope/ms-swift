@@ -67,8 +67,8 @@ class MultimodalGPTModel(MegatronModule):
                 res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
-                kwargs = {'group': _self.tp_group} if mcore_013 else {}
-                res = scatter_to_sequence_parallel_region(res, **kwargs)
+                group_kwargs = {'group': _self.tp_group} if mcore_013 else {}
+                res = scatter_to_sequence_parallel_region(res, **group_kwargs)
             return res
 
         VocabParallelEmbedding.forward = forward

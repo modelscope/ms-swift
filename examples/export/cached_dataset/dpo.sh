@@ -50,7 +50,7 @@ megatron rlhf \
     --save megatron_output/Qwen3-VL-30B-A3B-Instruct \
     --eval_interval 500 \
     --save_interval 500 \
-    --max_length 16384 \
+    --max_length 8192 \
     --max_epochs 1 \
     --num_workers 8 \
     --dataset_num_proc 8 \
@@ -62,7 +62,7 @@ megatron rlhf \
     --freeze_aligner true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.65 \
+    --optimizer_offload_fraction 0.4 \
     --attention_backend flash \
     --rpo_alpha 0.1 \
     --beta 0.1 \
