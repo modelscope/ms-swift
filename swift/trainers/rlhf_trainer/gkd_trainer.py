@@ -10,7 +10,7 @@ from typing import Dict, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from accelerate.utils import gather_object
+from accelerate.utils import gather_object, is_peft_model
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -21,6 +21,12 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import identity_data_collator, patch_profiling_context, patch_profiling_decorator, prepare_deepspeed
+
+try:
+    from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
+    _liger_kernel_available = True
+except ImportError:
+    _liger_kernel_available = False
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -50,6 +56,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Initialize logging components
         self._prepare_logging()
+
+        # Initialize liger loss
+        self._prepare_liger_loss()
+
         self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
         # Initialize teacher model
         if self.is_deepspeed_enabled:
@@ -124,42 +134,107 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
-        if self.args.sft_alpha > 0:
-            model_inputs['labels'] = inputs['labels']
-        # compute student output
-        outputs_student = model(**model_inputs)
 
-        model_inputs.pop('labels', None)
-        load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-        with torch.no_grad(), load_context:
-            outputs_teacher = self.teacher_model(**model_inputs)
+        if self.use_liger_gkd_loss:
+            # Liger fused JSD loss for memory efficiency
+            # Get base models (exclude lm_head to save memory)
+            unwrapped_student = self.accelerator.unwrap_model(model)
+            if is_peft_model(unwrapped_student):
+                unwrapped_student = unwrapped_student.base_model.model
+            base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
+                                   unwrapped_student)
 
-        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
-        mask = shifted_labels != -100
-        shifted_student_logits = outputs_student.logits[mask][None]
-        shifted_teacher_logits = outputs_teacher.logits[mask][None]
+            unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
+            base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
+                                   unwrapped_teacher)
 
-        # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
-        stu_dim = shifted_student_logits.shape[-1]
-        tea_dim = shifted_teacher_logits.shape[-1]
-        if stu_dim < tea_dim:
-            shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
-        elif stu_dim > tea_dim:
-            shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+            # Forward through base models
+            student_outputs = base_student(**model_inputs, use_cache=False)
 
-        # compute loss
-        loss = self.generalized_jsd_loss(
-            student_logits=shifted_student_logits,
-            teacher_logits=shifted_teacher_logits,
-            beta=self.beta,
-        )
-        if self.args.sft_alpha > 0:
-            loss = loss + self.args.sft_alpha * outputs_student.loss
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            with load_context:
+                with torch.no_grad():
+                    teacher_outputs = base_teacher(**model_inputs, use_cache=False)
+
+                # Get hidden states (shifted)
+                student_hidden = student_outputs.last_hidden_state[:, :-1]
+                teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
+
+                # Release full outputs to free memory
+                del student_outputs, teacher_outputs
+
+                # Prepare labels (shifted)
+                labels_mask = inputs['labels'] != -100
+                masked_input_ids = torch.where(labels_mask, inputs['input_ids'],
+                                               torch.full_like(inputs['input_ids'], -100))
+                true_labels = masked_input_ids[:, 1:].contiguous()
+
+                # Release intermediate tensors
+                del labels_mask, masked_input_ids
+
+                # Get output heads
+                student_head = unwrapped_student.get_output_embeddings()
+                teacher_head = unwrapped_teacher.get_output_embeddings()
+
+                # Compute liger fused JSD loss
+                loss = self.liger_jsd_loss(
+                    student_input=student_hidden,
+                    student_weight=student_head.weight,
+                    teacher_input=teacher_hidden,
+                    teacher_weight=teacher_head.weight,
+                    true_labels=true_labels,
+                    student_bias=getattr(student_head, 'bias', None),
+                    teacher_bias=getattr(teacher_head, 'bias', None),
+                )
+
+                # Release hidden states after loss computation
+                del student_hidden, teacher_hidden, true_labels
+        else:
+            # Standard loss computation
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            # compute student output
+            outputs_student = model(**model_inputs)
+
+            model_inputs.pop('labels', None)
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            with torch.no_grad(), load_context:
+                outputs_teacher = self.teacher_model(**model_inputs)
+
+            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+            mask = shifted_labels != -100
+            shifted_student_logits = outputs_student.logits[mask][None]
+            shifted_teacher_logits = outputs_teacher.logits[mask][None]
+
+            # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
+            stu_dim = shifted_student_logits.shape[-1]
+            tea_dim = shifted_teacher_logits.shape[-1]
+            if stu_dim < tea_dim:
+                shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
+                shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
+            elif stu_dim > tea_dim:
+                shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
+                shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+
+            # compute loss
+            loss = self.generalized_jsd_loss(
+                student_logits=shifted_student_logits,
+                teacher_logits=shifted_teacher_logits,
+                beta=self.beta,
+            )
+
+            # Add SFT loss if enabled (common for both paths)
+            if self.args.sft_alpha > 0:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
-        return (loss, outputs_student) if return_outputs else loss
+        if return_outputs:
+            if self.use_liger_gkd_loss:
+                # outputs has been released in liger loss computation to reduce peak memory
+                outputs_student = None
+            return (loss, outputs_student)
+        else:
+            return loss
 
     def _prepare_batch_inputs(self, inputs: list) -> Dict[str, torch.Tensor]:
         template = self.template
@@ -297,6 +372,24 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.load_model(self.accelerator.unwrap_model(self.teacher_model))
         yield
         self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+
+    def _prepare_liger_loss(self):
+        """Initialize liger loss if enabled."""
+        args = self.args
+        self.use_liger_gkd_loss = False
+        if getattr(args, 'use_liger_kernel', False):
+            if not _liger_kernel_available:
+                raise ImportError(
+                    'Liger kernel is not installed. Please install liger-kernel by running: pip install liger-kernel')
+            assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
+
+            self.liger_jsd_loss = LigerFusedLinearJSDLoss(
+                beta=self.beta,
+                ignore_index=-100,
+                temperature=self.temperature,
+                compiled=False,
+            )
+            self.use_liger_gkd_loss = True
 
     def _prepare_logging(self):
         """Initialize logging components for on-policy rollout tracking."""

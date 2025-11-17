@@ -844,7 +844,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
-
+            input_data['add_eos'] = not choice.finish_reason == 'length'
             if output.rollout_infos:
                 multi_modal_keys = ['images', 'videos', 'audios']
                 for key in multi_modal_keys:
