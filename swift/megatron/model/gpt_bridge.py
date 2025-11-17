@@ -578,6 +578,8 @@ class GPTBridge:
                         getattr(mg_mlp.linear_fc1.lora_A[self._adapter_name], f'weight{i}').data.copy_(mg_lora_A[i])
                         getattr(mg_mlp.linear_fc1.lora_B[self._adapter_name], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
+                    mg_mlp.linear_fc1.lora_A[self._adapter_name].weight.data.copy_(
+                        mg_lora_A.view(-1, mg_lora_A.shape[-1]))
                     mg_mlp.linear_fc1.lora_B[self._adapter_name].weight.data.copy_(
                         mg_lora_B.view(-1, mg_lora_B.shape[-1]))
             else:
