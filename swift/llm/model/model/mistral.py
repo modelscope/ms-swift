@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import os
 from typing import Any, Dict
 
 from transformers import AutoTokenizer
@@ -130,12 +131,7 @@ def get_model_tokenizer_mistral_2503(model_dir: str,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):
-    try:
-        from transformers import Mistral3ForConditionalGeneration
-    except ImportError:
-        raise ImportError('Please install Mistral3ForConditionalGeneration by running '
-                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Mistral-3`')
-
+    from transformers import Mistral3ForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
@@ -184,4 +180,36 @@ register_model(
         architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
-    ), )
+    ))
+
+
+def get_model_tokenizer_mistral_2506(model_dir: str,
+                                     model_info: ModelInfo,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    from mistral_common.tokens.tokenizers.mistral import MistralTokenizer
+    from transformers import Mistral3ForConditionalGeneration
+    tokenizer = MistralTokenizer.from_file(os.path.join(model_dir, 'tekken.json'))
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
+    kwargs['tokenizer'] = tokenizer
+    model, _ = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mistral_2506,
+        [
+            ModelGroup([
+                Model('mistralai/Mistral-Small-3.1-24B-Base-2503', 'mistralai/Mistral-Small-3.1-24B-Base-2503'),
+                Model('mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503'),
+            ]),
+        ],
+        TemplateType.mistral_2506,
+        get_model_tokenizer_mistral_2506,
+        architectures=['Mistral3ForConditionalGeneration'],
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.49'],
+    ))

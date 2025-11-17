@@ -1,14 +1,38 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-import torch
-
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, findall
-from .llm import mistral_2501_system
+from ..utils import Context, Prompt, findall
+
+today = datetime.now().strftime('%Y-%m-%d')
+
+mistral_2501_system = (
+    'You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup '
+    'headquartered in Paris.\n'
+    f'Your knowledge base was last updated on 2023-10-01. The current date is {today}.\n\n'
+    "When you're not sure about some information, you say that you don't have the information and don't "
+    'make up anything.\n'
+    "If the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer "
+    'the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. '
+    '"What are some good restaurants around me?" => "Where are you?" or "When is the next flight to Tokyo" => "'
+    'Where do you travel from?")')
+
+
+@dataclass
+class Mistral3TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<s>'])
+    prompt: Prompt = field(default_factory=lambda: ['[INST]{{QUERY}}[/INST]'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['</s>'])
+    suffix: Prompt = field(default_factory=lambda: ['</s>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'])
+
+
+register_template(Mistral3TemplateMeta(LLMTemplateType.mistral_2501, default_system=mistral_2501_system))
 
 
 class Mistral2503Template(Template):
@@ -52,15 +76,8 @@ class Mistral2503Template(Template):
 
 
 register_template(
-    TemplateMeta(
-        MLLMTemplateType.mistral_2503,
-        prefix=['<s>'],
-        prompt=['[INST]{{QUERY}}[/INST]'],
-        chat_sep=['</s>'],
-        suffix=['</s>'],
-        system_prefix=['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'],
-        default_system=mistral_2501_system,
-        template_cls=Mistral2503Template))
+    Mistral3TemplateMeta(
+        MLLMTemplateType.mistral_2503, default_system=mistral_2501_system, template_cls=Mistral2503Template))
 
 devstral_small_2505_system = (  # from https://huggingface.co/mistralai/Devstral-Small-2505/blob/main/SYSTEM_PROMPT.txt
     'You are Devstral, a helpful agentic model trained by Mistral AI and using the OpenHands scaffold. '
@@ -122,12 +139,17 @@ devstral_small_2505_system = (  # from https://huggingface.co/mistralai/Devstral
     'executing a plan from the user, please don\'t try to directly work around it. Instead, propose a new '
     'plan and confirm with the user before proceeding.\n</TROUBLESHOOTING>')
 
+register_template(Mistral3TemplateMeta('devstral', default_system=devstral_small_2505_system))
+
+
+class Mistral2506Template(Mistral2503Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        pass
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        pass
+
+
 register_template(
-    TemplateMeta(
-        'devstral',
-        prefix=['<s>'],
-        prompt=['[INST]{{QUERY}}[/INST]'],  # the user query
-        chat_sep=['</s>'],
-        suffix=['</s>'],
-        system_prefix=['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'],  # the system prompt
-        default_system=devstral_small_2505_system))
+    Mistral3TemplateMeta(MLLMTemplateType.mistral_2506, default_system=None, template_cls=Mistral2506Template))

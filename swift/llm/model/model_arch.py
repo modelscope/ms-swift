@@ -81,7 +81,6 @@ class MLLMModelArch:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3n = 'gemma3n'
-    mistral_2503 = 'mistral_2503'
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
