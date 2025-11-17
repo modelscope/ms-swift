@@ -541,11 +541,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
                 advantages = torch.cat([advantages, padding])
 
+            completion_mask = labels != -100
             encoded_batch.update({
-                'completion_mask': labels != -100,
+                'completion_mask': completion_mask,
                 'truncated_mask': truncated_mask,
                 'advantages': advantages,
                 'num_samples': len(rollout_batch),
+                'seq_lengths': lengths,
             })
 
             return encoded_batch
@@ -554,6 +556,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         total_batch = gather_object(rollout_batch, group=rollout_group)
         total_advantages = gather(advantages, group=rollout_group)
         mini_batch_data = []
+
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
@@ -562,6 +565,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             with profiling_context(self, 'compute_ref_old_logps'):
                 micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
+
+        if self.loss_type in ['cispo', 'dapo']:
+            # Calculate num_items_in_batch
+            # Count tokens from all mini_batch_data (this includes gathered data from rollout_group)
+            total_token_count = sum(batch_data['seq_lengths'].sum().item() if self.template.
+                                    padding_free else batch_data['completion_mask'].sum().item()
+                                    for batch_data in mini_batch_data)
+
+            # All-reduce across all ranks
+            total_token_count_tensor = torch.tensor(total_token_count, dtype=torch.int, device=self.device)
+            torch.distributed.all_reduce(total_token_count_tensor)
+
+            # Divide by rollout_group_size to account for duplicate counting within each rollout_group
+            # Each rollout_group (TP×PP×CP ranks) has the same gathered data, so we need to normalize
+            rollout_group_size = (
+                mpu.get_tensor_model_parallel_world_size() * mpu.get_pipeline_model_parallel_world_size()
+                * mpu.get_context_parallel_world_size())
+            num_items_in_batch = total_token_count_tensor.item() / rollout_group_size
+            # Store num_items_in_batch in each mini_batch_data for CISPO/DAPO loss normalization
+            for batch_data in mini_batch_data:
+                batch_data['num_items_in_batch'] = num_items_in_batch
 
         return mini_batch_data
 
@@ -579,7 +603,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Returns:
             batch: The input batch with rollout completion results merged in.
         """
-        # TODO: server mode
         # add prompt ids and system prompts
         batch = self._preprocess_inputs(batch)
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
@@ -618,7 +641,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _rollout(self, batch) -> List[RolloutOutput]:
         batch = self._set_inputs_system(batch)
         request_config = self._get_request_config()
-        # TODO: server mode
         if self.vllm_mode == 'server':
             rollout_outputs = self._server_rollout(batch, request_config)
         elif self.vllm_mode == 'colocate':
@@ -1077,26 +1099,43 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 ",'sequence' and 'sequence_token'.")
 
         coef_1 = torch.exp(log_importance_weights)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-        if self.args.delta is not None:
-            coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        if self.template.padding_free:
-            # In padding_free + sequence mode, coef_1 is [num_samples, 1]
-            # We need to expand to [1, total_tokens] for token-level loss computation
-            if self.importance_sampling_level == 'sequence':
-                # Vectorized: expand sequence-level weights to token-level without gradient
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+        if self.loss_type == 'cispo':
+            clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
+            if self.template.padding_free:
+                # In padding_free + sequence mode, coef_1 is [num_samples, 1]
+                # We need to expand to [1, total_tokens] for token-level loss computation
+                if self.importance_sampling_level == 'sequence':
+                    # Vectorized: expand sequence-level weights to token-level without gradient
+                    clamped_ratios = torch.repeat_interleave(
+                        clamped_ratios.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+                advantages = advantages[-clamped_ratios.shape[1]:]
+                per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
+            else:
+                raise NotImplementedError
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
+            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+            if self.args.delta is not None:
+                coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            advantages = advantages[-coef_1.shape[1]:]
-            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+            if self.template.padding_free:
+                # In padding_free + sequence mode, coef_1 is [num_samples, 1]
+                # We need to expand to [1, total_tokens] for token-level loss computation
+                if self.importance_sampling_level == 'sequence':
+                    # Vectorized: expand sequence-level weights to token-level without gradient
+                    coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+                    coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+
+                advantages = advantages[-coef_1.shape[1]:]
+                per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+                per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+            else:
+                raise NotImplementedError
+                # per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+                # per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         else:
-            raise NotImplementedError
-            # per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            # per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
@@ -1112,6 +1151,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
+        elif self.loss_type in ['cispo', 'dapo']:
+            # CISPO and DAPO: Normalize by total completion tokens across all processes
+            # num_items_in_batch is calculated in _generate_and_score_completions and stored in data
+            num_items_in_batch = data['num_items_in_batch']
+            # Divide by DP world size to get the normalizer for each process
+            # (num_items_in_batch is the global sum across all DP processes)
+            dp_size = mpu.get_data_parallel_world_size()
+            normalizer = num_items_in_batch / dp_size
+            loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1132,6 +1180,57 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             avg_metric['kl'] = kl_value.clone().detach()
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
+
+        # Compute clipping metrics
+        completion_token_count = completion_mask.sum().clamp(min=1.0)
+        if self.loss_type == 'cispo':
+            # CISPO: Only track upper bound clipping
+            if self.template.padding_free:
+                # Recompute coef_1_expanded for metrics (use original coef_1 before clamping)
+                if self.importance_sampling_level == 'sequence':
+                    coef_1_expanded = torch.repeat_interleave(
+                        coef_1.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+                else:
+                    coef_1_expanded = coef_1
+                advantages_for_metrics = advantages[-coef_1_expanded.shape[1]:]
+                is_cispo_clipped = (coef_1_expanded > self.epsilon_high) & (advantages_for_metrics.unsqueeze(0) > 0)
+            else:
+                raise NotImplementedError
+            cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
+            # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
+            self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio.item())
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
+            if self.template.padding_free:
+                # Use coef_1 before clamping for metrics (need to expand if sequence-level)
+                if self.importance_sampling_level == 'sequence':
+                    coef_1_expanded = torch.repeat_interleave(
+                        torch.exp(log_importance_weights).squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+                else:
+                    coef_1_expanded = torch.exp(log_importance_weights)
+                advantages_for_metrics = advantages[-coef_1_expanded.shape[1]:]
+                is_low_clipped = (coef_1_expanded < 1 - self.epsilon_low) & (advantages_for_metrics.unsqueeze(0) < 0)
+                is_high_clipped = (coef_1_expanded > 1 + self.epsilon_high) & (advantages_for_metrics.unsqueeze(0) > 0)
+            else:
+                raise NotImplementedError
+            low_clip = (is_low_clipped.float() * completion_mask).sum() / completion_token_count
+            high_clip = (is_high_clipped.float() * completion_mask).sum() / completion_token_count
+            is_region_clipped = is_low_clipped | is_high_clipped
+            clip_ratio = (is_region_clipped.float() * completion_mask).sum() / completion_token_count
+
+            # For min/max, we need to gather values from all ranks to compute global min/max
+            # For mean, let _all_reduce_metric handle averaging
+            gathered_low_clip = gather(
+                low_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
+            gathered_high_clip = gather(
+                high_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
+
+            # Store local values for mean (will be averaged by _all_reduce_metric)
+            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip.item())
+            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip.item())
+            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio.item())
+            # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
+            custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
+            custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
         if self._metrics[mode]:
             addition_metrics = {
                 key: torch.tensor(sum(val) / len(val), device=loss.device)
