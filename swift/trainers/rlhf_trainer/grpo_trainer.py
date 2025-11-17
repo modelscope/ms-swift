@@ -1028,19 +1028,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        if self.template.padding_free:
-            if self.importance_sampling_level == 'sequence':
-                # Expand sequence-level weights to token-level
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+            if self.template.padding_free:
+                if self.importance_sampling_level == 'sequence':
+                    # Expand sequence-level weights to token-level
+                    coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                    coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
 
-            advantages = advantages[-coef_1.shape[1]:]
-            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
-        else:
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+                advantages = advantages[-coef_1.shape[1]:]
+                per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+                per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+            else:
+                per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+                per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
