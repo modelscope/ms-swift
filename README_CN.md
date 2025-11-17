@@ -130,7 +130,7 @@ pip install -e .
 | torch        | >=2.0        | 2.8.0               |                    |
 | transformers | >=4.33       | 4.57.1              |                    |
 | modelscope   | >=1.23       |                     |                    |
-| peft         | >=0.11,<0.18 |                     |                    |
+| peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.1/3.0.0b1 |                    |
 | trl          | >=0.15,<0.25 | 0.23.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.17.6              | 训练                 |
