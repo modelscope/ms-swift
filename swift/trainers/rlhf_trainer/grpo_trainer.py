@@ -1023,7 +1023,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
-            # GRPO, BNPO, DR_GRPO, DAPO: Two-sided clipping
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
@@ -1150,10 +1149,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if 'clipping' in metrics_data:
             clipping = metrics_data['clipping']
             if 'cispo_clip_ratio' in clipping:
-                # CISPO only has one clip ratio metric
+                # CISPO
                 self._metrics[mode]['cispo_clip_ratio'].append(clipping['cispo_clip_ratio'])
             else:
-                # GRPO, BNPO, DR_GRPO, DAPO have two-sided clipping metrics
                 self._metrics[mode]['clip_ratio/low_mean'].append(clipping['low_clip_mean'])
                 self._metrics[mode]['clip_ratio/low_min'].append(clipping['low_clip_min'])
                 self._metrics[mode]['clip_ratio/high_mean'].append(clipping['high_clip_mean'])
@@ -1275,17 +1273,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             aggregated_metrics['kl'] = sum(kl_values) / len(kl_values)
 
         # Aggregate clipping (token-weighted averages)
+        def weighted_avg(values):
+            return sum(v * w for v, w in values) / sum(w for _, w in values)
+
         if cispo_clip_values:
             # CISPO specific metric
-            def weighted_avg(values):
-                return sum(v * w for v, w in values) / sum(w for _, w in values)
-
             aggregated_metrics['clipping'] = {'cispo_clip_ratio': weighted_avg(cispo_clip_values)}
         elif clip_values['low']:
             # Two-sided clipping metrics
-            def weighted_avg(values):
-                return sum(v * w for v, w in values) / sum(w for _, w in values)
-
             aggregated_metrics['clipping'] = {
                 'low_clip_mean': weighted_avg(clip_values['low']),
                 'low_clip_min': min(clip_values['low_min']),
