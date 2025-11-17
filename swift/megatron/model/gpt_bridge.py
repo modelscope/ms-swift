@@ -141,6 +141,16 @@ class GPTBridge:
         if offset:
             tensor = tensor + offset
         mg_param.data.copy_(tensor)
+        if self._is_fp8_param(mg_param):
+            mg_param._high_precision_init_val.copy_(tensor)
+
+    @staticmethod
+    def _is_fp8_param(param):
+        try:
+            from transformer_engine.pytorch import Float8BlockwiseQTensor
+            return isinstance(param, Float8BlockwiseQTensor)
+        except ImportError:
+            return False
 
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
@@ -618,11 +628,18 @@ class GPTBridge:
                 if is_expert:
                     fc1_weight = fc1_weight.view(num_local_experts, -1, fc1_weight.shape[-1])
                     for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc1,
-                                f'weight{i}').data.copy_(fc1_weight[i].view(-1, fc1_weight.shape[-1]))
+                        mg_param = getattr(mg_mlp.linear_fc1, f'weight{i}')
+                        tensor = fc1_weight[i].view(-1, fc1_weight.shape[-1])
+                        mg_param.data.copy_(tensor)
+                        if self._is_fp8_param(mg_param):
+                            mg_param._high_precision_init_val.copy_(tensor)
                     del fc1_weight
                 else:
-                    mg_mlp.linear_fc1.weight.data.copy_(fc1_weight.view(-1, fc1_weight.shape[-1]))
+                    mg_param = mg_mlp.linear_fc1.weight
+                    tensor = fc1_weight.view(-1, fc1_weight.shape[-1])
+                    mg_param.data.copy_(tensor)
+                    if self._is_fp8_param(mg_param):
+                        mg_param._high_precision_init_val.copy_(tensor)
         else:
             is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc1,
                                                               LoraParallelLinear) and self._is_peft_format
@@ -774,7 +791,10 @@ class GPTBridge:
                     self._set_weight(fc2_weight, down_proj_weight, 'linear_fc2.weight', is_expert=is_expert)
                     fc2_weight = fc2_weight.view(num_local_experts, -1, fc2_weight.shape[-1])
                     for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc2, f'weight{i}').data.copy_(fc2_weight[i])
+                        mg_param = getattr(mg_mlp.linear_fc2, f'weight{i}')
+                        mg_param.data.copy_(fc2_weight[i])
+                        if self._is_fp8_param(mg_param):
+                            mg_param._high_precision_init_val.copy_(fc2_weight[i])
             else:
                 is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc2,
                                                                   LoraParallelLinear) and self._is_peft_format
