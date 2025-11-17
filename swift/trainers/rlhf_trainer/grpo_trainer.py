@@ -1909,7 +1909,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Entropy Mask, https://arxiv.org/abs/2506.01939
         self.top_entropy_quantile = args.top_entropy_quantile
 
-        # GSPO, https://www.arxiv.org/abs/2507.18071
+        # GSPO, https://arxiv.org/abs/2507.18071
         self.importance_sampling_level = args.importance_sampling_level
 
         # RLOO,

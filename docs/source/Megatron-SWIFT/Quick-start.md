@@ -8,6 +8,7 @@ ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数�
 | ------ | ------ | ---- | ----- | ----- |
 | 预训练| ✅ | ✅| ✅ | ✅ |
 | 指令监督微调 | ✅ | ✅| ✅ | ✅ |
+| GRPO | ✅ | ✅| ✅ | ✅ |
 | DPO | ✅ | ✅| ✅ | ✅ |
 | KTO | ✅ | ✅| ✅ | ✅ |
 | RM | ✅ | ✅| ✅ | ✅ |
@@ -27,6 +28,7 @@ pip install --no-build-isolation transformer_engine[pytorch]
 # pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
+# 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--no_gradient_accumulation_fusion true`即可。
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
@@ -65,7 +67,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | torch        | >=2.0        | 2.7.1/2.8.0       |                    |
 | transformer_engine    | >=2.3       |          |                  |
 | apex |   |  0.1 | |
-| megatron_core    |        | 0.14      |                  |
+| megatron_core    |   >=0.12    | 0.14      |                  |
 | flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.1      |                    |
 | modelscope   | >=1.23       |             |                    |

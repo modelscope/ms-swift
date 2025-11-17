@@ -62,7 +62,7 @@
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
 - 🍊 **RLHF训练**：支持纯文本大模型和多模态大模型的DPO、GRPO、RM、PPO、GKD、KTO、CPO、SimPO、ORPO等人类对齐训练方法。
 - 🍓 **多模态训练**：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
-- 🥥 **Megatron并行技术**：支持使用Megatron并行技术对CPT/SFT/DPO/KTO/RM进行加速，现支持200+纯文本大模型和100+多模态大模型。
+- 🥥 **Megatron并行技术**：支持使用Megatron并行技术对CPT/SFT/GRPO/DPO/KTO/RM进行加速，现支持200+纯文本大模型和100+多模态大模型。
 - **界面训练**：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
 - **插件化与拓展**：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
 - 🍉 **工具箱能力**：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署全流程。
@@ -71,6 +71,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
 - 🎁 2025.10.28: 已支持[使用yaml](examples/yaml)配置命令行参数。

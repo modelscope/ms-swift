@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import multiprocessing as mp
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
@@ -8,7 +10,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_dist, is_master
+from swift.utils import get_logger, is_dist, is_master, split_list
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -128,6 +130,7 @@ def calculate_matched_group(template, sequences, packing_length: int, is_finishe
 
 
 class PackingDataset(Dataset):
+    PACKING_BATCH_SIZE = 1000
 
     def __init__(
         self,
@@ -138,6 +141,7 @@ class PackingDataset(Dataset):
         strict: bool = False,
         load_from_cache_file: bool = True,
         packing_length: Optional[int] = None,
+        packing_num_proc: int = 1,
         **kwargs,
     ):
         template.packing = True
@@ -148,33 +152,58 @@ class PackingDataset(Dataset):
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
         self.packing_length = packing_length or self.template.max_length
-        self.workers = []
-        self.packed_idx, self.packed_length = self.create_packed_idx() if is_master() else (None, None)
+        self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
+        self._out_queue = mp.Queue()
+        if is_master():
+            lengths = self.dataset['length']
+            offset = 0
+            chunked_lengths = split_list(lengths, self.packing_num_proc)
+            for i in range(self.packing_num_proc):
+                worker = mp.Process(
+                    target=self.create_packed_idx, args=(
+                        i,
+                        offset,
+                        chunked_lengths[i],
+                    ), daemon=True)
+                worker.start()
+                offset += len(chunked_lengths[i])
+            self.packed_idx = [[] for _ in range(self.packing_num_proc)]
+            self.packed_length = [[] for _ in range(self.packing_num_proc)]
+            desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
+            with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
+                finished_workers = 0
+                while finished_workers < self.packing_num_proc:
+                    rank, sequences, data_len = self._out_queue.get()
+                    if data_len == -1:
+                        finished_workers += 1
+                        continue
+                    prog_bar.update(data_len)
+                    self.packed_idx[rank] += [[x[0] for x in seq] for seq in sequences]
+                    self.packed_length[rank] += [sum(x[1] for x in seq) for seq in sequences]
+            self.packed_idx = list(chain.from_iterable(self.packed_idx))
+            self.packed_length = list(chain.from_iterable(self.packed_length))
+        else:
+            self.packed_idx, self.packed_length = None, None
         if dist.is_initialized() and is_dist():
             obj_list = [(self.packed_idx, self.packed_length)]
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
 
-    def create_packed_idx(self):
-        lengths = self.dataset['length']
-        data = [(i, length) for i, length in enumerate(lengths)]
+    def create_packed_idx(self, rank, offset, lengths):
+        data = [(i + offset, length) for i, length in enumerate(lengths)]
         i = 0
-        PACKING_BATCH_SIZE = 1000
-        input_data, packed_idx, packed_length = [], [], []
-        with tqdm(total=len(data), dynamic_ncols=True, desc='Packing: ') as prog_bar:
-            while True:
-                new_data = data[i:i + PACKING_BATCH_SIZE]
-                input_data += new_data
-                prog_bar.update(len(new_data))
-                if not input_data:
-                    break
-                i += PACKING_BATCH_SIZE
-                is_finished = i >= len(data)
-                sequences, input_data = calculate_matched_group(
-                    self.template, input_data, self.packing_length, is_finished=is_finished)
-                packed_idx += [[x[0] for x in seq] for seq in sequences]
-                packed_length += [sum(x[1] for x in seq) for seq in sequences]
-        return packed_idx, packed_length
+        input_data = []
+        while True:
+            new_data = data[i:i + self.PACKING_BATCH_SIZE]
+            input_data += new_data
+            if not input_data:
+                break
+            i += self.PACKING_BATCH_SIZE
+            is_finished = i >= len(data)
+            sequences, input_data = calculate_matched_group(
+                self.template, input_data, self.packing_length, is_finished=is_finished)
+            self._out_queue.put((rank, sequences, len(new_data)))
+        self._out_queue.put((rank, [], -1))
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
@@ -280,14 +309,17 @@ class IterablePackingDataset(IterableDataset):
 
 class EncodePreprocessor(RowPreprocessor):
 
-    def __init__(self, template: 'Template', pre_tokenize: bool = False):
+    def __init__(self, template: 'Template'):
         super().__init__()
         self.template = template
-        self.pre_tokenize = pre_tokenize
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        encoded = self.template.encode(row, return_length=True)
-        if self.pre_tokenize:
-            row['length'] = encoded['length']
-            encoded = row
-        return encoded
+        return self.template.encode(row, return_length=True)
+
+
+class AddLengthPreprocessor(EncodePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        encoded = super().preprocess(row)
+        row['length'] = encoded['length']
+        return row

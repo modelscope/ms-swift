@@ -50,7 +50,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
 
     def loss_func(self, output_tensor, *, data, kl_data, label):
-        length = data['packed_seq_params'].cu_seqlens_q[-1]
+        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
         policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
         ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
         if self.args.calculate_KL:
@@ -76,7 +76,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         loss = loss.mean()
         mean_metric = {
             'loss': loss.detach().clone(),
-            'kl': kl.detach(),
+            'kl': kl.squeeze().detach(),
         }
         metric = self._all_reduce_metric(mean_metric)
         sum_metric = {
@@ -121,8 +121,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
 
-        length = data['packed_seq_params'].cu_seqlens_q[-1]
-
+        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:
@@ -144,7 +143,11 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
         with self.stimer:
             output_tensor = model(**data)
-        dim = 1 if mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage) else 0
+        if self.mcore_013:
+            is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
+        else:
+            is_pp_last_stage = mpu.is_pipeline_last_stage()
+        dim = 1 if is_pp_last_stage else 0
         if self.args.calculate_KL:
             res = torch.concat([output_tensor, ref_output_tensor, KL_output_tensor, ref_KL_output_tensor], dim=dim)
         else:
@@ -156,7 +159,11 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         num_samples = data.pop('num_samples')
         for key in ['completion_', 'KL_completion_']:
             _data = {k[len(key):]: v for k, v in data.items() if k.startswith(key)}
-            res.append(super()._prepare_batch(_data, vp_stage, num_samples))
+            if not self.args.calculate_KL and key == 'KL_completion_':
+                _data = {}
+            else:
+                _data = super()._prepare_batch(_data, vp_stage, num_samples)
+            res.append(_data)
         res[0]['label'] = data['label']
         return res
 

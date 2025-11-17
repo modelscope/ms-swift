@@ -29,7 +29,7 @@ from peft.utils.other import transpose
 from swift.utils import get_current_device
 from ..utils import tuners_sharded_state_dict
 
-megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class LoraParallelLinear(MegatronModule, LoraLayer):
@@ -99,7 +99,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
-        if megatron_core_013:
+        if mcore_013:
             kwargs['tp_group'] = self.base_layer.tp_group
         if isinstance(self.base_layer, TopKRouter):
             router_shape = self.base_layer.weight.shape
@@ -428,6 +428,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
     def unmerge(self) -> None:
         """
         Unmerge all merged adapter weights from the base weights.
+
         This method reverses the merge operation by subtracting the LoRA delta weights
         from the base layer weights, restoring the original base weights.
         """
