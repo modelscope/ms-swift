@@ -763,18 +763,18 @@ class TreeRolloutScheduler(MultiTurnScheduler):
                 # bind the output and request
                 output.id = sample.request_id
                 choice = output.choices[0]
-                sample = deepcopy(sample)
-                sample.extend_response(choice)
+                child_sample = deepcopy(sample)
+                child_sample.extend_response(choice)
 
-                if sample.status == SampleStatus.FINISHED:
-                    finished_samples[sample.root_node].append(sample)
-                    finished_rollout_by_root[sample.root_node].append(
+                if child_sample.status == SampleStatus.FINISHED:
+                    finished_samples[child_sample.root_node].append(child_sample)
+                    finished_rollout_by_root[child_sample.root_node].append(
                         RolloutOutput(
                             response=output,
-                            messages=deepcopy(sample.messages),
-                            response_token_ids=deepcopy(sample.all_response_ids)))
+                            messages=deepcopy(child_sample.messages),
+                            response_token_ids=deepcopy(child_sample.all_response_ids)))
                 else:
-                    samples_to_infer.append(sample)
+                    samples_to_infer.append(child_sample)
 
             # if we have budget, do divergence
             if len(samples_to_infer) > 0 and self.max_divergence > 1:
