@@ -81,6 +81,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         reward_templates = kwargs.pop('reward_template', None)
         self._prepare_algorithm_params()
         super().__init__(model, ref_model, *_args, **kwargs)
+        self._prepare_chord_dataset()
         self.prepare_rollout()
         self._prepare_rewards(reward_funcs, reward_model, reward_templates)
 
@@ -1868,6 +1869,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
 
+    def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
         self.chord_sft_iterator = None
         if self.chord_sft_dataset:
