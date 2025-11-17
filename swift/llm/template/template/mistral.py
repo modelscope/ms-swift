@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import datetime
+import os
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
@@ -52,15 +53,16 @@ class Mistral2503Template(Template):
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
         idx_list = findall(input_ids, self.image_token)
+        patch_size = processor.patch_size * processor.spatial_merge_size
         if idx_list:
-            image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
+            image_inputs = processor.image_processor(images, patch_size=patch_size, return_tensors='pt')
             encoded['pixel_values'] = image_inputs['pixel_values'].to(self.model_info.torch_dtype)
             encoded['image_sizes'] = image_sizes = image_inputs['image_sizes']
 
             def _get_new_tokens(i):
                 height, width = image_sizes[i]
-                num_height_tokens = height // (processor.patch_size * processor.spatial_merge_size)
-                num_width_tokens = width // (processor.patch_size * processor.spatial_merge_size)
+                num_height_tokens = height // patch_size
+                num_width_tokens = width // patch_size
                 replace_tokens = [[processor.image_token] * num_width_tokens + [processor.image_break_token]
                                   ] * num_height_tokens
                 # Flatten list
@@ -144,11 +146,21 @@ register_template(Mistral3TemplateMeta('devstral', default_system=devstral_small
 
 class Mistral2506Template(Mistral2503Template):
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        pass
+    def _get_mistral_system(self):
+        from swift.llm import get_model_name
+        model_dir = self.model_info.model_dir
+        model_name = get_model_name(model_dir)
+        file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
+        with open(file_path, 'r') as file:
+            system_prompt = file.read()
+        today = datetime.today().strftime('%Y-%m-%d')
+        yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+        return system_prompt.format(name=model_name, today=today, yesterday=yesterday)
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        pass
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is None:
+            inputs.system = self._get_mistral_system()
+        return super()._swift_encode(inputs)
 
 
 register_template(

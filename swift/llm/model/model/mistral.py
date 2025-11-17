@@ -3,7 +3,7 @@
 import os
 from typing import Any, Dict
 
-from transformers import AutoTokenizer
+from transformers import AutoProcessor, AutoTokenizer
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
@@ -190,12 +190,12 @@ def get_model_tokenizer_mistral_2506(model_dir: str,
                                      **kwargs):
     from mistral_common.tokens.tokenizers.mistral import MistralTokenizer
     from transformers import Mistral3ForConditionalGeneration
-    tokenizer = MistralTokenizer.from_file(os.path.join(model_dir, 'tekken.json'))
+    tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
+    processor = AutoProcessor.from_pretrained(tokenizer_dir)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
-    kwargs['tokenizer'] = tokenizer
-    model, _ = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, tokenizer
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    return model, processor
 
 
 register_model(
@@ -203,8 +203,7 @@ register_model(
         MLLMModelType.mistral_2506,
         [
             ModelGroup([
-                Model('mistralai/Mistral-Small-3.1-24B-Base-2503', 'mistralai/Mistral-Small-3.1-24B-Base-2503'),
-                Model('mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503'),
+                Model('mistralai/Mistral-Small-3.2-24B-Instruct-2506', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'),
             ]),
         ],
         TemplateType.mistral_2506,
