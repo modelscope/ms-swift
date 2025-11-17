@@ -151,6 +151,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # With use_logits_to_keep, both student and teacher logits are aligned with labels
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
         mask = shifted_labels != -100
+
+        # Allow teacher_adapter to modify the loss mask
+        if self.teacher_adapter is not None:
+            modified_mask = self.teacher_adapter.get_loss_mask(
+                student_logits=outputs_student.logits,
+                teacher_logits=outputs_teacher.logits,
+                mask=mask,
+                inputs=inputs,
+                labels=inputs['labels']
+            )
+            if modified_mask is not None:
+                mask = modified_mask
+
         shifted_student_logits = outputs_student.logits[mask][None]
         shifted_teacher_logits = outputs_teacher.logits[mask][None]
 

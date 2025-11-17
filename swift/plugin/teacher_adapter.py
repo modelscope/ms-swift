@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING, Dict, Any, Optional
 
 if TYPE_CHECKING:
     from swift.llm.utils import Messages
+    import torch
 
 
 class TeacherAdapter(ABC):
@@ -22,6 +23,33 @@ class TeacherAdapter(ABC):
             Teacher model's messages
         """
         pass
+
+    def get_loss_mask(self, student_logits: 'torch.Tensor', teacher_logits: 'torch.Tensor',
+                     mask: 'torch.Tensor', **kwargs) -> Optional['torch.Tensor']:
+        """Optionally modify the loss mask to control which tokens participate in distillation.
+
+        Args:
+            student_logits: Student model logits, shape (batch_size, seq_len, vocab_size)
+            teacher_logits: Teacher model logits, shape (batch_size, seq_len, vocab_size)
+            mask: Current mask indicating response tokens, shape (batch_size, seq_len)
+                  True means the position is a response token (labels != -100 after shift)
+            **kwargs: Additional information like 'inputs', 'labels', etc.
+
+        Returns:
+            Modified mask with same shape as input mask, or None to use original mask.
+            True means the position participates in loss computation.
+
+        Example:
+            # Only train on first 50 tokens + last 5 tokens (to ensure learning stop token)
+            new_mask = torch.zeros_like(mask)
+            for i in range(mask.shape[0]):
+                response_indices = mask[i].nonzero(as_tuple=True)[0]
+                if len(response_indices) > 0:
+                    new_mask[i, response_indices[:50]] = True  # First 50 tokens
+                    new_mask[i, response_indices[-6:-1]] = True  # Last 5 valid predictions
+            return new_mask
+        """
+        return None  # Default: use original mask
 
 
 class DefaultTeacherAdapter(TeacherAdapter):
