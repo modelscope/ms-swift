@@ -1092,6 +1092,15 @@ def test_ernie_vl_thinking():
     assert response == '\n<think>\n' + response2
 
 
+def test_mistral_2506():
+    pt_engine = PtEngine('mistralai/Mistral-Small-3.2-24B-Instruct-2506')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response[:200] == (
+        'The image features a close-up of a kitten with striking blue eyes. The kitten has a soft, '
+        'fluffy coat with a mix of white, gray, and brown fur. Its fur pattern includes distinct '
+        'stripes, particularly ')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1168,4 +1177,5 @@ if __name__ == '__main__':
     # test_llava_onevision1_5()
     # test_paddle_ocr()
     # test_ernie_vl()
-    test_ernie_vl_thinking()
+    # test_ernie_vl_thinking()
+    test_mistral_2506()
