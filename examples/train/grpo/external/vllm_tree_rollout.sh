@@ -1,15 +1,25 @@
-# This script is a example for multi-turn training with tree-rollout
+# This script is a example for multi-turn training with tree-rollout.
+# Optional configuration parameters：
+#   max_tree_deep (int):
+#     Controls the maximum number of reasoning turns for a single prompt.
+#   tree_root_divergence (int):
+#     Number of branches generated in the first-round inference at the root node.
+#   tree_max_divergence (int):
+#     Maximum number of branches allowed for each node.
+#   tree_divergence_strategy (str):
+#     Strategy for selecting branch nodes; defaults to logprobs.
+# For more details on tool invocation, dialogue termination criteria, and other logic, please refer to the TreeRolloutScheduler implementation.
 
 CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
-    --model Qwen2.5-0.5B
+    --model Qwen/Qwen2.5-0.5B
 
 
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen2.5-0.5B \
+    --model Qwen/Qwen2.5-0.5B \
     --reward_funcs format \
     --use_vllm true \
     --vllm_mode server \
