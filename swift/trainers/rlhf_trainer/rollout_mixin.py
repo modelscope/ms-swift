@@ -28,7 +28,7 @@ from transformers import PreTrainedModel, TrainerCallback
 
 from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.plugin import MultiTurnScheduler, multi_turns
+from swift.plugin import MultiTurnScheduler, multi_turns, TreeRolloutScheduler
 from swift.trainers import RolloutTrainerArgumentsMixin
 from swift.utils import get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
@@ -941,7 +941,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 multi_turn_scheduler_class = multi_turns[args.multi_turn_scheduler]
 
                 if args.tree_rollout:
-                    from swift.plugin.multi_turn import TreeRolloutScheduler
                     assert issubclass(multi_turn_scheduler_class, TreeRolloutScheduler)
 
                 multi_turn_scheduler = multi_turn_scheduler_class(

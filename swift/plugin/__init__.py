@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
-    from .multi_turn import multi_turns, MultiTurnScheduler
+    from .multi_turn import multi_turns, MultiTurnScheduler, TreeRolloutScheduler
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager

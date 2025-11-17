@@ -1,21 +1,19 @@
 import asyncio
-import time
+import random
 from abc import ABC
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import numpy as np
-
+from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
+                                      RolloutOutput)
+from swift.llm.template import RolloutInferRequest
 from swift.plugin import ContextManager, Env, context_managers, envs
 from swift.plugin.tree_rollout import (DataSampleTree, DivergenceStrategyMapping, SampleStatus,
                                        _increment_tree_idx_depth, _repeat_list_interleave, extract_last_boxed)
 from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
 from swift.utils import remove_response
-from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
-                                      RolloutOutput)
-from swift.llm.template import RolloutInferRequest
 
 if TYPE_CHECKING:
     from swift.llm.infer.infer_engine import GRPOVllmEngine
@@ -700,7 +698,6 @@ class TreeRolloutScheduler(MultiTurnScheduler):
         finished_rollout_by_root: Dict[int, List[RolloutOutput]] = {i: [] for i in range(len(infer_request))}
         finished_samples: Dict[int, List[DataSampleTree]] = {i: [] for i in range(len(infer_request))}
 
-        start_time = time.time()
         samples_to_infer = []
 
         for root_idx in range(len(infer_request)):
@@ -715,8 +712,6 @@ class TreeRolloutScheduler(MultiTurnScheduler):
         next_infer_step = 1
         samples_to_infer = _repeat_list_interleave(samples_to_infer, self.root_divergence)
         samples_to_infer = _increment_tree_idx_depth(samples_to_infer, next_infer_step)
-        step_start_times = [start_time]
-        step_efficiency_metrics = []
 
         while len(samples_to_infer) > 0:
             vllm_inputs = [
@@ -736,22 +731,6 @@ class TreeRolloutScheduler(MultiTurnScheduler):
 
             assert len(vllm_inputs) == len(
                 outputs), f'outputs length {len(outputs)} != inputs length {len(vllm_inputs)}'
-
-            current_step_end_time = time.time()
-            step_duration = current_step_end_time - step_start_times[-1]
-            step_start_times.append(current_step_end_time)
-            step_efficiency_metrics.append({
-                'step':
-                    next_infer_step,
-                'step_duration':
-                    step_duration,
-                'n_inputs':
-                    len(vllm_inputs),
-                'n_outputs':
-                    len(outputs),
-                'average_output_tokens':
-                    np.mean([len(choice.token_ids) for output in outputs for choice in output.choices]),
-            })
 
             samples_last_step = deepcopy(samples_to_infer)
             samples_to_infer = []
@@ -853,8 +832,6 @@ class TreeRolloutScheduler(MultiTurnScheduler):
                 continue
 
             diff_count = self.max_tree_width - len(sample_list)
-            import random
-
             result = random.sample(sample_list, min(diff_count, len(sample_list)))
 
             result_copy = deepcopy(result)
