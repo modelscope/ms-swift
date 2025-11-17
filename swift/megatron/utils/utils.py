@@ -312,6 +312,8 @@ def get_padding_to(args):
     if args.context_parallel_size > 1:
         padding_to = (padding_to or 1) * args.context_parallel_size
     fp8_format = getattr(args, 'fp8_format', None) or getattr(args, 'fp8', None)
-    if fp8_format is not None:
+    if args.fp8_recipe == 'blockwise':
+        padding_to = (padding_to or 1) * 128
+    elif fp8_format is not None:
         padding_to = max((padding_to or 1) * 8, 16)
     return padding_to

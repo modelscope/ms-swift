@@ -1030,7 +1030,7 @@ class GPTBridge:
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
-        with SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
+        with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
             list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
@@ -1048,7 +1048,8 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
-        yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
+        with torch.no_grad():
+            yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
