@@ -11,6 +11,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
+from swift.utils import get_last_valid_indices
+
 
 def cross_entropy_loss_func(outputs, labels, num_items_in_batch=None, **kwargs):
     # You need to return a scalar representing the loss.
@@ -534,6 +536,7 @@ def generative_reranker_loss(outputs,
                              loss_scale=None,
                              num_items_in_batch=None,
                              trainer=None,
+                             attention_mask=None,
                              **kwargs) -> torch.Tensor:
     """
     Generative reranker loss function.
@@ -570,10 +573,14 @@ def generative_reranker_loss(outputs,
         raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
                          f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
 
-    # Extract logits for positive and negative tokens directly from last position
-    # This avoids creating the large intermediate tensor last_logits
-    positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
-    negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
+    # Extract logits at the last valid (non-padding) token position for each sample
+    batch_size = logits.shape[0]
+    last_valid_indices = get_last_valid_indices(attention_mask)
+    batch_indices = torch.arange(batch_size, device=logits.device)
+    last_valid_logits = logits[batch_indices, last_valid_indices, :]
+
+    positive_logits = last_valid_logits[:, positive_token_id]  # [batch_size]
+    negative_logits = last_valid_logits[:, negative_token_id]  # [batch_size]
 
     # Stack to create binary classification logits
     # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
@@ -683,6 +690,7 @@ def listwise_generative_reranker_loss(outputs,
                                       loss_scale=None,
                                       num_items_in_batch=None,
                                       trainer=None,
+                                      attention_mask=None,
                                       **kwargs) -> torch.Tensor:
     """
     List-wise generative reranker loss function.
@@ -733,9 +741,14 @@ def listwise_generative_reranker_loss(outputs,
         raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
                          f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
 
-    # Extract logits for positive and negative tokens from last position
-    positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
-    negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
+    # Extract logits at the last valid (non-padding) token position for each sample
+    batch_size = logits.shape[0]
+    last_valid_indices = get_last_valid_indices(attention_mask)
+    batch_indices = torch.arange(batch_size, device=logits.device)
+    last_valid_logits = logits[batch_indices, last_valid_indices, :]
+
+    positive_logits = last_valid_logits[:, positive_token_id]  # [batch_size]
+    negative_logits = last_valid_logits[:, negative_token_id]  # [batch_size]
 
     logits = F.logsigmoid(positive_logits - negative_logits)
 
