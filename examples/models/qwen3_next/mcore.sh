@@ -11,7 +11,10 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
-    --load Qwen3-Next-80B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-Next-80B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
@@ -23,7 +26,7 @@ megatron sft \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-3 \
+    --moe_aux_loss_coeff 1e-6 \
     --micro_batch_size 2 \
     --global_batch_size 16 \
     --recompute_granularity full \
@@ -47,3 +50,9 @@ megatron sft \
     --attention_backend flash \
     --model_author swift \
     --model_name swift-robot
+
+
+# CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# swift infer \
+#     --adapters megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx \
+#     --stream true

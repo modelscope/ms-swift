@@ -42,7 +42,8 @@ from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
+from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker)
 from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -907,7 +908,7 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
@@ -932,8 +933,20 @@ class SwiftMixin:
 
             if isinstance(positive_token_id, int) and isinstance(negative_token_id, int) \
                     and positive_token_id >= 0 and negative_token_id >= 0:
-                positive_logits = logits[:, -1, positive_token_id]
-                negative_logits = logits[:, -1, negative_token_id]
+                # Handle right padding by finding the last valid token position
+                if attention_mask is not None:
+                    # Extract logits at the last valid (non-padding) token position for each sample
+                    batch_size = logits.shape[0]
+                    last_valid_indices = get_last_valid_indices(attention_mask)
+                    batch_indices = torch.arange(batch_size, device=logits.device)
+                    last_valid_logits = logits[batch_indices, last_valid_indices, :]
+                    positive_logits = last_valid_logits[:, positive_token_id]
+                    negative_logits = last_valid_logits[:, negative_token_id]
+                else:
+                    # Fallback to original behavior if attention_mask is not available
+                    positive_logits = logits[:, -1, positive_token_id]
+                    negative_logits = logits[:, -1, negative_token_id]
+
                 binary_preds = (positive_logits > negative_logits).long()
                 metrics = compute_acc(
                     binary_preds,
