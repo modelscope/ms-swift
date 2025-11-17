@@ -225,9 +225,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 beta=self.beta,
             )
 
-        # Add SFT loss if enabled (common for both paths)
-        if self.args.sft_alpha > 0:
-            loss = loss + self.args.sft_alpha * outputs_student.loss
+            # Add SFT loss if enabled (common for both paths)
+            if self.args.sft_alpha > 0:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
         if return_outputs:
