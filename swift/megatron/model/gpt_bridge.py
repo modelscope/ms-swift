@@ -14,7 +14,7 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
+from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
 
@@ -63,7 +63,7 @@ class GPTBridge:
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
     def _init_meta_hf_model(self):
-        with torch.device('meta'), disable_safe_ddp_context_use_barrier():
+        with torch.device('meta'):
             self.hf_model, self.processor = get_model_tokenizer(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
