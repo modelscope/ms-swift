@@ -26,6 +26,7 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
     hf_layers_prefix = 'model.layers'
+    hf_mtp_prefix = 'model.layers'
     hf_embed_key = 'model.embed_tokens.weight'
     hf_final_layernorm_key = 'model.norm.weight'
     hf_lm_head_key = 'lm_head.weight'
@@ -79,7 +80,9 @@ class GPTBridge:
             # mla
             'linear_q_proj',
             'linear_q_up_proj',
-            'linear_kv_up_proj'
+            'linear_kv_up_proj',
+            # mtp
+            'eh_proj',
         }
         if self.args.task_type == 'causal_lm':
             dim0_keys.add('output_layer')
@@ -1018,6 +1021,23 @@ class GPTBridge:
             else:
                 yield from list(self._add_prefix(res, hf_prefix).items())
                 hf_state_dict = {}
+
+        if not to_mcore or is_pp_last_stage and self.args.mtp_num_layers:
+            layer_idx = 0
+            while layer_idx < self.args.mtp_num_layers:
+                mtp_layer = mg_model.mtp.layers[layer_idx] if hasattr(mg_model, 'mtp') else None
+                if self.hf_mtp_prefix == self.hf_layers_prefix:
+                    hf_layer_idx = layer_idx + self.args.num_layers
+                else:
+                    hf_layer_idx = layer_idx
+                res = self._convert_mtp_layer(mtp_layer, hf_state_dict, f'{self.hf_mtp_prefix}.', hf_layer_idx,
+                                              to_mcore)
+                layer_idx += 1
+                if to_mcore:
+                    yield
+                else:
+                    yield from list(self._add_prefix(res, hf_prefix).items())
+                    hf_state_dict = {}
         if not to_mcore or is_pp_last_stage:
             hf_state_dict.update(self._convert_post_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
@@ -1025,6 +1045,28 @@ class GPTBridge:
         else:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+
+    def _convert_mtp_layer(self, mg_layer, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
+        hf_prefix = f'{hf_prefix}{layer_idx}.'
+        if to_mcore:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        else:
+            hf_state_dict = {}
+        if not to_mcore:
+            # TODO: 'embed_tokens.weight', 'shared_head.head.weight'
+            pass
+        for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
+            self._set_state_dict(mg_layer, key, hf_state_dict, key, to_mcore)
+        if layer_idx >= len(self.hf_layers):
+            layer_idx = -1
+        hf_state_dict.update(self._set_layer_attn(mg_layer.transformer_layer, hf_state_dict, layer_idx, to_mcore))
+        hf_state_dict.update(self._set_layer_mlp(mg_layer.transformer_layer, hf_state_dict, layer_idx, to_mcore))
+        self._set_state_dict(mg_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+        if to_mcore:
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
 
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
         self._is_peft_format = is_peft_format

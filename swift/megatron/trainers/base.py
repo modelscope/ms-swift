@@ -785,6 +785,7 @@ class BaseMegatronTrainer(ABC):
                 track_names.append('load_balancing_loss')
             if args.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
+            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=iteration,
@@ -795,7 +796,8 @@ class BaseMegatronTrainer(ABC):
                 force_initialize=True,
                 track_names=track_names,
                 num_layers=args.num_layers,
-                moe_layer_freq=args.moe_layer_freq)
+                moe_layer_freq=args.moe_layer_freq,
+                **track_moe_kwargs)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
