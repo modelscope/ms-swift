@@ -245,7 +245,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Colocate mode: load_weights supports iterator, pass directly
             llm_model = self.engine.inner_model
             llm_model.load_weights(weight_iterator)
-        elif self.vllm_mode == 'server' and self.is_main_process:
+        elif self.vllm_mode == 'server':
             # Server mode: process in buckets and sync with flattened tensors
             self._load_weights_to_server_in_buckets(weight_iterator)
 
@@ -285,7 +285,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Args:
             bucket_params: List of (name, tensor) tuples to sync
         """
-        if not bucket_params:
+        if not bucket_params or not self.is_main_process:
             return
 
         # Create FlattenedTensorBucket for efficient transfer
