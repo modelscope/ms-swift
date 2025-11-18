@@ -32,7 +32,7 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from ..utils import forward_step_helper
+from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
                     load_megatron_optimizer, offload_megatron_model_to_cpu, offload_megatron_optimizer,
@@ -478,6 +478,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _generate_and_score_completions(self, batch):
         # Get or create the rollout group (TP×PP×CP)
+        args = get_args()
+
         rollout_group = self._get_rollout_group()
 
         rollout_batch = self.get_local_rollout_batch(batch)
@@ -496,7 +498,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             template = self.template
             with self._template_context(template):
                 encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
-                encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
+                encoded_batch = to_device(
+                    template.data_collator(encoded_batch, padding_to=get_padding_to(args)), self.device)
             labels = encoded_batch['labels']
             assert self.template.padding_free
             position_ids = encoded_batch.get('text_position_ids')
