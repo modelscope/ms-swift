@@ -1101,6 +1101,14 @@ def test_mistral_2506():
         'stripes, particularly ')
 
 
+def test_sensenova_si():
+    pt_engine = PtEngine('SenseNova/SenseNova-SI-1.1-InternVL3-8B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1178,4 +1186,5 @@ if __name__ == '__main__':
     # test_paddle_ocr()
     # test_ernie_vl()
     # test_ernie_vl_thinking()
-    test_mistral_2506()
+    # test_mistral_2506()
+    test_sensenova_si()
