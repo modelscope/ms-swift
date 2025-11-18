@@ -3,23 +3,22 @@ import math
 import os
 import time
 
-import torch
 from tqdm import tqdm
 from transformers import trainer
 from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
-from transformers.utils import is_torch_npu_available
 
 from swift.utils import append_to_jsonl, format_time, get_device_count, get_logger, is_mp, is_pai_training_job
+from swift.utils.torch_utils import get_torch_device
 from .arguments import TrainingArguments
 
 logger = get_logger()
 
 
-def get_max_cuda_memory() -> float:
+def get_max_reserved_memory() -> float:
     devices = list(range(get_device_count())) if is_mp() else [None]
-    mems = [torch.cuda.max_memory_reserved(device=device) for device in devices]
+    mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
     return sum(mems) / 1024**3
 
 
@@ -34,9 +33,8 @@ def add_train_message(logs, state, start_time) -> None:
     for k, v in logs.items():
         if isinstance(v, float):
             logs[k] = round(logs[k], 8)
-    state.max_memory = max(getattr(state, 'max_memory', 0), get_max_cuda_memory())
-    if not is_torch_npu_available():
-        logs['memory(GiB)'] = round(state.max_memory, 2)
+    state.max_memory = max(getattr(state, 'max_memory', 0), get_max_reserved_memory())
+    logs['memory(GiB)'] = round(state.max_memory, 2)
 
     logs['train_speed(iter/s)'] = round(state.global_step / elapsed, 6)
 
