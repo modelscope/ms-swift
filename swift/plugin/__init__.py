@@ -29,7 +29,7 @@ else:
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM'],
-        'multi_turn': ['multi_turns', 'MultiTurnScheduler'],
+        'multi_turn': ['multi_turns', 'MultiTurnScheduler', 'TreeRolloutScheduler'],
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],

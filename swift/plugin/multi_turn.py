@@ -668,16 +668,19 @@ class GYMScheduler(RolloutScheduler):
                 await self._close_env_async(env)
 
 
-class TreeRolloutScheduler(MultiTurnScheduler):
+class TreeRolloutScheduler:
+    """
+    Base class for multi-turn tree-rollout scheduling.
 
-    def __init__(self,
-                 max_turns: Optional[int] = None,
-                 infer_engine: Optional['GRPOVllmEngine'] = None,
-                 vllm_client: VLLMClient = None,
-                 *args,
-                 **kwargs):
-        super().__init__(max_turns, infer_engine, *args, **kwargs)
+    Provides default implementation for multi-turn conversation management.
 
+    CUSTOMIZATION:
+        Implement the required `step()` method and optionally override `check_finished()`
+        - Uses TreeRolloutScheduler's run() method infrastructure
+        - Only need to implement turn transition logic in step()
+        - Optionally customize termination conditions
+    """
+    def __init__(self, vllm_client: VLLMClient = None, *args, **kwargs):
         self.max_tree_width = kwargs['args'].num_generations
         self.max_tree_deep = kwargs['args'].max_tree_deep
         self.max_divergence = kwargs['args'].tree_max_divergence
@@ -689,7 +692,6 @@ class TreeRolloutScheduler(MultiTurnScheduler):
 
     def run(self, infer_request: Union[List[RolloutInferRequest], RolloutInferRequest], request_config: 'RequestConfig',
             **kwargs) -> List['RolloutOutput']:
-
         if isinstance(infer_request, RolloutInferRequest):
             infer_request = [infer_request]
         else:
