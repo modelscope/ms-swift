@@ -529,7 +529,7 @@ else:
     register_model_arch(
         MultiModelKeys(
             MLLMModelArch.qwen2_vl,
-            language_model='model',
+            language_model=['model', 'lm_head'],
             aligner='visual.merger',
             vision_tower='visual',
         ))
@@ -574,7 +574,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.step_audio2_mini,
-        language_model='model',
+        language_model=['model', 'lm_head'],
         aligner=['adapter'],
         vision_tower=['encoder'],
     ))
@@ -704,7 +704,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.keye_vl,
-        language_model='model',
+        language_model=['model', 'lm_head'],
         aligner='mlp_AR',
         vision_tower='visual',
     ))
