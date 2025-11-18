@@ -279,7 +279,7 @@ def forward_step_helper(model, inputs, dtype=None):
     args = get_args()
     if mpu.is_pipeline_first_stage():
         micro_batch_size = 1  # use qkv_format 'thd'
-        seq_length = inputs['input_ids'].shape[1]
+        seq_length = inputs['position_ids'].shape[-1]
         if args.sequence_parallel:
             seq_length //= mpu.get_tensor_model_parallel_world_size()
         recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
