@@ -253,6 +253,7 @@ class GPTBridge:
             dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
             if tensor is None:
                 dist.broadcast(meta_data, src=src_rank, group=pp_group)
+                assert meta_data[0].item() > 0, f'meta_data: {meta_data}'
                 shape = meta_data[1:1 + meta_data[0]].tolist()
                 dtype = dtype_mapping_r[meta_data[-1].item()]
                 tensor = torch.empty(shape, device='cuda', dtype=dtype)
@@ -288,8 +289,10 @@ class GPTBridge:
         is_modules_to_save = isinstance(sub_module, ModulesToSaveWrapper)
         if not to_mcore:
             state = torch.tensor([is_lora, is_modules_to_save], dtype=torch.bool, device='cuda')
-            if self.ep_pp_size > 1:
+            if is_expert and self.ep_pp_size > 1:
                 dist.all_reduce(state, group=self.ep_pp_group)
+            elif not is_expert and self.pp_size > 1:
+                dist.all_reduce(state, group=self.pp_group)
             is_lora, is_modules_to_save = state
         if is_lora and self._is_peft_format and param_key != 'layer_norm_weight':
             if to_mcore:
@@ -640,8 +643,10 @@ class GPTBridge:
             is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc1,
                                                               LoraParallelLinear) and self._is_peft_format
             is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
-            if self.ep_pp_size > 1:
+            if is_expert and self.ep_pp_size > 1:
                 dist.all_reduce(is_lora, group=self.ep_pp_group)
+            elif not is_expert and self.pp_size > 1:
+                dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
                 assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                 if mg_mlp is None:
@@ -790,8 +795,10 @@ class GPTBridge:
                 is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc2,
                                                                   LoraParallelLinear) and self._is_peft_format
                 is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
-                if self.ep_pp_size > 1:
+                if is_expert and self.ep_pp_size > 1:
                     dist.all_reduce(is_lora, group=self.ep_pp_group)
+                elif not is_expert and self.pp_size > 1:
+                    dist.all_reduce(is_lora, group=self.pp_group)
                 if is_lora:
                     assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                     if mg_mlp is None:
