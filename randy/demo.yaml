@@ -1,0 +1,42 @@
+### model
+model: /nas_train/app.e0016372/models/Qwen2.5-7B-Instruct
+
+### method
+stage: sft
+train_type: lora
+tuner_backend: peft
+lora_rank: 16
+lora_alpha: 32
+deepspeed: zero3
+torch_dtype: bfloat16
+attn_impl: flash_attn
+use_liger_kernel: true
+
+### dataset
+dataset_info: randy/dataset_info.json
+dataset: medical-o1-sft-Chinese
+packing: true
+max_length: 2048
+dataset_num_proc: 16
+split_dataset_ratio: 0.01
+truncation_strategy: delete
+
+### output
+output_dir: /nas_train/app.e0016372/train/sft/lora/Qwen2.5-7B-Instruct
+logging_steps: 10
+save_strategy: steps
+save_steps: 100
+save_total_limit: 10
+report_to: tensorboard
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+warmup_ratio: 0.1
+learning_rate: 1e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+
+### eval
+eval_dataset: med_mcqa
+eval_use_evalscope: true

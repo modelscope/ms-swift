@@ -1,0 +1,14 @@
+{
+  "medical-o1-sft": {
+    "file_name": "/nas_train/app.e0016372/data/medical-o1-reasoning-SFT/medical_o1_sft.json"
+  },
+  "medical-o1-sft-mix": {
+    "file_name": "/nas_train/app.e0016372/data/medical-o1-reasoning-SFT/medical_o1_sft_mix.json"
+  },
+  "medical-o1-sft-Chinese": {
+    "file_name": "/nas_train/app.e0016372/data/medical-o1-reasoning-SFT/medical_o1_sft_Chinese.json"
+  },
+  "medical-o1-sft-mix-Chinese": {
+    "file_name": "/nas_train/app.e0016372/data/medical-o1-reasoning-SFT/medical_o1_sft_mix_Chinese.json"
+  }
+}
