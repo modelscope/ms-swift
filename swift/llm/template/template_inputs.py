@@ -26,7 +26,7 @@ class InferRequest:
                     "role": "user",
                     "content": [
                         {
-                            "type": "image",  # can also be audio/video
+                            "type": "image",  # can also be audio/video/tensor
                             "image": "<url/path/base64/PIL.Image>",
                         },
                         {"type": "text", "text": "Please describe the picture."},
@@ -59,12 +59,13 @@ class InferRequest:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    tensors: List[str] = field(default_factory=list)
 
     tools: Optional[List[Tool]] = None
     objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     def __post_init__(self):
-        for key in ['images', 'audios', 'videos']:
+        for key in ['images', 'audios', 'videos', 'tensors']:
             val = getattr(self, key)
             if isinstance(val, str):
                 setattr(self, key, [val])
@@ -144,6 +145,7 @@ class StdTemplateInputs:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
+    tensors: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     margin: Optional[float] = None  # for reward modeling
@@ -156,6 +158,7 @@ class StdTemplateInputs:
         self.image_idx = 0
         self.audio_idx = 0
         self.video_idx = 0
+        self.tensor_idx = 0
         self.ref_idx = 0
         self.bbox_idx = 0
         if self.images and not isinstance(self.images, (list, tuple)):
@@ -164,6 +167,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
+        if self.tensors and not isinstance(self.tensors, (list, tuple)):
+            self.tensors = [self.tensors]
         if self.rejected_response:
             assert isinstance(self.rejected_response, list) and all(
                 isinstance(item, str) for item in self.rejected_response)
@@ -175,7 +180,7 @@ class StdTemplateInputs:
 
     @property
     def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
+        return bool(self.images or self.audios or self.videos or self.tensors or self.objects)
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
@@ -226,7 +231,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': []}
+        res = {'images': [], 'audios': [], 'videos': [], 'tensors': [], 'rejected_images': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):
