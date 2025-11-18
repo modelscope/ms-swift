@@ -1,10 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from dataclasses import asdict
 from functools import partial
 from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
+try:
+    # Enable Megatron on Ascend NPU
+    from mindspeed.megatron_adaptor import repatch
+except ImportError:
+    repatch = None
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
@@ -28,6 +34,11 @@ class MegatronSft(SwiftSft):
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
+        if repatch is not None:
+            megatron_args = asdict(args)
+            if megatron_args["attention_backend"] != "local":
+                megatron_args["use_flash_attn"] = True
+            repatch(megatron_args)
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
