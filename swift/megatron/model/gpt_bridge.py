@@ -14,11 +14,13 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
+from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
@@ -43,7 +45,7 @@ class GPTBridge:
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
-        self.megatron_core_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
+        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
@@ -63,7 +65,7 @@ class GPTBridge:
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
     def _init_meta_hf_model(self):
-        with torch.device('meta'), disable_safe_ddp_context_use_barrier():
+        with torch.device('meta'):
             self.hf_model, self.processor = get_model_tokenizer(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
@@ -81,7 +83,7 @@ class GPTBridge:
         }
         if self.args.task_type == 'causal_lm':
             dim0_keys.add('output_layer')
-        if not self.megatron_core_014:
+        if not self.mcore_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
             dim0_keys.update({'linear_q_down_proj', 'linear_kv_down_proj'})
         # RowLinear
@@ -971,22 +973,34 @@ class GPTBridge:
             hf_state_dict = {}
         mg_models = iter(mg_models)
         mg_model = next(mg_models)
-        if not to_mcore or mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+        if mcore_013:
+            is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage)
+            is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage)
+        else:
+            is_pp_first_stage = mpu.is_pipeline_first_stage()
+            is_pp_last_stage = mpu.is_pipeline_last_stage()
+        if not to_mcore or is_pp_first_stage:
             hf_state_dict.update(self._convert_pre_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
             yield
         else:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
-        for layer_idx in tqdm(
-                range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd):
+        layer_idx = 0
+        prog_bar = tqdm(range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd)
+        while layer_idx < self.args.num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
-            start_idx = lm_model.decoder.layers[0].layer_number - 1
-            mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
+            if len(lm_model.decoder.layers) > 0:
+                start_idx = lm_model.decoder.layers[0].layer_number - 1
+                mg_layer_available = (start_idx <= layer_idx < lm_model.decoder.layers[-1].layer_number)
+            else:
+                mg_layer_available = False
             if mg_layer_available:
                 mg_layer = lm_model.decoder.layers[layer_idx - start_idx]
             else:
                 if to_mcore:
+                    layer_idx += 1
+                    prog_bar.update()
                     continue
                 else:
                     mg_layer = None
@@ -994,15 +1008,17 @@ class GPTBridge:
                 has_model = torch.tensor([mg_layer is not None], dtype=torch.bool, device='cuda')
                 dist.all_reduce(has_model, group=self.pp_group)
                 if not has_model:
-                    mg_model = next(mg_models)
+                    mg_model = next(mg_models)  # compat vpp
                     continue
             res = self._set_layer_state(mg_layer, hf_state_dict, f'{self.hf_layers_prefix}.', layer_idx, to_mcore)
+            layer_idx += 1
+            prog_bar.update()
             if to_mcore:
                 yield
             else:
                 yield from list(self._add_prefix(res, hf_prefix).items())
                 hf_state_dict = {}
-        if not to_mcore or mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=mg_model.vp_stage):
+        if not to_mcore or is_pp_last_stage:
             hf_state_dict.update(self._convert_post_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
             yield

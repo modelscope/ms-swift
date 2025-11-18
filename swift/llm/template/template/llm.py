@@ -119,29 +119,6 @@ register_template(
         chat_sep=['</s>[INST] '],
         suffix=['</s>']))
 
-today = datetime.now().strftime('%Y-%m-%d')
-
-mistral_2501_system = (
-    'You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup '
-    'headquartered in Paris.\n'
-    f'Your knowledge base was last updated on 2023-10-01. The current date is {today}.\n\n'
-    "When you're not sure about some information, you say that you don't have the information and don't "
-    'make up anything.\n'
-    "If the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer "
-    'the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. '
-    '"What are some good restaurants around me?" => "Where are you?" or "When is the next flight to Tokyo" => "'
-    'Where do you travel from?")')
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.mistral_2501,
-        prefix=['<s>'],
-        prompt=['[INST]{{QUERY}}[/INST]'],
-        chat_sep=['</s>'],
-        suffix=['</s>'],
-        system_prefix=['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'],
-        default_system=mistral_2501_system))
-
 register_template(
     TemplateMeta(
         LLMTemplateType.xverse,

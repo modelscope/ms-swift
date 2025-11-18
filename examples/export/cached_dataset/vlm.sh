@@ -1,3 +1,4 @@
+# ms-swift>=3.11
 OMP_NUM_THREADS=14 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
@@ -7,11 +8,9 @@ swift export \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
-    --max_length 4096 \
     --split_dataset_ratio 0.01 \
     --dataset_num_proc 16 \
     --to_cached_dataset true \
-    --lazy_tokenize false \
     --output_dir ./qwen2_5_omni_cached_dataset
 
 # 4 * 70GiB
@@ -27,7 +26,6 @@ swift sft \
     --train_type full \
     --cached_dataset './qwen2_5_omni_cached_dataset' \
     --num_train_epochs 1 \
-    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -59,11 +57,8 @@ FPS_MAX_FRAMES=12 \
 ENABLE_AUDIO_OUTPUT=0 \
 swift infer \
     --model output/Qwen2.5-Omni-7B/vx-xxx/checkpoint-xxx \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
-              'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
-              'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
+    --load_data_args true \
     --max_length 4096 \
-    --split_dataset_ratio 0.01 \
     --attn_impl flash_attn \
     --stream true \
     --temperature 0 \

@@ -2,6 +2,7 @@
 from copy import deepcopy
 from typing import Optional, Tuple, Union
 
+import megatron.core
 import torch
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -17,6 +18,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
+from packaging import version
 
 from swift.llm import ModelType
 from swift.utils import get_logger
@@ -24,6 +26,7 @@ from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
     from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
@@ -58,6 +61,7 @@ class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
+        kwargs = {'tp_group': self.model_comm_pgs.tp} if mcore_013 else {}
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -69,7 +73,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='qkv',
-            tp_group=self.model_comm_pgs.tp,
+            **kwargs,
         )
 
         if submodules.q_layernorm is not None:
@@ -130,12 +134,22 @@ class Qwen3NextSelfAttention(SelfAttention):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
-        from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        try:
+            from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        except ImportError:
+
+            def nvtx_range_pop(*args, **kwargs):
+                return
+
+            def nvtx_range_push(*args, **kwargs):
+                return
+
         # Check if we need to skip RoPE
         # no_rope is 0-indexed array and self.layer_number is 1-indexed
-        no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
-        if no_rope:
-            rotary_pos_emb = None
+        if hasattr(self.config, 'no_rope_freq'):
+            no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
+            if no_rope:
+                rotary_pos_emb = None
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
@@ -194,17 +208,20 @@ class Qwen3NextSelfAttention(SelfAttention):
         if (in_decode_mode and self.config.enable_cuda_graph and inference_context.is_static_batching()):
             raise ValueError('CUDA graphs must use flash decode with static batching!')
 
-        query, key, value, rotary_pos_emb, attn_mask_type, block_table = (
-            self._adjust_key_value_for_inference(
-                inference_context,
-                query,
-                key,
-                value,
-                rotary_pos_emb,
-                rotary_pos_cos,
-                rotary_pos_sin,
-                sequence_len_offset,
-            ))
+        result = self._adjust_key_value_for_inference(
+            inference_context,
+            query,
+            key,
+            value,
+            rotary_pos_emb,
+            rotary_pos_cos,
+            rotary_pos_sin,
+            sequence_len_offset,
+        )
+        if mcore_013:
+            query, key, value, rotary_pos_emb, attn_mask_type, block_table = result
+        else:
+            query, key, value, rotary_pos_emb, attn_mask_type = result
 
         if packed_seq_params is not None:
             query = query.squeeze(1)
@@ -215,6 +232,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
+        kwargs = {'cp_group': self.model_comm_pgs.cp} if mcore_013 else {}
         nvtx_range_push(suffix='rotary_pos_emb')
         if rotary_pos_emb is not None and not self.config.flash_decode:
             q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -239,18 +257,18 @@ class Qwen3NextSelfAttention(SelfAttention):
                         q_pos_emb,
                         config=self.config,
                         cu_seqlens=cu_seqlens_q,
-                        cp_group=self.model_comm_pgs.cp,
+                        **kwargs,
                     )
                 else:
                     query = inference_context.apply_rotary_emb_query(query, q_pos_emb, self.config, cu_seqlens_q,
-                                                                     self.model_comm_pgs.cp)
+                                                                     **kwargs)
             if k_pos_emb is not None:
                 key = apply_rotary_pos_emb(
                     key,
                     k_pos_emb,
                     config=self.config,
                     cu_seqlens=cu_seqlens_kv,
-                    cp_group=self.model_comm_pgs.cp,
+                    **kwargs,
                 )
 
             # TODO, can apply positional embedding to value_layer so it has
@@ -418,16 +436,17 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
-    from megatron.core.transformer.enums import LayerType
-    num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
+    kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
+    num_layers_to_build = get_num_layers_to_build(config, **kwargs)
 
-    if config.pipeline_model_parallel_layout is not None:
+    if getattr(config, 'pipeline_model_parallel_layout', None) is not None:
+        from megatron.core.transformer.enums import LayerType
         local_layer_specs = [
             layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
-                layer_type=LayerType.decoder, vp_stage=vp_stage)
+                layer_type=LayerType.decoder, **kwargs)
         ]
     else:
-        offset = get_transformer_layer_offset(config, vp_stage=vp_stage)
+        offset = get_transformer_layer_offset(config, **kwargs)
         local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
     return local_layer_specs
 
@@ -446,13 +465,14 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
 
     layer_norm_impl = TENorm
+    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
         moe_grouped_gemm=config.moe_grouped_gemm,
         qk_layernorm=config.qk_layernorm,
         multi_latent_attention=config.multi_latent_attention,
         moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        use_kitchen=config.use_kitchen,
+        **kwargs,
     )
     layer_specs = []
     for layer_type in args.layer_types:

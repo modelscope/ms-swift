@@ -14,7 +14,7 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups, param_group_identifier_keys
+from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import MegatronModule
@@ -31,7 +31,7 @@ from megatron.training.utils import reduce_max_stat_across_model_parallel_group,
 from packaging import version
 from tqdm.auto import tqdm
 
-from swift.llm import dynamic_gradient_checkpointing
+from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -40,16 +40,22 @@ from ..utils import adapter_state_dict_context, copy_original_module_weight, pat
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
 
+try:
+    from megatron.core.optimizer import param_group_identifier_keys
+except ImportError:
+    param_group_identifier_keys = None
+
 logger = get_logger()
 
 
 class BaseMegatronTrainer(ABC):
 
-    def __init__(self, args, template):
+    def __init__(self, args, template: Template):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
+        self.wrapped_models = []
         self.peft_models = []
         self._bridge = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
@@ -64,7 +70,7 @@ class BaseMegatronTrainer(ABC):
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     @property
     def bridge(self):
@@ -81,9 +87,11 @@ class BaseMegatronTrainer(ABC):
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
+            num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
@@ -93,6 +101,7 @@ class BaseMegatronTrainer(ABC):
                     args.eval_iters = 0
                 elif hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
                     raise ValueError(
@@ -306,9 +315,12 @@ class BaseMegatronTrainer(ABC):
                     scale_lr = False
                     # Handling multimodal models: vit_lr, aligner_lr
                     unwrapped_name = name.removeprefix('module.').removeprefix('module.')
-                    is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner)
-                    is_vit = any(unwrapped_name.startswith(f'visual.{k}')
-                                 for k in visual._vision_tower) and not is_aligner
+                    if visual is not None:
+                        is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner or [])
+                        is_vit = any(unwrapped_name.startswith(f'visual.{k}')
+                                     for k in visual._vision_tower) and not is_aligner
+                    else:
+                        is_aligner, is_vit = False, False
                     if is_vit and self.args.vit_lr:
                         scale_lr = True
                         _lr_mult = self.args.vit_lr / lr
@@ -360,7 +372,8 @@ class BaseMegatronTrainer(ABC):
             }
             # Ensure param_group has required keys for matching when loading optimizer state
             # See MegatronOptimizer._filter_and_reorder_param_groups.
-            assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            if param_group_identifier_keys is not None:
+                assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
             param_groups.append(param_group)
 
         param_groups = _update_min_and_max_lr_in_param_groups(
@@ -410,6 +423,7 @@ class BaseMegatronTrainer(ABC):
         with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
+        self.wrapped_models = model
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -468,8 +482,7 @@ class BaseMegatronTrainer(ABC):
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
                            reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
-        values = list(metric.values())
-        reporting_metric = values[0].new_tensor(values)
+        reporting_metric = torch.stack(list(metric.values()), dim=0)
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
@@ -556,7 +569,7 @@ class BaseMegatronTrainer(ABC):
                     torch.cuda.empty_cache()
 
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    if self.megatron_core_013:
+                    if self.mcore_013:
                         for key in loss_dicts[0].keys():
                             if key not in total_loss_dict:
                                 total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
@@ -929,6 +942,7 @@ class BaseMegatronTrainer(ABC):
         # support max_epochs
         self._origin_train_step = training.train_step
         training.train_step = self.train_step
+        self._origin_cyclic_iter = training.cyclic_iter
         training.cyclic_iter = self.new_cyclic_iter
         # patch training_log
         self._origin_training_log = training.training_log

@@ -1,8 +1,7 @@
-# Note: cached_dataset does not support CP temporarily.
+# ms-swift>=3.11
 swift export \
     --model Qwen/Qwen3-30B-A3B-Base \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
-    --max_length 8192 \
     --split_dataset_ratio 0.01 \
     --dataset_num_proc 64 \
     --to_cached_dataset true \
@@ -14,18 +13,20 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --cached_dataset './qwen3_cached_dataset' \
     --train_type lora \
     --lora_rank 32 \
     --lora_alpha 64 \
     --target_modules all-linear \
-    --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-3 \
+    --moe_aux_loss_coeff 1e-6 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --recompute_granularity full \
@@ -48,3 +49,12 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --attention_backend flash
+
+
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --adapters megatron_output/Qwen3-30B-A3B-Base/vx-xxx/checkpoint-xxx \
+    --load_data_args true \
+    --attn_impl flash_attn \
+    --stream true \
+    --max_new_tokens 512

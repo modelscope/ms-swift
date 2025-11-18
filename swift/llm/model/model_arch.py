@@ -72,6 +72,7 @@ class MLLMModelArch:
 
     got_ocr2 = 'got_ocr2'
     dots_ocr = 'dots_ocr'
+    ernie_vl = 'ernie_vl'
 
     ovis = 'ovis'
     ovis2_5 = 'ovis2_5'
@@ -80,7 +81,6 @@ class MLLMModelArch:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3n = 'gemma3n'
-    mistral_2503 = 'mistral_2503'
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
@@ -617,6 +617,14 @@ register_model_arch(
         language_model='model.layers',
         aligner='model.mm_projector_vary',
         vision_tower='model.vision_tower_high',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.ernie_vl,
+        language_model='model',
+        aligner='model.resampler_model',
+        vision_tower='vision_model',
     ))
 
 if transformers_ge_4_52:

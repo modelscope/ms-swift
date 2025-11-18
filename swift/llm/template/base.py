@@ -91,7 +91,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v3'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -357,11 +357,16 @@ class Template(ProcessorMixin):
         else:
             return model
 
-    def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+    def _rlhf_encode(self, inputs: TemplateInputs, check_rejected=True) -> Dict[str, Any]:
         chosen = inputs.chosen
         margin = chosen.margin
         chosen_encoded = self._encode_truncated(chosen)
-        rejected_encoded = self._encode_truncated(inputs.rejected)
+        if inputs.rejected is None:
+            if check_rejected:
+                raise ValueError('inputs.rejected is None')
+            rejected_encoded = {}
+        else:
+            rejected_encoded = self._encode_truncated(inputs.rejected)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -373,7 +378,7 @@ class Template(ProcessorMixin):
         return encoded
 
     def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        encoded = self._rlhf_encode(inputs)
+        encoded = self._rlhf_encode(inputs, check_rejected=False)
         encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
@@ -1134,7 +1139,11 @@ class Template(ProcessorMixin):
                     if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                if (self.is_training or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words:
+                add_eos = inputs.extra_kwargs.get('add_eos')
+                if add_eos is None:
+                    add_eos = (self.is_training
+                               or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words
+                if add_eos:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1208,7 +1217,6 @@ class Template(ProcessorMixin):
                     encoded[key] = value
         else:
             encoded = self._encode(inputs)
-        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
@@ -1271,16 +1279,25 @@ class Template(ProcessorMixin):
                     encoded[k] = None
         return encoded
 
-    def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
+    def _get_megatron_cp_length(self, length) -> int:
+        cp_size = self.sequence_parallel_size
+        if not self.use_megatron or cp_size == 1:
+            return length
+        return math.ceil(length / (cp_size * 2)) * (cp_size * 2)
+
+    def _handle_megatron_cp(self, batch: List[Dict[str, Any]]) -> None:
         cp_size = self.sequence_parallel_size
         if not self.use_megatron or cp_size == 1:
             return
-        input_ids = encoded['input_ids']
-        padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
-        input_ids += [self.tokenizer.pad_token_id] * padding_len
-        encoded['labels'] += [-100] * padding_len
-        if encoded.get('loss_scale') is not None:
-            encoded['loss_scale'] += [0] * padding_len
+        for encoded in batch:
+            input_ids = encoded['input_ids']
+            padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
+            input_ids += [self.tokenizer.pad_token_id] * padding_len
+            encoded['labels'] += [-100] * padding_len
+            if encoded.get('loss_scale') is not None:
+                encoded['loss_scale'] += [0] * padding_len
+            if encoded.get('length') is not None:
+                encoded['length'] += padding_len
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1485,7 +1502,10 @@ class Template(ProcessorMixin):
         kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
 
         res = self._data_collator(new_batch, padding_to=padding_to)
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        if any(kl_batch):
+            kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        else:
+            kl_res = {}
         res = {
             **{f'completion_{k}': v
                for k, v in res.items()},
@@ -1605,6 +1625,7 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        self._handle_megatron_cp(batch)
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'

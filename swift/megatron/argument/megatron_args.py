@@ -17,7 +17,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', 'rm'] = None
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -36,6 +36,97 @@ class RLHFMegatronArgumentsMixin:
     # rm
     center_rewards_coefficient: Optional[float] = None
 
+    # grpo
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
+    num_generations: int = 8
+    max_completion_length: int = 512
+    # GSPO https://arxiv.org/abs/2507.18071
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
+    top_k: int = 50
+    top_p: float = 0.9
+    repetition_penalty: float = 1.
+    use_vllm: bool = True
+    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+
+    vllm_enable_prefix_caching: bool = True
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_tensor_parallel_size: int = 1
+    vllm_max_model_len: Optional[int] = None
+    vllm_enforce_eager: bool = False
+    vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
+    vllm_disable_cascade_attn: bool = False
+    sleep_level: Literal[0, 1, 2] = 0
+    offload_optimizer: bool = False
+    offload_model: bool = False
+
+    vllm_server_base_url: Optional[List[str]] = None
+    vllm_server_host: Optional[List[str]] = None
+    vllm_server_port: List[int] = field(default_factory=lambda: [8000])
+    vllm_server_timeout: float = 240.0
+
+    reward_funcs: List[str] = field(default_factory=list)
+    reward_weights: List[float] = None
+    # see details in swift/plugin/orm.py
+    # cosine reward, https://arxiv.org/abs/2502.03373
+    cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
+    cosine_max_len_value_wrong: float = 0.0  # r^w_L in paper, Reward for wrong answers with max completion length.
+    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero completion length.
+    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max completion length.
+    cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
+    # repetition penalty, https://arxiv.org/abs/2502.03373
+    repetition_n_grams: int = 3
+    repetition_max_penalty: float = -1.0
+    # soft_overlong, https://arxiv.org/abs/2503.14476
+    soft_max_length: Optional[int] = None
+    soft_cache_length: Optional[int] = None
+    # DAPO, https://arxiv.org/abs/2503.14476
+    dynamic_sample: bool = False
+    max_resample_times: int = 3
+    overlong_filter: bool = False
+
+    # Dr. GRPO, https://arxiv.org/abs/2503.20783
+    scale_rewards: Literal['none', 'group', 'batch'] = 'group'
+
+    wandb_log_unique_prompts: Optional[bool] = None
+    log_completions: bool = False
+
+    # ───────────────────────────  Not Supported Yet  ───────────────────────────
+    # RLOO / REINFORCE++
+    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
+    kl_in_reward: bool = False
+    # reward model
+    reward_model: Optional[List[str]] = None
+    reward_model_plugin: Optional[List[str]] = None
+    # sync ref model
+    sync_ref_model: bool = False
+    ref_model_sync_steps: int = 512
+    ref_model_mixup_alpha: float = 0.6
+
+    async_generate: bool = False
+
+    move_model_batches: Optional[int] = None
+
+    # multi turn
+    multi_turn_scheduler: Optional[str] = None
+    max_turns: Optional[int] = None
+    completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
+    vllm_server_pass_dataset: bool = False
+
+    # entropy
+    log_entropy: bool = False
+    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
+    top_entropy_quantile: float = 1.0
+
+    num_iterations: int = 1
+
+    # dataset
+    dataset_shuffle: Optional[bool] = True
+
     def _init_kto(self):
         if self.calculate_KL is None:
             # Not all losses require a KL calculation
@@ -46,11 +137,104 @@ class RLHFMegatronArgumentsMixin:
     def __post_init__(self):
         if self.rlhf_type is None:
             return
-        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid'}
+        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
             self._init_kto()
+        if self.rlhf_type == 'grpo':
+            self._init_grpo()
+
+    def _init_grpo(self):
+
+        def _check_not_supported():
+            if self.async_generate:
+                raise ValueError('async_generate is not supported for Megatron GRPO right now')
+            if self.sync_ref_model:
+                raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
+            if not self.dataset_shuffle:
+                raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
+            if self.multi_turn_scheduler:
+                raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
+            if self.log_entropy:
+                raise ValueError('log_entropy is not supported for Megatron GRPO right now')
+            if self.top_entropy_quantile < 1:
+                raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
+            if self.num_iterations > 1:
+                raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
+            if self.kl_in_reward:
+                raise ValueError('kl_in_reward is not supported for Megatron GRPO right now')
+            if self.advantage_estimator != 'grpo':
+                raise ValueError('advantage_estimator must be grpo for Megatron GRPO right now')
+
+        def _check_batch_params():
+            # Set default values if both are None
+            if self.generation_batch_size is None and self.steps_per_generation is None:
+                self.steps_per_generation = 1
+                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+            # Both configured - error
+            elif self.generation_batch_size is not None and self.steps_per_generation is not None:
+                raise ValueError("'generation_batch_size' and 'steps_per_generation' cannot be both configured")
+            # Only generation_batch_size configured
+            elif self.generation_batch_size is not None:
+                if self.generation_batch_size % self.global_batch_size != 0:
+                    raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
+                                     f'must be divisible by global_batch_size ({self.global_batch_size})')
+                self.steps_per_generation = self.generation_batch_size // self.global_batch_size
+            # Only steps_per_generation configured
+            else:
+                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+
+            world_size = torch.distributed.get_world_size()
+            dp_size = world_size // (
+                self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
+            num_rollout_prompt = self.generation_batch_size // self.num_generations
+            if num_rollout_prompt % dp_size != 0:
+                raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
+                                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
+                                 f'must be divisible by dp_size ({dp_size}). '
+                                 f'Please adjust generation_batch_size/steps_per_generation/num_generations.')
+
+            per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+
+            if per_device_num_rollout_prompt % self.micro_batch_size != 0:
+                raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
+                                 f'(generation_batch_size ({self.generation_batch_size}) // '
+                                 f'num_generations ({self.num_generations})) // dp_size ({dp_size}) '
+                                 f'must be divisible by micro_batch_size ({self.micro_batch_size}). '
+                                 f'Please adjust arguments to satisfy: '
+                                 f'(generation_batch_size // num_generations) // dp_size % '
+                                 f'micro_batch_size == 0')
+
+            self.per_device_generation_batch_size = self.generation_batch_size // world_size
+
+        _check_not_supported()
+        _check_batch_params()
+        # default loss_type if no loss_type is provided
+        assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
+            f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
+        self.remove_unused_columns = False
+        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+        if self.truncation_strategy is None:
+            self.truncation_strategy = 'left'
+        assert self.truncation_strategy in ['left', 'delete'
+                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+                                                )  # noqa
+        if self.beta is None:
+            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+        if self.async_generate:
+            logger.info('Using async mode. This is a approximate version which '
+                        'will use the old weights to generate responses to accelerate. '
+                        'This will ignore the `CLIP` of advantages, if you found the training '
+                        'is unstable, you may consider using --async_generate false.')
+        if 'soft_overlong' in self.reward_funcs:
+            assert self.soft_cache_length is not None, \
+                'The soft_cache_length must be set when using soft overlong rewards.'
+            if self.soft_max_length is None:
+                self.soft_max_length = self.max_completion_length
+                logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+        assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
 
 
 @dataclass
@@ -91,7 +275,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
-    torch_dtype: Optional[torch.dtype] = None
+    torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
     # mcore-bridge

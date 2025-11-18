@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib.metadata
 import os
 from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+from packaging import version
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -737,6 +739,21 @@ def patch_qwen_vl_utils(vision_process):
     return res
 
 
+def compat_qwen_vl_utils(image_patch_size: int):
+    spatial_merge_size = int(os.getenv('SPATIAL_MERGE_SIZE', '2'))
+    image_factor = image_patch_size * spatial_merge_size
+    env_vars_to_process = {
+        'MAX_PIXELS': 'IMAGE_MAX_TOKEN_NUM',
+        'MIN_PIXELS': 'IMAGE_MIN_TOKEN_NUM',
+        'VIDEO_MAX_PIXELS': 'VIDEO_MAX_TOKEN_NUM',
+        'VIDEO_MIN_PIXELS': 'VIDEO_MIN_TOKEN_NUM',
+    }
+    for source_var, target_var in env_vars_to_process.items():
+        value = os.getenv(source_var)
+        if value and not os.getenv(target_var):
+            os.environ[target_var] = str(int(value) // image_factor**2)
+
+
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
@@ -746,9 +763,18 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
+    import qwen_vl_utils
     check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
     if check_qwen_vl_utils:
-        require_version('qwen_vl_utils<0.0.12')
+        try:
+            qwen_vl_utils_version = importlib.metadata.version('qwen_vl_utils')
+        except importlib.metadata.PackageNotFoundError:
+            raise importlib.metadata.PackageNotFoundError(
+                "The 'qwen_vl_utils' distribution was not found and is required by this application.")
+        if version.parse(qwen_vl_utils_version) >= version.parse('0.0.14'):
+            compat_qwen_vl_utils(image_patch_size=14)
+        else:
+            require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
@@ -936,7 +962,8 @@ def _patch_deepstack_process(model):
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
         from swift.trainers.sequence_parallel import sequence_parallel
-        if sequence_parallel.world_size and visual_pos_masks is not None:
+        world_size = sequence_parallel.world_size
+        if world_size and world_size > 1 and visual_pos_masks is not None:
             visual_pos_masks, visual_embeds = sequence_parallel.pad_and_split_mm_tokens(visual_pos_masks, visual_embeds)
         if visual_pos_masks is None:
             return hidden_states + visual_embeds.mean() * 0
@@ -1059,6 +1086,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
+    compat_qwen_vl_utils(image_patch_size=16)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
@@ -1100,6 +1128,7 @@ register_model(
 def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
+    compat_qwen_vl_utils(image_patch_size=16)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)

@@ -1,26 +1,41 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import os
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from accelerate.utils import gather_object, is_peft_model
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
-from swift.utils import get_logger, unwrap_model_for_generation
+from swift.llm.template.template_inputs import TemplateInputs
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+                         unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, prepare_deepspeed
+from .utils import identity_data_collator, patch_profiling_context, patch_profiling_decorator, prepare_deepspeed
+
+try:
+    from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
+    _liger_kernel_available = True
+except ImportError:
+    _liger_kernel_available = False
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
 
 logger = get_logger()
+if is_wandb_available():
+    import wandb
+if is_swanlab_available():
+    import swanlab
 
 
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
@@ -39,9 +54,18 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
+        # Initialize logging components
+        self._prepare_logging()
+
+        # Initialize liger loss
+        self._prepare_liger_loss()
+
+        self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
         # Initialize teacher model
         if self.is_deepspeed_enabled:
             if teacher_deepspeed_config is not None:
+                if teacher_deepspeed_config.get('zero_optimization', {}).get('stage') != 3:
+                    self.teacher_ds3_gather_for_generation = False
                 self.teacher_model = prepare_deepspeed(
                     teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
             else:
@@ -102,6 +126,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         inputs['position_ids'] = new_position_ids
         return generated_tokens, new_attention_mask, new_labels
 
+    @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
@@ -109,42 +134,107 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
-        if self.args.sft_alpha > 0:
-            model_inputs['labels'] = inputs['labels']
-        # compute student output
-        outputs_student = model(**model_inputs)
 
-        model_inputs.pop('labels', None)
-        load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-        with torch.no_grad(), load_context:
-            outputs_teacher = self.teacher_model(**model_inputs)
+        if self.use_liger_gkd_loss:
+            # Liger fused JSD loss for memory efficiency
+            # Get base models (exclude lm_head to save memory)
+            unwrapped_student = self.accelerator.unwrap_model(model)
+            if is_peft_model(unwrapped_student):
+                unwrapped_student = unwrapped_student.base_model.model
+            base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
+                                   unwrapped_student)
 
-        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
-        mask = shifted_labels != -100
-        shifted_student_logits = outputs_student.logits[mask][None]
-        shifted_teacher_logits = outputs_teacher.logits[mask][None]
+            unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
+            base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
+                                   unwrapped_teacher)
 
-        # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
-        stu_dim = shifted_student_logits.shape[-1]
-        tea_dim = shifted_teacher_logits.shape[-1]
-        if stu_dim < tea_dim:
-            shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
-        elif stu_dim > tea_dim:
-            shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+            # Forward through base models
+            student_outputs = base_student(**model_inputs, use_cache=False)
 
-        # compute loss
-        loss = self.generalized_jsd_loss(
-            student_logits=shifted_student_logits,
-            teacher_logits=shifted_teacher_logits,
-            beta=self.beta,
-        )
-        if self.args.sft_alpha > 0:
-            loss = loss + self.args.sft_alpha * outputs_student.loss
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            with load_context:
+                with torch.no_grad():
+                    teacher_outputs = base_teacher(**model_inputs, use_cache=False)
+
+                # Get hidden states (shifted)
+                student_hidden = student_outputs.last_hidden_state[:, :-1]
+                teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
+
+                # Release full outputs to free memory
+                del student_outputs, teacher_outputs
+
+                # Prepare labels (shifted)
+                labels_mask = inputs['labels'] != -100
+                masked_input_ids = torch.where(labels_mask, inputs['input_ids'],
+                                               torch.full_like(inputs['input_ids'], -100))
+                true_labels = masked_input_ids[:, 1:].contiguous()
+
+                # Release intermediate tensors
+                del labels_mask, masked_input_ids
+
+                # Get output heads
+                student_head = unwrapped_student.get_output_embeddings()
+                teacher_head = unwrapped_teacher.get_output_embeddings()
+
+                # Compute liger fused JSD loss
+                loss = self.liger_jsd_loss(
+                    student_input=student_hidden,
+                    student_weight=student_head.weight,
+                    teacher_input=teacher_hidden,
+                    teacher_weight=teacher_head.weight,
+                    true_labels=true_labels,
+                    student_bias=getattr(student_head, 'bias', None),
+                    teacher_bias=getattr(teacher_head, 'bias', None),
+                )
+
+                # Release hidden states after loss computation
+                del student_hidden, teacher_hidden, true_labels
+        else:
+            # Standard loss computation
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            # compute student output
+            outputs_student = model(**model_inputs)
+
+            model_inputs.pop('labels', None)
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            with torch.no_grad(), load_context:
+                outputs_teacher = self.teacher_model(**model_inputs)
+
+            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+            mask = shifted_labels != -100
+            shifted_student_logits = outputs_student.logits[mask][None]
+            shifted_teacher_logits = outputs_teacher.logits[mask][None]
+
+            # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
+            stu_dim = shifted_student_logits.shape[-1]
+            tea_dim = shifted_teacher_logits.shape[-1]
+            if stu_dim < tea_dim:
+                shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
+                shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
+            elif stu_dim > tea_dim:
+                shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
+                shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+
+            # compute loss
+            loss = self.generalized_jsd_loss(
+                student_logits=shifted_student_logits,
+                teacher_logits=shifted_teacher_logits,
+                beta=self.beta,
+            )
+
+            # Add SFT loss if enabled (common for both paths)
+            if self.args.sft_alpha > 0:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
-        return (loss, outputs_student) if return_outputs else loss
+        if return_outputs:
+            if self.use_liger_gkd_loss:
+                # outputs has been released in liger loss computation to reduce peak memory
+                outputs_student = None
+            return (loss, outputs_student)
+        else:
+            return loss
 
     def _prepare_batch_inputs(self, inputs: list) -> Dict[str, torch.Tensor]:
         template = self.template
@@ -164,6 +254,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return batch_encoded
 
     # Code borrowed from huggingface/trl
+    @patch_profiling_decorator
     def training_step(self,
                       model: nn.Module,
                       inputs: DataType,
@@ -178,40 +269,49 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
-        if self._get_random_num() <= self.lmbda:
-            # On-policy: student model generates responses
-            if args.use_vllm:
-                processed_inputs = self._preprocess_inputs(inputs)
-                inputs = self._fast_infer(processed_inputs)
+        with patch_profiling_context(self, 'get_completions'):
+            if self._get_random_num() <= self.lmbda:
+                # On-policy: student model generates responses
+                if args.use_vllm:
+                    processed_inputs = self._preprocess_inputs(inputs)
+                    generated_inputs = self._fast_infer(processed_inputs)
+                    if self.log_completions:
+                        messages = [inp['messages'][:-1] for inp in generated_inputs]
+                        completions = [deepcopy(inp['messages'][-1]['content']) for inp in generated_inputs]
+                        valid_messages = gather_object(messages)
+                        valid_completions = gather_object(completions)
+                        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+                        self._logs['completion'].extend(valid_completions)
+                    inputs = self._prepare_batch_inputs(generated_inputs)
+                else:
+                    inputs = self._prepare_batch_inputs(inputs)
+                    with unwrap_model_for_generation(
+                            model, self.accelerator,
+                            gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
+                        unwrapped_model.eval()
+                        new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
+                            unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+                        unwrapped_model.train()
+                    inputs['input_ids'] = new_input_ids
+                    inputs['attention_mask'] = new_attention_mask
+                    inputs['labels'] = new_labels
+
+            elif self.seq_kd:
                 inputs = self._prepare_batch_inputs(inputs)
-            else:
-                inputs = self._prepare_batch_inputs(inputs)
-                with unwrap_model_for_generation(
-                        model, self.accelerator,
-                        gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
-                    unwrapped_model.eval()
+                load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+                with load_context, unwrap_model_for_generation(
+                        self.teacher_model,
+                        self.accelerator,
+                        gather_deepspeed3_params=self.teacher_ds3_gather_for_generation) as unwrapped_model:
                     new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                         unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
-                    unwrapped_model.train()
                 inputs['input_ids'] = new_input_ids
                 inputs['attention_mask'] = new_attention_mask
                 inputs['labels'] = new_labels
 
-        elif self.seq_kd:
-            inputs = self._prepare_batch_inputs(inputs)
-            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with load_context, unwrap_model_for_generation(
-                    self.teacher_model, self.accelerator,
-                    gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
-                new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
-                    unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
-            inputs['input_ids'] = new_input_ids
-            inputs['attention_mask'] = new_attention_mask
-            inputs['labels'] = new_labels
+            else:
+                inputs = self._prepare_batch_inputs(inputs)
 
-        else:
-            inputs = self._prepare_batch_inputs(inputs)
-        assert not isinstance(inputs, list)
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
@@ -272,3 +372,89 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.load_model(self.accelerator.unwrap_model(self.teacher_model))
         yield
         self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+
+    def _prepare_liger_loss(self):
+        """Initialize liger loss if enabled."""
+        args = self.args
+        self.use_liger_gkd_loss = False
+        if getattr(args, 'use_liger_kernel', False):
+            if not _liger_kernel_available:
+                raise ImportError(
+                    'Liger kernel is not installed. Please install liger-kernel by running: pip install liger-kernel')
+            assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
+
+            self.liger_jsd_loss = LigerFusedLinearJSDLoss(
+                beta=self.beta,
+                ignore_index=-100,
+                temperature=self.temperature,
+                compiled=False,
+            )
+            self.use_liger_gkd_loss = True
+
+    def _prepare_logging(self):
+        """Initialize logging components for on-policy rollout tracking."""
+        args = self.args
+        self.log_completions = args.log_completions
+        self.wandb_log_unique_prompts = getattr(args, 'wandb_log_unique_prompts', False)
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+
+        # Initialize logs deque for storing rollout data (aligned with GRPO)
+        self._logs = {
+            'prompt': deque(),
+            'completion': deque(),
+        }
+
+    def _apply_chat_template_to_messages_list(self, messages_list: DataType):
+        """Convert messages list to prompt text list using template (aligned with GRPO)."""
+        prompts_text = []
+        for messages in messages_list:
+            remove_response(messages)
+            template_inputs = TemplateInputs.from_dict({'messages': messages})
+            res = self.template.encode(template_inputs)
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
+        return prompts_text
+
+    def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
+        """Override log method to include completion table logging (aligned with GRPO)."""
+        # Call parent log method
+        import transformers
+        from packaging import version
+        if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
+            super().log(logs, start_time)
+        else:
+            super().log(logs)
+
+        # Log completions table if we have data (only for on-policy generations)
+        if self.accelerator.is_main_process and self.log_completions and len(self._logs['prompt']) > 0:
+            seen_nums = len(self._logs['prompt'])
+            table = {
+                'step': [str(self.state.global_step)] * seen_nums,
+                'prompt': list(self._logs['prompt'])[:seen_nums],
+                'completion': list(self._logs['completion'])[:seen_nums],
+            }
+
+            # Write to jsonl
+            self.jsonl_writer.append(table)
+
+            self._logs['prompt'].clear()
+            self._logs['completion'].clear()
+            # Log to wandb if enabled
+            report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
+            if report_to_wandb:
+                wandb_table = table.copy()
+                import pandas as pd
+                df = pd.DataFrame(wandb_table)
+                if self.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                wandb.log({'completions': wandb.Table(dataframe=df)})
+
+            # Log to swanlab if enabled
+            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
+            ) is not None
+            if report_to_swanlab:
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['step'])):
+                    row = [table[header][i] for header in headers]
+                    rows.append(row)
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
