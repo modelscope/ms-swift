@@ -111,7 +111,8 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     if cp_size > 1:
         args = get_args()
         keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
-        if args.is_multimodal:
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        if args.is_multimodal and not is_grpo:
             keys.append('decoder_input')
         else:
             keys.append('input_ids')
