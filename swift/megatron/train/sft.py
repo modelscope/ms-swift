@@ -4,6 +4,7 @@ from functools import partial
 from typing import List, Optional, Union
 
 import torch
+import torch.distributed as dist
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
@@ -60,6 +61,7 @@ class MegatronSft(SwiftSft):
 
         try:
             self.trainer.train(train_dataset, val_dataset, data_collator)
+            dist.barrier()  # Ensure all weights are saved completely
         finally:
             # Visualization
             if is_last_rank():
