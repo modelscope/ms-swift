@@ -622,7 +622,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.ernie_vl,
-        language_model='model',
+        language_model=['model', 'lm_head'],
         aligner='model.resampler_model',
         vision_tower='vision_model',
     ))
