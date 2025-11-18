@@ -210,9 +210,6 @@ class RLHFMegatronArgumentsMixin:
 
         _check_not_supported()
         _check_batch_params()
-        # default loss_type if no loss_type is provided
-        assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
-            f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
