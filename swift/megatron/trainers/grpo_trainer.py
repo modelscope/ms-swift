@@ -575,7 +575,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             rollout_group_size = (
                 mpu.get_tensor_model_parallel_world_size() * mpu.get_pipeline_model_parallel_world_size()
                 * mpu.get_context_parallel_world_size())
-            num_items_in_batch = total_token_count_tensor.item() / rollout_group_size
+            num_items_in_batch = total_token_count_tensor / rollout_group_size
             # Store num_items_in_batch in each mini_batch_data for CISPO/DAPO loss normalization
             for batch_data in mini_batch_data:
                 batch_data['num_items_in_batch'] = num_items_in_batch
