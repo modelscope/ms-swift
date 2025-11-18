@@ -67,10 +67,10 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_peft_format: bool = False
     exist_ok: bool = False
 
-    def _init_ckpt_dir(self, adapters=None):
+    def load_args_from_ckpt(self) -> None:
         if self.to_cached_dataset:
             return
-        super()._init_ckpt_dir(adapters)
+        super().load_args_from_ckpt()
 
     def _init_output_dir(self):
         if self.output_dir is None:
