@@ -53,7 +53,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
         self._prepare_metrics()
-        self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
         self._prepare_scheduler()  # TODO
@@ -65,22 +64,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
         super().train(train_dataset, val_dataset, data_collator)
-
-    def _prepare_template_data_collator(self):
-        template = self.template
-        args = self.args
-        data_collator = template.data_collator
-        padding_to = None
-        if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
-            padding_to = args.tensor_model_parallel_size
-        if args.context_parallel_size > 1:
-            # CP split uses 2*cp_size chunks for load balancing
-            padding_to = (padding_to or 1) * (1 * args.context_parallel_size)
-        if args.fp8_format:
-            padding_to = max((padding_to or 1) * 8, 16)
-        logger.info(f'padding_to: {padding_to}')
-        data_collator = partial(data_collator, padding_to=padding_to)
-        template.data_collator = data_collator
 
     def _init_grpo_params(self):
         args: MegatronArguments = self.args
