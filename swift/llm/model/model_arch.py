@@ -545,7 +545,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen2_5_omni,
-        language_model='thinker.model',
+        language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         generator=['talker', 'token2wav'],
@@ -554,7 +554,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen3_omni,
-        language_model='thinker.model',
+        language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=[
             'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
