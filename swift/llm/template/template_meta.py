@@ -114,18 +114,20 @@ class TemplateMeta:
             value = self._token_attr_to_id(tokenizer, value)
             setattr(self, key, value)
 
-        if self.suffix and self.suffix[-1] not in self.stop_words:
-            self.stop_words.append(self.suffix[-1])
+        suffix_stop = self.suffix[-1] if self.suffix else None
+        if isinstance(suffix_stop, str):
+            suffix_stop = suffix_stop.strip()
+        if suffix_stop and suffix_stop not in self.stop_words:
+            self.stop_words.append(suffix_stop)
         if tokenizer.eos_token not in self.stop_words:
             self.stop_words.append(tokenizer.eos_token)
 
         self.stop_token_id = tokenizer.eos_token_id
-        if self.suffix:
-            suffix_tokens = self.suffix[-1]
-            if isinstance(suffix_tokens, str):
-                stop_token_id = tokenizer.convert_tokens_to_ids(suffix_tokens)
-            elif isinstance(suffix_tokens, list) and len(suffix_tokens) == 1:
-                stop_token_id = suffix_tokens[0]
+        if suffix_stop:
+            if isinstance(suffix_stop, str):
+                stop_token_id = tokenizer.convert_tokens_to_ids(suffix_stop)
+            elif isinstance(suffix_stop, list) and len(suffix_stop) == 1:
+                stop_token_id = suffix_stop[0]
             else:
                 stop_token_id = None
             if stop_token_id is not None:
