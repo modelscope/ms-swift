@@ -53,15 +53,18 @@ def test_qwen2_5_math_reward():
             'are left to be sold:\n\\[ 16 - 7 = 9 \\text{ eggs} \\]\n\nFinally, we calculate the revenue from '
             'selling the remaining eggs at $2 per egg:\n\\[ 9 \\times 2 = 18 \\text{ dollars} \\]\n\nTherefore, '
             "Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market."
+        }, {
+            'role': 'user',
+            'content': 'Explain your answer step by step.'
         }]
     })
     res = template.encode(inputs)
     template.print_inputs(res)
     template.template_backend = 'jinja'
     res2 = template.encode(inputs)
-    template.print_inputs(res)
+    template.print_inputs(res2)
     assert res['input_ids'] == res2['input_ids']
-    assert len(res['input_ids']) == 364
+    assert len(res['input_ids']) == 380
 
 
 def test_minimax():
