@@ -22,7 +22,8 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, patch_profiling_context, patch_profiling_decorator, prepare_deepspeed
+from .utils import (get_gather_if_zero3_context, identity_data_collator, patch_profiling_context,
+                    patch_profiling_decorator, prepare_deepspeed)
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -63,10 +64,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._prepare_liger_loss()
 
         self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
+        self.is_teacher_ds3 = None
         # Initialize teacher model
         if self.is_deepspeed_enabled:
             if teacher_deepspeed_config is not None:
-                if teacher_deepspeed_config.get('zero_optimization', {}).get('stage') != 3:
+                self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
+                if not self.is_teacher_ds3:
                     self.teacher_ds3_gather_for_generation = False
                 self.teacher_model = prepare_deepspeed(
                     teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
@@ -179,17 +182,23 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 student_head = unwrapped_student.get_output_embeddings()
                 teacher_head = unwrapped_teacher.get_output_embeddings()
 
-                # Compute liger fused JSD loss
-                loss = self.liger_jsd_loss(
-                    student_input=student_hidden,
-                    student_weight=student_head.weight,
-                    teacher_input=teacher_hidden,
-                    teacher_weight=teacher_head.weight,
-                    true_labels=true_labels,
-                    student_bias=getattr(student_head, 'bias', None),
-                    teacher_bias=getattr(teacher_head, 'bias', None),
-                )
+                # Prepare context managers for gathering parameters in zero3
+                teacher_context = get_gather_if_zero3_context(self, is_zero3=self.is_teacher_ds3)(teacher_head.weight)
+                student_context = get_gather_if_zero3_context(self)(student_head.weight)
 
+                with teacher_context, student_context:
+                    # Compute liger fused JSD loss
+                    loss = self.liger_jsd_loss(
+                        student_input=student_hidden,
+                        student_weight=student_head.weight,
+                        teacher_input=teacher_hidden,
+                        teacher_weight=teacher_head.weight,
+                        true_labels=true_labels,
+                        student_bias=getattr(student_head, 'bias', None),
+                        teacher_bias=getattr(teacher_head, 'bias', None),
+                    )
+                    # loss / grad norm is unexpectedly large, normalize by sequence length
+                    loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
         else:
