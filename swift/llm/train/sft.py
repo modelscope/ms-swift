@@ -317,6 +317,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         origin_template_model = template.model
         template.model = None  # Avoid serializing the model.
+        if args.truncation_strategy == 'split' and (args.task_type != 'causal_lm' or template.mode != 'train'
+                                                    or args.use_chat_template or args.model_meta.is_multimodal):
+            raise ValueError(
+                '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue

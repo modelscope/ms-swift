@@ -91,7 +91,8 @@
   - 注意：数据集中的system**优先级**最高，然后是`--system`，最后是注册template时设置的`default_system`。
 - 🔥max_length: 限制单数据集样本经过`tokenizer.encode`后的tokens最大长度，超过的数据样本会根据`truncation_strategy`参数进行处理（避免训练OOM）。默认为None，即设置为模型支持的tokens最大长度(max_model_len)。
   - 当PPO、GRPO和推理情况下，`max_length`代表`max_prompt_length`。
-- truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持`delete`、`left`和`right`，代表删除、左侧裁剪和右侧裁剪，默认为'delete'。
+- truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持'delete'、'left'、'right'和'split'，代表删除、左侧裁剪、右侧裁剪和切成多条数据样本，默认为'delete'。
+  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，需"ms-swift>=3.11"，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。（该特性不兼容cached_dataset）
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
@@ -698,7 +699,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - exist_ok: 如果output_dir存在，不抛出异常，进行覆盖。默认为False。
 - 🔥quant_method: 可选为'gptq'、'awq'、'bnb'和'fp8'，默认为None。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize)。
 - quant_n_samples: gptq/awq的校验集采样数，默认为256。
-- max_length: 校准集的max_length, 默认值2048。
+- max_length: 默认值为None。若设置了quant_method，则默认值为2048，代表校准集的max_length。
 - quant_batch_size: 量化batch_size，默认为1。
 - group_size: 量化group大小，默认为128。
 - to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。更多介绍请查看`cached_dataset`。
