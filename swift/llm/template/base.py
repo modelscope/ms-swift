@@ -531,7 +531,7 @@ class Template(ProcessorMixin):
 
         # compatible with `--truncation_strategy split`
         batched = encoded
-        if not isinstance(batched, list):
+        if not isinstance(batched, (list, tuple)):
             batched = [batched]
         for encoded in batched:
             if chosen.channel is not None:
