@@ -607,7 +607,9 @@ def patch_save_last_checkpoint():
 
 def get_gather_if_zero3_context(trainer, is_zero3: Optional[bool] = None):
     deepspeed_plugin = trainer.accelerator.state.deepspeed_plugin
-    zero_stage_3 = is_zero3 if is_zero3 is not None else deepspeed_plugin.zero_stage == 3
+    zero_stage_3 = is_zero3 if is_zero3 is not None else (deepspeed_plugin is not None
+                                                          and deepspeed_plugin.zero_stage == 3)
+
     if zero_stage_3:
         import deepspeed
         gather_if_zero3 = deepspeed.zero.GatheredParameters

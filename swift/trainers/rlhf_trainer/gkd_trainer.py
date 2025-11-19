@@ -137,7 +137,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
-        if use_logits_to_keep:
+        if use_logits_to_keep and not self.use_liger_gkd_loss:
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
 
@@ -198,6 +198,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         teacher_bias=getattr(teacher_head, 'bias', None),
                     )
                     # loss / grad norm is unexpectedly large, normalize by sequence length
+                    # https://github.com/linkedin/Liger-Kernel/blob/v0.6.3/src/liger_kernel/chunked_loss/jsd_loss.py#L9-L39
                     loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
