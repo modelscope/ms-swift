@@ -1240,7 +1240,7 @@ class Template(ProcessorMixin):
                 while i < length:
                     splited = {}
                     for key in ['input_ids', 'labels', 'loss_scale']:
-                        value = locals()[key]
+                        value = encoded.get(key)
                         if value is not None:
                             value = value[i:i + self.max_length]
                             if key == 'labels':
