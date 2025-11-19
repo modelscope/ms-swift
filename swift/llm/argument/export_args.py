@@ -114,6 +114,11 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if self.to_mcore or self.to_hf:
+            if self.merge_lora:
+                self.merge_lora = False
+                logger.warning('`swift export --to_mcore/to_hf` does not support the `--merge_lora` parameter. '
+                               'To export LoRA delta weights, please use `megatron export`')
+
             self.mcore_model = to_abspath(self.mcore_model, check_path_exist=True)
             if not dist.is_initialized():
                 set_default_ddp_config()
