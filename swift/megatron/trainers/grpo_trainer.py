@@ -1191,7 +1191,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 raise NotImplementedError
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
-            self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio.item())
+            self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             if self.template.padding_free:
                 # Use coef_1 before clamping for metrics (need to expand if sequence-level)
@@ -1218,16 +1218,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 high_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
 
             # Store local values for mean (will be averaged by _all_reduce_metric)
-            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip.item())
-            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip.item())
-            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio.item())
+            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip)
+            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip)
+            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio)
             # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
             custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
             custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
         if self._metrics[mode]:
             addition_metrics = {
                 key: torch.tensor(sum(val) / len(val), device=loss.device)
-                for key, val in self._metrics[mode].items()
+                for key, val in self._metrics[mode]
             }
             avg_metric.update(addition_metrics)
 
