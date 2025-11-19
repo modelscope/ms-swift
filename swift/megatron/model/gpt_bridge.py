@@ -1042,8 +1042,7 @@ class GPTBridge:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             layer_idx = 0
             while layer_idx < self.args.mtp_num_layers:
-                res = self._convert_mtp_layer(lm_model, hf_state_dict, f'{self.hf_mtp_prefix}.', layer_idx,
-                                              to_mcore)
+                res = self._convert_mtp_layer(lm_model, hf_state_dict, f'{self.hf_mtp_prefix}.', layer_idx, to_mcore)
                 layer_idx += 1
                 if to_mcore:
                     yield
@@ -1069,15 +1068,16 @@ class GPTBridge:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
             hf_state_dict = {}
-        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight', to_mcore)
+        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
+                             to_mcore)
         self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
         for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
-            self._set_state_dict(mg_layer, key, hf_state_dict, key, to_mcore)
+            self._set_state_dict(mtp_layer, key, hf_state_dict, key, to_mcore)
         if hf_layer_idx >= len(self.hf_layers):
             hf_layer_idx = -1
-        hf_state_dict.update(self._set_layer_attn(mg_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
-        hf_state_dict.update(self._set_layer_mlp(mg_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
-        self._set_state_dict(mg_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+        hf_state_dict.update(self._set_layer_attn(mtp_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
+        hf_state_dict.update(self._set_layer_mlp(mtp_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
         if to_mcore:
             hf_state_dict = {}
         else:
