@@ -699,7 +699,6 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - exist_ok: 如果output_dir存在，不抛出异常，进行覆盖。默认为False。
 - 🔥quant_method: 可选为'gptq'、'awq'、'bnb'和'fp8'，默认为None。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize)。
 - quant_n_samples: gptq/awq的校验集采样数，默认为256。
-- max_length: 默认值为None。若设置了quant_method，则默认值为2048，代表校准集的max_length。
 - quant_batch_size: 量化batch_size，默认为1。
 - group_size: 量化group大小，默认为128。
 - to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。更多介绍请查看`cached_dataset`。

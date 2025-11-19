@@ -717,7 +717,6 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - exist_ok: If output_dir exists, do not raise an exception and overwrite the contents. The default value is False.
 - 🔥quant_method: Options are 'gptq', 'awq', 'bnb' or 'fp8', with the default being None. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize).
 - quant_n_samples: The number of samples for the validation set used by gptq/awq, with a default of 256.
-- max_length: The default value is None. If quant_method is set, the default value is 2048, representing the max_length of the calibration dataset.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
 - to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset). For more information, please refer to cached_dataset.
