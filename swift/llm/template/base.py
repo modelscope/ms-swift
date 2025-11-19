@@ -1243,6 +1243,10 @@ class Template(ProcessorMixin):
                         value = locals()[key]
                         if value is not None:
                             value = value[i:i + self.max_length]
+                            if key == 'labels':
+                                value[0] = -100
+                            elif key == 'loss_scale':
+                                value[0] = 0
                         splited[key] = value
                     splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
                     batched.append(splited)
