@@ -44,7 +44,7 @@ DAPO uses token-level normalization to avoid this bias in loss calculation.
 Parameters:
 - `loss_type bnpo/dapo` enables token-level normalization.
 
-> bnpo normalizes on local data (single GPU), dapo on global data (multi-GPU). dapo requires Swift >= 3.11.
+> For the loss_type formula, please refer to the [documentation](../DeveloperGuide/loss_types.md).
 
 ## Overlong Filtering
 DAPO argues that forcibly truncated responses contain high reward noise, making it difficult for the model to distinguish between quality issues and length issues. To address this, DAPO filters out truncated data during training, excluding it from loss computation.

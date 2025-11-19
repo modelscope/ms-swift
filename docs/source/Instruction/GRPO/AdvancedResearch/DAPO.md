@@ -51,8 +51,7 @@ DAPO 使用token级归一化，避免了回答长度在损失计算上的偏差�
 
 - loss_type bnpo/dapo 来使用token级归一化
 
-> bnpo 基于本地数据（单卡）归一化，dapo 基于全局数据（多卡）归一化。dapo 需要 swift >= 3.11
-
+> loss_type 计算公式可参考[文档](../DeveloperGuide/loss_types.md)
 
 ## Overlong Filtering
 DAPO 认为被强制截断的回复的奖励噪声较大，可能会导致模型难以区分质量问题和长度问题。为此，DAPO 筛除了训练中被截断的数据，使其不参与损失计算。
