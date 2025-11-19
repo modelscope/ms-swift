@@ -434,7 +434,7 @@ def _patch_mtp():
         """
         # TODO: Multimodal compatible; MTP initialization
         # TODO: packed_seq_params offset
-        assert context is None, f'multi token prediction + cross attention is not yet supported.'
+        assert context is None, 'multi token prediction + cross attention is not yet supported.'
         input_ids, position_ids, decoder_input, hidden_states = self._get_embeddings(
             input_ids=input_ids,
             position_ids=position_ids,
