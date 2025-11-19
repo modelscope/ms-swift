@@ -90,6 +90,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
         else:
             self.maybe_activation_offload_context = nullcontext()
+        self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
@@ -224,8 +225,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_logits=shifted_teacher_logits,
                 beta=self.beta,
             )
-            trl_version = version.parse(trl.__version__)
-            if trl_version >= version.parse('0.24'):
+            if self._trl_version_gte_0_24:
                 loss /= shifted_student_logits.shape[1]
             # Add SFT loss if enabled (common for both paths)
             if self.args.sft_alpha > 0:
