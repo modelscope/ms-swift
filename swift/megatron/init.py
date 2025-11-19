@@ -15,7 +15,7 @@ try:
     import mindspeed.megatron_adaptor  # F401
     HAS_MINDSPEED = True
 except ImportError:
-    HAS_MINDPSEED = False
+    HAS_MINDSPEED = False
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
