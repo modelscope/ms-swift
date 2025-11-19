@@ -259,7 +259,7 @@ def _patch_sequence_classification(model, model_meta):
     llm_model.num_labels = model.config.num_labels
     for lm_head in lm_heads:
         if hasattr(llm_model, lm_head):
-            hidden_size = llm_model.lm_head.in_features
+            hidden_size = getattr(llm_model, lm_head).in_features
             setattr(llm_model, lm_head, nn.Identity())
             break
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
