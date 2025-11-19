@@ -839,6 +839,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
         total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
+        # Store num_items_in_batch for DAPO loss (total completion tokens across all processes)
+        num_items_in_batch = total_lengths.sum()
+        for batch_encoded in ga_batch_encoded_inputs:
+            batch_encoded['num_items_in_batch'] = num_items_in_batch
+
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
         self._metrics[mode]['completions/min_length'].append(total_lengths.min().item())
         self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
@@ -1010,23 +1015,32 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 "and 'sequence'.")
 
         coef_1 = torch.exp(log_importance_weights)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-        if self.args.delta is not None:
-            coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        if self.template.padding_free:
-            if self.importance_sampling_level == 'sequence':
-                # Expand sequence-level weights to token-level
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+        if self.loss_type == 'cispo':
+            clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
+            if self.template.padding_free:
+                advantages = advantages[-coef_1.shape[1]:]
+                per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
+            else:
+                per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
+            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+            if self.args.delta is not None:
+                coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            advantages = advantages[-coef_1.shape[1]:]
-            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
-        else:
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+            if self.template.padding_free:
+                if self.importance_sampling_level == 'sequence':
+                    # Expand sequence-level weights to token-level
+                    coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
+                    coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
+
+                advantages = advantages[-coef_1.shape[1]:]
+                per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+                per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+            else:
+                per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+                per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
@@ -1046,6 +1060,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.loss_type == 'dr_grpo':
             batch_size = lengths.shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
+        elif self.loss_type in ['cispo', 'dapo']:
+            # CISPO and DAPO: Normalize by total completion tokens across all processes
+            normalizer = inputs['num_items_in_batch'] / self.accelerator.num_processes
+            loss = (per_token_loss * completion_mask).sum() / normalizer
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1071,25 +1089,39 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
 
         # Compute the clipped probability ratios
-        is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
-        is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
-        is_region_clipped = is_low_clipped | is_high_clipped
+        if self.loss_type == 'cispo':
+            # CISPO: Only track upper bound clipping
+            if self.template.padding_free:
+                is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(0) > 0)
+            else:
+                is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
+            gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
+            metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
+        else:
+            if self.template.padding_free:
+                is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(0) < 0)
+                is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(0) > 0)
+            else:
+                is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+                is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_region_clipped = is_low_clipped | is_high_clipped
 
-        low_clip = masked_batch_mean(is_low_clipped.float())
-        high_clip = masked_batch_mean(is_high_clipped.float())
-        clip_ratio = masked_batch_mean(is_region_clipped.float())
+            low_clip = masked_batch_mean(is_low_clipped.float())
+            high_clip = masked_batch_mean(is_high_clipped.float())
+            clip_ratio = masked_batch_mean(is_region_clipped.float())
 
-        gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
-        gathered_high_clip = self.accelerator.gather_for_metrics(high_clip)
-        gathered_clip_ratio = self.accelerator.gather_for_metrics(clip_ratio)
+            gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
+            gathered_high_clip = self.accelerator.gather_for_metrics(high_clip)
+            gathered_clip_ratio = self.accelerator.gather_for_metrics(clip_ratio)
 
-        metrics_data['clipping'] = {
-            'low_clip_mean': gathered_low_clip.nanmean().item(),
-            'low_clip_min': nanmin(gathered_low_clip).item(),
-            'high_clip_mean': gathered_high_clip.nanmean().item(),
-            'high_clip_max': nanmax(gathered_high_clip).item(),
-            'region_clip_mean': gathered_clip_ratio.nanmean().item()
-        }
+            metrics_data['clipping'] = {
+                'low_clip_mean': gathered_low_clip.nanmean().item(),
+                'low_clip_min': nanmin(gathered_low_clip).item(),
+                'high_clip_mean': gathered_high_clip.nanmean().item(),
+                'high_clip_max': nanmax(gathered_high_clip).item(),
+                'region_clip_mean': gathered_clip_ratio.nanmean().item()
+            }
         if mode == 'train' and self.chord_sft_iterator is not None:
             loss = compute_chord_loss(self, grpo_loss=loss)
 
@@ -1117,11 +1149,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Update clipping metrics
         if 'clipping' in metrics_data:
             clipping = metrics_data['clipping']
-            self._metrics[mode]['clip_ratio/low_mean'].append(clipping['low_clip_mean'])
-            self._metrics[mode]['clip_ratio/low_min'].append(clipping['low_clip_min'])
-            self._metrics[mode]['clip_ratio/high_mean'].append(clipping['high_clip_mean'])
-            self._metrics[mode]['clip_ratio/high_max'].append(clipping['high_clip_max'])
-            self._metrics[mode]['clip_ratio/region_mean'].append(clipping['region_clip_mean'])
+            if 'cispo_clip_ratio' in clipping:
+                # CISPO
+                self._metrics[mode]['cispo_clip_ratio'].append(clipping['cispo_clip_ratio'])
+            else:
+                self._metrics[mode]['clip_ratio/low_mean'].append(clipping['low_clip_mean'])
+                self._metrics[mode]['clip_ratio/low_min'].append(clipping['low_clip_min'])
+                self._metrics[mode]['clip_ratio/high_mean'].append(clipping['high_clip_mean'])
+                self._metrics[mode]['clip_ratio/high_max'].append(clipping['high_clip_max'])
+                self._metrics[mode]['clip_ratio/region_mean'].append(clipping['region_clip_mean'])
 
     def _compute_loss_chunked(self, model, inputs: DataType):
         """
@@ -1182,6 +1218,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Separate metrics by type for aggregation
         entropy_logs, entropy_stats, kl_values = [], [], []
         clip_values = {'low': [], 'high': [], 'region': [], 'low_min': [], 'high_max': []}
+        cispo_clip_values = []
         entropy_thresholds = []
 
         for chunk_metrics, chunk_weight in all_metrics_data:
@@ -1208,11 +1245,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'clipping' in chunk_metrics:
                 clipping = chunk_metrics['clipping']
                 weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
-                clip_values['low'].append((clipping['low_clip_mean'], weight))
-                clip_values['high'].append((clipping['high_clip_mean'], weight))
-                clip_values['region'].append((clipping['region_clip_mean'], weight))
-                clip_values['low_min'].append(clipping['low_clip_min'])
-                clip_values['high_max'].append(clipping['high_clip_max'])
+                if 'cispo_clip_ratio' in clipping:
+                    cispo_clip_values.append((clipping['cispo_clip_ratio'], weight))
+                else:
+                    clip_values['low'].append((clipping['low_clip_mean'], weight))
+                    clip_values['high'].append((clipping['high_clip_mean'], weight))
+                    clip_values['region'].append((clipping['region_clip_mean'], weight))
+                    clip_values['low_min'].append(clipping['low_clip_min'])
+                    clip_values['high_max'].append(clipping['high_clip_max'])
 
         # Build aggregated metrics
         aggregated_metrics = {'mode': mode, 'entropy': {}}
@@ -1234,11 +1274,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             aggregated_metrics['kl'] = sum(kl_values) / len(kl_values)
 
         # Aggregate clipping (token-weighted averages)
-        if clip_values['low']:
+        def weighted_avg(values):
+            return sum(v * w for v, w in values) / sum(w for _, w in values)
 
-            def weighted_avg(values):
-                return sum(v * w for v, w in values) / sum(w for _, w in values)
-
+        if cispo_clip_values:
+            # CISPO specific metric
+            aggregated_metrics['clipping'] = {'cispo_clip_ratio': weighted_avg(cispo_clip_values)}
+        elif clip_values['low']:
+            # Two-sided clipping metrics
             aggregated_metrics['clipping'] = {
                 'low_clip_mean': weighted_avg(clip_values['low']),
                 'low_clip_min': min(clip_values['low_min']),
@@ -1271,7 +1314,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask'
+                'truncated_mask', 'seq_lengths'
             ]
         }
         sequence_parallel.prepare_inputs(inputs)
@@ -1445,7 +1488,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask'
+                    'truncated_mask', 'seq_lengths'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
