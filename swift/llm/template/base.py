@@ -63,7 +63,7 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
@@ -529,31 +529,36 @@ class Template(ProcessorMixin):
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
-        if chosen.channel is not None:
-            encoded['channel'] = chosen.channel
+        # compatible with `--truncation_strategy split`
+        batched = encoded
+        if not isinstance(batched, list):
+            batched = [batched]
+        for encoded in batched:
+            if chosen.channel is not None:
+                encoded['channel'] = chosen.channel
 
-        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
-        for key in list(encoded.keys()):
-            if encoded[key] is None:
-                encoded.pop(key)
-            elif key.endswith('length'):
-                value = encoded[key]
-                if isinstance(value, int):
-                    lengths.append(value)
-                elif isinstance(value, (tuple, list)):
-                    lengths += value
-        if return_length:
-            if self.task_type in {'reranker', 'generative_reranker'}:
-                encoded['length'] = lengths
+            lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
+            for key in list(encoded.keys()):
+                if encoded[key] is None:
+                    encoded.pop(key)
+                elif key.endswith('length'):
+                    value = encoded[key]
+                    if isinstance(value, int):
+                        lengths.append(value)
+                    elif isinstance(value, (tuple, list)):
+                        lengths += value
+            if return_length:
+                if self.task_type in {'reranker', 'generative_reranker'}:
+                    encoded['length'] = lengths
+                else:
+                    encoded['length'] = sum(lengths)
             else:
-                encoded['length'] = sum(lengths)
-        else:
-            encoded.pop('length', None)
-        if return_template_inputs:
-            encoded['template_inputs'] = chosen
-        if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = chosen.extra_kwargs
-        return encoded
+                encoded.pop('length', None)
+            if return_template_inputs:
+                encoded['template_inputs'] = chosen
+            if not self.remove_unused_columns:
+                encoded['_extra_kwargs'] = chosen.extra_kwargs
+        return batched[0] if len(batched) == 1 else batched
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         packed = {}
@@ -1229,6 +1234,25 @@ class Template(ProcessorMixin):
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
+            elif self.truncation_strategy == 'split':
+                if (self.task_type != 'causal_lm' or self.mode != 'train' or self.use_chat_template
+                        or self.model_meta.is_multimodal):
+                    raise ValueError(
+                        '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+                i = 0
+                batched = []
+                while i < length:
+                    splited = {}
+                    for key in ['input_ids', 'labels', 'loss_scale']:
+                        value = locals()[key]
+                        if value is not None:
+                            value = value[i:i + self.max_length]
+                        splited[key] = value
+                    splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
+                    batched.append(splited)
+                    i += self.max_length
+            else:
+                raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels

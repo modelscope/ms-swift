@@ -142,7 +142,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if not args.streaming:
+            if (args.model_meta.is_multimodal or args.lazy_tokenize) and not args.streaming:
+                # If it's plain text and lazy_tokenize is disabled, this code path won't run
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -325,8 +326,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 continue
             if not args.lazy_tokenize and not args.streaming:
                 # Compatible with cached_dataset, only additionally write length here.
-                preprocessor = AddLengthPreprocessor(template=template)
+                # EncodePreprocessor is used for plain text and supports truncation_strategy 'split'
+                preprocessor_cls = AddLengthPreprocessor if args.model_meta.is_multimodal else EncodePreprocessor
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
+                preprocessor = preprocessor_cls(template=template)
                 dataset = preprocessor(
                     dataset,
                     num_proc=args.dataset_num_proc,
