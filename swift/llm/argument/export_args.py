@@ -37,7 +37,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     # awq/gptq
     quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
     quant_n_samples: int = 256
-    max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
 
@@ -113,6 +112,8 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
+        if self.quant_method is not None and self.max_length is None:
+            self.max_length = 2048
         if self.to_mcore or self.to_hf:
             if self.merge_lora:
                 self.merge_lora = False

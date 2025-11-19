@@ -167,6 +167,10 @@ class Template(ProcessorMixin):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
         self.init_env_args()
+        if self.truncation_strategy == 'split' and (self.task_type != 'causal_lm' or self.mode != 'train'
+                                                    or self.use_chat_template or self.model_meta.is_multimodal):
+            raise ValueError(
+                '`--truncation_strategy split` is currently only supported for plain text model pretraining')
 
     def _get_model(self):
         if self.model is not None:
@@ -1235,10 +1239,6 @@ class Template(ProcessorMixin):
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
             elif self.truncation_strategy == 'split':
-                if (self.task_type != 'causal_lm' or self.mode != 'train' or self.use_chat_template
-                        or self.model_meta.is_multimodal):
-                    raise ValueError(
-                        '`--truncation_strategy split` is currently only supported for plain text model pretraining')
                 i = 0
                 batched = []
                 while i < length:
@@ -1251,6 +1251,7 @@ class Template(ProcessorMixin):
                     splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
                     batched.append(splited)
                     i += self.max_length
+                return batched
             else:
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
