@@ -955,7 +955,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
-        inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
+        inputs = {
+            k: v
+            for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask', 'seq_lengths']
+        }
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
@@ -1028,8 +1031,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         inputs = {
             k: v
-            for k, v in data.items() if k not in
-            ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
+            for k, v in data.items() if k not in [
+                'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask',
+                'seq_lengths'
+            ]
         }
 
         with self.stimer:
