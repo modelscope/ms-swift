@@ -254,7 +254,7 @@ ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将�
 
 除了安装上述介绍的 ms-swift 相关依赖项外，还需要安装以下依赖项：
 ```
-pip install "math_verify==0.5.2"
+pip install "math_verify"
 pip install vllm==0.8.5.post1
 ```
 

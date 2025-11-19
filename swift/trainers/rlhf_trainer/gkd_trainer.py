@@ -10,7 +10,9 @@ from typing import Dict, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import trl
 from accelerate.utils import gather_object, is_peft_model
+from packaging import version
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -20,7 +22,8 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import identity_data_collator, patch_profiling_context, patch_profiling_decorator, prepare_deepspeed
+from .utils import (get_gather_if_zero3_context, identity_data_collator, patch_profiling_context,
+                    patch_profiling_decorator, prepare_deepspeed)
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -61,10 +64,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._prepare_liger_loss()
 
         self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
+        self.is_teacher_ds3 = None
         # Initialize teacher model
         if self.is_deepspeed_enabled:
             if teacher_deepspeed_config is not None:
-                if teacher_deepspeed_config.get('zero_optimization', {}).get('stage') != 3:
+                self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
+                if not self.is_teacher_ds3:
                     self.teacher_ds3_gather_for_generation = False
                 self.teacher_model = prepare_deepspeed(
                     teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
@@ -88,6 +93,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
         else:
             self.maybe_activation_offload_context = nullcontext()
+        self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
@@ -131,7 +137,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
-        if use_logits_to_keep:
+        if use_logits_to_keep and not self.use_liger_gkd_loss:
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
 
@@ -176,17 +182,24 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 student_head = unwrapped_student.get_output_embeddings()
                 teacher_head = unwrapped_teacher.get_output_embeddings()
 
-                # Compute liger fused JSD loss
-                loss = self.liger_jsd_loss(
-                    student_input=student_hidden,
-                    student_weight=student_head.weight,
-                    teacher_input=teacher_hidden,
-                    teacher_weight=teacher_head.weight,
-                    true_labels=true_labels,
-                    student_bias=getattr(student_head, 'bias', None),
-                    teacher_bias=getattr(teacher_head, 'bias', None),
-                )
+                # Prepare context managers for gathering parameters in zero3
+                teacher_context = get_gather_if_zero3_context(self, is_zero3=self.is_teacher_ds3)(teacher_head.weight)
+                student_context = get_gather_if_zero3_context(self)(student_head.weight)
 
+                with teacher_context, student_context:
+                    # Compute liger fused JSD loss
+                    loss = self.liger_jsd_loss(
+                        student_input=student_hidden,
+                        student_weight=student_head.weight,
+                        teacher_input=teacher_hidden,
+                        teacher_weight=teacher_head.weight,
+                        true_labels=true_labels,
+                        student_bias=getattr(student_head, 'bias', None),
+                        teacher_bias=getattr(teacher_head, 'bias', None),
+                    )
+                    # loss / grad norm is unexpectedly large, normalize by sequence length
+                    # https://github.com/linkedin/Liger-Kernel/blob/v0.6.3/src/liger_kernel/chunked_loss/jsd_loss.py#L9-L39
+                    loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
         else:
@@ -222,7 +235,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_logits=shifted_teacher_logits,
                 beta=self.beta,
             )
-
+            if self._trl_version_gte_0_24:
+                loss /= shifted_student_logits.shape[1]
             # Add SFT loss if enabled (common for both paths)
             if self.args.sft_alpha > 0:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
