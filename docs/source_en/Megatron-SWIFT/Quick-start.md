@@ -82,6 +82,7 @@ This section introduces a quick start example for fine-tuning the self-awareness
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - Multi-GPU weight conversion: Remove `CUDA_VISIBLE_DEVICES=0` to enable multi-GPU weight conversion.
 - Conversion precision test: `--test_convert_precision true` will test the conversion precision. For large MoE model conversions, this option takes longer and consumes more memory, so you may omit it as needed.
+- ms-swift supports Mcore-Bridge to avoid the extra time cost of weight conversion. Please refer to the [Mcore-Bridge documentation](./Mcore-Bridge.md).
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
