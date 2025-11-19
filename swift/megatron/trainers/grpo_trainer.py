@@ -32,7 +32,7 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from ..utils import forward_step_helper
+from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
                     load_megatron_optimizer, offload_megatron_model_to_cpu, offload_megatron_optimizer,
@@ -53,7 +53,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
         self._prepare_metrics()
-        self._prepare_template_data_collator()
         self._init_grpo_params()
         self._prepare_rewards()
         self._prepare_scheduler()  # TODO
@@ -65,21 +64,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
         super().train(train_dataset, val_dataset, data_collator)
-
-    def _prepare_template_data_collator(self):
-        template = self.template
-        args = self.args
-        data_collator = template.data_collator
-        padding_to = None
-        if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
-            padding_to = args.tensor_model_parallel_size
-        if args.context_parallel_size > 1:
-            padding_to = (padding_to or 1) * args.context_parallel_size
-        if args.fp8_format:
-            padding_to = max((padding_to or 1) * 8, 16)
-        logger.info(f'padding_to: {padding_to}')
-        data_collator = partial(data_collator, padding_to=padding_to)
-        template.data_collator = data_collator
 
     def _init_grpo_params(self):
         args: MegatronArguments = self.args
@@ -245,7 +229,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Colocate mode: load_weights supports iterator, pass directly
             llm_model = self.engine.inner_model
             llm_model.load_weights(weight_iterator)
-        elif self.vllm_mode == 'server' and self.is_main_process:
+        elif self.vllm_mode == 'server':
             # Server mode: process in buckets and sync with flattened tensors
             self._load_weights_to_server_in_buckets(weight_iterator)
 
@@ -285,7 +269,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Args:
             bucket_params: List of (name, tensor) tuples to sync
         """
-        if not bucket_params:
+        if not bucket_params or not self.is_main_process:
             return
 
         # Create FlattenedTensorBucket for efficient transfer
@@ -368,17 +352,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Get or create the rollout process group (TP×PP×CP).
 
         The rollout group is used for:
-        1. Data slicing: distributing rollout data across all model parallel ranks (including CP)
-        2. Gather operations: collecting results from all model parallel ranks (including CP)
+        1. Data slicing: distributing rollout data across ranks with same data samples
+        2. Gather operations: collecting results from ranks with same data samples
 
-        Note: MODEL_PARALLEL_GROUP only includes TP×PP, but we need TP×PP×CP for correct
-        data distribution during rollout phase.
+        Note: Groups are created per data parallel index, containing TP×PP×CP ranks each.
+        This follows Megatron's data_iterator logic where same data_parallel_rank processes
+        identical data samples.
 
-        Key insight: ranks with the same DP index but different TP/PP/CP indices should be
-        in the same rollout group. These ranks will:
-        - During rollout: each process different data slices
-        - During training: TP/PP ranks process same data (model split), CP ranks process same data (sequence split)
-        - During gather: collect all data from TP×PP×CP ranks for training
+        Key insight: ranks with the SAME data parallel index process the SAME data samples
+        and must coordinate for rollout data distribution.
+        Megatron rank order: TP → CP → EP → DP → PP
         """
         if self._rollout_group is not None:
             return self._rollout_group
@@ -389,31 +372,38 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._rollout_group = mpu.get_model_parallel_group()
             return self._rollout_group
 
+        # Use RankGenerator to create rollout groups following Megatron-LM logic
+        global_rank = torch.distributed.get_rank()
+
         # Get parallel dimensions
         tp_size = mpu.get_tensor_model_parallel_world_size()
         pp_size = mpu.get_pipeline_model_parallel_world_size()
         dp_size = mpu.get_data_parallel_world_size()
-        global_rank = torch.distributed.get_rank()
+        cp_size = mpu.get_context_parallel_world_size()
 
-        # Calculate rollout group size
-        rollout_group_size = tp_size * pp_size * cp_size
+        # Create RankGenerator following Megatron-LM pattern
+        # Order: tp-cp-ep-dp-pp (default in Megatron-LM)
+        decoder_rank_generator = mpu.RankGenerator(
+            tp=tp_size,
+            ep=1,
+            dp=dp_size,
+            pp=pp_size,
+            cp=cp_size,
+            order='tp-cp-ep-dp-pp',
+            rank_offset=0,
+        )
 
-        # Simple and reliable method: assume ranks are organized in contiguous blocks per DP group
-        # This is typically true for the default order (tp-cp-ep-dp-pp)
-        # Each DP group has rollout_group_size consecutive ranks
-        ranks_per_dp_group = rollout_group_size
-        my_dp_block_index = global_rank // ranks_per_dp_group
-
-        # Calculate the rank range for my rollout group
-        group_start = my_dp_block_index * ranks_per_dp_group
-
-        # Create all rollout groups (must be done on all ranks)
+        # Create rollout groups based on data consistency from data_iterator
+        # Same data_parallel_rank processes same data - group ranks with same DP index
         if not hasattr(self, '_rollout_groups_created'):
-            for dp_idx in range(dp_size):
-                group_start = dp_idx * ranks_per_dp_group
-                group_ranks = list(range(group_start, min(group_start + ranks_per_dp_group, self.world_size)))
-                group = torch.distributed.new_group(ranks=group_ranks, group_desc='ROLLOUT_GROUP')
-                if global_rank in group_ranks:
+            # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
+            dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
+            for dp_group_ranks in dp_groups:
+                # Sort for consistency
+                dp_group_ranks = sorted(dp_group_ranks)
+                group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
+
+                if global_rank in dp_group_ranks:
                     self._rollout_group = group
             self._rollout_groups_created = True
 
@@ -488,6 +478,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _generate_and_score_completions(self, batch):
         # Get or create the rollout group (TP×PP×CP)
+        args = get_args()
+
         rollout_group = self._get_rollout_group()
 
         rollout_batch = self.get_local_rollout_batch(batch)
@@ -506,7 +498,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             template = self.template
             with self._template_context(template):
                 encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
-                encoded_batch = to_device(template.data_collator(encoded_batch), self.device)
+                encoded_batch = to_device(
+                    template.data_collator(encoded_batch, padding_to=get_padding_to(args)), self.device)
             labels = encoded_batch['labels']
             assert self.template.padding_free
             position_ids = encoded_batch.get('text_position_ids')

@@ -135,7 +135,12 @@ class BaseMegatronTrainer(ABC):
                     yield from x
                     x = next_x
                 logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
-                x[0]['is_finished'] = True
+                if isinstance(x, list) and all(isinstance(item, dict) for item in x):
+                    x[0]['is_finished'] = True
+                elif isinstance(x, list) and all(isinstance(item, list) for item in x):
+                    # grpo
+                    for item in x:
+                        item[0]['is_finished'] = True
                 yield from x
             else:
                 for x in iterable:
