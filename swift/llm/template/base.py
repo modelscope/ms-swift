@@ -1243,9 +1243,9 @@ class Template(ProcessorMixin):
                         value = encoded.get(key)
                         if value is not None:
                             value = value[i:i + self.max_length]
-                            if key == 'labels':
+                            if key == 'labels' and len(value) > 0:
                                 value[0] = -100
-                            elif key == 'loss_scale':
+                            elif key == 'loss_scale' and len(value) > 0:
                                 value[0] = 0
                         splited[key] = value
                     splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))

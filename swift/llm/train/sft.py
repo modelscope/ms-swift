@@ -322,7 +322,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     or args.model_meta.is_multimodal):
                 raise ValueError(
                     '`--truncation_strategy split` is currently only supported for plain text model pretraining')
-            assert not args.lazy_tokenize, 'not support'
+            assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
 
         for i, dataset in enumerate(datasets):
             if dataset is None:
