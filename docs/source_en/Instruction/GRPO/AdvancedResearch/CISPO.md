@@ -59,6 +59,6 @@ CISPO training can be enabled based on `GRPOTrainer` by setting the following pa
 --epsilon_high 5.0
 ```
 
-> The MiniMax paper does not provide parameter settings for the clipping value epsilon_high. The epsilon_high value here references the experimental settings from the [ScaleRL](https://arxiv.org/pdf/2510.13786) paper.
+> Compared to other algorithms, cispo generally uses a larger value for epsilon_high. The minimax paper does not provide specific parameter settings; the value used here refers to the experimental setup in the paper [ScaleRL](https://arxiv.org/pdf/2510.13786).
 
 For other training parameters, refer to the [GRPO parameter documentation](../../Command-line-parameters.md#grpo-arguments).

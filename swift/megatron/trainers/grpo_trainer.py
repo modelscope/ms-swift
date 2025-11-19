@@ -1227,7 +1227,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self._metrics[mode]:
             addition_metrics = {
                 key: torch.tensor(sum(val) / len(val), device=loss.device)
-                for key, val in self._metrics[mode]
+                for key, val in self._metrics[mode].items()
             }
             avg_metric.update(addition_metrics)
 

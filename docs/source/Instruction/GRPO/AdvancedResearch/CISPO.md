@@ -2,7 +2,7 @@
 
 **版本依赖**：ms-swift>=3.11
 
-Clipped Importance Sampling Policy Optimization (CISPO) 是 [MiniMax-M1]((https://arxiv.org/abs/2506.13585)) 论文中提出的一种强化学习算法。相比GRPO（Group Relative Policy Optimization）算法，CISPO 对重要性采样权重（importance sampling weights）本身进行裁剪。
+Clipped Importance Sampling Policy Optimization (CISPO) 是 [MiniMax-M1](https://arxiv.org/abs/2506.13585) 论文中提出的一种强化学习算法。相比GRPO（Group Relative Policy Optimization）算法，CISPO 对重要性采样权重（importance sampling weights）本身进行裁剪。
 
 ## 算法原理
 为便于理解，我们基于 GRPO 算法进行对比说明。
@@ -57,6 +57,6 @@ per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
 --epsilon_high 5.0
 ```
 
-> minimax论文中未给出裁剪值 epsilon_high 的参数设置，这里的epsilon_high 值参考论文[ScaleRL](https://arxiv.org/pdf/2510.13786)的实验设置
+> 相比其他算法, cispo 的 epsilon_high 一般取值较大，minimax论文中未给出具体的参数设置，这里的值参考论文[ScaleRL](https://arxiv.org/pdf/2510.13786)的实验设置
 
 其他训练参数参考 [GRPO参数文档](../../Command-line-parameters.md#grpo参数)
