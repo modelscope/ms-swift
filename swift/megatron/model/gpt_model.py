@@ -305,6 +305,7 @@ class GPTModel(McoreGPTModel):
         args = get_args()
         labels = labels if args.task_type == 'causal_lm' else None
         if mcore_013:
+            # MTP: https://github.com/NVIDIA/Megatron-LM/issues/1661
             return self._postprocess(
                 hidden_states=hidden_states,
                 input_ids=input_ids,

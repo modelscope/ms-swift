@@ -57,7 +57,7 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
     else:
         is_pp_first_stage = mpu.is_pipeline_first_stage()
         is_pp_last_stage = mpu.is_pipeline_last_stage()
-    if not is_pp_first_stage:
+    if not args.mtp_num_layers and not is_pp_first_stage:
         batch['input_ids'] = None
     if not is_pp_last_stage:
         batch['labels'] = None

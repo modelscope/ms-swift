@@ -1023,14 +1023,10 @@ class GPTBridge:
                 hf_state_dict = {}
 
         if not to_mcore or is_pp_last_stage and self.args.mtp_num_layers:
+            lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             layer_idx = 0
             while layer_idx < self.args.mtp_num_layers:
-                mtp_layer = mg_model.mtp.layers[layer_idx] if hasattr(mg_model, 'mtp') else None
-                if self.hf_mtp_prefix == self.hf_layers_prefix:
-                    hf_layer_idx = layer_idx + self.args.num_layers
-                else:
-                    hf_layer_idx = layer_idx
-                res = self._convert_mtp_layer(mtp_layer, hf_state_dict, f'{self.hf_mtp_prefix}.', hf_layer_idx,
+                res = self._convert_mtp_layer(lm_model, hf_state_dict, f'{self.hf_mtp_prefix}.', layer_idx,
                                               to_mcore)
                 layer_idx += 1
                 if to_mcore:
@@ -1046,21 +1042,25 @@ class GPTBridge:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
 
-    def _convert_mtp_layer(self, mg_layer, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
-        hf_prefix = f'{hf_prefix}{layer_idx}.'
+    def _convert_mtp_layer(self, lm_model, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
+        mtp_layer = lm_model.mtp.layers[layer_idx] if hasattr(lm_model, 'mtp') else None
+        if self.hf_mtp_prefix == self.hf_layers_prefix:
+            hf_layer_idx = layer_idx + self.args.num_layers
+        else:
+            hf_layer_idx = layer_idx
+        hf_prefix = f'{hf_prefix}{hf_layer_idx}.'
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
             hf_state_dict = {}
-        if not to_mcore:
-            # TODO: 'embed_tokens.weight', 'shared_head.head.weight'
-            pass
+        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight', to_mcore)
+        self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
         for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
             self._set_state_dict(mg_layer, key, hf_state_dict, key, to_mcore)
-        if layer_idx >= len(self.hf_layers):
-            layer_idx = -1
-        hf_state_dict.update(self._set_layer_attn(mg_layer.transformer_layer, hf_state_dict, layer_idx, to_mcore))
-        hf_state_dict.update(self._set_layer_mlp(mg_layer.transformer_layer, hf_state_dict, layer_idx, to_mcore))
+        if hf_layer_idx >= len(self.hf_layers):
+            hf_layer_idx = -1
+        hf_state_dict.update(self._set_layer_attn(mg_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
+        hf_state_dict.update(self._set_layer_mlp(mg_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
         self._set_state_dict(mg_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
         if to_mcore:
             hf_state_dict = {}
