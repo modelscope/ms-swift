@@ -49,7 +49,9 @@ DAPO 使用token级归一化，避免了回答长度在损失计算上的偏差�
 
 使用参数
 
-- loss_type bnpo 来使用token级归一化
+- loss_type bnpo/dapo 来使用token级归一化
+
+> bnpo 基于本地数据（单卡）归一化，dapo 基于全局数据（多卡）归一化。dapo 需要 swift >= 3.11
 
 
 ## Overlong Filtering
@@ -92,7 +94,7 @@ $$
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
-| `--loss_type`        | `str`     | `bnpo`     |
+| `--loss_type`        | `str`     | `bnpo`/`dapo`|
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--max_resample_times` | `int`   | `3`        |

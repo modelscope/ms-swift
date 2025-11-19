@@ -561,7 +561,7 @@ reward模型参数将在PPO、GRPO中使用。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`, 注意对于多模态模型，
 左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
-- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', ·'dapo', 'cispo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
