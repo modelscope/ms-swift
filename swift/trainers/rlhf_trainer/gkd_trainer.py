@@ -10,7 +10,9 @@ from typing import Dict, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import trl
 from accelerate.utils import gather_object, is_peft_model
+from packaging import version
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -222,7 +224,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_logits=shifted_teacher_logits,
                 beta=self.beta,
             )
-
+            trl_version = version.parse(trl.__version__)
+            if trl_version >= version.parse('0.24'):
+                loss /= shifted_student_logits.shape[1]
             # Add SFT loss if enabled (common for both paths)
             if self.args.sft_alpha > 0:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
