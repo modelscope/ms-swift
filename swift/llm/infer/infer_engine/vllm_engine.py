@@ -70,6 +70,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        logprobs_mode: Optional[str] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -120,6 +121,7 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
+            logprobs_mode=logprobs_mode,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
@@ -172,6 +174,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        logprobs_mode: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -202,7 +205,7 @@ class VllmEngine(InferEngine):
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
-                'mm_processor_cache_gb'
+                'mm_processor_cache_gb', 'logprobs_mode'
         ]:
             if key in parameters:
                 if locals()[key] is not None:

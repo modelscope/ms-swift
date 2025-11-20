@@ -100,6 +100,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.completion_length_limit_scope = args.completion_length_limit_scope
         self.async_generate = args.async_generate
 
+        # Enable logprobs for vLLM importance sampling if requested
+        # TODO: check if logprobs is needed
+        use_vllm_is = args.rollout_importance_sampling_mode and args.use_vllm
+        logprobs = use_vllm_is
+
         self.request_config = RequestConfig(
             n=1,
             max_tokens=args.max_completion_length,
@@ -108,7 +113,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True)
+            return_details=True,
+            logprobs=logprobs)
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
@@ -229,6 +235,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
                 engine_kwargs=self.args.vllm_engine_kwargs,
+                logprobs_mode='processed_logprobs',
                 **lora_kwargs,
             )
             set_expandable_segments(True)
@@ -841,6 +848,14 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             if output.rollout_infos:
                 input_data['rollout_infos'] = output.rollout_infos
+
+            # Extract vLLM logprobs for importance sampling if available
+            if choice.logprobs is not None:
+                # Extract logprobs from the response
+                # logprobs format: {'content': [{'token': ..., 'logprob': ..., 'bytes': ...}, ...]}
+                if 'content' in choice.logprobs:
+                    vllm_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['vllm_logprobs'] = vllm_logprobs
 
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
