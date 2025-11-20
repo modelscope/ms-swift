@@ -337,6 +337,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type != 'grpo':
             return
         from packaging import version
+        import importlib.metadata
 
         import trl
         trl_version = version.parse(trl.__version__)
@@ -346,8 +347,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
-            import liger_kernel
-            liger_kernel_version = version.parse(liger_kernel.__version__)
+            liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
