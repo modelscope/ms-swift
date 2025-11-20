@@ -1091,6 +1091,7 @@ def test_ernie_vl_thinking():
     response2 = _infer_ernie_vl_thinking_hf(pt_engine.model, pt_engine.default_template.processor, messages)
     assert response == '\n<think>\n' + response2
 
+
 def test_sensenova_si():
     pt_engine = PtEngine('SenseNova/SenseNova-SI-1.1-InternVL3-8B')
     response = _infer_model(pt_engine)
