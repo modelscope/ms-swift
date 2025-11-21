@@ -84,22 +84,22 @@ class PerfMetricsLogCallback(TrainerCallback):
             elif backend == 'cpu':
                 torch.cpu.synchronize(sync_device)
 
-        # 默认矩阵规模
+        # Set matrix dimension
         shape = (dim, dim)
         backend = device.type
         if backend == 'npu':
             import torch_npu
 
-        # 创建矩阵
+        # Initialize matrices
         a = torch.randn(*shape, device=device, dtype=dtype)
         b = torch.randn(*shape, device=device, dtype=dtype)
 
-        # 预热
+        # Warm-up
         for _ in range(5):
             c = torch.matmul(a, b)
         device_synchronize(device)
 
-        # 进行测试
+        # Run benchmark test
         start = time.time()
         for _ in range(repeats):
             c = torch.matmul(a, b)
@@ -108,7 +108,7 @@ class PerfMetricsLogCallback(TrainerCallback):
         total_time = end - start
         avg_time = total_time / repeats
 
-        # 若测试时间过短，调整循环次数并重新测试
+        # Adjust repeat count and retest if test duration is too short
         if total_time < 3:
             repeats = int(6 / avg_time)
             start = time.time()
@@ -159,6 +159,6 @@ device_flops_map = {
     'RTX 3070 Ti': 21.75e12
 }
 
-extra_callbacks = [PerfMetricsLogCallback()]
+extra_callbacks = []
 # This example shows a simple example of EarlyStop Callback, uncomment this to use
 # extra_callbacks = [EarlyStopCallback()]
