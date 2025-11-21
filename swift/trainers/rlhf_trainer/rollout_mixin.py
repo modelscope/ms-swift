@@ -112,10 +112,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
+        if not args.use_vllm:
+            return
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
-
         # Initialize default values
         args = self.args
 
@@ -125,9 +126,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.enable_server_multi_turn = False
         self.rollout_enable_lora = False
         self.vllm_use_async_engine = False
-
-        if not args.use_vllm:
-            return
 
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
