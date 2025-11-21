@@ -409,10 +409,21 @@ class VllmEngine(InferEngine):
             else:
                 kwargs[key] = new_value
 
+        # Convert Swift's Chat Completions API style (logprobs: bool, top_logprobs: int)
+        # to vLLM's SamplingParams style (logprobs: int)
+        # vLLM semantics:
+        #   - logprobs=None: no logprobs returned
+        #   - logprobs=0: only sampled token's logprob
+        #   - logprobs=N: top-N tokens + sampled token (up to N+1 total)
         if request_config.logprobs:
-            kwargs['logprobs'] = 1
-            if request_config.top_logprobs is not None:
-                kwargs['logprobs'] = max(1, request_config.top_logprobs)
+            # If logprobs=True, return log probabilities
+            if request_config.top_logprobs is not None and request_config.top_logprobs > 0:
+                # Return top_logprobs most likely tokens at each position
+                # (plus sampled token if not in top-N)
+                kwargs['logprobs'] = request_config.top_logprobs
+            else:
+                # Return only the sampled token's logprob
+                kwargs['logprobs'] = 0
 
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:

@@ -541,7 +541,7 @@ def _patch_TELinear():
 def _patch_build_train_valid_test_datasets():
     from megatron.training import training
 
-    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
+    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider, *args, **kwargs):
         train_valid_test_num_samples = training.get_train_valid_test_num_samples()
         return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
 
