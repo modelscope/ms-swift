@@ -473,7 +473,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1

@@ -27,6 +27,7 @@ from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
     from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
@@ -61,7 +62,11 @@ class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
-        kwargs = {'tp_group': self.model_comm_pgs.tp} if mcore_013 else {}
+        kwargs = {}
+        if mcore_015:
+            kwargs['tp_group'] = self.pg_collection.tp
+        elif mcore_013:
+            kwargs['tp_group'] = self.model_comm_pgs.tp
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -111,6 +116,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         sequence_len_offset: Optional[int] = None,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Perform a forward pass through the attention module.
@@ -232,7 +238,11 @@ class Qwen3NextSelfAttention(SelfAttention):
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
-        kwargs = {'cp_group': self.model_comm_pgs.cp} if mcore_013 else {}
+        kwargs = {}
+        if mcore_015:
+            kwargs['cp_group'] = self.pg_collection.cp
+        elif mcore_013:
+            kwargs['cp_group'] = self.model_comm_pgs.cp
         nvtx_range_push(suffix='rotary_pos_emb')
         if rotary_pos_emb is not None and not self.config.flash_decode:
             q_pos_emb, k_pos_emb = rotary_pos_emb
