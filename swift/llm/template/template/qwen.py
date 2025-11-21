@@ -307,7 +307,11 @@ class Qwen2VLTemplate(Template):
             if self.version == 'v3':
                 kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
-            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
+            video_inputs = {'video': video}
+            if isinstance(video, list):
+                from qwen_vl_utils import vision_process
+                video_inputs['sample_fps'] = vision_process.FPS
+            video, video_kwargs = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
             if self.version == 'v2_5':
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
