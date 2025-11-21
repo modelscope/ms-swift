@@ -308,7 +308,7 @@ class Qwen2VLTemplate(Template):
                 kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
             video_inputs = {'video': video}
-            if isinstance(video, list):
+            if isinstance(video, list):  # image list
                 from qwen_vl_utils import vision_process
                 video_inputs['sample_fps'] = vision_process.FPS
             video, video_kwargs = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
