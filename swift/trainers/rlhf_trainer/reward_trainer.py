@@ -33,6 +33,9 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         except ImportError:
             self.maybe_activation_offload_context = nullcontext()
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
+        # During evaluation, Trainer calls compute_loss() only if can_return_loss is True and label_names is empty.
+        self.can_return_loss = True
+        self.label_names = []
 
     def compute_loss(self,
                      model: Union[PreTrainedModel, nn.Module],
