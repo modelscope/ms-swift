@@ -1241,7 +1241,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         reporting_metric = {**avg_metric, **custom_metrics}
 
         # log_completions
-        if self.log_completions and self.is_main_process and self._step % self.steps_per_generation == 0:
+        if self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0:
             table = {
                 'gen_step': [self._step] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
