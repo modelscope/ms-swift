@@ -157,6 +157,7 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     padding_side: Optional[str] = None
     padding_free: Optional[bool] = None
     task_type: Optional[str] = None
+    problem_type: Optional[str] = None
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
@@ -274,6 +275,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     offload_optimizer: bool = False
     offload_model: bool = False
 
+    wandb_log_unique_prompts: Optional[bool] = None
+
 
 @dataclass
 class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
@@ -321,7 +324,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
-    # GSPO https://www.arxiv.org/abs/2507.18071
+    # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     # RLOO, REINFORCE++
@@ -329,7 +332,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # If false, add KL into loss, otherwise add into reward
     kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
 
-    wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
 

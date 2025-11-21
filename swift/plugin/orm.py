@@ -239,7 +239,7 @@ class MathAccuracy(ORM):
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             'The math_verify package is required but not installed. '
-            "Please install it using 'pip install math_verify==0.5.2'.")
+            "Please install it using 'pip install math_verify'.")
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig

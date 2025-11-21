@@ -4,17 +4,17 @@ from functools import partial
 from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
-from datasets import load_from_disk
 
-from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks
 from swift.ray import RayHelper
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
-from ..infer import prepare_generation_config
+from ..dataset import (AddLengthPreprocessor, EncodePreprocessor, IterablePackingDataset, LazyLLMDataset,
+                       PackingDataset, load_dataset)
+from ..dataset.loader import DatasetLoader
+from ..infer import get_cached_dataset, prepare_generation_config
 from .tuner import TunerMixin
 
 logger = get_logger()
@@ -107,25 +107,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
             logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
 
-    def _get_cached_dataset(self):
-        args = self.args
-        assert not args.streaming and not args.lazy_tokenize
-        train_datasets, val_datasets = [], []
-        for cached_dataset in args.cached_dataset:
-            train_path = os.path.join(cached_dataset, 'train')
-            val_path = os.path.join(cached_dataset, 'val')
-            train_datasets.append(load_from_disk(train_path))
-            if os.path.exists(val_path):
-                val_datasets.append(load_from_disk(val_path))
-        return train_datasets, val_datasets
-
     @RayHelper.function(group='default')
     def _prepare_dataset(self):
         args = self.args
         # Defer encoding to the training phase
         pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
         if args.cached_dataset:
-            train_datasets, val_datasets = self._get_cached_dataset()
+            assert not args.streaming, 'Cached dataset does not support streaming.'
+            train_datasets, val_datasets = get_cached_dataset(self.args)
         else:
             train_datasets, val_datasets = [], []
         if args.dataset:
@@ -139,7 +128,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if not pre_process:
             return datasets
         datasets = self._post_process_datasets(datasets)
-
+        self._show_dataset(*datasets)
         return datasets
 
     def _post_process_datasets(self, datasets: List) -> List:
@@ -153,7 +142,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if (args.model_meta.is_multimodal or args.lazy_tokenize) and not args.streaming:
+            if not args.streaming and args.truncation_strategy != 'split':
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -161,6 +150,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     template,
                     dataset,
                     num_proc=args.dataset_num_proc,
+                    packing_length=args.packing_length,
+                    packing_num_proc=args.packing_num_proc,
                     strict=args.strict,
                     load_from_cache_file=args.load_from_cache_file)
             elif args.streaming:
@@ -171,7 +162,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict)
             datasets[i] = dataset
-        self._show_dataset(*datasets)
         return datasets
 
     @RayHelper.function(group='default')
@@ -327,6 +317,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         origin_template_model = template.model
         template.model = None  # Avoid serializing the model.
+        if args.truncation_strategy == 'split':
+            if (args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template
+                    or args.model_meta.is_multimodal):
+                raise ValueError(
+                    '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+            assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
+
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue
@@ -334,7 +331,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 # val_dataset
                 continue
             if not args.lazy_tokenize and not args.streaming:
-                preprocessor = EncodePreprocessor(template=template, pre_tokenize=args.model_meta.is_multimodal)
+                # Compatible with cached_dataset, only additionally write length here.
+                preprocessor_cls = EncodePreprocessor if args.truncation_strategy == 'split' else AddLengthPreprocessor
+                preprocessor = preprocessor_cls(template=template)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,

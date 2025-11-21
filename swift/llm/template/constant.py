@@ -96,6 +96,7 @@ class LLMTemplateType:
     bluelm = 'bluelm'
     orion = 'orion'
     moonlight = 'moonlight'
+    kimi_k2 = 'kimi_k2'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
     hunyuan_moe = 'hunyuan_moe'
@@ -156,6 +157,8 @@ class MLLMTemplateType:
     llava_onevision1_5 = 'llava_onevision1_5'
 
     yi_vl = 'yi_vl'
+    ernie_vl = 'ernie_vl'
+    ernie_vl_thinking = 'ernie_vl_thinking'
 
     internvl = 'internvl'
     internvl_phi3 = 'internvl_phi3'
@@ -226,6 +229,7 @@ class MLLMTemplateType:
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    mistral_2506 = 'mistral_2506'
     paddle_ocr = 'paddle_ocr'
 
 

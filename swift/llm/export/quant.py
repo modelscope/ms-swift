@@ -145,7 +145,6 @@ class QuantEngine(ProcessorMixin):
 
     def awq_model_quantize(self) -> None:
         from awq.quantize import quantizer
-        from transformers import AwqConfig
 
         args = self.args
         logger.info(f'Quantization dataset: {args.dataset}')
@@ -216,18 +215,19 @@ class QuantEngine(ProcessorMixin):
         # Do not quantize the gate part.
         block = deep_getattr(model, block_name)[-1]
         prefix, experts = QuantEngine._get_experts(block)
-        num_experts = len(experts)
-
         layers = get_layers(block)
         res = []
         experts = defaultdict(list)
         experts_idx = None
         for name, layer in layers.items():
+            if model.model_info.model_type == 'qwen3_next' and name.startswith('self_attn.'):
+                # ignore attn
+                continue
             if name.startswith(prefix):
                 suffix = name.rsplit('.', 1)[-1]
                 experts[suffix].append(name)
                 experts_idx = len(res)
-            elif layer.out_features not in {1, num_experts}:
+            elif 'mlp.gate' not in name:
                 res.append([name])
         res[experts_idx:experts_idx] = experts.values()
         return res

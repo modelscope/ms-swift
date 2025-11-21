@@ -10,3 +10,4 @@ Advanced Research
    REINFORCEPP.md
    RLOO.md
    CHORD.md
+   CISPO.md

@@ -55,6 +55,12 @@ class SwiftRLHF(SwiftSft):
         model_id_or_path = getattr(args, f'{key}_model')
         if model_id_or_path is None:
             return
+
+        if model_type is None:
+            from swift.llm.model.register import get_model_info_meta
+            model_info, _ = get_model_info_meta(model_id_or_path)
+            model_type = model_info.model_type
+
         if isinstance(model_id_or_path, list):
             # value model in PPO
             model_id_or_path = model_id_or_path[0]
@@ -171,8 +177,8 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        model_mapping = {'kto': 'kto', 'gkd': 'gkd', 'ppo': 'pt', 'grpo': 'train'}
-        self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
+        mode_mapping = {'kto': 'kto', 'gkd': 'gkd', 'ppo': 'pt', 'grpo': 'train'}
+        self.template.set_mode(mode_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'ppo':
             args.training_args.stop_token_id = self.template.template_meta.stop_token_id

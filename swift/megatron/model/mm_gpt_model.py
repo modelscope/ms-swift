@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
+import megatron.core
 import torch
 from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -9,8 +10,11 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
+from packaging import version
 
 from .gpt_model import GPTModel
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class MultimodalGPTModel(MegatronModule):
@@ -24,6 +28,7 @@ class MultimodalGPTModel(MegatronModule):
                  post_process: bool = True,
                  *args,
                  **kwargs):
+        from .register import get_megatron_model_meta
         super().__init__(config)
         self.pre_process = pre_process
         self.post_process = post_process
@@ -32,9 +37,10 @@ class MultimodalGPTModel(MegatronModule):
         self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
+        self.megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
         self.visual = None
-        if pre_process and args.megatron_model_meta.visual_cls is not None:
-            self.visual = args.megatron_model_meta.visual_cls(config)
+        if pre_process and self.megatron_model_meta.visual_cls is not None:
+            self.visual = self.megatron_model_meta.visual_cls(config)
 
     @contextmanager
     def _patch_word_embeddings(self, kwargs):
@@ -61,7 +67,8 @@ class MultimodalGPTModel(MegatronModule):
                 res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
-                res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
+                group_kwargs = {'group': _self.tp_group} if mcore_013 else {}
+                res = scatter_to_sequence_parallel_region(res, **group_kwargs)
             return res
 
         VocabParallelEmbedding.forward = forward

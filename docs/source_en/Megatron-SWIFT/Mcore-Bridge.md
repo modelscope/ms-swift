@@ -203,6 +203,7 @@ swift infer \
 ## Export and Conversion Precision Testing
 
 In addition to supporting safetensors conversion and saving during training, Mcore-Bridge also supports the `megatron export` command for standalone weight export. `megatron export` supports conversion precision testing during weight conversion, which is very helpful for verifying accuracy when integrating new models. Typically, models already integrated into Megatron-SWIFT will not have precision misalignment issues, so you can confidently set `--test_convert_precision false`.
+- Note: For multimodal models, please focus on the `mean_diff (with loss)` field. The `mean_diff` may show a large difference because it includes image tokens, and loss is not calculated for that portion.
 
 Full parameter weights:
 
@@ -298,18 +299,18 @@ from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_mo
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-4B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-4B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     torch_dtype=torch.bfloat16,
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 bridge = megatron_model_meta.bridge_cls()
@@ -343,23 +344,22 @@ from swift.megatron import (
 from swift.llm import get_model_tokenizer
 from megatron.training.initialize import initialize_megatron
 
-_, processor = get_model_tokenizer('Qwen/Qwen3-30B-A3B-Instruct-2507', load_model=False, download_model=True)
+model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
+_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
 megatron_args = MegatronArguments(
+    model=model_id,
     tensor_model_parallel_size=2,
     pipeline_model_parallel_size=2,
     expert_model_parallel_size=2,
     sequence_parallel=True,
-    moe_grouped_gemm=True,
     torch_dtype=torch.bfloat16,
     train_type='lora',
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()
-extra_args['model_info'] = model_info
-extra_args['megatron_model_meta'] = megatron_model_meta
 initialize_megatron(args_defaults=extra_args)
 mg_model = megatron_model_meta.model_provider()
 # Load weights

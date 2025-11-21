@@ -1,0 +1,366 @@
+# 自定义数据集
+
+自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加。例如，方案一最为方便，但对预处理函数的控制能力最弱，需要预先对数据集进行转换，传入特定格式的数据集：
+1. 【推荐】直接使用命令行传参的方式接入，即`--dataset <dataset_path1> <dataset_path2>`。这将使用AutoPreprocessor将数据集转换为标准格式（支持4种数据集格式，具体查看下面对AutoPreprocessor的介绍）。你可以使用`--columns`进行列名转换。支持传入csv、json、jsonl、txt、文件夹（例如git clone开源数据集）。该方案不需要修改dataset_info.json，适合刚接触ms-swift的用户，下面两种方案适合对ms-swift进行拓展的开发者。
+2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
+3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--custom_register_path xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
+   - 方案一和二在实现中借助了方案三，只是注册的过程为自动发生。
+
+以下将对`AutoPreprocessor`可以处理的数据集格式进行介绍：
+
+ms-swift的标准数据集格式可接受的keys包括: 'messages'、'rejected_response'、'label'、'images'、'videos'、'audios'、'tools'和'objects'。其中'messages'是必需的key，'rejected_response'用于DPO等RLHF训练，'label'用于KTO训练和分类模型训练，'images'、'videos'、'audios'用于存储多模态数据的路径或者url，'tools'用于Agent任务，'objects'用于grounding任务。
+
+ms-swift中存在三种核心预处理器：`MessagesPreprocessor`、`AlpacaPreprocessor`、`ResponsePreprocessor`。MessagesPreprocessor用于将类messages和sharegpt格式的数据集转换为标准格式，AlpacaPreprocessor则转换alpaca格式的数据集，ResponsePreprocessor则转换类query/response格式的数据集。`AutoPreprocessor`则自动选择合适的预处理进行处理。
+
+以下四种格式在`AutoPreprocessor`处理下都会转换成ms-swift标准格式中的messages字段，即都可以直接使用`--dataset <dataset-path>`接入：
+
+messages格式（标准格式）:
+```jsonl
+{"messages": [{"role": "system", "content": "<system>"}, {"role": "user", "content": "<query1>"}, {"role": "assistant", "content": "<response1>"}, {"role": "user", "content": "<query2>"}, {"role": "assistant", "content": "<response2>"}]}
+```
+- 注意：system部分是可选的。数据集中的system优先级高于命令行传入的`--system`，最后是定义在template中的`default_system`。
+
+sharegpt格式:
+```jsonl
+{"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
+```
+
+query-response格式:
+```jsonl
+{"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
+```
+注意：以下字段会自动转成对应的system、query、response字段。
+- system: 'system', 'system_prompt'.
+- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
+
+alpaca格式:
+```jsonl
+{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
+```
+- 注意：instruction和input字段将组合成query字段。若instruction和input不等于空字符串，`query = f'{instruction}\n{input}'`
+
+
+## 标准数据集格式
+
+以下给出ms-swift的标准数据集格式，其中system字段是可选的，默认使用template中定义的`default_system`。之前介绍的4种数据集格式也可以被AutoPreprocessor处理成标准数据集格式。
+
+### 预训练
+
+```jsonl
+{"messages": [{"role": "assistant", "content": "I love music"}]}
+{"messages": [{"role": "assistant", "content": "教练我要打篮球"}]}
+{"messages": [{"role": "assistant", "content": "西红柿鸡蛋盖饭和地三鲜盖饭哪个更权威"}]}
+```
+
+### 监督微调
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}]}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}]}
+```
+
+- 可以通过增加"loss"字段，控制对应的模型回复部分是否计算损失（需ms-swift>=3.8）。默认该字段为None。若"loss"设置为true，则对应content进行损失计算（对应loss_scale为1）；若"loss"设置为false，则对应content不进行损失计算。需要注意的是，该功能只对"role"为"assistant"的部分生效；该功能优先级高于命令行参数 `--loss_scale`。示例数据格式如下：
+```jsonl
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
+```
+
+
+#### channel loss
+如果你要使用channel loss，你需要设置`--enable_channel_loss true`，并在数据集中增加"channel"字段。channel loss兼容packing/padding_free/loss_scale等技术。
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}], "channel": "general"}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}], "channel": "math"}
+```
+
+### RLHF
+
+#### DPO/ORPO/CPO/SimPO/RM
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}], "rejected_response": "我不知道"}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}], "rejected_response": "我不知道"}
+```
+
+多模态数据的格式参考[多模态数据集](#多模态), 额外加入如`images`的列表示其他模态输入。当需要为偏好对数据关联不同的图片信息时，可通过`rejected_images`字段标注拒绝回答对应的图片信息。
+对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个
+
+> 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
+
+当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小狗。"}], "rejected_images": ["cat.png"]}
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "rejected_images": ["dog.png"]}
+```
+
+以上格式等价于：
+```jsonl
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": "这是一只小狗。"}
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_images": ["dog.png"]}
+```
+
+
+#### KTO
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "我不知道"}], "label": false}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}], "label": true}
+```
+
+#### PPO/GRPO
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}]}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}]}
+{"messages": [{"role": "user", "content": "你的名字是什么"}]}
+```
+- 注意：GRPO会透传所有额外的字段内容给ORM，而不像其他训练方法，默认将额外的字段删除。例如: 你可以额外传入'solution'。自定义的ORM需要包含一个位置参数completions，其他为关键词参数，由数据集额外字段透传。
+
+#### GKD
+若未开启`seq_kd`，即该参数为False。数据集格式如下（你可使用teacher模型提前蒸馏）：
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}]}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}]}
+```
+
+若开启`seq_kd`，则不需要最后一轮的'assistant'部分（teacher模型在训练时生成数据）：
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}]}
+{"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}]}
+```
+
+### 序列分类
+
+**单标签任务**：
+```jsonl
+{"messages": [{"role": "user", "content": "今天天气真好呀"}], "label": 1}
+{"messages": [{"role": "user", "content": "今天真倒霉"}], "label": 0}
+{"messages": [{"role": "user", "content": "好开心"}], "label": 1}
+```
+**多标签任务**：
+```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": []}
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [0, 2]}
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [1, 3, 5]}
+```
+
+**单回归任务**：
+```jsonl
+{"messages": [{"role": "user", "content": "求两句话的相似度，范围为0-1。\nsentence1: <sentence1>\nsentence2: <sentence2>"}], "label": 0.8}
+```
+**多回归任务**：
+
+```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [1.2, -0.6, 0.8]}
+```
+
+### Embedding
+
+请参考[embedding训练文档](../BestPractices/Embedding.md#数据集格式)
+
+### Reranker
+
+请参考[Reranker训练文档](../BestPractices/Reranker.md#数据集格式)
+
+### 多模态
+
+对于多模态数据集，和上述任务的格式相同。区别在于增加了`images`, `videos`, `audios`几个key，分别代表多模态资源的url或者path（推荐使用绝对路径），`<image>` `<video>` `<audio>`标签代表了插入图片/视频/音频的位置，ms-swift支持多图片/视频/音频的情况。这些特殊tokens将在预处理的时候进行替换，参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198)。下面给出的四条示例分别展示了纯文本，以及包含图像、视频和音频数据的数据格式。
+
+预训练：
+```
+{"messages": [{"role": "assistant", "content": "预训练的文本在这里"}]}
+{"messages": [{"role": "assistant", "content": "<image>是一只小狗，<image>是一只小猫"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "assistant", "content": "<audio>描述了今天天气真不错"}], "audios": ["/xxx/x.wav"]}
+{"messages": [{"role": "assistant", "content": "<image>是一个大象，<video>是一只狮子在跑步"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+```
+
+微调：
+```jsonl
+{"messages": [{"role": "user", "content": "浙江的省会在哪？"}, {"role": "assistant", "content": "浙江的省会在杭州。"}]}
+{"messages": [{"role": "user", "content": "<image><image>两张图片有什么区别"}, {"role": "assistant", "content": "前一张是小猫，后一张是小狗"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "user", "content": "<audio>语音说了什么"}, {"role": "assistant", "content": "今天天气真好呀"}], "audios": ["/xxx/x.mp3"]}
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "<image>图片中是什么，<video>视频中是什么"}, {"role": "assistant", "content": "图片中是一个大象，视频中是一只小狗在草地上奔跑"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+```
+- 注意：以下字段会自动转成对应的images, videos, audios字段。
+  - images: image, images.
+  - videos: video, videos.
+  - audios: audio, audios.
+- 如果需要传入base64格式而不是文件路径，以下为样本例子：`"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`。
+- 若你希望直接传入视频帧，而不是视频，你可以使用以下格式（需"ms-swift>=3.8.3"）：`"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`。该格式只有部分模型支持，包括Qwen2/2.5/3-VL、Qwen2.5/3-Omni以及其衍生模型。
+
+多模态模型的RLHF和序列分类的数据格式可以参考纯文本大模型的格式，并在此基础上增加`images`等字段。
+
+#### grounding
+
+如果是grounding（物体检测）任务，ms-swift支持两种方式：
+1. 直接使用对应模型grounding任务的数据集格式，例如qwen2-vl的格式如下：
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>描述图像"}, {"role": "assistant", "content": "<|object_ref_start|>一只狗<|object_ref_end|><|box_start|>(221,423),(569,886)<|box_end|>和<|object_ref_start|>一个女人<|object_ref_end|><|box_start|>(451,381),(733,793)<|box_end|>正在沙滩上玩耍"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>找到图像中的<|object_ref_start|>羊<|object_ref_end|>"}, {"role": "assistant", "content": "<|box_start|>(101,201),(150,266)<|box_end|><|box_start|>(401,601),(550,666)<|box_end|>"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>帮我打开谷歌浏览器"}, {"role": "assistant", "content": "Action: click(start_box='<|box_start|>(246,113)<|box_end|>')"}], "images": ["/xxx/x.jpg"]}
+```
+使用这种类型的数据需要注意：
+- 不同模型grounding任务的特殊字符和数据集格式不同。
+- 不同模型对bbox是否归一化的处理不同。例如：qwen2.5-vl使用绝对坐标，而qwen2/3-vl、internvl2.5需要对bbox的坐标进行千分位坐标归一化。
+  - 注意：Qwen2.5-VL采用绝对坐标，因此要小心每次的图像缩放，如果使用方案一的数据集格式，你需要预先对图像进行resize（H和W需要是28的系数），并根据该尺寸缩放坐标点。如果使用方案二的数据集格式，ms-swift会帮助你处理图像的缩放问题，你依旧可以使用`MAX_PIXELS`或者`--max_pixels`等进行图像缩放（仅训练，推理场景，你依旧需要自己处理图像的缩放问题）。
+
+2. 使用ms-swift的grounding数据格式：
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>描述图像"}, {"role": "assistant", "content": "<ref-object><bbox>和<ref-object><bbox>正在沙滩上玩耍"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["一只狗", "一个女人"], "bbox": [[331.5, 761.4, 853.5, 1594.8], [676.5, 685.8, 1099.5, 1427.4]]}}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>找到图像中的<ref-object>"}, {"role": "assistant", "content": "<bbox><bbox>"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>帮我打开谷歌浏览器"}, {"role": "assistant", "content": "Action: click(start_box='<bbox>')"}], "images": ["/xxx/x.jpg"], "objects": {"ref": [], "bbox": [[615, 226]]}}
+```
+该格式将自动转换数据集格式为对应模型的grounding任务格式，且选择对应模型的bbox归一化方式。该格式比通用格式多了objects字段，该字段包含的字段有：
+- ref: 用于替换messages中的`<ref-object>`。ref的长度需要与`<ref-object>`的数量一致。
+- bbox: 用于替换messages中的`<bbox>`。若bbox中每个box长度为2，则代表x和y坐标，若box长度为4，则代表2个点的x和y坐标。bbox的长度需要与`<bbox>`的数量一致。
+  - 注意：`<ref-object>`和`<bbox>`并没有对应关系，ref和bbox各自替换各自的占位符。
+- bbox_type: 可选项为'real'，'norm1'。默认为'real'，即bbox为真实bbox值。若是'norm1'，则bbox已经归一化为0~1。
+- image_id: 通常用于多图grounding任务。该参数只有当bbox_type为'real'时生效，代表bbox对应的图片是第几张，用于缩放bbox。索引从0开始，默认全为第0张。image_id的数量需要和bbox的数量一致。例如：若bbox的长度为10，images的长度为2，那么image_id的长度需要是10，其值需要在`{0, 1}`集合内。
+
+对于Qwen2.5-VL/Qwen3-VL，你可以使用环境`QWENVL_BBOX_FORMAT='new'`（默认为'legacy'，需"ms-swift>=3.9.1"），以兼容[官方cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb)格式。并将数据集定义成以下格式：
+```jsonl
+{"messages": [{"role": "user", "content": "<image>找到图像中的<ref-object>"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["羊", "羊", "羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+```
+
+测试ms-swift格式的grounding数据格式的最终格式：
+```python
+import os
+os.environ["MAX_PIXELS"] = "1003520"
+from swift.llm import get_model_tokenizer, get_template
+
+_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
+template = get_template(tokenizer.model_meta.template, tokenizer)
+data = {...}
+template.set_mode('train')
+encoded = template.encode(data, return_template_inputs=True)
+print(f'[INPUT_IDS] {template.safe_decode(encoded["input_ids"])}\n')
+print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
+print(f'images: {encoded["template_inputs"].images}')
+```
+
+### Agent格式
+这里分别提供了纯文本Agent和多模态Agent的示例数据样本：
+```jsonl
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}]}
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"click\", \"description\": \"点击屏幕中的某个位置\", \"parameters\": {\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"横坐标，表示屏幕上的水平位置\"}, \"y\": {\"type\": \"integer\", \"description\": \"纵坐标，表示屏幕上的垂直位置\"}}, \"required\": [\"x\", \"y\"]}}}]", "messages": [{"role": "user", "content": "<image>现在几点了？"}, {"role": "assistant", "content": "<think>\n我可以通过打开日历App来获取当前时间。\n</think>\n"}, {"role": "tool_call", "content": "{\"name\": \"click\", \"arguments\": {\"x\": 105, \"y\": 132}}"}, {"role": "tool_response", "content": "{\"images\": \"<image>\", \"status\": \"success\"}"}, {"role": "assistant", "content": "成功打开日历App，现在的时间为中午11点"}], "images": ["desktop.png", "calendar.png"]}
+```
+- agent_template为"react_en", "hermes"等情况下，该格式适配所有模型Agent训练，可以轻松在不同模型间切换。
+- 其中tools是一个包含tool列表的json字符串，messages中role为'tool_call'和'tool_response/tool'的content部分都需要是json字符串。
+- tools字段将在训练/推理时和`{"role": "system", ...}"`部分组合，根据agent_template组成完整的system部分。
+- `{"role": "tool_call", ...}`部分将根据agent_template自动转成对应格式的`{"role": "assistant", ...}`，多条连续的`{"role": "assistant", ...}`将拼接在一起组成完整的assistant_content。
+- `{"role": "tool_response", ...}`也可以写成`{"role": "tool", ...}`，这两种写法是等价的。该部分也将根据`agent_template`自动转换格式。该部分在训练时将不进行损失的计算，角色类似于`{"role": "user", ...}`。
+- 该格式支持并行调用工具，例子参考第一条数据样本。多模态Agent数据样本中`<image>`标签数量应与"images"长度相同，其标签位置代表图像特征的插入位置。当然也支持其他模态，例如audios, videos。
+- 注意：您也可以手动将数据处理为role为system/user/assistant的messages格式。agent_template的作用是将其中的tools字段以及role为tool_call和tool_response的messages部分，自动映射为标准的role为system/user/assistant的messages格式。
+- 更多请参考[Agent文档](../Instruction/Agent-support.md)。
+
+### 文生图格式
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "给我画出一个苹果"}, {"role": "assistant", "content": "<image>"}], "images": ["/xxx/x.jpg"]}
+```
+
+## dataset_info.json
+
+可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案使用AutoPreprocessor预处理函数将数据集转换为标准格式。dataset_info.json文件中包含了数据集元信息的list，以下为一些例子：
+
+```json
+[
+  {
+    "ms_dataset_id": "xxx/xxx"
+  },
+  {
+    "dataset_path": "<dataset_dir/dataset_path>"
+  },
+  {
+    "ms_dataset_id": "<dataset_id>",
+    "subsets": ["v1"],
+    "split": ["train", "validation"],
+    "columns": {
+      "input": "query",
+      "output": "response"
+    }
+  },
+  {
+    "ms_dataset_id": "<dataset_id>",
+    "hf_dataset_id": "<hf_dataset_id>",
+    "subsets": [{
+      "subset": "subset1",
+      "columns": {
+        "problem": "query",
+        "content": "response"
+      }
+    },
+    {
+      "subset": "subset2",
+      "columns": {
+        "messages": "_",
+        "new_messages": "messages"
+      }
+    }]
+  }
+]
+```
+
+支持以下参数：
+- ms_dataset_id: 参考DatasetMeta参数。
+- hf_dataset_id: 参考DatasetMeta参数。
+- dataset_path: 参考DatasetMeta参数。
+- dataset_name: 参考DatasetMeta参数。
+- subsets: 参考DatasetMeta参数。
+- split: 参考DatasetMeta参数。
+- columns: 在数据集进行预处理前，对数据集进行列名转换。
+
+
+## 数据集注册
+
+register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`register_dataset(dataset_meta)`即可完成数据集注册，其中dataset_meta将存储模型的元信息。DatasetMeta的参数列表如下：
+- ms_dataset_id: ModelScope的dataset_id，默认为None。
+- hf_dataset_id: HuggingFace的dataset_id，默认为None。
+- dataset_path: dataset的本地路径（推荐使用绝对路径）。默认为None。
+- dataset_name: 数据集别名，可以通过`--dataset <dataset_name>`指定数据集，这在dataset_path很长时很方便。默认为None。
+- subsets: 子数据集的名字列表或者`SubsetDataset`对象的列表，默认为`['default']`。（只有dataset_id或者dataset_dir（git clone开源数据集）有子数据集和split的概念）。
+- split: 默认为`['train']`。
+- preprocess_func: 预处理函数或可调用对象，默认为`AutoPreprocessor()`。该预处理函数接口为传入`HfDataset`，并返回满足标准格式的`HfDataset`。
+- load_function: 默认为`DatasetLoader.load`。若需要自定义载入函数，则该载入函数需返回满足标准格式的`HfDataset`，这将抛弃ms-swift的数据集载入机制，提供给用户最大的自由度。通常该参数不需要进行修改。
+
+
+以下介绍注册数据集的例子：
+
+```python
+from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from typing import Dict, Any
+
+class CustomPreprocessor(ResponsePreprocessor):
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = f"""任务：判断下面两句话语意是否相似。
+句子1: {row['text1']}
+句子2: {row['text2']}
+请输出类别[0/1]: 0代表含义不同, 1代表含义相似。
+"""
+        response = str(row['label'])
+        row = {
+            'query': query,
+            'response': response
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/financial_classification',
+        subsets=[SubsetDataset('train', split=['train']), SubsetDataset('test', split=['test'])],
+        preprocess_func=CustomPreprocessor(),
+    ))
+
+if __name__ == '__main__':
+    # load_dataset returns train_dataset and val_dataset based on `split_dataset_ratio`
+    # Here, since we didn't pass `split_dataset_ratio` (defaults to 0), we take the first one (index 0)
+    dataset = load_dataset('swift/financial_classification:train')[0]
+    test_dataset = load_dataset('swift/financial_classification:test')[0]
+    print(f'dataset[0]: {dataset[0]}')
+    print(f'test_dataset[0]: {test_dataset[0]}')
+```

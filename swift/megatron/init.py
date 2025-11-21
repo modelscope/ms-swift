@@ -66,7 +66,7 @@ def _patch_mla_attention():
         gather_from_tensor_model_parallel_region,
         scatter_to_sequence_parallel_region,
     )
-    megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+    mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     # Code borrowed from NVIDIA/Megatron-LM
     def forward(
@@ -112,7 +112,7 @@ def _patch_mla_attention():
         # Adjust key, value for inference
         # ===================================================
         # rotary_pos_emb = None
-        if megatron_core_013:
+        if mcore_013:
             query, key, value, _, attn_mask_type, _ = self._adjust_key_value_for_inference(
                 inference_context, query, key, value, rotary_pos_emb=None)
         else:
@@ -430,7 +430,7 @@ def _patch_TransformerLayer():
     from megatron.training import get_args
     from megatron.core.transformer import TransformerLayer
     _origin_forward = TransformerLayer.forward
-    megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+    mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     def forward(self, *_args, **kwargs):
         """
@@ -439,7 +439,7 @@ def _patch_TransformerLayer():
         This method calls the core computation of a transformer layer, including
         self-attention, cross-attention (if applicable), and feed-forward operations.
         """
-        if not megatron_core_013:
+        if not mcore_013:
             return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
         args = get_args()
@@ -551,10 +551,13 @@ def _patch_build_train_valid_test_datasets():
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
+    import megatron.core
     from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
                                                                    _apply_rotary_pos_emb_bshd)
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
+
+    mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     # Code borrowed from huggingface/transformers
     def apply_interleaved_mrope(freqs, mrope_section):
@@ -638,27 +641,25 @@ def _patch_mrope():
         Returns:
             Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
         """
-        args = get_args()
-        cu_seqlens_for_batched = cu_seqlens
-        use_batched_mrope = False
         if cp_group is not None:
             cp_size = cp_group.size()
-            cu_seqlens_for_batched = cu_seqlens // cp_size
-            use_batched_mrope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
-        if args.position_embedding_type != 'mrope' and not use_batched_mrope:
+        else:
+            args = get_args()
+            cp_size = args.context_parallel_size
+        cu_seqlens_for_batched = cu_seqlens // cp_size
+        use_batched_rope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
+        if not use_batched_rope:
             logger.warning_once('Using non-batched RoPE, which may affect performance.')
+            kwargs = {'cp_group': cp_group} if mcore_013 else {}
             return _origin_apply_rotary_pos_emb_thd(
                 t,
-                cu_seqlens_for_batched,
+                cu_seqlens,
                 freqs,
                 rotary_interleaved=rotary_interleaved,
                 multi_latent_attention=multi_latent_attention,
                 mscale=mscale,
-                cp_group=cp_group,
+                **kwargs,
             )
-
-        if cp_group is None:
-            raise ValueError('cp_group must be provided for THD format RoPE')
 
         return _apply_rotary_pos_emb_bshd(
             t.unsqueeze(1),
@@ -672,6 +673,7 @@ def _patch_mrope():
 
 
 def _patch_megatron():
+    os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
@@ -712,7 +714,7 @@ def init_megatron_env() -> None:
         # TODO: Synchronization issues may occur in DDP scenarios
         # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.14.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])

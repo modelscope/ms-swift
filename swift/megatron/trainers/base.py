@@ -6,7 +6,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Literal
+from typing import Callable, Dict, List, Literal, Optional
 
 import megatron.core
 import torch
@@ -14,8 +14,10 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
+from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
@@ -29,7 +31,7 @@ from megatron.training.utils import reduce_max_stat_across_model_parallel_group,
 from packaging import version
 from tqdm.auto import tqdm
 
-from swift.llm import dynamic_gradient_checkpointing
+from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
@@ -38,16 +40,22 @@ from ..utils import adapter_state_dict_context, copy_original_module_weight, pat
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
 
+try:
+    from megatron.core.optimizer import param_group_identifier_keys
+except ImportError:
+    param_group_identifier_keys = None
+
 logger = get_logger()
 
 
 class BaseMegatronTrainer(ABC):
 
-    def __init__(self, args, template):
+    def __init__(self, args, template: Template):
         self.args = args
         self.template = template
         self.stimer = StragglerDetector()
         self.unwrapped_models = []
+        self.wrapped_models = []
         self.peft_models = []
         self._bridge = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
@@ -62,7 +70,7 @@ class BaseMegatronTrainer(ABC):
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     @property
     def bridge(self):
@@ -79,9 +87,11 @@ class BaseMegatronTrainer(ABC):
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
+            num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
@@ -91,6 +101,7 @@ class BaseMegatronTrainer(ABC):
                     args.eval_iters = 0
                 elif hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                    dataset_sample = dataset_sample * num_generations
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
                     raise ValueError(
@@ -124,7 +135,12 @@ class BaseMegatronTrainer(ABC):
                     yield from x
                     x = next_x
                 logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
-                x[0]['is_finished'] = True
+                if isinstance(x, list) and all(isinstance(item, dict) for item in x):
+                    x[0]['is_finished'] = True
+                elif isinstance(x, list) and all(isinstance(item, list) for item in x):
+                    # grpo
+                    for item in x:
+                        item[0]['is_finished'] = True
                 yield from x
             else:
                 for x in iterable:
@@ -235,6 +251,161 @@ class BaseMegatronTrainer(ABC):
             args.no_load_rng = origin_no_load_rng
             args.finetune = origin_finetune
 
+    # Code borrowed from Megatron-LM
+    def _get_param_groups(
+        self,
+        model_chunks: List[MegatronModule],
+        no_weight_decay_cond: Optional[Callable],
+        scale_lr_cond: Optional[Callable],
+        lr_mult: float,
+        lr: float,
+        min_lr: float,
+        decoupled_lr: Optional[float],
+        decoupled_min_lr: Optional[float],
+        default_skip_embedding_weight_decay: bool = False,
+    ) -> List[Dict]:
+        """Create parameter groups for optimizer.
+
+        Creates parameter groups based on weight decay condition (regularized vs
+        non regularized), learning rate scale condition (lr vs lr_mult * lr),
+        and whether it is expert parameters. scale_lr_cond is used during finetuning
+        where head of the network requires a scaled version of the base learning rate.
+
+        Args:
+            model_chunks (List[MegatronModule]): model chunks to create parameter
+                groups for.
+            no_weight_decay_cond (func, optional): function to determine whether a
+                parameter should not perform weight decay.
+            scale_lr_cond (func, optional): function to determine whether a parameter
+                should have a scaled learning rate.
+            lr_mult (float): learning rate multiplier for parameters that
+                satisfy scale_lr_cond.
+            lr (float): learning rate.
+            min_lr (float): minimum learning rate.
+            decoupled_lr (Optional[float]): optional decoupled learning rate.
+            decoupled_min_lr (Optional[float]): optional decoupled minimum learning rate.
+            default_skip_embedding_weight_decay (bool): whether to skip weight decay for embedding
+                parameters by default, if no_weight_decay_cond is not provided.
+
+        Returns:
+            List of parameter groups.
+        """
+
+        use_decoupled_learning_rate = decoupled_lr is not None
+
+        # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
+        params_map = {}
+        for model_chunk in model_chunks:
+            visual = model_chunk.module.module.visual
+            for name, param in model_chunk.named_parameters():
+                if not param.requires_grad:
+                    continue
+
+                is_expert_parallel = not getattr(param, 'allreduce', True)
+
+                if no_weight_decay_cond is not None:
+                    no_wd: bool = no_weight_decay_cond(name, param)
+                else:
+                    # Do not regularize biases and norm parameters.
+                    #  optionally, also skip weight decay for embedding parameters if requested
+                    #  (useful if you do not want embeddings to shrink to zero in training
+                    #  https://arxiv.org/abs/2312.16903)
+                    no_wd = (
+                        name.endswith('.bias') or len(param.shape) == 1
+                        or (default_skip_embedding_weight_decay and 'embedding' in name))
+                _lr_mult = lr_mult
+                if scale_lr_cond is not None:
+                    scale_lr = scale_lr_cond(name, param)
+                else:
+                    scale_lr = False
+                    # Handling multimodal models: vit_lr, aligner_lr
+                    unwrapped_name = name.removeprefix('module.').removeprefix('module.')
+                    if visual is not None:
+                        is_aligner = any(unwrapped_name.startswith(f'visual.{k}') for k in visual._aligner or [])
+                        is_vit = any(unwrapped_name.startswith(f'visual.{k}')
+                                     for k in visual._vision_tower) and not is_aligner
+                    else:
+                        is_aligner, is_vit = False, False
+                    if is_vit and self.args.vit_lr:
+                        scale_lr = True
+                        _lr_mult = self.args.vit_lr / lr
+                    elif is_aligner and self.args.aligner_lr:
+                        scale_lr = True
+                        _lr_mult = self.args.aligner_lr / lr
+
+                if not no_wd and not scale_lr:
+                    wd_mult, _lr_mult = 1.0, 1.0
+                elif not no_wd and scale_lr:
+                    wd_mult, _lr_mult = 1.0, _lr_mult
+                elif no_wd and not scale_lr:
+                    wd_mult, _lr_mult = 0.0, 1.0
+                else:
+                    wd_mult, _lr_mult = 0.0, _lr_mult
+
+                is_decoupled_lr = False
+                # For input/embedding and output layer: embedding.word_embeddings.weight /
+                # output_layer.weight.
+                if use_decoupled_learning_rate and getattr(param, 'is_embedding_or_output_parameter', False):
+                    is_decoupled_lr = True
+
+                key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+                if key not in params_map:
+                    params_map[key] = []
+                params_map[key].append(param)
+
+        # Distributed checkpoint requires all ranks to have the same param groups,
+        # so we need to align the param groups across ranks, otherwise we may have
+        # runtime error when loading the checkpoint or numerical error when resuming training.
+        params_key = list(params_map.keys())
+        gathered_params_key = [None for _ in range(torch.distributed.get_world_size())]
+        torch.distributed.all_gather_object(gathered_params_key, params_key)
+        for keys in gathered_params_key:
+            for key in keys:
+                if key not in params_key:
+                    params_key.append(key)
+
+        param_groups = []
+        for key in params_key:
+            wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr = key
+            params = params_map[key] if key in params_map else []
+            param_group = {
+                'params': params,
+                'wd_mult': wd_mult,
+                'lr_mult': _lr_mult,
+                'is_expert_parallel': is_expert_parallel,
+                'is_decoupled_lr': is_decoupled_lr,
+            }
+            # Ensure param_group has required keys for matching when loading optimizer state
+            # See MegatronOptimizer._filter_and_reorder_param_groups.
+            if param_group_identifier_keys is not None:
+                assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            param_groups.append(param_group)
+
+        param_groups = _update_min_and_max_lr_in_param_groups(
+            param_groups,
+            lr=lr,
+            min_lr=min_lr,
+            decoupled_lr=decoupled_lr,
+            decoupled_min_lr=decoupled_min_lr,
+        )
+
+        return param_groups
+
+    @contextmanager
+    def _patch_get_param_groups(self):
+        if not self.args.megatron_model_meta.is_multimodal or (self.args.vit_lr is None
+                                                               and self.args.aligner_lr is None):
+            yield
+            return
+        from megatron.core import optimizer
+
+        _get_param_groups = optimizer._get_param_groups
+        optimizer._get_param_groups = self._get_param_groups
+        try:
+            yield
+        finally:
+            optimizer._get_param_groups = _get_param_groups
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         args = get_args()
@@ -242,7 +413,7 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
             if args.load_safetensors:
-                self.bridge.load_weights(model, args.model_info.model_dir)
+                self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
             if args.load_safetensors and args.train_type == 'lora':
@@ -253,10 +424,11 @@ class BaseMegatronTrainer(ABC):
             self.peft_models.append(peft_model)
             return model
 
-        self._init_multimodal_full(args)
-        with self._patch_load_state_dict(self._load_base_checkpoint):
+        self._init_multimodal_full()
+        with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
+        self.wrapped_models = model
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -271,7 +443,7 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.megatron_model_meta.is_multimodal:
+        if args.is_multimodal:
             for m in self.unwrapped_models:
                 self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
@@ -280,13 +452,12 @@ class BaseMegatronTrainer(ABC):
         visual = model.visual
         if visual is None:
             return
-        args = get_args()
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
-            if args.vit_gradient_checkpointing:
+            if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
-                    module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                    module.gradient_checkpointing_enable(**(self.args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
                     pass
@@ -295,6 +466,8 @@ class BaseMegatronTrainer(ABC):
     def _initialize_embedding(model):
         # compat new_special_tokens
         init_method = model.config.init_method
+        if hasattr(model, 'language_model'):
+            model = model.language_model
         for key in ['embedding.word_embeddings', 'output_layer']:
             if key == 'output_layer' and model.share_embeddings_and_output_weights:
                 continue
@@ -314,25 +487,28 @@ class BaseMegatronTrainer(ABC):
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
                            reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
-        values = list(metric.values())
-        reporting_metric = values[0].new_tensor(values)
+        reporting_metric = torch.stack(list(metric.values()), dim=0)
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
+                   **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
         return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config)
+                                       config, *args, **kwargs)
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def evaluate(self,
-                 forward_step_func,
-                 data_iterator,
-                 model,
-                 process_non_loss_data_func,
-                 config,
-                 verbose=False,
-                 non_loss_data_func=None):
+    def evaluate(
+        self,
+        forward_step_func,
+        data_iterator,
+        model,
+        process_non_loss_data_func,
+        config,
+        verbose=False,
+        non_loss_data_func=None,
+        eval_iters=None,
+    ):
         """Evaluation."""
         args = get_args()
         timers = get_timers()
@@ -356,18 +532,26 @@ class BaseMegatronTrainer(ABC):
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
+        forward_backward_func = get_forward_backward_func()
+        if args.enable_cuda_graph and args.cuda_graph_scope == 'full_iteration':
+            from megatron.core.full_cuda_graph import FullCudaGraphWrapper
+            forward_backward_func = FullCudaGraphWrapper(
+                forward_backward_func, cuda_graph_warmup_steps=args.cuda_graph_warmup_steps)
+
+        if eval_iters is None:
+            eval_iters = args.eval_iters
+
         with torch.no_grad(), tqdm(
-                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+                total=eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             if verbose:
-                print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-            while iteration < args.eval_iters:
+                print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+            while iteration < eval_iters:
                 iteration += 1
                 prog_bar.update()
                 if verbose:
-                    print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                    print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
-                forward_backward_func = get_forward_backward_func()
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
@@ -380,7 +564,8 @@ class BaseMegatronTrainer(ABC):
                     seq_length=args.seq_length,
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
-                    forward_only=True)
+                    forward_only=True,
+                )
                 ft_integration.on_eval_step_end()
                 config.timers = get_timers()
 
@@ -389,7 +574,7 @@ class BaseMegatronTrainer(ABC):
                     torch.cuda.empty_cache()
 
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    if self.megatron_core_013:
+                    if self.mcore_013:
                         for key in loss_dicts[0].keys():
                             if key not in total_loss_dict:
                                 total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
@@ -443,7 +628,8 @@ class BaseMegatronTrainer(ABC):
                     micro_batch_size=args.micro_batch_size,
                     decoder_seq_length=args.decoder_seq_length,
                     forward_only=True,
-                    collect_non_loss_data=True)
+                    collect_non_loss_data=True,
+                )
 
         # Move model back to the train mode.
         for model_module in model:
@@ -723,13 +909,13 @@ class BaseMegatronTrainer(ABC):
 
         return report_memory_flag
 
-    def merge_lora_adapters(self):
+    def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
         for model in self.unwrapped_models:
             for module in model.modules():
                 if isinstance(module, LoraParallelLinear):
                     # Merge all active adapters
-                    module.merge()
+                    module.merge(adapter_names=[adapter_name])
 
     def unmerge_lora_adapters(self):
         """Unmerge LoRA adapters to restore training state."""
@@ -761,6 +947,7 @@ class BaseMegatronTrainer(ABC):
         # support max_epochs
         self._origin_train_step = training.train_step
         training.train_step = self.train_step
+        self._origin_cyclic_iter = training.cyclic_iter
         training.cyclic_iter = self.new_cyclic_iter
         # patch training_log
         self._origin_training_log = training.training_log
@@ -775,10 +962,10 @@ class BaseMegatronTrainer(ABC):
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    @staticmethod
-    def _init_multimodal_full(args):
-        visual_cls = args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
+    def _init_multimodal_full(self):
+        args = get_args()
+        visual_cls = self.args.megatron_model_meta.visual_cls
+        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
             if args.freeze_llm:

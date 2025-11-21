@@ -322,6 +322,13 @@ register_model(
                 Model('OpenGVLab/InternVL3-38B-AWQ', 'OpenGVLab/InternVL3-38B-AWQ'),
                 Model('OpenGVLab/InternVL3-78B-AWQ', 'OpenGVLab/InternVL3-78B-AWQ'),
             ]),
+            # SenseNova-SI
+            ModelGroup([
+                Model('SenseNova/SenseNova-SI-InternVL3-2B', 'sensenova/SenseNova-SI-InternVL3-2B'),
+                Model('SenseNova/SenseNova-SI-InternVL3-8B', 'sensenova/SenseNova-SI-InternVL3-8B'),
+                Model('SenseNova/SenseNova-SI-1.1-InternVL3-2B', 'sensenova/SenseNova-SI-1.1-InternVL3-2B'),
+                Model('SenseNova/SenseNova-SI-1.1-InternVL3-8B', 'sensenova/SenseNova-SI-1.1-InternVL3-8B'),
+            ]),
         ],
         TemplateType.internvl2_5,
         get_model_tokenizer_internvl,
@@ -585,6 +592,7 @@ register_model(
         ],
         TemplateType.internlm2_reward,
         get_model_tokenizer_reward_model,
+        is_reward=True,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForRewardModel'],
     ))

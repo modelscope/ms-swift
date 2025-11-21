@@ -8,9 +8,10 @@ from tqdm import tqdm
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
 from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
+from ..dataset.loader import DatasetLoader
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
-from .utils import InferCliState
+from .utils import InferCliState, get_cached_dataset
 
 logger = get_logger()
 
@@ -178,16 +179,23 @@ class SwiftInfer(SwiftPipeline):
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
+        if args.cached_dataset:
+            _, val_datasets = get_cached_dataset(self.args)
+        else:
+            val_datasets = []
         if len(args.val_dataset) > 0:
             _, val_dataset = load_dataset(
                 args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
-        else:
+            val_datasets.append(val_dataset)
+        elif args.dataset:
             _, val_dataset = load_dataset(
                 args.dataset,
                 split_dataset_ratio=args.split_dataset_ratio,
                 shuffle=args.dataset_shuffle,
                 **dataset_kwargs)
-        assert val_dataset is not None
+            val_datasets.append(val_dataset)
+        assert len(val_datasets) > 0
+        val_dataset = DatasetLoader._concat_datasets(val_datasets)
         val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, args.dataset_shuffle, self.random_state)
         return val_dataset
 
