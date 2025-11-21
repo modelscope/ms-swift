@@ -1888,144 +1888,682 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        功能：
+            编码全模态输入，将占位符 token 替换为实际数量的媒体 tokens。
+            该方法是 Qwen2.5-Omni 的核心编码逻辑，处理图像、视频、音频三种模态：
+            1> 分离视频音频和独立音频（通过 video_audios_mask 标记）
+            2> 使用 processor 提取所有模态的特征和网格信息
+            3> 将单个占位符 token（<|AUDIO|>、<|IMAGE|>、<|VIDEO|>）扩展为实际数量的 tokens
+            4> 特别处理视频+音频混合模式（use_audio_in_video=True），按时间块交织视频和音频 tokens
+
+        参数：
+            inputs (StdTemplateInputs): 标准模板输入对象，包含：
+                - images: 图像列表（PIL.Image 或路径）
+                - videos: 视频列表（tensor 或路径）
+                - audios: 音频列表，可能包含来自视频的音频（标记为元组 (audio_data, 'video')）
+                - messages: 对话消息列表
+
+        返回：
+            Dict[str, Any]: 编码结果字典，包含：
+                - input_ids: 扩展后的 token IDs 列表
+                - labels: 扩展后的标签列表（训练时使用）
+                - loss_scale: 损失缩放因子（可选）
+                - pixel_values: 图像像素值，shape (num_images, C, H, W)
+                - pixel_values_videos: 视频像素值，shape (num_videos, C, H, W)
+                - input_features: 音频特征，shape (num_audios, time, feature_dim)
+                - feature_attention_mask: 音频注意力掩码，shape (num_audios, time)
+                - image_grid_thw: 图像网格尺寸，shape (num_images, 3) 表示 (T, H, W)
+                - video_grid_thw: 视频网格尺寸，shape (num_videos, 3) 表示 (T, H, W)
+                - video_second_per_grid: 每个视频 grid 的时间步长（秒）
+
+        示例：
+            >>> # 示例1：纯音频输入
+            >>> inputs = StdTemplateInputs(
+            ...     audios=['speech.wav'],
+            ...     messages=[{'role': 'user', 'content': '<audio>识别语音'}]
+            ... )
+            >>> encoded = template._encode(inputs)
+            >>> # 原始 input_ids: [1, 2, audio_token_id, 3]  (1个占位符)
+            >>> # 扩展后: [1, 2, audio_token_id, audio_token_id, ..., 3]  (根据音频长度扩展)
+            
+            >>> # 示例2：图像+视频混合输入
+            >>> inputs = StdTemplateInputs(
+            ...     images=['photo.jpg'],
+            ...     videos=['video.mp4'],
+            ...     messages=[{'role': 'user', 'content': '<image><video>描述内容'}]
+            ... )
+            >>> encoded = template._encode(inputs)
+            >>> 'pixel_values' in encoded and 'pixel_values_videos' in encoded
+            True
+            
+            >>> # 示例3：视频+音频混合模式（use_audio_in_video=True）
+            >>> template.use_audio_in_video = True
+            >>> inputs = StdTemplateInputs(
+            ...     videos=['video.mp4'],  # 会自动提取音频
+            ...     messages=[{'role': 'user', 'content': '<video>描述视频'}]
+            ... )
+            >>> encoded = template._encode(inputs)
+            >>> # token 序列会按时间块交织视频和音频 tokens
+            >>> # 例如：[video_tokens_chunk0, audio_tokens_chunk0, video_tokens_chunk1, audio_tokens_chunk1, ...]
+        """
+        # 1> 调用父类（Template）的编码方法，获取基础编码结果（文本部分）
         encoded = Template._encode(self, inputs)
         processor = self.processor
+        
+        # 2> 分离视频音频和独立音频
+        # video_audios_mask: 标记哪些音频来自视频（True）还是独立音频（False）
         video_audios_mask = []
         for i, audio in enumerate(inputs.audios):
+            # 检查音频是否为元组 (audio_data, 'video')
+            # 这是在 replace_tag 中标记的，表示音频来自视频提取
             if isinstance(audio, tuple) and audio[1] == 'video':
+                # 提取实际的音频数据
                 inputs.audios[i] = audio[0]
                 video_audios_mask.append(True)
             else:
+                # 独立的音频文件
                 video_audios_mask.append(False)
+        # 转换为 tensor，用于后续索引操作
         video_audios_mask = torch.tensor(video_audios_mask)
+        
+        # 3> 使用 processor 处理所有模态数据
+        # processor 会自动识别并处理图像、视频、音频
         media_inputs = processor(
-            text='',
-            audio=inputs.audios or None,
-            images=inputs.images or None,
-            videos=inputs.videos or None,
-            do_resize=False,
-            return_tensors='pt')
+            text='',  # 空文本，只处理媒体
+            audio=inputs.audios or None,  # 音频列表（包括视频音频和独立音频）
+            images=inputs.images or None,  # 图像列表
+            videos=inputs.videos or None,  # 视频列表
+            do_resize=False,  # 已在 replace_tag 中处理，不再调整大小
+            return_tensors='pt')  # 返回 PyTorch 张量
+        
+        # 4> 移除文本相关字段（我们只需要媒体数据）
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
+        
+        # 5> 转换媒体数据类型：匹配模型的数据类型（如 float16）
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
-        input_ids = encoded['input_ids']
-        labels = encoded['labels']
-        loss_scale = encoded.get('loss_scale', None)
-        # audio
+        
+        # 6> 提取编码结果的文本部分
+        input_ids = encoded['input_ids']  # token IDs 列表
+        labels = encoded['labels']  # 标签列表（训练时使用）
+        loss_scale = encoded.get('loss_scale', None)  # 损失缩放因子（可选）
+        
+        # ==================== 步骤7：处理音频 tokens ====================
+        # 7.1> 获取音频 token ID：<|AUDIO|> 对应的 token ID
         audio_token_id = self._tokenize('<|AUDIO|>')
+        
+        # 7.2> 查找所有音频占位符位置
+        # idx_list: 所有 audio_token_id 在 input_ids 中的索引列表
         idx_list = findall(input_ids, audio_token_id)
+        
+        # 7.3> 计算每个音频的实际 token 长度
+        # feature_attention_mask: 音频特征的注意力掩码，shape (num_audios, time)
+        # 值为 1 的位置表示有效的音频帧
         feature_attention_mask = media_inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
+            # 计算每个音频的有效帧数（沿 time 维度求和）
+            # audio_feature_lengths shape: (num_audios,)，例如 [3000, 1500]
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
+            
+            # 应用音频编码器的下采样公式：计算实际的 token 数量
+            # 公式：audio_lengths = (((L - 1) // 2 + 1 - 2) // 2 + 1)
+            # 这反映了音频编码器的卷积下采样结构（如两层 stride=2 的卷积）
+            # 例如：L=3000 → (3000-1)//2+1-2 = 1498 → 1498//2+1 = 750
             audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
         else:
+            # 没有注意力掩码：可能所有音频长度相同或使用默认值
             audio_lengths = None
+        
+        # 7.4> 保存原始音频长度（用于后续视频音频分离）
         audio_lengths_origin = audio_lengths
+        
+        # 7.5> 扩展音频占位符 token
         if idx_list:
+            # 如果启用视频音频模式，需要分离独立音频
             if self.use_audio_in_video:
+                # 使用掩码过滤：只保留独立音频的长度
+                # ~video_audios_mask: 取反，True 表示独立音频
                 audio_lengths = audio_lengths[~video_audios_mask]
 
             def _get_new_audio_tokens(i):
+                """
+                生成第 i 个独立音频的 token 列表。
+                
+                返回：
+                    List[int]: audio_token_id 重复 audio_lengths[i] 次
+                    
+                示例：
+                    audio_lengths[i] = 750
+                    返回：[audio_token_id] * 750
+                """
                 return audio_token_id * audio_lengths[i]
 
+            # 扩展 tokens：将每个音频占位符替换为实际数量的 tokens
+            # _extend_tokens 会在 idx_list 的每个位置调用 _get_new_audio_tokens
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 _get_new_audio_tokens)
 
+        # ==================== 步骤8：处理图像和视频 tokens ====================
         for media_type in ['image', 'video']:
+            # 8.1> 获取媒体 token：<|IMAGE|> 或 <|VIDEO|>
             token = f'<|{media_type.upper()}|>'
             token_id = self._tokenize(token)
+            
+            # 8.2> 查找占位符位置
             idx_list = findall(input_ids, token_id)
+            
             if idx_list:
+                # 8.3> 获取处理参数
+                # merge_size: 合并相邻 patches 的窗口大小（如 2 表示 2×2 合并）
                 merge_size = processor.image_processor.merge_size
+                
+                # media_grid_thw: 媒体网格尺寸，shape (num_media, 3) 表示 (T, H, W)
+                # 例如：图像 [[1, 16, 16]]，视频 [[8, 16, 16]]
                 media_grid_thw = media_inputs.get(f'{media_type}_grid_thw')
+                
+                # 8.4> 特殊处理：视频+音频混合模式
                 if media_type == 'video' and self.use_audio_in_video:
+                    # 恢复视频音频的长度（从原始列表中提取）
                     audio_lengths = audio_lengths_origin[video_audios_mask]
+                    
+                    # 获取视频时间信息：每个 grid 对应的秒数
+                    # video_second_per_grid shape: (num_videos,)
+                    # 例如：[0.125, 0.25] 表示第1个视频每个 grid 0.125秒，第2个 0.25秒
                     video_second_per_grid = media_inputs['video_second_per_grid']
 
                     def _get_new_tokens_use_audio_in_video(i):
+                        """
+                        生成第 i 个视频的 token 序列（混合视频和音频 tokens）。
+                        
+                        核心思想：
+                        按时间块（chunks）交织视频和音频 tokens，保持时间对齐。
+                        每个时间块包含特定时间范围内的视频帧和音频帧。
+                        
+                        返回：
+                            List[int]: 交织的 token 列表
+                            
+                        示例：
+                            假设视频有 2 个时间块，音频有 2 个时间块
+                            返回：[video_tokens_0, audio_tokens_0, video_tokens_1, audio_tokens_1]
+                        """
+                        # 1> 生成音频 token 索引：[0, 1, 2, ..., audio_lengths[i]-1]
                         audio_token_indices = torch.arange(audio_lengths[i])
-                        grid_thw = media_grid_thw[i]
+                        
+                        # 2> 获取当前视频的网格尺寸
+                        grid_thw = media_grid_thw[i]  # shape: (3,) 表示 (T, H, W)
+                        
+                        # 3> 计算空间维度的 patch 数量
+                        # height: 高度方向的 patches 数（合并后）
+                        # width: 宽度方向的 patches 数（合并后）
+                        # 例如：grid_thw = [8, 16, 16]，merge_size = 2
+                        #      height = 16 // 2 = 8，width = 16 // 2 = 8
                         height = grid_thw[1] // merge_size
                         width = grid_thw[2] // merge_size
+                        
+                        # 4> 生成视频 token 的时间索引
+                        # grid_thw[0]: 时间维度（帧数）
+                        # reshape(-1, 1, 1): shape (T, 1, 1)，准备广播
+                        # 例如：grid_thw[0] = 8 → tensor([[0], [1], [2], ..., [7]])
                         video_token_indices = torch.arange(grid_thw[0]).reshape(-1, 1, 1)
+                        
+                        # 5> 广播到空间维度：每帧的所有 patches 使用相同的时间索引
+                        # broadcast_to: (T, 1, 1) → (T, H, W)
+                        # reshape(-1): (T, H, W) → (T*H*W,)
+                        # 例如：T=8, H=8, W=8 → 512 个 tokens，前 64 个是帧0，接下来 64 个是帧1，...
                         video_token_indices = torch.broadcast_to(
                             video_token_indices, (video_token_indices.shape[0], height, width)).reshape(-1)
+                        
+                        # 6> 将时间索引转换为实际的时间位置（秒）
+                        # video_second_per_grid[i]: 每个 grid 对应的秒数
+                        # position_id_per_seconds: 每秒对应的位置 ID 数量
+                        # 例如：帧0 → 0秒，帧1 → 0.125秒，...
                         video_token_indices = (
                             video_token_indices * video_second_per_grid[i] * self.position_id_per_seconds)
+                        
+                        # 7> 计算时间块的大小
+                        # tokens_per_chunk: 每个时间块包含的 tokens 数
+                        # 例如：position_id_per_seconds=8, seconds_per_chunk=2.0 → tokens_per_chunk=16
                         tokens_per_chunk = int(self.position_id_per_seconds * self.seconds_per_chunk)
+                        
+                        # 8> 将视频和音频 tokens 分配到时间块
+                        # get_chunked_index: 根据 token 的时间位置将其分配到对应的时间块
+                        # 返回：[(start0, end0), (start1, end1), ...] 每个时间块的起止索引
                         video_chunk_indexes = processor.get_chunked_index(video_token_indices, tokens_per_chunk)
                         audio_chunk_indexes = processor.get_chunked_index(audio_token_indices, tokens_per_chunk)
 
+                        # 9> 交织视频和音频 tokens
                         res = []
+                        # 遍历所有时间块（取视频和音频块数的最大值）
                         for j in range(max(len(video_chunk_indexes), len(audio_chunk_indexes))):
+                            # 添加第 j 个视频块的 tokens
                             if j < len(video_chunk_indexes):
+                                # 计算该块的长度
                                 video_seq_length = video_chunk_indexes[j][1] - video_chunk_indexes[j][0]
+                                # 添加对应数量的视频 tokens
                                 res += token_id * video_seq_length
+                            
+                            # 添加第 j 个音频块的 tokens
                             if j < len(audio_chunk_indexes):
+                                # 计算该块的长度
                                 audio_seq_length = audio_chunk_indexes[j][1] - audio_chunk_indexes[j][0]
+                                # 添加对应数量的音频 tokens
                                 res += audio_token_id * audio_seq_length
+                        
                         return res
 
+                    # 扩展视频占位符：使用视频+音频混合模式
                     input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                         _get_new_tokens_use_audio_in_video)
 
                 else:
+                    # 8.5> 普通模式（不混合音频）
 
                     def _get_new_tokens(i):
+                        """
+                        生成第 i 个媒体（图像或视频）的 token 列表。
+                        
+                        公式：token_len = (T × H × W) // (merge_size²)
+                        
+                        返回：
+                            List[int]: token_id 重复 token_len 次
+                            
+                        示例：
+                            图像：grid_thw = [1, 16, 16]，merge_size = 2
+                            token_len = 1×16×16 // 4 = 64
+                            返回：[token_id] * 64
+                        """
+                        # 计算总 patch 数量并除以合并因子
                         token_len = (media_grid_thw[i].prod() // (merge_size**2))
                         return token_id * token_len
 
+                    # 扩展媒体占位符：使用普通模式
                     input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                         _get_new_tokens)
 
+        # 9> 更新编码结果：保存扩展后的 tokens 和媒体数据
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        encoded.update(media_inputs)
+        encoded.update(media_inputs)  # 添加所有媒体输入（pixel_values、input_features 等）
+        
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        功能：
+            后处理编码结果。Qwen2.5-Omni 直接调用 Template 基类的实现，不进行额外的视觉 embedding 替换。
+            与 Qwen2VLTemplate 不同，Qwen2.5-Omni 的视觉编码器在模型前向传播时处理，而不是在编码阶段。
+            这种设计允许更灵活的全模态融合策略。
+
+        参数：
+            model: Qwen2.5-Omni 模型对象。
+            inputs (Dict[str, Any]): 编码后的输入字典，包含：
+                - input_ids: token IDs，shape (batch_size, seq_len)
+                - pixel_values: 图像像素值（可选）
+                - pixel_values_videos: 视频像素值（可选）
+                - input_features: 音频特征（可选）
+                - 其他媒体相关字段
+
+        返回：
+            Dict[str, Any]: 未修改的输入字典（或基类处理后的结果）
+                - 推理模式：直接返回 inputs
+                - 训练模式：返回基类的处理结果（通常也是 inputs）
+
+        示例：
+            >>> # 推理模式：直接返回
+            >>> template.is_training = False
+            >>> inputs = {'input_ids': tensor([[1, 2, 3]]), ...}
+            >>> result = template._post_encode(model, inputs)
+            >>> result is inputs or result == inputs
+            True
+            
+            >>> # 训练模式：调用基类方法
+            >>> template.is_training = True
+            >>> result = template._post_encode(model, inputs)
+            >>> # 基类通常也直接返回 inputs（除非有特殊处理）
+        
+        设计说明：
+            Qwen2.5-Omni 不在此阶段进行 embedding 替换的原因：
+            1. 全模态融合更复杂：图像、视频、音频三种模态需要统一处理
+            2. 时间对齐需求：视频+音频混合模式需要在前向传播时动态对齐
+            3. 模型架构差异：Omni 模型在内部处理多模态融合，而不是预先替换 embeddings
+        """
+        # 直接调用 Template 基类的 _post_encode 方法
+        # 基类实现通常在推理模式下直接返回 inputs
+        # 在训练模式下可能进行一些通用的后处理（如类型转换）
         return Template._post_encode(self, model, inputs)
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        """
+        功能：
+            计算 Qwen2.5-Omni 的位置编码（position IDs），支持全模态的位置信息。
+            与 Qwen2VLTemplate 的 _get_position_ids 相比，Omni 版本额外考虑了音频模态：
+            1> 图像/视频：使用 2D/3D 网格位置（基于 grid_thw）
+            2> 音频：使用 1D 时间位置（基于 audio_feature_lengths）
+            3> 视频+音频混合：使用时间对齐的 3D 位置（考虑 video_second_per_grid）
+            4> 文本：使用标准的 1D 序列位置
+            
+            该方法调用模型的 thinker.get_rope_index 来计算 RoPE（Rotary Position Embedding）索引。
+
+        参数：
+            inputs (Dict[str, Any]): 输入字典，包含：
+                - input_ids: token IDs，shape (batch_size, seq_len)
+                - attention_mask: 注意力掩码，shape (batch_size, seq_len)（可选）
+                - image_grid_thw: 图像网格尺寸，shape (num_images, 3) 表示 (T, H, W)（可选）
+                - video_grid_thw: 视频网格尺寸，shape (num_videos, 3) 表示 (T, H, W)（可选）
+                - feature_attention_mask: 音频特征注意力掩码，shape (num_audios, time)（可选）
+                - video_second_per_grid: 每个视频 grid 的时间步长（秒），shape (num_videos,)（可选）
+                    注意：该字段会被 pop 移除（避免传递到模型前向传播）
+
+        返回：
+            torch.Tensor: 位置编码，shape (batch_size, seq_len, 3)
+                最后一维表示 (temporal, height, width) 三个维度的位置
+                不同模态的位置编码格式：
+                - 文本 tokens: (seq_pos, 0, 0)
+                - 图像 tokens: (0, h, w)
+                - 视频 tokens: (t, h, w)
+                - 音频 tokens: (time_pos, 0, 0)
+                - 视频+音频混合: 根据时间对齐策略计算
+
+        示例：
+            >>> # 示例1：纯图像输入
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 2, 151655, 151655, 3]]),  # 2 个图像 tokens
+            ...     'image_grid_thw': tensor([[1, 16, 16]])  # 1 帧，16×16 patches
+            ... }
+            >>> position_ids = template._get_position_ids(inputs)
+            >>> position_ids.shape
+            torch.Size([1, 5, 3])
+            >>> # position_ids[0, 2:4, :] 包含图像 tokens 的 2D 位置 (0, h, w)
+            
+            >>> # 示例2：图像+音频混合
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 151655, 151657, 2]]),  # 1 个图像 + 1 个音频 token
+            ...     'image_grid_thw': tensor([[1, 16, 16]]),
+            ...     'feature_attention_mask': tensor([[1, 1, ..., 1, 0, 0]])  # 音频长度信息
+            ... }
+            >>> position_ids = template._get_position_ids(inputs)
+            >>> # position_ids[0, 1] 是图像位置，position_ids[0, 2] 是音频位置
+            
+            >>> # 示例3：视频+音频混合模式
+            >>> template.use_audio_in_video = True
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 151656, 151657, ..., 2]]),  # 视频和音频 tokens 交织
+            ...     'video_grid_thw': tensor([[8, 16, 16]]),
+            ...     'feature_attention_mask': tensor([[1, 1, ..., 1]]),
+            ...     'video_second_per_grid': [0.125]  # 每个 grid 0.125 秒
+            ... }
+            >>> position_ids = template._get_position_ids(inputs)
+            >>> # 视频和音频 tokens 的位置会根据时间对齐
+        """
+        # 1> 提取音频长度信息
+        # feature_attention_mask: 音频特征的注意力掩码，shape (num_audios, time)
         feature_attention_mask = inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
+            # 计算每个音频的有效帧数（沿 time 维度求和）
+            # audio_feature_lengths shape: (num_audios,)
+            # 例如：tensor([3000, 1500]) 表示第1个音频 3000 帧，第2个 1500 帧
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
         else:
+            # 没有音频或所有音频长度相同
             audio_feature_lengths = None
+        
+        # 2> 提取并移除视频时间信息
+        # video_second_per_grid: 每个视频 grid 对应的秒数
+        # 使用 pop 移除该字段，因为它不应传递到模型的前向传播
+        # 例如：[0.125, 0.25] 表示第1个视频每 grid 0.125秒，第2个 0.25秒
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
-        input_ids = inputs['input_ids']
+        
+        # 3> 提取基础输入
+        input_ids = inputs['input_ids']  # shape: (batch_size, seq_len)
         attention_mask = inputs.get('attention_mask')
+        
+        # 4> 创建默认的 attention_mask（如果不存在）
         if attention_mask is None:
+            # 全 1 掩码：所有 tokens 都有效
             attention_mask = torch.ones_like(input_ids)
+        
+        # 5> 调用模型的 RoPE 索引计算函数
+        # model.thinker.get_rope_index: Qwen2.5-Omni 的位置编码计算函数
+        # 该函数会根据不同模态的特征计算对应的 3D 位置索引
+        # 返回值：(position_ids, rope_deltas)，我们只需要 position_ids
         position_ids, _ = self.model.thinker.get_rope_index(
-            input_ids,
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
-            attention_mask,
-            self.use_audio_in_video,
-            audio_feature_lengths,
-            video_second_per_grid,
+            input_ids,  # token IDs
+            inputs.get('image_grid_thw'),  # 图像网格信息（可选）
+            inputs.get('video_grid_thw'),  # 视频网格信息（可选）
+            attention_mask,  # 注意力掩码
+            self.use_audio_in_video,  # 是否使用视频音频混合模式
+            audio_feature_lengths,  # 音频长度信息（可选）
+            video_second_per_grid,  # 视频时间步长信息（可选）
         )
+        
+        # 6> 返回连续内存的 position_ids
+        # contiguous() 确保张量在内存中是连续的
+        # 这对于后续的操作（如切片、reshape）更高效，并避免潜在的错误
         return position_ids.contiguous()
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        功能：
+            全模态数据的批处理整理器，收集和合并批次中的多模态特定数据。
+            在 Qwen2VLTemplate 的基础上，额外处理音频相关数据：
+            1> 继承自父类：处理图像和视频的 grid_thw、second_per_grid_ts
+            2> 新增处理：音频特征（input_features）和音频注意力掩码（feature_attention_mask）
+            3> 新增处理：视频时间信息（video_second_per_grid）
+
+        参数：
+            batch (List[Dict[str, Any]]): 批次样本列表，每个样本是一个字典，可能包含：
+                - image_grid_thw: 图像网格尺寸，shape (3,) 表示 (T, H, W)
+                - video_grid_thw: 视频网格尺寸，shape (3,) 表示 (T, H, W)
+                - video_second_per_grid: 视频时间步长（秒），标量值
+                - input_features: 音频特征，shape (time, feature_dim)
+                - feature_attention_mask: 音频注意力掩码，shape (time,)
+                - second_per_grid_ts: 每个时间 grid 的秒数（继承自父类，Qwen2.5-VL 专用）
+
+        返回：
+            Dict[str, Any]: 批次级别的数据字典，包含：
+                - image_grid_thw: 合并后的图像网格尺寸，shape (total_images, 3)（如果有）
+                - video_grid_thw: 合并后的视频网格尺寸，shape (total_videos, 3)（如果有）
+                - video_second_per_grid: 视频时间步长列表，长度为 total_videos（如果有）
+                - input_features: 合并后的音频特征，shape (total_audios, max_time, feature_dim)（如果有）
+                - feature_attention_mask: 合并后的音频掩码，shape (total_audios, max_time)（如果有）
+                - second_per_grid_ts: 时间信息列表（继承自父类，如果有）
+
+        示例：
+            >>> # 示例1：纯图像批次
+            >>> batch = [
+            ...     {'image_grid_thw': tensor([1, 16, 16])},
+            ...     {'image_grid_thw': tensor([1, 32, 32])}
+            ... ]
+            >>> result = template._data_collator_mm_data(batch)
+            >>> result['image_grid_thw'].shape
+            torch.Size([2, 3])  # 2 张图像
+            
+            >>> # 示例2：图像+音频混合批次
+            >>> batch = [
+            ...     {
+            ...         'image_grid_thw': tensor([1, 16, 16]),
+            ...         'input_features': tensor([[...]]),  # shape: (time1, feature_dim)
+            ...         'feature_attention_mask': tensor([1, 1, ..., 1])
+            ...     },
+            ...     {
+            ...         'input_features': tensor([[...]]),  # shape: (time2, feature_dim)
+            ...         'feature_attention_mask': tensor([1, 1, ..., 1, 0])
+            ...     }
+            ... ]
+            >>> result = template._data_collator_mm_data(batch)
+            >>> result['image_grid_thw'].shape
+            torch.Size([1, 3])  # 1 张图像
+            >>> result['input_features'].shape
+            torch.Size([2, max_time, feature_dim])  # 2 个音频
+            
+            >>> # 示例3：视频+音频混合批次（use_audio_in_video=True）
+            >>> batch = [
+            ...     {
+            ...         'video_grid_thw': tensor([8, 16, 16]),
+            ...         'video_second_per_grid': 0.125,
+            ...         'input_features': tensor([[...]]),
+            ...         'feature_attention_mask': tensor([...])
+            ...     },
+            ...     {
+            ...         'video_grid_thw': tensor([16, 16, 16]),
+            ...         'video_second_per_grid': 0.0625,
+            ...         'input_features': tensor([[...]]),
+            ...         'feature_attention_mask': tensor([...])
+            ...     }
+            ... ]
+            >>> result = template._data_collator_mm_data(batch)
+            >>> result['video_grid_thw'].shape
+            torch.Size([2, 3])  # 2 个视频
+            >>> result['video_second_per_grid']
+            [0.125, 0.0625]  # 每个视频的时间步长
+            >>> result['input_features'].shape
+            torch.Size([2, max_time, feature_dim])  # 2 个音频（从视频提取）
+        """
+        # 1> 调用父类方法，处理图像和视频的 grid_thw 等通用多模态数据
+        # 父类（Qwen2_5VLTemplate）会处理：
+        # - image_grid_thw: 拼接所有图像的网格尺寸
+        # - video_grid_thw: 拼接所有视频的网格尺寸
+        # - second_per_grid_ts: 收集时间信息列表（Qwen2.5-VL 专用）
         res = super()._data_collator_mm_data(batch)
+        
+        # 2> 收集视频时间信息（Qwen2.5-Omni 专用）
+        # video_second_per_grid: 每个视频 grid 对应的秒数
+        # gather_list: 从批次中提取所有非空的 video_second_per_grid 值
+        # 返回：[0.125, 0.0625, ...] 列表，长度等于视频数量
         video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
         if video_second_per_grid:
+            # 添加到结果字典
             res['video_second_per_grid'] = video_second_per_grid
+        
+        # 3> 收集音频特征
+        # input_features: 音频特征张量，shape (time, feature_dim)
+        # 从批次中提取所有非空的 input_features
+        # 例如：[tensor([[...]]), tensor([[...]]), ...] 列表
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        
+        # 4> 收集音频注意力掩码
+        # feature_attention_mask: 音频注意力掩码，shape (time,)
+        # 值为 1 的位置表示有效的音频帧，0 表示 padding
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
         ]
+        
+        # 5> 合并音频数据
         if input_features:
+            # concat 沿批次维度（dim=0）拼接音频特征
+            # 例如：
+            # input_features[0] shape: (time1, feature_dim)
+            # input_features[1] shape: (time2, feature_dim)
+            # 拼接后 shape: (time1 + time2, feature_dim) 或 (2, max_time, feature_dim)（取决于是否 padding）
+            # 
+            # 注意：这里假设所有音频已经 padding 到相同长度
+            # 如果长度不同，需要先进行 padding（通常在 _data_collator 中处理）
             res['input_features'] = torch.concat(input_features)
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
+        
+        # 6> 返回合并后的多模态数据
         return res
 
     def generate(self, model, *args, **kwargs):
+        """
+        功能：
+            生成文本（推理阶段）。在调用父类生成方法之前，设置视频音频混合模式的配置。
+            该方法确保在推理时正确传递 use_audio_in_video 参数到模型，使模型能够正确处理
+            视频和音频的时间对齐关系。
+
+        参数：
+            model: Qwen2.5-Omni 模型对象。
+            *args: 传递给父类 generate 方法的位置参数，通常包括：
+                - input_ids: 输入的 token IDs（可选，可以通过 kwargs 传递）
+            **kwargs: 传递给父类 generate 方法的关键字参数，可能包括：
+                - input_ids: 输入的 token IDs，shape (batch_size, seq_len)
+                - attention_mask: 注意力掩码，shape (batch_size, seq_len)
+                - max_new_tokens: 生成的最大新 tokens 数量
+                - temperature: 采样温度
+                - top_p: nucleus 采样参数
+                - video_grid_thw: 视频网格尺寸，shape (num_videos, 3)（关键参数）
+                - image_grid_thw: 图像网格尺寸（可选）
+                - input_features: 音频特征（可选）
+                - 其他生成相关参数
+
+        返回：
+            根据 generate 配置返回不同格式：
+                - 默认：生成的 token IDs，shape (batch_size, total_seq_len)
+                - return_dict_in_generate=True: 包含生成结果和中间状态的字典
+
+        示例：
+            >>> # 示例1：纯文本生成
+            >>> input_ids = tensor([[1, 2, 3]])
+            >>> outputs = template.generate(
+            ...     model,
+            ...     input_ids=input_ids,
+            ...     max_new_tokens=50
+            ... )
+            >>> outputs.shape
+            torch.Size([1, 53])  # 原始 3 + 生成 50
+            
+            >>> # 示例2：图像+文本生成
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 151655, 2]]),  # 包含图像 token
+            ...     'pixel_values': tensor([[...]]),
+            ...     'image_grid_thw': tensor([[1, 16, 16]])
+            ... }
+            >>> outputs = template.generate(
+            ...     model,
+            ...     **inputs,
+            ...     max_new_tokens=100
+            ... )
+            >>> # 模型会基于图像和文本生成响应
+            
+            >>> # 示例3：视频+音频生成（use_audio_in_video=True）
+            >>> template.use_audio_in_video = True
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 151656, 151657, ..., 2]]),  # 视频和音频 tokens
+            ...     'pixel_values_videos': tensor([[...]]),
+            ...     'input_features': tensor([[...]]),
+            ...     'video_grid_thw': tensor([[8, 16, 16]]),  # 关键：触发音频混合模式
+            ...     'feature_attention_mask': tensor([[...]])
+            ... }
+            >>> outputs = template.generate(
+            ...     model,
+            ...     **inputs,
+            ...     max_new_tokens=200
+            ... )
+            >>> # use_audio_in_video 参数会被自动添加到 kwargs 中
+            >>> # 模型会正确处理视频和音频的时间对齐
+            
+            >>> # 示例4：流式生成
+            >>> from transformers import TextIteratorStreamer
+            >>> streamer = TextIteratorStreamer(tokenizer)
+            >>> outputs = template.generate(
+            ...     model,
+            ...     input_ids=input_ids,
+            ...     max_new_tokens=100,
+            ...     streamer=streamer
+            ... )
+            >>> # 可以实时获取生成的文本
+        """
+        # 1> 检查是否有视频输入
+        # video_grid_thw 是视频的网格尺寸信息，其存在表示当前输入包含视频
+        # 如果有视频输入，需要设置 use_audio_in_video 参数
         if kwargs.get('video_grid_thw') is not None:
+            # 2> 添加视频音频混合模式配置
+            # use_audio_in_video: 是否使用视频音频混合模式
+            # 该参数会传递给模型的前向传播，影响位置编码和 token 处理
+            # 
+            # 为什么需要这个参数？
+            # - 当 use_audio_in_video=True 时，视频和音频 tokens 是交织排列的
+            # - 模型需要知道这个信息来正确计算位置编码和注意力
+            # - 在推理时，模型会根据这个参数调整 RoPE 索引的计算方式
             kwargs['use_audio_in_video'] = self.use_audio_in_video
+        
+        # 3> 调用父类的 generate 方法
+        # 父类（Qwen2_5VLTemplate）的 generate 方法会：
+        # - 调用模型的 generate 函数
+        # - 处理生成配置（如 max_new_tokens、temperature 等）
+        # - 返回生成的 token IDs 或生成结果字典
         return super().generate(model, *args, **kwargs)
 
 
