@@ -472,8 +472,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             ]
             assert len(mini_batch_data) == self.steps_per_generation
             self._buffered_inputs = mini_batch_data
-        self._step += 1
         inputs = self._buffered_inputs[self._step % self.steps_per_generation]
+        self._step += 1
         return RerunDataIterator(iter(inputs))
 
     def _generate_and_score_completions(self, batch):
@@ -1432,7 +1432,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         from collections import deque
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
-        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'))
+        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
         self._logs = {
             'prompt': deque(maxlen=args.generation_batch_size),
