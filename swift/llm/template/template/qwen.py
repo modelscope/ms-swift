@@ -1019,6 +1019,7 @@ class Qwen2VLTemplate(Template):
             1. 使用 processor 提取图像/视频特征和网格信息（grid_thw）
             2. 根据网格尺寸计算实际需要的 token 数量
             3. 将单个占位符 token 扩展为多个实际 token
+            grid_thw = 特征网格在 时间 × 高 × 宽 三个维度上的结构
             
         参数：
             inputs (StdTemplateInputs): 标准模板输入对象。
@@ -1060,7 +1061,7 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     # 5> 处理图像
-                    # 图像 token ID
+                    # 图像 token ID: 151655
                     media_token = self.image_token_id
                     
                     # 使用 image_processor 处理图像，提取特征
@@ -1127,6 +1128,7 @@ class Qwen2VLTemplate(Template):
                         返回：[media_token] × 512
                     """
                     # 计算总 patch 数量并除以合并因子
+                    # torch.Tensor.prod() 的功能：计算张量中所有元素的乘积（product）
                     token_len = (media_grid_thw[i].prod() // merge_length)
                     # 返回对应数量的 media_token
                     return [media_token] * token_len
@@ -1198,112 +1200,498 @@ class Qwen2VLTemplate(Template):
         return self._patch_flash_attention_forward(modeling_module, position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        功能：
+            后处理编码结果，将视觉 token IDs 替换为视觉 embeddings。
+            该方法在训练阶段将离散的视觉 token（如 151655）转换为连续的 embedding 向量，
+            使得语言模型能够同时处理文本和视觉信息。主要步骤包括：
+            1> 将 input_ids 通过 embed_tokens 转换为文本 embeddings
+            2> 使用视觉编码器处理图像/视频像素值，得到视觉 embeddings
+            3> 用视觉 embeddings 替换 input_ids 中对应位置的文本 embeddings
+
+        参数：
+            model: Qwen2-VL 模型对象，包含语言模型（base_model）和视觉编码器（visual）。
+            inputs (Dict[str, Any]): 编码后的输入字典，包含：
+                - input_ids: token IDs，shape (batch_size, seq_len)
+                - pixel_values: 图像像素值，shape (num_images, C, H, W)（可选）
+                - pixel_values_videos: 视频像素值，shape (num_videos, C, H, W)（可选）
+                - image_grid_thw: 图像网格尺寸，shape (num_images, 3) 表示 (T, H, W)
+                - video_grid_thw: 视频网格尺寸，shape (num_videos, 3) 表示 (T, H, W)
+
+        返回：
+            Dict[str, Any]: 包含 inputs_embeds 的字典
+                - inputs_embeds: 融合后的 embeddings，shape (batch_size, seq_len, hidden_size)
+                  其中视觉 token 位置已被视觉 embeddings 替换
+
+        示例：
+            >>> # 示例1：图像输入
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 2, 151655, 151655, 3]]),  # 包含 2 个图像 tokens
+            ...     'pixel_values': tensor([[[...]]])  # 图像数据
+            ... }
+            >>> result = template._post_encode(model, inputs)
+            >>> result['inputs_embeds'].shape
+            torch.Size([1, 5, 4096])  # 位置 2-3 是视觉 embeddings
+            
+            >>> # 示例2：图像+视频混合输入
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 151655, 151656, 2]]),  # 1 个图像 token + 1 个视频 token
+            ...     'pixel_values': tensor([[[...]]]),
+            ...     'pixel_values_videos': tensor([[[[...]]]])
+            ... }
+            >>> result = template._post_encode(model, inputs)
+        """
+        # 1> 推理模式：不需要转换为 embeddings，直接返回 input_ids
         if not self.is_training:
             return inputs
-        input_ids = inputs['input_ids']
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
-        image_grid_thw = inputs.get('image_grid_thw')
-        video_grid_thw = inputs.get('video_grid_thw')
+        
+        # 2> 提取输入数据
+        input_ids = inputs['input_ids']  # shape: (batch_size, seq_len)
+        pixel_values = inputs.get('pixel_values')  # 图像像素值（可选）
+        pixel_values_videos = inputs.get('pixel_values_videos')  # 视频像素值（可选）
+        image_grid_thw = inputs.get('image_grid_thw')  # 图像网格尺寸
+        video_grid_thw = inputs.get('video_grid_thw')  # 视频网格尺寸
 
+        # 3> 获取文本 embedding 层，根据模型结构选择正确的路径
         base_model = self.get_base_model(model)
         if hasattr(base_model.model, 'embed_tokens'):
+            # 标准结构：base_model.model.embed_tokens
             inputs_embeds = base_model.model.embed_tokens(input_ids)
         else:
+            # 嵌套结构：base_model.model.language_model.embed_tokens
             inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        # inputs_embeds shape: (batch_size, seq_len, hidden_size)
+        # 例如：(2, 512, 4096) 表示 2 个样本，512 个 tokens，每个 token 4096 维
 
+        # 4> 获取视觉编码器的数据类型，确保类型一致
         dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
+        
+        # 5> 处理纯文本情况（无图像和视频）
         if pixel_values is None and pixel_values_videos is None:  # plain-text
+            # 6> DeepSpeed 特殊处理：保持计算图连接
+            # 即使没有视觉输入，也创建一个虚拟的视觉 embedding 并乘以 0
+            # 这样可以避免 DeepSpeed 训练时出现计算图断裂的问题
             if is_deepspeed_enabled():
                 from PIL import Image
+                # 创建一个 32×32 的黑色占位图像
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+                # 使用 image_processor 处理占位图像
                 media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
                 device = input_ids.device
+                # 将数据移动到与 input_ids 相同的设备
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)
+                # 通过视觉编码器得到占位 embeddings
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+                # 将占位 embeddings 的均值乘以 0 加到 inputs_embeds
+                # 效果：保持计算图连接但不改变 inputs_embeds 的值
                 inputs_embeds += image_embeds.mean() * 0.
         else:
+            # 7> 有视觉输入的情况：处理图像和/或视频
+            # 7.1> 合并图像和视频数据（如果都存在）
             if pixel_values is None:
+                # 情况1：只有视频
                 pixel_values_mixed = pixel_values_videos
                 grid_thw = video_grid_thw
             elif pixel_values_videos is None:
+                # 情况2：只有图像
                 pixel_values_mixed = pixel_values
                 grid_thw = image_grid_thw
             else:
+                # 情况3：既有图像又有视频，沿批次维度拼接
+                # pixel_values shape: (num_images, C, H, W)
+                # pixel_values_videos shape: (num_videos, C, H, W)
+                # 拼接后 shape: (num_images + num_videos, C, H, W)
                 pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                # 拼接网格信息 shape: (num_images + num_videos, 3)
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            
+            # 7.2> 转换数据类型，确保与模型一致
             pixel_values_mixed = pixel_values_mixed.type(dtype)
+            
+            # 7.3> 通过视觉编码器提取特征
+            # mixed_embeds shape: (total_visual_tokens, hidden_size)
+            # total_visual_tokens 是所有图像和视频的 token 总数
             mixed_embeds = model.visual(pixel_values_mixed, grid_thw=grid_thw)
+
+            # 7.4> 分离图像和视频的 embeddings
             if pixel_values is None:
+                # 只有视频
                 image_embeds = None
                 video_embeds = mixed_embeds
             elif pixel_values_videos is None:
+                # 只有图像
                 image_embeds = mixed_embeds
                 video_embeds = None
             else:
+                # 既有图像又有视频：需要切分 mixed_embeds
+                # 计算图像占用的 token 数量
                 merge_length = self.processor.image_processor.merge_size**2
+                # image_grid_thw.prod(dim=-1): 计算每个图像的总 patches 数
+                # shape: (num_images,)，例如 [256, 1024] 表示第1张256个patches，第2张1024个
+                # // merge_length: 除以合并因子（如 4），得到实际 token 数
+                # .sum(): 所有图像的 token 总数
                 image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                # 切分：前 image_tokens 个是图像 embeddings
                 image_embeds = mixed_embeds[:image_tokens]
+                # 剩余的是视频 embeddings
                 video_embeds = mixed_embeds[image_tokens:]
 
+            # 8> 将视觉 embeddings 填充到 input_ids 对应位置
+            # 8.1> 处理图像 embeddings
             if image_embeds is not None:
+                # ==================== 步骤1：创建图像 token 的布尔掩码 ====================
+                # 操作：(input_ids == model.config.image_token_id)
+                # 目的：找出所有图像 token 的位置
+                # 
+                # 实际例子：
+                # 假设 input_ids = tensor([[1, 2, 151655, 151655, 3]])  # shape: (1, 5)
+                #     model.config.image_token_id = 151655
+                # 
+                # 比较操作：逐元素判断是否等于 151655
+                # 结果：tensor([[False, False, True, True, False]])  # shape: (1, 5), dtype=bool
+                # 
+                # 解释：位置 2 和 3 是图像 token（值为 151655），标记为 True
+                
+                # ==================== 步骤2：增加一个维度 (unsqueeze) ====================
+                # 操作：.unsqueeze(-1)
+                # 目的：为后续的扩展操作准备维度
+                # 
+                # 输入：tensor([[False, False, True, True, False]])  # shape: (1, 5)
+                # 输出：tensor([[[False], [False], [True], [True], [False]]])  # shape: (1, 5, 1)
+                # 
+                # 解释：在最后添加一个维度，从 2D 变成 3D
+                #      原来每个位置是一个标量 bool 值
+                #      现在每个位置是一个长度为 1 的向量 [bool]
+                
+                # ==================== 步骤3：扩展维度 (expand_as) ====================
+                # 操作：.expand_as(inputs_embeds)
+                # 目的：将掩码扩展到与 embeddings 相同的 shape
+                # 
+                # 假设 inputs_embeds.shape = (1, 5, 4096)  # 4096 是 hidden_size
+                # 输入掩码 shape: (1, 5, 1)
+                # 输出掩码 shape: (1, 5, 4096)
+                # 
+                # 扩展过程：将最后一维从 1 复制 4096 次
+                # 例如位置 [0, 2, :] 的变化：
+                #   原来：[True]  # shape: (1,)
+                #   扩展后：[True, True, True, ..., True]  # shape: (4096,)，所有值都是 True
+                # 
+                # 完整示例：
+                # tensor([
+                #   [[False, False, ..., False],  # 位置0：4096个False
+                #    [False, False, ..., False],  # 位置1：4096个False
+                #    [True,  True,  ..., True ],  # 位置2：4096个True（图像token）
+                #    [True,  True,  ..., True ],  # 位置3：4096个True（图像token）
+                #    [False, False, ..., False]]  # 位置4：4096个False
+                # ])  # shape: (1, 5, 4096)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                
+                # ==================== 步骤4：转换设备和数据类型 ====================
+                # 操作：.to(inputs_embeds.device, inputs_embeds.dtype)
+                # 目的：确保 image_embeds 与 inputs_embeds 在同一设备且类型相同
+                # 
+                # 实际例子：
+                # 假设 image_embeds 在 CPU，dtype=float32
+                #     inputs_embeds 在 GPU:0，dtype=float16
+                # 
+                # 操作后：image_embeds 也会在 GPU:0，dtype=float16
+                # 
+                # 这一步很重要，因为 PyTorch 不允许不同设备或类型的张量直接运算
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                
+                # ==================== 步骤5：填充图像 embeddings (masked_scatter) ====================
+                # 操作：inputs_embeds.masked_scatter(image_mask, image_embeds)
+                # 目的：将图像 embedding 替换到文本 embedding 的对应位置
+                # 
+                # 详细的实际例子（简化版，用小数字表示）：
+                # 
+                # 假设 hidden_size = 3（实际是 4096）
+                # 
+                # 输入1 - inputs_embeds (文本embeddings):
+                # tensor([
+                #   [[0.1, 0.2, 0.3],   # 位置0: token_id=1 的 embedding
+                #    [0.4, 0.5, 0.6],   # 位置1: token_id=2 的 embedding
+                #    [0.7, 0.8, 0.9],   # 位置2: token_id=151655 的 embedding (待替换)
+                #    [1.0, 1.1, 1.2],   # 位置3: token_id=151655 的 embedding (待替换)
+                #    [1.3, 1.4, 1.5]]   # 位置4: token_id=3 的 embedding
+                # ])  # shape: (1, 5, 3)
+                # 
+                # 输入2 - image_mask (掩码):
+                # tensor([
+                #   [[False, False, False],  # 位置0: 不替换
+                #    [False, False, False],  # 位置1: 不替换
+                #    [True,  True,  True ],  # 位置2: 替换（图像token）
+                #    [True,  True,  True ],  # 位置3: 替换（图像token）
+                #    [False, False, False]]  # 位置4: 不替换
+                # ])  # shape: (1, 5, 3)
+                # 
+                # 输入3 - image_embeds (图像embeddings):
+                # tensor([
+                #   [9.1, 9.2, 9.3],  # 第1个图像patch的embedding
+                #   [9.4, 9.5, 9.6]   # 第2个图像patch的embedding
+                # ])  # shape: (2, 3)
+                # 
+                # masked_scatter 的工作原理：
+                # 1. 将 image_embeds 展平：[9.1, 9.2, 9.3, 9.4, 9.5, 9.6]  # 6个元素
+                # 2. 将 image_mask 为 True 的位置按顺序填充：
+                #    - 位置[0,2,0]: 9.1 (第1个True位置)
+                #    - 位置[0,2,1]: 9.2 (第2个True位置)
+                #    - 位置[0,2,2]: 9.3 (第3个True位置)
+                #    - 位置[0,3,0]: 9.4 (第4个True位置)
+                #    - 位置[0,3,1]: 9.5 (第5个True位置)
+                #    - 位置[0,3,2]: 9.6 (第6个True位置)
+                # 
+                # 输出 - inputs_embeds (融合后的embeddings):
+                # tensor([
+                #   [[0.1, 0.2, 0.3],   # 位置0: 保持不变
+                #    [0.4, 0.5, 0.6],   # 位置1: 保持不变
+                #    [9.1, 9.2, 9.3],   # 位置2: 已替换为图像embedding
+                #    [9.4, 9.5, 9.6],   # 位置3: 已替换为图像embedding
+                #    [1.3, 1.4, 1.5]]   # 位置4: 保持不变
+                # ])  # shape: (1, 5, 3)
+                # 
+                # 关键点：
+                # - masked_scatter 会按照 mask 中 True 的顺序依次填充
+                # - image_embeds 必须有足够的元素（True的数量 × hidden_size）
+                # - 本例中：6个True × 1 = 6个元素，正好对应 image_embeds 的 2×3=6 个元素
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
+            # 8.2> 处理视频 embeddings（流程与图像相同）
             if video_embeds is not None:
+                # 创建视频 token 的掩码（token_id=151656）
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                # 确保设备和数据类型匹配
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                # 填充视频 embeddings
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
+        # 9> 返回包含融合后 embeddings 的字典
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        功能：
+            多模态数据的批处理整理器，收集和合并批次中的多模态特定数据。
+            主要负责整理 Qwen2-VL 特有的网格尺寸信息（grid_thw）和时间信息（second_per_grid_ts）。
+
+        参数：
+            batch (List[Dict[str, Any]]): 批次样本列表，每个样本是一个字典，可能包含：
+                - image_grid_thw: 图像网格尺寸，shape (3,) 表示 (T, H, W)
+                - video_grid_thw: 视频网格尺寸，shape (3,) 表示 (T, H, W)
+                - second_per_grid_ts: 每个时间 grid 的秒数（Qwen2.5-VL 专用）
+
+        返回：
+            Dict[str, Any]: 批次级别的数据字典，包含：
+                - image_grid_thw: 合并后的图像网格尺寸，shape (total_images, 3)
+                - video_grid_thw: 合并后的视频网格尺寸，shape (total_videos, 3)
+                - second_per_grid_ts: 时间信息列表（如果存在）
+
+        示例：
+            >>> # 示例：2 个样本，第 1 个有图像，第 2 个有视频
+            >>> batch = [
+            ...     {'image_grid_thw': tensor([1, 16, 16])},
+            ...     {'video_grid_thw': tensor([8, 16, 16])}
+            ... ]
+            >>> result = template._data_collator_mm_data(batch)
+            >>> result['image_grid_thw'].shape
+            torch.Size([1, 3])  # 1 张图像
+            >>> result['video_grid_thw'].shape
+            torch.Size([1, 3])  # 1 个视频
+        """
+        # 1> 调用父类方法，处理通用的多模态数据
         res = super()._data_collator_mm_data(batch)
+        
+        # 2> 收集时间信息（Qwen2.5-VL 专用）
+        # gather_list: 从批次中收集所有非空的 second_per_grid_ts
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
+            # 将时间信息列表添加到结果中
             res['second_per_grid_ts'] = second_per_grid_ts
+        
+        # 3> 收集图像和视频的网格尺寸信息
         for media_type in ['image', 'video']:
+            # concat_tensor: 沿指定维度（dim=0）拼接批次中的网格尺寸
+            # 例如：[tensor([1,16,16]), tensor([1,8,8])] → tensor([[1,16,16], [1,8,8]])
             grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
             if grid_thw is not None:
+                # 添加到结果字典：'image_grid_thw' 或 'video_grid_thw'
                 res[f'{media_type}_grid_thw'] = grid_thw
+        
         return res
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        功能：
+            打包一行中的多个样本，将它们拼接成一个长序列以提高训练效率。
+            Packing 技术可以减少 padding 带来的计算浪费，特别适用于变长序列训练。
+            该方法特别处理了 Qwen2-VL 的位置编码，保存真实的位置 ID（real_position_ids）。
+
+        参数：
+            row (List[Dict[str, Any]]): 一行中的多个样本，每个样本包含：
+                - input_ids: token IDs 列表
+                - image_grid_thw/video_grid_thw: 网格尺寸（如果有图像/视频）
+
+        返回：
+            Dict[str, Any]: 打包后的数据字典，包含：
+                - input_ids: 拼接后的 token IDs
+                - real_position_ids: 真实的位置编码（用于 forward_context）
+                - 其他字段（由父类处理）
+
+        示例：
+            >>> # 示例：打包 3 个样本
+            >>> row = [
+            ...     {'input_ids': [1, 2, 3]},           # 样本1，长度3
+            ...     {'input_ids': [4, 5, 6, 7]},        # 样本2，长度4
+            ...     {'input_ids': [8, 9]}               # 样本3，长度2
+            ... ]
+            >>> packed = template.packing_row(row)
+            >>> packed['input_ids']
+            [1, 2, 3, 4, 5, 6, 7, 8, 9]  # 总长度9，无padding
+            >>> packed['real_position_ids'].shape
+            torch.Size([1, 9])  # 每个样本的位置从0开始
+        """
+        # 1> 为每个样本计算真实的位置 ID
         position_ids = []
         for r in row:
+            # 复制样本，避免修改原始数据
             r = r.copy()
+            # 将 input_ids 转换为张量并添加批次维度
+            # [1, 2, 3] → tensor([[1, 2, 3]]), shape (1, seq_len)
             r['input_ids'] = torch.tensor(r['input_ids'])[None]
+            # 计算该样本的位置 ID（考虑视觉 tokens 的特殊位置编码）
             position_ids.append(self._get_position_ids(r))
+        
+        # 2> 调用父类方法，执行实际的打包操作（拼接 input_ids 等）
         packed = super().packing_row(row)
+        
+        # 3> 拼接所有样本的位置 ID
+        # 例如：[tensor([0,1,2]), tensor([0,1,2,3]), tensor([0,1])]
+        #      → tensor([0,1,2,0,1,2,3,0,1]), shape (1, 9)
+        # 注意：每个样本的位置从 0 开始，这样可以正确处理多个独立序列
         packed['real_position_ids'] = torch.concat(position_ids, dim=-1)
+        
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        """
+        功能：
+            计算 Qwen2-VL 的位置编码（position IDs），考虑视觉 tokens 的特殊位置信息。
+            Qwen2-VL 使用 RoPE（Rotary Position Embedding），需要根据图像/视频的网格结构
+            （grid_thw）计算每个 token 在时间、高度、宽度三个维度上的位置。
+            
+            注：该方法修复了 transformers 库的一个问题（PR #33487）
+
+        参数：
+            inputs (Dict[str, Any]): 输入字典，包含：
+                - input_ids: token IDs，shape (batch_size, seq_len)
+                - image_grid_thw: 图像网格尺寸，shape (num_images, 3)（可选）
+                - video_grid_thw: 视频网格尺寸，shape (num_videos, 3)（可选）
+                - attention_mask: 注意力掩码，shape (batch_size, seq_len)（可选）
+                - second_per_grid_ts: 每个时间 grid 的秒数（Qwen2.5-VL 专用，可选）
+
+        返回：
+            torch.Tensor: 位置编码，shape (batch_size, seq_len, 3)
+                最后一维表示 (temporal, height, width) 三个维度的位置
+
+        示例：
+            >>> # 示例：包含 1 张图像的输入
+            >>> inputs = {
+            ...     'input_ids': tensor([[1, 2, 151655, 151655, 3]]),  # 2 个图像 tokens
+            ...     'image_grid_thw': tensor([[1, 16, 16]])  # 1帧，16×16 patches
+            ... }
+            >>> position_ids = template._get_position_ids(inputs)
+            >>> position_ids.shape
+            torch.Size([1, 5, 3])  # 每个 token 有 3 维位置信息
+            >>> # position_ids[0, 2:4] 包含图像 tokens 的 2D 位置信息
+        """
+        # 1> 准备 Qwen2.5-VL 专用参数（时间信息）
         # fix https://github.com/huggingface/transformers/pull/33487
         kwargs = {}
         if self.version == 'v2_5':
+            # Qwen2.5-VL 需要时间步长信息来正确计算视频的时间位置
             kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
+        
+        # 2> 获取 RoPE 索引计算函数
         base_model = self.get_base_model(self.model)
         if hasattr(base_model, 'get_rope_index'):
+            # 直接挂载在 base_model 上
             get_rope_index = base_model.get_rope_index
         else:
+            # 嵌套在 base_model.model 中
             get_rope_index = base_model.model.get_rope_index
+        
+        # 3> 计算位置编码
+        # get_rope_index 返回 (position_ids, rope_deltas)，我们只需要 position_ids
+        # position_ids shape: (batch_size, seq_len, 3)
+        # - 对于文本 tokens：通常是 (t, 0, 0)，t 是文本位置
+        # - 对于图像 tokens：是 (0, h, w)，h 和 w 是 patch 在图像中的位置
+        # - 对于视频 tokens：是 (t, h, w)，t 是帧索引，h 和 w 是 patch 位置
         position_ids, _ = get_rope_index(
             inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
+            inputs.get('image_grid_thw'),  # 图像网格信息
+            inputs.get('video_grid_thw'),  # 视频网格信息
             attention_mask=inputs.get('attention_mask'),
-            **kwargs)
+            **kwargs)  # Qwen2.5-VL 的时间信息
+        
+        # 4> 返回连续内存的 position_ids
+        # contiguous() 确保张量在内存中是连续的，提高后续操作效率
         return position_ids.contiguous()
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        功能：
+            批处理数据整理器的主入口，负责整理批次数据并计算位置编码。
+            根据是否使用 packing 模式采用不同的位置编码处理策略：
+            - Packing 模式：使用预先计算的 real_position_ids
+            - 非 Packing 模式：实时计算 position_ids
+
+        参数：
+            batch (List[Dict[str, Any]]): 批次样本列表。
+            padding_to (Optional[int]): 填充到的目标长度（可选）。
+
+        返回：
+            Dict[str, Any]: 批次级别的数据字典，包含：
+                - input_ids: 批次 token IDs，shape (batch_size, max_seq_len)
+                - attention_mask: 注意力掩码，shape (batch_size, max_seq_len)
+                - position_ids: 位置编码（非 packing）或 real_position_ids（packing）
+                - pixel_values, image_grid_thw 等多模态数据
+
+        示例：
+            >>> # 示例1：非 Packing 模式
+            >>> batch = [
+            ...     {'input_ids': [1, 2, 3], 'pixel_values': tensor(...)},
+            ...     {'input_ids': [4, 5], 'pixel_values': tensor(...)}
+            ... ]
+            >>> result = template._data_collator(batch)
+            >>> result['input_ids'].shape
+            torch.Size([2, 3])  # padding 到最长样本的长度
+            >>> 'position_ids' in result
+            True  # 训练时自动计算 position_ids
+            
+            >>> # 示例2：Packing 模式
+            >>> batch = [
+            ...     {'input_ids': [1,2,3,4,5,6], 'real_position_ids': tensor([0,1,2,0,1,2])}
+            ... ]
+            >>> result = template._data_collator(batch)
+            >>> 'real_position_ids' in result
+            True  # 使用预先计算的真实位置 ID
+        """
+        # 1> 调用父类方法，执行基础的批处理操作（padding、拼接等）
         res = super()._data_collator(batch, padding_to=padding_to)
+        
+        # 2> 根据模式处理位置编码
         if self._packing:
+            # Packing 模式：使用预先计算的真实位置 ID
+            # 在 packing_row 中已经计算好，这里只需要拼接
+            # concat_tensor: 沿序列维度（dim=-1）拼接
             res['real_position_ids'] = self.concat_tensor(batch, 'real_position_ids', -1)
         elif self.is_training:
+            # 非 Packing 模式且训练中：实时计算位置编码
+            # _get_position_ids 会根据 grid_thw 计算每个 token 的 3D 位置
             res['position_ids'] = self._get_position_ids(res)
+        # 推理模式：不需要 position_ids（模型内部会处理）
+        
         return res
 
 
