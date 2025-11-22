@@ -417,10 +417,13 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                             weight.data = orig_weights[i]
                     else:
                         base_layer.weight.data = orig_weights[0]
+                    del orig_weights
                 else:
                     delta_weights = self.get_delta_weights(active_adapter)
                     for orig_weight, delta_weight in zip(orig_weights, delta_weights):
                         orig_weight.data += delta_weight
+                    del delta_weights
+                torch.cuda.empty_cache()
                 self.merged_adapters.append(active_adapter)
         if origin_device.type == 'cpu':
             self.to(device=origin_device)
@@ -452,6 +455,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 for orig_weight, delta_weight in zip(orig_weights, delta_weights):
                     # Subtract the delta weight to unmerge
                     orig_weight.data -= delta_weight
+                del delta_weights
+                torch.cuda.empty_cache()
 
         # Clear the merged adapters list
         self.merged_adapters = []
