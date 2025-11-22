@@ -97,6 +97,39 @@ def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
         **optim_args,
     ), None
 
+def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
+    from swift.plugin.muonclip import MuonClip
+
+    # parse args.optim_args
+    optim_args = {}
+    if args.optim_args:
+        for mapping in args.optim_args.replace(' ', '').split(','):
+            key, value = mapping.split('=')
+            optim_args[key] = value
+
+    # Set default values for MuonClip parameters
+    lr = optim_args.get('lr', args.learning_rate)
+    momentum = float(optim_args.get('momentum', 0.95))
+    weight_decay = float(optim_args.get('weight_decay', args.weight_decay))
+    tau = float(optim_args.get('tau', 100.0))
+    ns_steps = int(optim_args.get('ns_steps', 5))
+    eps = float(optim_args.get('eps', 1e-7))
+
+    # Create MuonClip optimizer with all parameters
+    optimizer = MuonClip(
+        model.parameters(),
+        lr=lr,
+        momentum=momentum,
+        weight_decay=weight_decay,
+        tau=tau,
+        ns_steps=ns_steps,
+        eps=eps,
+    )
+
+    # Set model reference for QK-Clip functionality
+    optimizer.set_model(model)
+
+    return optimizer, None
 
 def get_param_startswith(model,
                          chosen_prefix: List[str],
@@ -161,5 +194,6 @@ optimizers_map = {
     'galore': create_galore_optimizer,
     'lorap': create_lorap_optimizer,
     'muon': create_muon_optimizer,
+    'muonclip': create_muon_clip_optimizer,
     'multimodal': create_multimodal_optimizer,
 }
