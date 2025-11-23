@@ -2217,8 +2217,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {}
 
         # Compute log ratios
+        # Keep original log_ratio for KL computation (accurate)
+        # Use clamped version for exponential operations (numerically stable)
+        SAFETY_BOUND = 20.0
         log_ratio = per_token_logps - rollout_per_token_logps
-        is_ratio = torch.exp(log_ratio)
+        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        is_ratio = torch.exp(log_ratio_safe)
 
         # Helper function for masked mean
         def masked_mean(x, mask):
@@ -2239,11 +2243,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics['ppl_rollout'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
         metrics['ppl_policy'] = self.accelerator.gather_for_metrics(policy_ppl).nanmean().item()
 
-        # 3. Chi-square divergence: E[(π_θ/π_rollout - 1)^2] = E[(ratio - 1)^2]
-        chi_square = masked_mean((is_ratio - 1.0)**2, completion_mask)
-        metrics['chi_square'] = self.accelerator.gather_for_metrics(chi_square).nanmean().item()
-
-        # 4. Effective Sample Size (ESS): 1 / E[w^2] where w = π_θ/π_rollout
+        # 3. Effective Sample Size (ESS): 1 / E[(w/E[w])²]
+        # ESS measures the "effective" number of independent samples after importance sampling correction
+        # Higher ESS means better sample quality and more stable gradient estimates
         # For sequence-level ESS, we compute per-sequence ratios
         if self.template.padding_free:
             ratio_list = torch.split(is_ratio.squeeze(0), lengths.tolist())
@@ -2261,13 +2263,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             seq_log_ratios = (log_r * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
             seq_ratios = torch.exp(seq_log_ratios)
 
-        # ESS = N / (1 + var(w)) ≈ N / mean(w^2) for normalized weights
-        # But we use unnormalized: ESS = 1 / mean(w^2)
-        mean_ratio_squared = (seq_ratios**2).mean()
-        ess = 1.0 / mean_ratio_squared.clamp(min=1e-10)
-        metrics['ess'] = self.accelerator.gather_for_metrics(ess).nanmean().item()
+        # ESS = 1 / E[(w/E[w])²] - measures effective number of independent samples
+        # Following verl implementation: normalize weights to mean=1, then compute ESS
+        mean_seq_ratio = seq_ratios.mean()
+        seq_ratios_normalized = seq_ratios / (mean_seq_ratio + 1e-8)
+        ess = 1.0 / (seq_ratios_normalized**2).mean().clamp(min=1e-10)
+        # ESS is already normalized (ranges from ~0 to N where N is batch size)
+        # Divide by batch size to get relative ESS in [0, 1]
+        num_sequences = max(len(seq_ratios), 1)
+        ess_normalized = ess / num_sequences
+        metrics['ess'] = self.accelerator.gather_for_metrics(ess_normalized).nanmean().item()
 
-        # 5. IS weight statistics
+        # 4. IS weight statistics
         mean_is_weight = masked_mean(is_weights, completion_mask)
         metrics['is_weight_mean'] = self.accelerator.gather_for_metrics(mean_is_weight).nanmean().item()
 
@@ -2286,7 +2293,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.rollout_importance_sampling_mode == 'sequence_truncate':
                 clipped_frac = (seq_ratios > threshold).float().mean()
             else:  # sequence_mask
-                clipped_frac = (is_weights.view(-1)[0] == 0).float()  # Any token masked means seq masked
+                # Check which sequences are masked (ratio > threshold)
+                clipped_frac = (seq_ratios > threshold).float().mean()
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
 
         return metrics
