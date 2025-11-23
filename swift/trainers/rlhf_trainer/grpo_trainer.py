@@ -1271,7 +1271,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask'
+                'truncated_mask', 'num_items_in_batch'
             ]
         }
         sequence_parallel.prepare_inputs(inputs)
@@ -1351,7 +1351,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths'
+                    'truncated_mask', 'num_items_in_batch'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
@@ -1445,7 +1445,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask'
+                    'truncated_mask', 'num_items_in_batch'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
