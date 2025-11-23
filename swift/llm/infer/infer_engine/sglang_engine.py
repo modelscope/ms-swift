@@ -106,7 +106,8 @@ class SglangEngine(InferEngine):
             self.server_args.is_embedding = True
         self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
-        self.max_tokens_offset = -speculative_num_draft_tokens
+        if speculative_num_draft_tokens is not None:
+            self.max_tokens_offset = -speculative_num_draft_tokens
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')

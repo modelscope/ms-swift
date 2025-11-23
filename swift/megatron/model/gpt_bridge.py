@@ -1066,6 +1066,15 @@ class GPTBridge:
         hf_prefix = f'{hf_prefix}{hf_layer_idx}.'
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+            if len(hf_state_dict) == 0:
+                logger.info_if(
+                    f'MTP Layer {mtp_layer.layer_number} safetensors weights not found, '
+                    'this part will be randomly initialized.',
+                    cond=is_last_rank())
+                for param in mtp_layer.parameters():
+                    if param.ndim == 2:
+                        mtp_layer.config.init_method(param.data)
+                return {}
         else:
             hf_state_dict = {}
         self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
