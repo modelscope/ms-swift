@@ -37,7 +37,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     # awq/gptq
     quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
     quant_n_samples: int = 256
-    max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
 
