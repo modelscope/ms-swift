@@ -504,6 +504,7 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
 
 
 class Qwen3NextBridge(GPTBridge):
+    hf_mtp_prefix = 'mtp.layers'
 
     def _set_state_dict(self,
                         mg_module,
@@ -536,6 +537,13 @@ class Qwen3NextBridge(GPTBridge):
         elif layer_type == 'full_attention':
             hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
         return hf_state_dict
+
+    def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        hf_state_dict = self._remove_prefix(origin_hf_state_dict, 'mtp.')
+        for mg_key, key in zip(['enorm.weight', 'hnorm.weight', 'eh_proj.weight'],
+                               ['pre_fc_norm_embedding.weight', 'pre_fc_norm_hidden.weight', 'fc.weight']):
+            self._set_state_dict(mtp_layer, mg_key, hf_state_dict, key, to_mcore)
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'norm.weight', to_mcore)
 
 
 register_megatron_model(

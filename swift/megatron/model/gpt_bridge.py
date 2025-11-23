@@ -1057,6 +1057,11 @@ class GPTBridge:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
 
+    def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
+            self._set_state_dict(mtp_layer, key, hf_state_dict, key, to_mcore)
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+
     def _convert_mtp_layer(self, lm_model, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
         mtp_layer = lm_model.mtp.layers[layer_idx] if hasattr(lm_model, 'mtp') else None
         if self.hf_mtp_prefix == self.hf_layers_prefix:
@@ -1065,6 +1070,7 @@ class GPTBridge:
             hf_layer_idx = layer_idx
         hf_prefix = f'{hf_prefix}{hf_layer_idx}.'
         if to_mcore:
+            origin_hf_state_dict = hf_state_dict
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
             if len(hf_state_dict) == 0:
                 logger.info_if(
@@ -1076,21 +1082,20 @@ class GPTBridge:
                         mtp_layer.config.init_method(param.data)
                 return {}
         else:
+            origin_hf_state_dict = {}
             hf_state_dict = {}
-        self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
-                             to_mcore)
-        self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
-        for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
-            self._set_state_dict(mtp_layer, key, hf_state_dict, key, to_mcore)
-        if hf_layer_idx >= len(self.hf_layers):
-            hf_layer_idx = -1
-        hf_state_dict.update(self._set_layer_attn(mtp_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
-        hf_state_dict.update(self._set_layer_mlp(mtp_layer.transformer_layer, hf_state_dict, hf_layer_idx, to_mcore))
-        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+        # Weights for shared parts are not stored, refer to GLM4.6
+        # self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
+        #                      to_mcore)
+        # self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
+        self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict)
+        hf_state_dict.update(self._set_layer_attn(mtp_layer.transformer_layer, hf_state_dict, -1, to_mcore))
+        hf_state_dict.update(self._set_layer_mlp(mtp_layer.transformer_layer, hf_state_dict, -1, to_mcore))
         if to_mcore:
             hf_state_dict = {}
         else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+            hf_state_dict.update(origin_hf_state_dict)
         return hf_state_dict
 
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
