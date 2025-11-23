@@ -101,9 +101,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.async_generate = args.async_generate
 
         # Enable logprobs for vLLM importance sampling if requested
-        # TODO: check if logprobs is needed
-        use_vllm_is = args.rollout_importance_sampling_mode and args.use_vllm
-        logprobs = use_vllm_is
 
         self.request_config = RequestConfig(
             n=1,
@@ -114,7 +111,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
             return_details=True,
-            logprobs=logprobs)
+            logprobs=args.use_vllm)
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
