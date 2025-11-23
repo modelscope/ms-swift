@@ -3,7 +3,7 @@
 import inspect
 import os
 from types import FunctionType, MethodType
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -107,3 +107,98 @@ def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs
             target_probs = torch.exp(-loss)
         loss *= target_probs
     return loss
+
+
+def compute_subseq_counts_from_encoded(encoded_list: List[dict]) -> List[int]:
+    """Compute per-prompt subsequence counts from pre-encoded template outputs.
+
+    encoded_list: a list of template.encode(...) results (dicts). Returns a list of integers, one per entry.
+    """
+    counts = []
+    for enc in encoded_list:
+        pos_ids = enc.get('text_position_ids') or enc.get('position_ids')
+        if pos_ids is None:
+            counts.append(1)
+            continue
+        # pos_ids may be a 2D tensor (batch, seq) - but encoded_list entries are per sample
+        pos_ids = pos_ids.squeeze()
+        if pos_ids.numel() == 0:
+            counts.append(1)
+            continue
+        start_idx = (pos_ids == 0).nonzero(as_tuple=True)[0]
+        counts.append(int(start_idx.shape[0]))
+    return counts
+
+
+def expand_truncated_mask_to_subseq(truncated_prompt_tensor: torch.Tensor,
+                                    per_prompt_counts: List[int]) -> torch.Tensor:
+    """Expand per-prompt truncated mask into per-subsequence mask using counts.
+
+    truncated_prompt_tensor: BoolTensor of shape (batch, ) indicating truncated per-prompt
+    per_prompt_counts: list of ints
+    Returns: BoolTensor of shape (sum(per_prompt_counts), )
+    """
+    if not isinstance(truncated_prompt_tensor, torch.Tensor):
+        raise TypeError('truncated_prompt_tensor must be a torch.Tensor')
+    per_prompt_counts_tensor = torch.tensor(per_prompt_counts, dtype=torch.long, device=truncated_prompt_tensor.device)
+    return torch.repeat_interleave(truncated_prompt_tensor, per_prompt_counts_tensor)
+
+
+def compute_subseq_advantages_and_counts(
+    advantages: torch.Tensor,
+    inputs: List[dict],
+    batch_encoded_inputs: List[dict] | None,
+    template,
+    device: torch.device,
+    allow_reencode: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute per-subsequence advantages and subsequence counts tensor.
+
+    - advantages: Tensor of shape (num_prompts,) per-prompt
+    - inputs: List of original prompt inputs (used to re-encode if needed)
+    - batch_encoded_inputs: Optional list of encoded batch dicts (may include '_per_prompt_subseq_counts')
+    - template: Template object used to re-encode inputs if counts are missing
+    - device: torch.device for tensor allocation
+
+    Returns:
+        (subseq_advantages, subseq_counts_tensor)
+    """
+    if device is None:
+        device = torch.device('cpu')
+
+    if getattr(template, 'padding_free', False):
+        subseq_counts: List[int] = []
+        # Use precomputed counts when available
+        if batch_encoded_inputs is not None:
+            for batch_encoded in batch_encoded_inputs:
+                per_prompt_counts = batch_encoded.get('_per_prompt_subseq_counts')
+                if per_prompt_counts is not None:
+                    subseq_counts.extend(per_prompt_counts)
+
+        # If counts are partial or missing, only re-encode if explicitly allowed
+        if len(subseq_counts) != len(inputs):
+            if not allow_reencode:
+                raise RuntimeError('Missing per-prompt subsequence counts in batch_encoded_inputs. '
+                                   'Pass pre-encoded batch (batch_encoded_inputs) or set '
+                                   'allow_reencode=True to allow fallback re-encoding.')
+            subseq_counts = []
+            for d in inputs:
+                enc = template.encode(d, return_length=True)
+                pos_ids = enc.get('text_position_ids') or enc.get('position_ids')
+                if pos_ids is None:
+                    subseq_counts.append(1)
+                else:
+                    pos_ids = pos_ids.squeeze()
+                    if pos_ids.numel() == 0:
+                        subseq_counts.append(1)
+                    else:
+                        start_idx = (pos_ids == 0).nonzero(as_tuple=True)[0]
+                        subseq_counts.append(int(start_idx.shape[0]))
+
+        subseq_counts_tensor = torch.tensor(subseq_counts, dtype=torch.long, device=device)
+        subseq_advantages = torch.repeat_interleave(advantages, subseq_counts_tensor)
+    else:
+        subseq_advantages = advantages
+        subseq_counts_tensor = torch.ones((len(inputs), ), dtype=torch.long, device=device)
+    return subseq_advantages, subseq_counts_tensor

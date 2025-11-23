@@ -24,11 +24,14 @@ from vllm.distributed import parallel_state as vllm_ps
 
 from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
 from swift.llm.infer.protocol import RolloutOutput
+from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache,
                                                replace_assistant_response_with_ids, set_expandable_segments)
+from swift.trainers.utils import (compute_subseq_advantages_and_counts, compute_subseq_counts_from_encoded,
+                                  expand_truncated_mask_to_subseq)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
@@ -484,6 +487,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         rollout_batch = self.get_local_rollout_batch(batch)
 
+        batch_encoded_inputs_for_adv = None
+
         rollout_batch = self._generate_completions(rollout_batch)
 
         rewards_per_func = self._score_completions(rollout_batch)
@@ -492,9 +497,24 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.dynamic_sample:
             rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
 
-        advantages = self._compute_advantages(rollout_batch, rewards_per_func)
+        # Pre-encode (after possible dynamic sampling) and compute per-prompt
+        # subsequence counts before computing advantages
+        try:
+            template = self.template
+            with self._template_context(template):
+                encoded_list = [template.encode(d, return_length=True) for d in rollout_batch]
+            per_prompt_subseq_counts = compute_subseq_counts_from_encoded(encoded_list)
+            batch_encoded_inputs_for_adv = [{'_per_prompt_subseq_counts': per_prompt_subseq_counts}]
+        except MaxLengthError:
+            logger.warning('Encountered MaxLengthError when pre-encoding '
+                           'rollout_batch for subseq counts. '
+                           'Proceeding without batch_encoded_inputs (downstream may fallback).')
 
-        def _get_encoded_batch(rollout_batch, advantages):
+        # Compute advantages using precomputed subseq counts when available
+        advantages, subseq_advantages, subseq_counts = self._compute_advantages(
+            rollout_batch, rewards_per_func, batch_encoded_inputs=batch_encoded_inputs_for_adv)
+
+        def _get_encoded_batch(rollout_batch, advantages, subseq_advantages=None, subseq_counts=None):
             template = self.template
             with self._template_context(template):
                 encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
@@ -514,14 +534,41 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 # Keep only up to the last non-zero position + 1 to include the last valid position
                 squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
 
-            # Calculate lengths based on sequence boundaries (position_ids == 0)
+            # Calculate lengths based on sequence boundaries (position_ids == 0).
             lengths = torch.diff(
                 torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
                            torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
-            advantages = torch.repeat_interleave(advantages, lengths)
+            # At this point `lengths` is the number of tokens for each encoded subsequence.
+            # `advantages` should provide one advantage per subsequence. However, in some cases
+            # `advantages` may be at the prompt-level (one per prompt) while the collator packs
+            # multiple completions per prompt (e.g., num_generations), which leads to a mismatch
+            # between `advantages.size(0)` and `lengths.size(0)`. Try to expand `advantages` when
+            # possible to match the number of subsequences encoded.
+            # Resolve per-subsequence advantages. Prefer precomputed subseq_advantages if passed.
+            if subseq_advantages is not None and subseq_advantages.shape[0] == lengths.shape[0]:
+                seq_advantages = subseq_advantages
+            else:
+                # Expect upstream to provide subsequence advantages; do not attempt to infer/expand.
+                raise RuntimeError(f'Expected precomputed subsequence advantages (len {lengths.shape[0]}), '
+                                   f'got {None if subseq_advantages is None else subseq_advantages.shape[0]}. '
+                                   'Please update _compute_advantages to return per-subsequence advantages.')
+            advantages = torch.repeat_interleave(seq_advantages, lengths)
             truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
                                           dtype=torch.bool,
                                           device=self.device)
+            # Expand truncated_mask to match the number of encoded subsequences if necessary
+            if truncated_mask.shape[0] != lengths.shape[0]:
+                # truncated_mask was provided per-prompt; expand to per-subsequence using counts if available
+                if subseq_counts is not None and subseq_counts.shape[0] == len(rollout_batch):
+                    subseq_mask = expand_truncated_mask_to_subseq(
+                        truncated_mask,
+                        subseq_counts.tolist() if hasattr(subseq_counts, 'tolist') else subseq_counts)
+                    truncated_mask = subseq_mask
+                else:
+                    raise RuntimeError(f'Expected precomputed subsequence truncated_mask length {lengths.shape[0]}, '
+                                       f'but got {truncated_mask.shape[0]} and no subseq_counts available. '
+                                       'Please ensure _compute_advantages returns subseq_counts and that '
+                                       '_get_encoded_batch receives them.')
             truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
             padding_length = labels.shape[1] - truncated_mask.shape[1]
             if padding_length > 0:
@@ -548,13 +595,22 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Step2: ref/old logps
         total_batch = gather_object(rollout_batch, group=rollout_group)
         total_advantages = gather(advantages, group=rollout_group)
+        total_subseq_advantages = gather(subseq_advantages, group=rollout_group)
+        total_subseq_counts = gather(subseq_counts, group=rollout_group)
         mini_batch_data = []
 
+        subseq_cursor = 0
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
             micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
-            micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
+            micro_batch_subseq_counts = total_subseq_counts[idx:idx + self.micro_batch_size]
+            num_subseqs = int(micro_batch_subseq_counts.sum().item()) if isinstance(
+                micro_batch_subseq_counts, torch.Tensor) else int(sum(micro_batch_subseq_counts))
+            micro_batch_subseq_advantages = total_subseq_advantages[subseq_cursor:subseq_cursor + num_subseqs]
+            subseq_cursor += num_subseqs
+            micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages,
+                                                  micro_batch_subseq_advantages, micro_batch_subseq_counts)
             with profiling_context(self, 'compute_ref_old_logps'):
                 micro_batch_data = self._maybe_compute_logps(micro_batch_data)
             mini_batch_data.append(micro_batch_data)
@@ -812,7 +868,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, batch: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
+    def _compute_advantages(
+            self,
+            batch: DataType,
+            rewards_per_func: torch.Tensor,
+            batch_encoded_inputs: List[dict] | None = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute advantages for RL training."""
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
@@ -881,7 +941,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         slice_end = slice_start + len(batch)
         advantages = advantages[slice_start:slice_end]
 
-        return advantages
+        # Compute subsequence advantages using the shared helper (do NOT re-encode by default)
+        try:
+            subseq_advantages, subseq_counts_tensor = compute_subseq_advantages_and_counts(
+                advantages, batch, batch_encoded_inputs, self.template, device=self.device, allow_reencode=False)
+        except RuntimeError as e:
+            # Fallback: allow re-encode if missing counts and re-encoding is permissible
+            logger.warning(f'Per-prompt subsequence counts missing, attempting fallback re-encode: {e}')
+            subseq_advantages, subseq_counts_tensor = compute_subseq_advantages_and_counts(
+                advantages, batch, batch_encoded_inputs, self.template, device=self.device, allow_reencode=True)
+        return advantages, subseq_advantages, subseq_counts_tensor
 
     def _dynamic_sampling(self, rollout_batch: DataType,
                           rewards_per_func: torch.Tensor) -> Tuple[DataType, torch.Tensor]:

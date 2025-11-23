@@ -30,6 +30,8 @@ from swift.plugin import orms, rm_plugins
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
+from ..utils import (compute_subseq_advantages_and_counts, compute_subseq_counts_from_encoded,
+                     expand_truncated_mask_to_subseq)
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, patch_profiling_context, patch_profiling_decorator,
@@ -227,9 +229,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
 
-        total_advantages = self._compute_advantages(inputs, total_rewards_per_func, batch_encoded_inputs)
+        total_advantages, total_subseq_advantages, _ = self._compute_advantages(inputs, total_rewards_per_func,
+                                                                                batch_encoded_inputs)
 
         local_advantages = get_even_process_data(self, total_advantages)
+        local_subseq_advantages = get_even_process_data(self, total_subseq_advantages)
         assert len(local_advantages) == len(inputs)
         for i, advantage in enumerate(local_advantages):
             inputs[i]['advantages'] = advantage
@@ -241,11 +245,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         assert len(gas_chunks) == len(batch_encoded_inputs), \
             f'Mismatch: {len(gas_chunks)} chunks vs {len(batch_encoded_inputs)} batches'
 
+        subseq_cursor = 0
         for batch, batch_encoded in zip(gas_chunks, batch_encoded_inputs):
             if self.template.padding_free:
                 lengths = batch_encoded['seq_lengths']
                 advantages_stacked = torch.stack([data['advantages'] for data in batch])
-                all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
+                # If the advantages returned were already expanded to subsequences, use them; otherwise fall back
+                # to the per-prompt stacked advantages
+                if local_subseq_advantages is not None and local_subseq_advantages.numel() > 0:
+                    num_subseqs = lengths.shape[0]
+                    subseq_vals = local_subseq_advantages[subseq_cursor:subseq_cursor + num_subseqs]
+                    if subseq_vals.shape[0] != num_subseqs:
+                        logger.warning(f'Subsequence advantages count mismatch: expected {num_subseqs}, '
+                                       f'got {subseq_vals.shape[0]}.')
+                    all_advantages = torch.repeat_interleave(subseq_vals, lengths)
+                    subseq_cursor += num_subseqs
+                else:
+                    all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
             else:
                 all_advantages = torch.stack([data['advantages'] for data in batch])
             batch_encoded['advantages'] = all_advantages
@@ -354,7 +370,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return rewards_per_func
 
     def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor,
-                            batch_encoded_inputs: List[DataType]) -> torch.Tensor:
+                            batch_encoded_inputs: List[DataType]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Compute advantages for RL training.
 
@@ -376,6 +392,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Returns:
             **advantages** (torch.Tensor):
                 Computed advantages, shape `(N,)`.
+            **subseq_advantages** (torch.Tensor):
+                Computed per-subsequence advantages. When `padding_free` is False this equals `advantages`.
+            **subseq_counts_tensor** (torch.Tensor):
+                Per-prompt subsequence counts, used to expand subsequence advantages to token-level.
         """
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
@@ -493,7 +513,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages
+            # Compute subsequence-level advantages if padding_free
+            subseq_advantages, subseq_counts_tensor = compute_subseq_advantages_and_counts(
+                advantages, inputs, batch_encoded_inputs, self.template, device=self.accelerator.device)
+            return advantages, subseq_advantages, subseq_counts_tensor
 
         # --------------------------------------------------
         # Case 2: Request-aware mode
@@ -587,7 +610,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Step 6. Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages
+            # Compute subsequence-level advantages if padding_free
+            subseq_advantages, subseq_counts_tensor = compute_subseq_advantages_and_counts(
+                advantages, inputs, batch_encoded_inputs, self.template, device=self.accelerator.device)
+            return advantages, subseq_advantages, subseq_counts_tensor
+
+    # subsequence advantages computation moved to `compute_subseq_advantages_and_counts` in utils.py
 
     @patch_profiling_decorator
     def _dynamic_sampling(self, inputs, rewards_per_func):
@@ -782,8 +810,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
-                batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
-                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                encoded_list = [template.encode(data, return_length=True) for data in batch]
+                # Also compute per-prompt subsequence counts for later use using helper
+                per_prompt_subseq_counts = compute_subseq_counts_from_encoded(encoded_list)
+                batch_encoded_inputs = to_device(template.data_collator(encoded_list), self.model.device)
+                # store per-prompt subsequence counts for later use by compute_advantages
+                batch_encoded_inputs['_per_prompt_subseq_counts'] = per_prompt_subseq_counts
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
 
@@ -811,6 +843,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # The first sentence has its prompt portion removed due to logits_to_keep
                 lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
                 extra_kwargs.update({'seq_lengths': lengths})
+                # compute per-subsequence truncated mask using per-prompt subseq counts
+                per_prompt_counts = per_prompt_subseq_counts
+                if per_prompt_counts is not None:
+                    truncated_prompt_tensor = extra_kwargs['truncated_mask']
+                    truncated_subseq_mask = expand_truncated_mask_to_subseq(truncated_prompt_tensor, per_prompt_counts)
+                    extra_kwargs['truncated_subseq_mask'] = truncated_subseq_mask
             batch_encoded_inputs.update(extra_kwargs)
 
             with torch.no_grad():
@@ -828,6 +866,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                 batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
+            # For padding_free templates, promote per-subsequence mask to be the canonical 'truncated_mask'
+            if self.template.padding_free:
+                batch_encoded_inputs['truncated_mask'] = batch_encoded_inputs.get(
+                    'truncated_subseq_mask', batch_encoded_inputs['truncated_mask'])
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         # --- log completion lengths ---
@@ -849,7 +891,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
 
         # --- log completion clipped ratio ---
-        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in ga_batch_encoded_inputs]
+        if self.template.padding_free:
+            local_trunc_masks = [
+                inp.get('truncated_subseq_mask', inp['truncated_mask']).tolist() for inp in ga_batch_encoded_inputs
+            ]
+        else:
+            local_trunc_masks = [inp['truncated_mask'].tolist() for inp in ga_batch_encoded_inputs]
         total_trunc_masks = self._gather_and_flatten(
             local_trunc_masks, dtype=torch.bool, device=device, flatten_level=1)
 
