@@ -2,7 +2,7 @@
 
 ## 环境准备
 
-实验环境：8 * 昇腾910B3 64G (设备由[@chuanzhubin](https://github.com/chuanzhubin)提供, 感谢对modelscope和swift的支持～)
+实验环境：8 * 昇腾910B3 64G
 
 ```shell
 # 创建新的conda虚拟环境(可选)
