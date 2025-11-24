@@ -212,8 +212,10 @@ class VllmArguments:
     vllm_data_parallel_size: int = 1
 
     def __post_init__(self):
-        self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
-        self.vllm_speculative_config = json_parse_to_dict(self.vllm_speculative_config)
+        if self.vllm_limit_mm_per_prompt is not None:
+            self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        if self.vllm_speculative_config is not None:
+            self.vllm_speculative_config = json_parse_to_dict(self.vllm_speculative_config)
         self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
