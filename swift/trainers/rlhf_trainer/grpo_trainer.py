@@ -418,7 +418,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 old_per_token_logps = batch_encoded['old_per_token_logps']
                 ref_per_token_logps = batch_encoded['ref_per_token_logps']
                 completion_mask = batch_encoded['completion_mask']
-                # Unified: logps and mask are now always [batch_size, seq_len] after pad_back
                 per_token_kl = old_per_token_logps - ref_per_token_logps
                 kl = (per_token_kl * completion_mask).sum(-1)
                 kl_list.append(kl)
@@ -951,7 +950,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
-                # Unified: entropies are now always [batch_size, seq_len] after pad_back
                 per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
                 entropy_metrics = {
@@ -972,7 +970,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if all(truncated_mask):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
-            # Unified: expand truncated_mask to match completion_mask [batch_size, seq_len]
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
 
@@ -1017,7 +1014,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
-            # Unified: completion_mask is now always [batch_size, seq_len]
             seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
                                      / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
             if self.importance_sampling_level == 'sequence':
@@ -1035,14 +1031,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
-            # Unified: coef_1 and advantages are now [batch_size, seq_len] and [batch_size]
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            # Unified: coef_1 is [batch_size, seq_len], advantages is [batch_size]
             per_token_loss1 = coef_1 * advantages.unsqueeze(1)
             per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
@@ -1062,7 +1056,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
-            batch_size = completion_mask.shape[0]  # Unified: always batch_size from completion_mask
+            batch_size = completion_mask.shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
         elif self.loss_type in ['cispo', 'dapo']:
             # CISPO and DAPO: Normalize by total completion tokens across all processes
@@ -2101,7 +2095,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Returns:
             Sequence-level ratios as geometric mean of token-level ratios
         """
-        # Unified: is_ratio and completion_mask are always [B, T] after pad_back
         log_ratio = torch.log(is_ratio.clamp(min=1e-10))
         seq_log_ratios = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
         seq_ratios = torch.exp(seq_log_ratios)
@@ -2139,7 +2132,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
             clipped_seq_ratios = torch.clamp(seq_ratios, max=threshold)
 
-            # Broadcast back to tokens (unified for both modes)
             is_weights = clipped_seq_ratios.unsqueeze(-1).expand_as(is_ratio)
 
         elif mode == 'sequence_mask':
@@ -2147,7 +2139,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
             seq_mask = (seq_ratios <= threshold).float()
 
-            # Broadcast back to tokens (unified for both modes)
             is_weights = seq_mask.unsqueeze(-1).expand_as(is_ratio)
         else:
             raise ValueError(f'Unknown rollout importance sampling mode: {mode}')
@@ -2201,7 +2192,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # 3. Effective Sample Size (ESS): 1 / E[(w/E[w])²]
         # ESS measures the "effective" number of independent samples after importance sampling correction
         # Higher ESS means better sample quality and more stable gradient estimates
-        # For sequence-level ESS, we compute per-sequence ratios (unified)
+        # For sequence-level ESS, we compute per-sequence ratios
         log_r = torch.log(is_ratio.clamp(min=1e-10))
         seq_log_ratios = (log_r * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
         seq_ratios = torch.exp(seq_log_ratios)
