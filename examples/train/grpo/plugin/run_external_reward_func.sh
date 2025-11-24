@@ -7,7 +7,7 @@ MAX_PIXELS=602112 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins swift/examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode colocate \
