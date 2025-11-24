@@ -998,11 +998,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             vllm_log_ratio = per_token_logps - vllm_per_token_logps
 
             # Apply importance sampling correction based on mode
-            rollout_is_weights = self._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask, lengths=None)
+            rollout_is_weights = self._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
             # Compute and log correction metrics
-            rollout_correction_metrics = self._compute_rollout_correction_metrics(
-                per_token_logps, vllm_per_token_logps, rollout_is_weights, completion_mask, lengths=None)
+            rollout_correction_metrics = self._compute_rollout_correction_metrics(per_token_logps, vllm_per_token_logps,
+                                                                                  rollout_is_weights, completion_mask)
 
             # Apply IS weights: multiply the final loss by the IS weight
             # Store for later application in loss computation
@@ -1375,7 +1375,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Store metadata for padding_free restoration
         if is_padding_free:
-            original_position_ids = inputs.get('text_position_ids') or inputs.get('position_ids')
             original_seq_lengths = inputs.get('seq_lengths')
             batch_size = original_seq_lengths.shape[0]
 
@@ -1429,22 +1428,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     entropy_rmpad = None
 
-                # Restore to batch shape
-                position_ids_for_restore = original_position_ids.squeeze()[-logits_to_keep:]
-
+                # Restore to batch shape using seq_lengths
                 logps, completion_mask = pad_logps_back_to_batch(
                     logps_rmpad=per_token_logps_rmpad.unsqueeze(0),  # [1, total_nnz]
-                    position_ids=position_ids_for_restore,
                     logits_to_keep=logits_to_keep,
-                    batch_size=batch_size)
+                    batch_size=batch_size,
+                    seq_lengths=original_seq_lengths)
 
                 # Also restore entropy if computed
                 if compute_entropy:
                     entropies, _ = pad_logps_back_to_batch(
                         logps_rmpad=entropy_rmpad.unsqueeze(0),
-                        position_ids=position_ids_for_restore,
                         logits_to_keep=logits_to_keep,
-                        batch_size=batch_size)
+                        batch_size=batch_size,
+                        seq_lengths=original_seq_lengths)
                 else:
                     entropies = None
 
