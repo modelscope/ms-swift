@@ -515,7 +515,7 @@ class Qwen3NextBridge(GPTBridge):
                         *,
                         offset: float = 0,
                         is_expert: bool = False):
-        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key:
+        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key or 'enorm' in mg_key or 'hnorm' in mg_key:
             offset = 1 if to_mcore else -1
         return super()._set_state_dict(
             mg_module,

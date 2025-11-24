@@ -433,8 +433,7 @@ def _patch_mtp():
             Union[Tensor, Tuple[Tensor, Tensor]]: The output hidden states tensor of shape
             [s, b, h], and optionally the updated context tensor if cross-attention is used.
         """
-        # TODO: Multimodal compatible; MTP initialization
-        # TODO: packed_seq_params offset
+        # TODO: Multimodal compatible
         assert context is None, 'multi token prediction + cross attention is not yet supported.'
         input_ids, position_ids, decoder_input, hidden_states = self._get_embeddings(
             input_ids=input_ids,

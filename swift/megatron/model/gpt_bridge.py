@@ -1058,9 +1058,11 @@ class GPTBridge:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
 
     def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        hf_state_dict = hf_state_dict if to_mcore else {}
         for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
             self._set_state_dict(mtp_layer, key, hf_state_dict, key, to_mcore)
         self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+        return {} if to_mcore else hf_state_dict
 
     def _convert_mtp_layer(self, lm_model, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
         mtp_layer = lm_model.mtp.layers[layer_idx] if hasattr(lm_model, 'mtp') else None
@@ -1088,7 +1090,7 @@ class GPTBridge:
         # self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
         #                      to_mcore)
         # self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
-        self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict)
+        hf_state_dict.update(self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict))
         hf_state_dict.update(self._set_layer_attn(mtp_layer.transformer_layer, hf_state_dict, -1, to_mcore))
         hf_state_dict.update(self._set_layer_mlp(mtp_layer.transformer_layer, hf_state_dict, -1, to_mcore))
         if to_mcore:
