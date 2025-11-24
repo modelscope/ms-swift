@@ -1014,17 +1014,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Apply vLLM importance sampling correction if enabled
         rollout_correction_metrics = {}
-        if inputs.get('vllm_per_token_logps') is not None and self.rollout_importance_sampling_mode is not None:
+        if inputs.get('vllm_per_token_logps') is not None:
             vllm_per_token_logps = inputs['vllm_per_token_logps']
             # Compute the log ratio between policy model and vLLM rollout model
             # log π_θ(y|x) - log π_vllm(y|x)
-            vllm_log_ratio = per_token_logps - vllm_per_token_logps
+            vllm_log_ratio = old_per_token_logps - vllm_per_token_logps
 
             # Apply importance sampling correction based on mode
             rollout_is_weights = self._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
             # Compute and log correction metrics
-            rollout_correction_metrics = self._compute_rollout_correction_metrics(per_token_logps, vllm_per_token_logps,
+            rollout_correction_metrics = self._compute_rollout_correction_metrics(old_per_token_logps,
+                                                                                  vllm_per_token_logps,
                                                                                   rollout_is_weights, completion_mask)
 
             # Apply IS weights: multiply the final loss by the IS weight
@@ -1069,7 +1070,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         # Apply vLLM importance sampling weights if available
-        if inputs.get('rollout_is_weights') is not None:
+        if inputs.get('rollout_is_weights') is not None and self.rollout_importance_sampling_mode is not None:
             rollout_is_weights = inputs['rollout_is_weights']
             per_token_loss = per_token_loss * rollout_is_weights
 
@@ -2121,23 +2122,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return seq_ratios
 
-    def _apply_rollout_importance_sampling(self, vllm_log_ratio: torch.Tensor,
+    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor,
                                            completion_mask: torch.Tensor) -> torch.Tensor:
         """
         Apply vLLM importance sampling correction using one of four modes.
 
         Args:
-            vllm_log_ratio: log(π_θ / π_vllm) per token, shape [B, T]
+            rollout_log_ratio: log(π_θ / π_rollout) per token, shape [B, T]
             completion_mask: Boolean mask for completion tokens, shape [B, T]
 
         Returns:
-            IS weights to multiply with loss, same shape as vllm_log_ratio
+            IS weights to multiply with loss, same shape as rollout_log_ratio
         """
         mode = self.rollout_importance_sampling_mode
         threshold = self.rollout_importance_sampling_threshold
 
         # Compute importance sampling ratios: exp(log_ratio)
-        is_ratio = torch.exp(vllm_log_ratio)
+        is_ratio = torch.exp(rollout_log_ratio)
 
         if mode == 'token_truncate':
             # Token-level truncated IS: clip ratios from above at threshold
@@ -2159,9 +2160,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
             seq_mask = (seq_ratios <= threshold).float()
 
-            is_weights = seq_mask.unsqueeze(-1).expand_as(is_ratio)
+            # Apply mask to original token-level ratios
+            is_weights = is_ratio * seq_mask.unsqueeze(-1)
         else:
-            raise ValueError(f'Unknown rollout importance sampling mode: {mode}')
+            return is_ratio
 
         return is_weights
 

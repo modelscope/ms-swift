@@ -8,7 +8,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --external_plugins examples/train/grpo/plugin/plugin.py \
-    --reward_funcs external_math_acc external_math_format \
+    --reward_funcs format \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
