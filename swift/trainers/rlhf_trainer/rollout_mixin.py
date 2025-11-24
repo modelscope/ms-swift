@@ -113,13 +113,13 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
         args = self.args
+        self.use_fast_infer = args.use_vllm
         if not args.use_vllm:
             return
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
         # Initialize default values
-        self.use_fast_infer = args.use_vllm
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False
