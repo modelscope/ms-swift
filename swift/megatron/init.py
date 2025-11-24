@@ -442,9 +442,7 @@ def _patch_mtp():
             hidden_states=hidden_states,
         )
         packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
-        apply_rope_fusion = self.config.apply_rope_fusion
-        self.config.apply_rope_fusion = False
-        if packed_seq and not self.config.apply_rope_fusion:
+        if packed_seq:
             assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
             rotary_pos_emb = rotary_pos_emb[position_ids[0]]
         if self.config.recompute_granularity == 'full' and self.training:
@@ -480,7 +478,6 @@ def _patch_mtp():
                 packed_seq_params=packed_seq_params,
                 sequence_len_offset=sequence_len_offset,
             )
-        self.config.apply_rope_fusion = apply_rope_fusion
         return hidden_states, input_ids, position_ids
 
     MultiTokenPredictionLayer.forward = forward

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import megatron.core
@@ -140,8 +141,17 @@ class GPTModel(McoreGPTModel):
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
-            logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
+            if self.attention_scaling != 1:
+                warning_string = 'attention_scaling'
+            else:
+                warning_string = 'mrope'
+            logger.warning(f'`apply_rope_fusion` does not support `{warning_string}`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
+        if getattr(self, 'mtp', None) is not None:
+            for layer in self.mtp.layers:
+                attention = layer.transformer_layer.self_attention
+                attention.config = deepcopy(attention.config)
+                attention.config.apply_rope_fusion = False
 
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):
