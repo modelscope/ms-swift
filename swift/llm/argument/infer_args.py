@@ -61,6 +61,12 @@ class SglangArguments:
     sglang_kv_cache_dtype: str = 'auto'
     sglang_enable_dp_attention: bool = False
     sglang_disable_custom_all_reduce: bool = True
+    # speculative decoding
+    # e.g. EAGLE, EAGLE3, NEXTN
+    sglang_speculative_algorithm: Optional[str] = None
+    sglang_speculative_num_steps: Optional[int] = None
+    sglang_speculative_eagle_topk: Optional[int] = None
+    sglang_speculative_num_draft_tokens: Optional[int] = None
 
     def get_sglang_engine_kwargs(self):
         kwargs = {
@@ -76,6 +82,10 @@ class SglangArguments:
             'kv_cache_dtype': self.sglang_kv_cache_dtype,
             'enable_dp_attention': self.sglang_enable_dp_attention,
             'disable_custom_all_reduce': self.sglang_disable_custom_all_reduce,
+            'speculative_algorithm': self.sglang_speculative_algorithm,
+            'speculative_num_steps': self.sglang_speculative_num_steps,
+            'speculative_eagle_topk': self.sglang_speculative_eagle_topk,
+            'speculative_num_draft_tokens': self.sglang_speculative_num_draft_tokens,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
@@ -92,7 +102,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
         infer_backend (Literal): Backend to use for inference. Default is 'pt'.
             Allowed values are 'vllm', 'pt', 'lmdeploy'.
-        result_path (Optional[str]): Directory to store inference results. Default is None.
+        result_path (Optional[str]): Path to store inference results. Default is None.
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
         reranker_use_activation (bool): reranker use activation after calculating. Default is True.

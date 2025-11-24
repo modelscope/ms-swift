@@ -1,10 +1,13 @@
-# thinking -> non-thinking
+# demo: thinking -> non-thinking
 # 4 * 70GiB; 40s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load GLM-4.5-Air-mcore \
+    --model ZhipuAI/GLM-4.5-Air \
+    --load_safetensors true \
+    --save_safetensors true \
+    --mtp_num_layers 1 \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --train_type lora \
