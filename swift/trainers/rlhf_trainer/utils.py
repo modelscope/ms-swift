@@ -1201,8 +1201,18 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
         end_idx = cu_seqlens[i + 1].item()
         seq_len = seq_lengths[i].item()
 
-        # Copy the sequence logps
-        logps_padded[i, :seq_len] = logps_flat[start_idx:end_idx]
+        actual_end_idx = min(end_idx, len(logps_flat))
+        actual_len = actual_end_idx - start_idx
+
+        if actual_len < seq_len:
+            # pad at the beginning
+            pad_len = seq_len - actual_len
+            logps_padded[i, :pad_len] = -1e10  # Padding value
+            logps_padded[i, pad_len:seq_len] = logps_flat[start_idx:actual_end_idx]
+        else:
+            # Normal case
+            logps_padded[i, :seq_len] = logps_flat[start_idx:end_idx]
+
         # Set mask for valid positions
         completion_mask[i, :seq_len] = 1.0
 

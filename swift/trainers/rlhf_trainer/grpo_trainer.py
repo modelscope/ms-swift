@@ -830,18 +830,43 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                     # Convert to tensor if all samples have vllm_logprobs
                     if all(lp is not None for lp in vllm_logprobs_list):
-                        max_len = logits_to_keep
-                        padded_logprobs = []
-                        for lp in vllm_logprobs_list:
-                            # Take last logits_to_keep tokens
-                            lp_tensor = lp[-logits_to_keep:] if len(lp) >= logits_to_keep else lp
-                            # Pad if needed - use a very small negative value to avoid affecting ratio computation
-                            # These padded positions will be masked by completion_mask
-                            if len(lp_tensor) < max_len:
-                                lp_tensor = [-1e10] * (max_len - len(lp_tensor)) + lp_tensor
-                            padded_logprobs.append(lp_tensor)
-                        batch_encoded_inputs['vllm_per_token_logps'] = torch.tensor(
-                            padded_logprobs, dtype=torch.float32, device=self.accelerator.device)
+                        if self.template.padding_free:
+                            # In padding_free mode, use pad_logps_back_to_batch for consistency
+                            # Concatenate all vllm logprobs into a flat tensor
+                            vllm_logprobs_flat = []
+                            for lp in vllm_logprobs_list:
+                                # Take last logits_to_keep tokens (or all if shorter)
+                                lp_to_use = lp[-logits_to_keep:] if len(lp) >= logits_to_keep else lp
+                                vllm_logprobs_flat.extend(lp_to_use)
+
+                            # Convert to tensor [1, total_nnz]
+                            vllm_logprobs_rmpad = torch.tensor(
+                                vllm_logprobs_flat, dtype=torch.float32, device=self.accelerator.device).unsqueeze(0)
+
+                            # Restore to batch format using the same seq_lengths
+                            from swift.trainers.rlhf_trainer.utils import pad_logps_back_to_batch
+                            seq_lengths = batch_encoded_inputs['seq_lengths']
+                            batch_size = seq_lengths.shape[0]
+                            vllm_logps_padded, _ = pad_logps_back_to_batch(
+                                logps_rmpad=vllm_logprobs_rmpad,
+                                logits_to_keep=logits_to_keep,
+                                batch_size=batch_size,
+                                seq_lengths=seq_lengths,
+                                dtype=torch.float32)
+                            batch_encoded_inputs['vllm_per_token_logps'] = vllm_logps_padded
+                        else:
+                            # Standard mode: simple padding
+                            max_len = logits_to_keep
+                            padded_logprobs = []
+                            for lp in vllm_logprobs_list:
+                                # Take last logits_to_keep tokens
+                                lp_tensor = lp[-logits_to_keep:] if len(lp) >= logits_to_keep else lp
+                                # Pad if needed
+                                if len(lp_tensor) < max_len:
+                                    lp_tensor = [-1e10] * (max_len - len(lp_tensor)) + lp_tensor
+                                padded_logprobs.append(lp_tensor)
+                            batch_encoded_inputs['vllm_per_token_logps'] = torch.tensor(
+                                padded_logprobs, dtype=torch.float32, device=self.accelerator.device)
                     else:
                         batch_encoded_inputs['vllm_per_token_logps'] = None
                 else:
