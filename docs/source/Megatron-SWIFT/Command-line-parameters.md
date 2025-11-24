@@ -219,7 +219,7 @@
 - qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
 
 **MTP参数**
-- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。
+- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）
   - 注意：mtp_num_layers的值，将不自动从config.json获取，需手动设置。你可以参考config.json中的`num_nextn_predict_layers`字段填写该值。使用mcore-bridge时，将优先从safetensors文件中加载MTP权重，若无法找到，则进行随机初始化。
 - mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
 
