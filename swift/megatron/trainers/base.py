@@ -22,7 +22,7 @@ from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
 from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
-                               get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
+                               get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
@@ -81,6 +81,7 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _get_iters(self, train_dataset, val_dataset):
         origin_initialize_megatron = training.initialize_megatron
+        origin_validate_args = initialize.validate_args
 
         def initialize_megatron(*_args, **kwargs):
             res = origin_initialize_megatron(*_args, **kwargs)
@@ -109,11 +110,16 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Setting args.eval_iters: {args.eval_iters}')
             return res
 
+        def validate_args(args, *_args, **kwargs):
+            return origin_validate_args(args, *_args, **kwargs)
+
         training.initialize_megatron = initialize_megatron
+        initialize.validate_args = validate_args
         try:
             yield
         finally:
             training.initialize_megatron = origin_initialize_megatron
+            initialize.validate_args = origin_validate_args
 
     def new_cyclic_iter(self, iterable):
         args = get_args()
