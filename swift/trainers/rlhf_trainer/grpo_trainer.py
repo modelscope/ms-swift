@@ -1012,25 +1012,33 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         old_per_token_logps = (
             per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
 
-        # Apply vLLM importance sampling correction if enabled
+        # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
         if inputs.get('vllm_per_token_logps') is not None:
             vllm_per_token_logps = inputs['vllm_per_token_logps']
-            # Compute the log ratio between policy model and vLLM rollout model
-            # log π_θ(y|x) - log π_vllm(y|x)
-            vllm_log_ratio = old_per_token_logps - vllm_per_token_logps
 
-            # Apply importance sampling correction based on mode
-            rollout_is_weights = self._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
+            # Always compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
+            # This helps diagnose whether rollout correction is needed
+            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
+                                                                                 vllm_per_token_logps, completion_mask)
 
-            # Compute and log correction metrics
-            rollout_correction_metrics = self._compute_rollout_correction_metrics(old_per_token_logps,
-                                                                                  vllm_per_token_logps,
-                                                                                  rollout_is_weights, completion_mask)
+            # Apply importance sampling correction if mode is enabled
+            if self.rollout_importance_sampling_mode is not None:
+                # Compute the log ratio between policy model and vLLM rollout model
+                # log π_θ(y|x) - log π_vllm(y|x)
+                vllm_log_ratio = old_per_token_logps - vllm_per_token_logps
 
-            # Apply IS weights: multiply the final loss by the IS weight
-            # Store for later application in loss computation
-            inputs['rollout_is_weights'] = rollout_is_weights
+                # Apply importance sampling correction based on mode
+                rollout_is_weights = self._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
+
+                # Compute additional IS-specific metrics (ESS, clipped_frac, is_weight_mean)
+                is_metrics = self._compute_is_correction_metrics(vllm_log_ratio, rollout_is_weights, completion_mask)
+                rollout_correction_metrics.update(is_metrics)
+
+                # Store IS weights for loss computation
+                inputs['rollout_is_weights'] = rollout_is_weights
+            else:
+                inputs['rollout_is_weights'] = None
         else:
             inputs['rollout_is_weights'] = None
 
@@ -2167,93 +2175,118 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return is_weights
 
-    def _compute_rollout_correction_metrics(
+    def _compute_rollout_offpolicy_metrics(
         self,
         per_token_logps: torch.Tensor,
         rollout_per_token_logps: torch.Tensor,
-        is_weights: torch.Tensor,
         completion_mask: torch.Tensor,
     ) -> Dict[str, float]:
         """
-        Compute rollout correction metrics: KL, PPL, chi-square, ESS.
+        Compute off-policy diagnostic metrics (always computed for monitoring).
+
+        These metrics help diagnose the off-policy gap between rollout and training policies,
+        which can arise from policy mismatch (e.g., vLLM BF16 vs FSDP FP32), model staleness,
+        or general distribution shifts.
 
         Args:
             per_token_logps: Log probs from policy model, shape [B, T]
             rollout_per_token_logps: Log probs from rollout, shape [B, T]
-            is_weights: Importance sampling weights, shape [B, T]
             completion_mask: Boolean mask for completion tokens, shape [B, T]
 
         Returns:
-            Dictionary with metrics
+            Dictionary with metrics: kl, ppl_policy, ppl_rollout, log_ppl_diff
         """
         metrics = {}
 
-        # Compute log ratios
-        # Keep original log_ratio for KL computation (accurate)
-        # Use clamped version for exponential operations (numerically stable)
-        SAFETY_BOUND = 20.0
-        log_ratio = per_token_logps - rollout_per_token_logps
-        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
-        is_ratio = torch.exp(log_ratio_safe)
-
         # Helper function for masked mean
         def masked_mean(x, mask):
-            # x: [B, T], mask: [B, T] (after pad_back)
             return (x * mask).sum() / mask.sum().clamp(min=1.0)
 
-        # 1. KL divergence: KL(π_θ || π_rollout) ≈ E[log(π_θ/π_rollout)]
+        # 1. Training policy perplexity (always computed)
+        mean_logps = (per_token_logps * completion_mask).sum(1) / completion_mask.sum(1)
+        policy_ppl = torch.exp(-mean_logps).mean()
+        metrics['ppl_policy'] = self.accelerator.gather_for_metrics(policy_ppl).nanmean().item()
+
+        # 2. Rollout off-policy metrics
+        # KL divergence: KL(π_policy || π_rollout) ≈ E[log(π_policy/π_rollout)]
+        log_ratio = per_token_logps - rollout_per_token_logps
         kl_div = masked_mean(log_ratio, completion_mask)
         metrics['kl_rollout'] = self.accelerator.gather_for_metrics(kl_div).nanmean().item()
 
-        # 2. Perplexity: exp(-mean_log_prob)
-        rollout_ppl = torch.exp(-masked_mean(rollout_per_token_logps, completion_mask))
-        policy_ppl = torch.exp(-masked_mean(per_token_logps, completion_mask))
+        # Rollout policy perplexity
+        mean_rollout_logps = (rollout_per_token_logps * completion_mask).sum(1) / completion_mask.sum(1)
+        rollout_ppl = torch.exp(-mean_rollout_logps)
         metrics['ppl_rollout'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
-        metrics['ppl_policy'] = self.accelerator.gather_for_metrics(policy_ppl).nanmean().item()
 
-        # 3. Effective Sample Size (ESS): 1 / E[(w/E[w])²]
-        # ESS measures the "effective" number of independent samples after importance sampling correction
-        # Higher ESS means better sample quality and more stable gradient estimates
-        # For sequence-level ESS, we compute per-sequence ratios
+        # Log PPL difference (for easier monitoring of distribution drift)
+        mean_log_prob_policy = masked_mean(per_token_logps, completion_mask)
+        mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask)
+        log_ppl_diff = -mean_log_prob_rollout - (-mean_log_prob_policy)  # log(ppl_policy) - log(ppl_rollout)
+        metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff).nanmean().item()
+
+        return metrics
+
+    def _compute_is_correction_metrics(
+        self,
+        vllm_log_ratio: torch.Tensor,
+        is_weights: torch.Tensor,
+        completion_mask: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute importance sampling correction metrics (ESS, clipped_frac, is_weight_mean).
+        Only called when rollout_importance_sampling_mode is enabled.
+
+        Args:
+            vllm_log_ratio: Log ratio log(π_policy / π_rollout), shape [B, T]
+            is_weights: Importance sampling weights after correction, shape [B, T]
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+
+        Returns:
+            Dictionary with IS-specific metrics
+        """
+        metrics = {}
+        SAFETY_BOUND = 20.0
+
+        # Helper function for masked mean
+        def masked_mean(x, mask):
+            return (x * mask).sum() / mask.sum().clamp(min=1.0)
+
+        # Compute IS ratio with safety bounds
+        log_ratio_safe = torch.clamp(vllm_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        is_ratio = torch.exp(log_ratio_safe)
+
+        # Compute sequence-level ratios for ESS and clipped_frac
         log_r = torch.log(is_ratio.clamp(min=1e-10))
         seq_log_ratios = (log_r * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
         seq_ratios = torch.exp(seq_log_ratios)
 
         # ESS = 1 / E[(w/E[w])²] - measures effective number of independent samples
-        # For distributed training, gather all seq_ratios across ranks first to compute global ESS
+        # For distributed training, gather all seq_ratios across ranks first
         all_seq_ratios = self.accelerator.gather_for_metrics(seq_ratios)
-
-        # normalize weights to mean=1, then compute ESS
         mean_seq_ratio = all_seq_ratios.mean()
         seq_ratios_normalized = all_seq_ratios / (mean_seq_ratio + 1e-8)
         ess = 1.0 / (seq_ratios_normalized**2).mean().clamp(min=1e-10)
-        # ESS is already normalized (ranges from ~0 to N where N is batch size)
-        # Divide by batch size to get relative ESS in [0, 1]
+        # Normalize by batch size to get relative ESS in [0, 1]
         num_sequences = max(len(all_seq_ratios), 1)
         ess_normalized = ess / num_sequences
         metrics['ess'] = ess_normalized.item()
 
-        # 4. IS weight statistics
+        # 2. IS weight statistics
         mean_is_weight = masked_mean(is_weights, completion_mask)
         metrics['is_weight_mean'] = self.accelerator.gather_for_metrics(mean_is_weight).nanmean().item()
 
-        # Fraction of clipped/masked samples
+        # 3. Fraction of clipped/masked samples
+        threshold = self.rollout_importance_sampling_threshold
         if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
             # Token-level
-            threshold = self.rollout_importance_sampling_threshold
             if self.rollout_importance_sampling_mode == 'token_truncate':
                 clipped_frac = masked_mean((is_ratio > threshold).float(), completion_mask)
             else:  # token_mask
                 clipped_frac = masked_mean((is_weights == 0).float(), completion_mask)
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
         else:
-            # Sequence-level
-            threshold = self.rollout_importance_sampling_threshold
-            if self.rollout_importance_sampling_mode == 'sequence_truncate':
-                clipped_frac = (seq_ratios > threshold).float().mean()
-            else:  # sequence_mask
-                # Check which sequences are masked (ratio > threshold)
-                clipped_frac = (seq_ratios > threshold).float().mean()
+            # Sequence-level (both truncate and mask)
+            clipped_frac = (seq_ratios > threshold).float().mean()
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
 
         return metrics
