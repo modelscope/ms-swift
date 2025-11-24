@@ -30,7 +30,7 @@ Query-Response format:
 ```jsonl
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
-Note: The following fields will be automatically converted to the corresponding system, query, and response fields.
+Note: The following fields will be automatically converted to the corresponding system, query, and response fields. (The 'solution' field will be retained)
 - system: 'system', 'system_prompt'.
 - query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
 - response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
