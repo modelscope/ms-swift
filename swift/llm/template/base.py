@@ -980,10 +980,10 @@ class Template(ProcessorMixin):
                          suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
-        for i in range(1, len(labels)):
-            if labels[i - 1] >= 0 and labels[i] == -100:
+        for i in range(1, len(labels) + 1):
+            if labels[i - 1] >= 0 and i < len(labels) and labels[i] == -100:
                 start = i
-            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
+            elif start > 0 and labels[i - 1] == -100 and (i == len(labels) or labels[i] >= 0):
                 # [0, 1, 2, -100(start), -100, 3(i), 4]
                 length = i - start
                 if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
