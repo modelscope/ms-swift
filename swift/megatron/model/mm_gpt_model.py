@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from typing import Optional
 
 import megatron.core
 import torch
@@ -87,6 +88,8 @@ class MultimodalGPTModel(MegatronModule):
         labels: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
+        *,
+        mtp_labels: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         if decoder_input is not None:
@@ -108,6 +111,7 @@ class MultimodalGPTModel(MegatronModule):
             labels=labels,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            mtp_labels=mtp_labels,
             **kwargs,
         )
 

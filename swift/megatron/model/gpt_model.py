@@ -264,6 +264,8 @@ class GPTModel(McoreGPTModel):
         *,
         inference_params: Optional[BaseInferenceContext] = None,
         loss_mask: Optional[torch.Tensor] = None,
+        # Mask labels to be compatible with thd & MTP
+        mtp_labels: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
@@ -310,7 +312,7 @@ class GPTModel(McoreGPTModel):
                 hidden_states=hidden_states,
                 input_ids=input_ids,
                 position_ids=position_ids,
-                labels=labels,
+                labels=mtp_labels,
                 rotary_pos_emb=rotary_pos_emb,
                 rotary_pos_cos=rotary_pos_cos,
                 rotary_pos_sin=rotary_pos_sin,

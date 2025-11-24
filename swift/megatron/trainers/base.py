@@ -1029,6 +1029,13 @@ class BaseMegatronTrainer(ABC):
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
+            if args.mtp_num_layers and batch.get('labels') is not None:
+                cu_seqlens = batch['packed_seq_params'].cu_seqlens_q.clone()
+                mtp_labels = batch['labels'].clone()
+                for _ in range(args.mtp_num_layers):
+                    mtp_labels[:, cu_seqlens[cu_seqlens < mtp_labels.shape[1]]] = -100
+                    cu_seqlens = cu_seqlens + 1
+                batch['mtp_labels'] = mtp_labels
         # slice batch along sequence dimension for context parallelism
         batch = get_batch_on_this_cp_rank(batch)
         return batch

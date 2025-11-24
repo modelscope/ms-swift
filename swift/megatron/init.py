@@ -444,16 +444,9 @@ def _patch_mtp():
         packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
         apply_rope_fusion = self.config.apply_rope_fusion
         self.config.apply_rope_fusion = False
-        if packed_seq:
-            packed_seq_params = deepcopy(packed_seq_params)
-            tensor = packed_seq_params.cu_seqlens_q
-            cu_seqlens = torch.concat([tensor.new_zeros(1, ), tensor[1:] - 1, tensor[-1:]])
-            max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max()
-            packed_seq_params.cu_seqlens_q = packed_seq_params.cu_seqlens_kv = cu_seqlens
-            packed_seq_params.max_seqlen_q = packed_seq_params.max_seqlen_kv = max_seqlen
-            if not self.config.apply_rope_fusion:
-                assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
-                rotary_pos_emb = rotary_pos_emb[position_ids[0]]
+        if packed_seq and not self.config.apply_rope_fusion:
+            assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+            rotary_pos_emb = rotary_pos_emb[position_ids[0]]
         if self.config.recompute_granularity == 'full' and self.training:
             hidden_states = self._checkpointed_forward(
                 partial(
