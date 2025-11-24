@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .rlhf_mixin import RLHFTrainerMixin
     from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
     from .vllm_client import VLLMClient
+    from .padding_free_utils import pad_logps_back_to_batch, get_cu_seqlens_from_position_ids
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -28,6 +29,7 @@ else:
         'rlhf_mixin': ['RLHFTrainerMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
         'vllm_client': ['VLLMClient'],
+        'padding_free_utils': ['pad_logps_back_to_batch', 'get_cu_seqlens_from_position_ids'],
     }
 
     import sys

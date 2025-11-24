@@ -1124,3 +1124,72 @@ def get_even_process_data(trainer, global_data: List[T]) -> List[T]:
         end = start + base_size
 
     return global_data[start:end]
+
+
+# ============================================================================
+# Padding-free utilities
+# ============================================================================
+
+
+def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
+                            position_ids: torch.Tensor,
+                            logits_to_keep: int,
+                            batch_size: int,
+                            dtype: Optional[torch.dtype] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Restore padding-free logprobs back to [batch_size, seq_len] shape.
+
+    - Input: logps in rmpad format [1, total_nnz]
+    - Output: logps in batch format [batch_size, max_seq_len]
+
+    Args:
+        logps_rmpad: [1, total_nnz] per-token log probabilities in padding_free format
+        position_ids: [1, total_nnz] position ids to determine sequence boundaries
+        logits_to_keep: number of tokens to keep per sequence
+        batch_size: number of sequences in the batch
+        dtype: optional dtype for output, defaults to logps_rmpad.dtype
+
+    Returns:
+        logps_padded: [batch_size, logits_to_keep] padded log probabilities
+        completion_mask: [batch_size, logits_to_keep] mask indicating valid positions
+    """
+    from swift.utils.torch_utils import get_cu_seqlens_from_position_ids as get_cu_seqlens
+
+    if dtype is None:
+        dtype = logps_rmpad.dtype
+
+    device = logps_rmpad.device
+
+    # Get cumulative sequence lengths using swift's existing implementation
+    cu_seqlens = get_cu_seqlens(position_ids)
+
+    # Adjust cu_seqlens for logits_to_keep if needed
+    total_length = cu_seqlens[-1].item()
+    if total_length > logits_to_keep:
+        # Adjust the first sequence length
+        adjustment = total_length - logits_to_keep
+        cu_seqlens = cu_seqlens - adjustment
+        cu_seqlens[0] = 0  # First element should always be 0
+
+    # Compute actual sequence lengths
+    seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+    max_seq_len = logits_to_keep  # All sequences will be padded to this length
+
+    # Initialize output tensors
+    logps_padded = torch.zeros(batch_size, max_seq_len, dtype=dtype, device=device)
+    completion_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+
+    # Unflatten: assign each sequence's logps to the corresponding row
+    logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
+
+    for i in range(batch_size):
+        start_idx = cu_seqlens[i].item()
+        end_idx = cu_seqlens[i + 1].item()
+        seq_len = seq_lengths[i].item()
+
+        # Copy the sequence logps
+        logps_padded[i, :seq_len] = logps_flat[start_idx:end_idx]
+        # Set mask for valid positions
+        completion_mask[i, :seq_len] = 1.0
+
+    return logps_padded, completion_mask
