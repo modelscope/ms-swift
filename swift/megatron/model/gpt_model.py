@@ -149,18 +149,15 @@ class GPTModel(McoreGPTModel):
                 warning_string = 'mrope'
             logger.warning(f'`apply_rope_fusion` does not support `{warning_string}`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
+        if self.attention_scaling != 1:
+            self._patch_apply_rotary_pos_emb()
         if getattr(self, 'mtp', None) is not None:
             for layer in self.mtp.layers:
                 attention = layer.transformer_layer.self_attention
                 attention.config = deepcopy(attention.config)
                 attention.config.apply_rope_fusion = False
 
-    @contextmanager
     def _patch_apply_rotary_pos_emb(self):
-        if self.attention_scaling == 1.:
-            yield
-            return
-
         from megatron.core.transformer import attention
         origin_apply_rotary_pos_emb = attention.apply_rotary_pos_emb
 
@@ -169,10 +166,7 @@ class GPTModel(McoreGPTModel):
             return origin_apply_rotary_pos_emb(*args, **kwargs)
 
         attention.apply_rotary_pos_emb = apply_rotary_pos_emb
-        try:
-            yield
-        finally:
-            attention.apply_rotary_pos_emb = origin_apply_rotary_pos_emb
+        attention.origin_apply_rotary_pos_emb = origin_apply_rotary_pos_emb
 
     def _preprocess(
         self,
@@ -223,8 +217,10 @@ class GPTModel(McoreGPTModel):
                                                                     decoder_input, self.config, packed_seq_params)
                 if self.hf_rope_scaling is not None:
                     attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
-                    if attention_scaling is not None:
-                        self.attention_scaling = attention_scaling
+                    if attention_scaling is not None and attention_scaling != self.attention_scaling:
+                        raise ValueError('Currently does not support changing attention_scaling during training. '
+                                         f'args.attention_scaling: {self.attention_scaling}, '
+                                         f'current_attention_scaling: {attention_scaling}.')
                 packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
                     rotary_pos_emb = self.rotary_pos_emb(
@@ -302,19 +298,18 @@ class GPTModel(McoreGPTModel):
                 packed_seq_params=packed_seq_params,
             ))
         # Run decoder.
-        with self._patch_apply_rotary_pos_emb():
-            hidden_states = self.decoder(
-                hidden_states=decoder_input,
-                attention_mask=attention_mask,
-                inference_context=inference_context,
-                rotary_pos_emb=rotary_pos_emb,
-                rotary_pos_cos=rotary_pos_cos,
-                rotary_pos_sin=rotary_pos_sin,
-                packed_seq_params=packed_seq_params,
-                sequence_len_offset=sequence_len_offset,
-                **(extra_block_kwargs or {}),
-                **kwargs,
-            )
+        hidden_states = self.decoder(
+            hidden_states=decoder_input,
+            attention_mask=attention_mask,
+            inference_context=inference_context,
+            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_cos=rotary_pos_cos,
+            rotary_pos_sin=rotary_pos_sin,
+            packed_seq_params=packed_seq_params,
+            sequence_len_offset=sequence_len_offset,
+            **(extra_block_kwargs or {}),
+            **kwargs,
+        )
 
         args = get_args()
         labels = labels if args.task_type == 'causal_lm' else None
