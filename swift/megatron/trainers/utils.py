@@ -57,7 +57,7 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
     else:
         is_pp_first_stage = mpu.is_pipeline_first_stage()
         is_pp_last_stage = mpu.is_pipeline_last_stage()
-    if not is_pp_first_stage:
+    if not args.mtp_num_layers and not is_pp_first_stage:
         batch['input_ids'] = None
     if not is_pp_last_stage:
         batch['labels'] = None
@@ -110,7 +110,7 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
         args = get_args()
-        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
+        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale', 'mtp_labels']
         if not args.is_multimodal:
             # Multimodal models will handle CP in input_embeds.
             keys.append('input_ids')

@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import megatron.core
 import torch
+from megatron.core import parallel_state
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import TELinear
@@ -13,6 +15,7 @@ from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEm
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
+from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper, roll_tensor
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
@@ -140,8 +143,17 @@ class GPTModel(McoreGPTModel):
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
-            logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
+            if self.attention_scaling != 1:
+                warning_string = 'attention_scaling'
+            else:
+                warning_string = 'mrope'
+            logger.warning(f'`apply_rope_fusion` does not support `{warning_string}`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
+        if getattr(self, 'mtp', None) is not None:
+            for layer in self.mtp.layers:
+                attention = layer.transformer_layer.self_attention
+                attention.config = deepcopy(attention.config)
+                attention.config.apply_rope_fusion = False
 
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):
@@ -264,6 +276,8 @@ class GPTModel(McoreGPTModel):
         *,
         inference_params: Optional[BaseInferenceContext] = None,
         loss_mask: Optional[torch.Tensor] = None,
+        # Mask labels to be compatible with thd & MTP
+        mtp_labels: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
@@ -304,52 +318,159 @@ class GPTModel(McoreGPTModel):
 
         args = get_args()
         labels = labels if args.task_type == 'causal_lm' else None
-        if mcore_013:
-            return self._postprocess(
-                hidden_states=hidden_states,
+        # MTP: https://github.com/NVIDIA/Megatron-LM/issues/1661
+        return self._postprocess(
+            hidden_states=hidden_states,
+            input_ids=input_ids,
+            position_ids=position_ids,
+            labels=labels,
+            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_cos=rotary_pos_cos,
+            rotary_pos_sin=rotary_pos_sin,
+            mtp_in_postprocess=self.mtp_process,
+            loss_mask=loss_mask,
+            decoder_input=decoder_input,
+            attention_mask=attention_mask,
+            inference_params=inference_params,
+            packed_seq_params=packed_seq_params,
+            sequence_len_offset=sequence_len_offset,
+            runtime_gather_output=runtime_gather_output,
+            extra_block_kwargs=extra_block_kwargs,
+            inference_context=inference_context,
+            mtp_labels=mtp_labels,
+        )
+
+    def _postprocess(
+        self,
+        hidden_states,
+        input_ids,
+        position_ids,
+        labels,
+        rotary_pos_emb,
+        rotary_pos_cos,
+        rotary_pos_sin,
+        mtp_in_postprocess=None,
+        loss_mask=None,
+        decoder_input=None,
+        attention_mask=None,
+        inference_params=None,
+        packed_seq_params=None,
+        sequence_len_offset=None,
+        runtime_gather_output=None,
+        extra_block_kwargs=None,
+        inference_context=None,
+        mtp_labels=None,
+    ):
+        """Postprocesses decoder hidden states to generate logits or compute loss.
+
+        Applies Multi-Token Prediction if enabled, generates output logits through
+        the output layer, and computes language model loss when labels are provided.
+        """
+        in_inference_mode = inference_context is not None and not self.training
+        if in_inference_mode:
+            assert runtime_gather_output, 'Inference must always gather TP logits'
+
+        # logits and loss
+        output_weight = None
+        if self.share_embeddings_and_output_weights:
+            output_weight = self.shared_embedding_or_output_weight()
+
+        if mtp_in_postprocess:
+            hidden_states = self.mtp(
                 input_ids=input_ids,
                 position_ids=position_ids,
-                labels=labels,
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb,
                 rotary_pos_cos=rotary_pos_cos,
                 rotary_pos_sin=rotary_pos_sin,
-                mtp_in_postprocess=self.mtp_process,
-                loss_mask=loss_mask,
-                decoder_input=decoder_input,
-                attention_mask=attention_mask,
-                inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
                 sequence_len_offset=sequence_len_offset,
-                runtime_gather_output=runtime_gather_output,
-                extra_block_kwargs=extra_block_kwargs,
-                inference_context=inference_context,
+                embedding=self.embedding,
+                **(extra_block_kwargs or {}),
             )
-        else:
-            if not self.post_process:
-                return hidden_states
 
-            # logits and loss
-            output_weight = None
-            if self.share_embeddings_and_output_weights:
-                output_weight = self.shared_embedding_or_output_weight()
-            logits, _ = self.output_layer(
-                hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-            if has_config_logger_enabled(self.config):
-                payload = OrderedDict({
-                    'input_ids': input_ids,
-                    'position_ids': position_ids,
-                    'attention_mask': attention_mask,
-                    'decoder_input': decoder_input,
-                    'logits': logits,
-                })
-                log_config_to_disk(self.config, payload, prefix='input_and_logits')
-            if labels is None:
-                # [s b h] => [b s h]
-                return logits.transpose(0, 1).contiguous()
+        if not self.post_process:
+            return hidden_states
 
-            loss = self.compute_language_model_loss(labels, logits)
+        if self.mtp_process:
+            hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)
+            hidden_states = hidden_states_list[0]
+            if loss_mask is None:
+                # if loss_mask is not provided, use all ones as loss_mask
+                loss_mask = torch.ones_like(mtp_labels)
+            for mtp_layer_number in range(self.config.mtp_num_layers):
+                # output
+                mtp_logits, _ = self.output_layer(
+                    hidden_states_list[mtp_layer_number + 1],
+                    weight=output_weight,
+                    runtime_gather_output=runtime_gather_output,
+                )
+                # Calc loss for the current Multi-Token Prediction (MTP) layers.
+                mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
+                loss_mask, num_tokens = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                mtp_loss = loss_mask * mtp_loss
+                if self.training:
+                    # TODO(shifangx): remove the use of parallel_state here
+                    # after moving loss logging to loss_func in pretrain_gpt.py
+                    MTPLossLoggingHelper.save_loss_to_tracker(
+                        torch.sum(mtp_loss) / num_tokens,
+                        mtp_layer_number,
+                        self.config.mtp_num_layers,
+                        avg_group=parallel_state.get_data_parallel_group(with_context_parallel=True),
+                    )
+                mtp_loss_scale = self.config.mtp_loss_scaling_factor / self.config.mtp_num_layers
+                if self.config.calculate_per_token_loss:
+                    hidden_states = MTPLossAutoScaler.apply(hidden_states, mtp_loss_scale * mtp_loss)
+                else:
+                    hidden_states = MTPLossAutoScaler.apply(hidden_states, mtp_loss_scale * mtp_loss / num_tokens)
+        sequence_parallel_override = False
+        if in_inference_mode and inference_context.materialize_only_last_token_logits:
+            if inference_context.is_static_batching():
+                hidden_states = hidden_states[-1:, :, :]
+            else:
+                if self.output_layer.sequence_parallel:
+                    # Perform the sequence parallel gather here instead of after the output layer
+                    # because we need to slice the last token logits from the full view of the
+                    # packed logits across all requests.
+                    # TODO(ksanthanam): Make the equivalent change in the `MambaModel` code after
+                    # merging in !3722.
+                    hidden_states = gather_from_sequence_parallel_region(hidden_states, group=self.pg_collection.tp)
+                    self.output_layer.sequence_parallel = False
+                    sequence_parallel_override = True
 
-            return loss
+                # Reshape [B, 1, H] to [1, B, H] → extract each sample’s true last‐token hidden
+                # state ([B, H]) → unsqueeze back to [1, B, H]
+                # (so that the output layer, which expects S×B×H, receives only the final token)
+                hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
+
+        logits, _ = self.output_layer(hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
+
+        # Restore sequence parallel execution to the output layer if necessary.
+        if sequence_parallel_override:
+            assert (in_inference_mode and inference_context.is_dynamic_batching()
+                    and inference_context.materialize_only_last_token_logits)
+            self.output_layer.sequence_parallel = True
+
+        if has_config_logger_enabled(self.config):
+            payload = OrderedDict({
+                'input_ids': input_ids,
+                'position_ids': position_ids,
+                'attention_mask': attention_mask,
+                'decoder_input': decoder_input,
+                'logits': logits,
+            })
+            log_config_to_disk(self.config, payload, prefix='input_and_logits')
+
+        if labels is None:
+            # [s b h] => [b s h]
+            return logits.transpose(0, 1).contiguous()
+
+        loss = self.compute_language_model_loss(labels, logits)
+
+        return loss
 
     def get_input_tensor(self):
         return self.decoder.input_tensor
