@@ -11,14 +11,14 @@ class MockGRPOTrainer:
     """Mock GRPO trainer for testing IS methods"""
 
     def __init__(self, mode='token_truncate', threshold=2.0):
-        self.vllm_importance_sampling_mode = mode
-        self.vllm_importance_sampling_threshold = threshold
+        self.rollout_importance_sampling_mode = mode
+        self.rollout_importance_sampling_threshold = threshold
         self.template = MockTemplate()
 
-    def _apply_vllm_importance_sampling(self, vllm_log_ratio, completion_mask, lengths=None):
+    def _apply_rollout_importance_sampling(self, vllm_log_ratio, completion_mask, lengths=None):
         """Copy of the implementation from grpo_trainer.py"""
-        mode = self.vllm_importance_sampling_mode
-        threshold = self.vllm_importance_sampling_threshold
+        mode = self.rollout_importance_sampling_mode
+        threshold = self.rollout_importance_sampling_threshold
 
         is_ratio = torch.exp(vllm_log_ratio)
 
@@ -93,7 +93,7 @@ class TestVLLMImportanceSampling:
         vllm_log_ratio = torch.log(torch.tensor([[0.5, 1.5, 3.0, 5.0], [0.8, 1.2, 2.5, 4.0]]))
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # Check truncation at threshold=2.0
         assert is_weights.shape == vllm_log_ratio.shape
@@ -109,7 +109,7 @@ class TestVLLMImportanceSampling:
         vllm_log_ratio = torch.log(torch.tensor([[0.5, 1.5, 3.0, 5.0]]))
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # Check masking: ratio > threshold should be 0
         assert torch.allclose(is_weights[0, 0], torch.tensor(0.5), atol=1e-5)
@@ -128,7 +128,7 @@ class TestVLLMImportanceSampling:
         ]))  # avg=1.0 < 2.0
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # First sequence should be truncated to 2.0 for all tokens
         assert torch.allclose(is_weights[0, :], torch.tensor(2.0), atol=1e-5)
@@ -145,7 +145,7 @@ class TestVLLMImportanceSampling:
         ]))  # avg=1.0 < 2.0
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # First sequence should be completely masked (0)
         assert torch.allclose(is_weights[0, :], torch.tensor(0.0), atol=1e-5)
@@ -162,7 +162,7 @@ class TestVLLMImportanceSampling:
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
         lengths = torch.tensor([4, 2])  # Two sequences: len=4 and len=2
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask, lengths)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask, lengths)
 
         # Should have same shape as input
         assert is_weights.shape == vllm_log_ratio.shape
@@ -180,11 +180,11 @@ class TestVLLMImportanceSampling:
 
         # Test threshold=1.5
         trainer_low = MockGRPOTrainer(mode='token_truncate', threshold=1.5)
-        is_weights_low = trainer_low._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights_low = trainer_low._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # Test threshold=3.5
         trainer_high = MockGRPOTrainer(mode='token_truncate', threshold=3.5)
-        is_weights_high = trainer_high._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights_high = trainer_high._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # Lower threshold should truncate more
         truncated_low = (is_weights_low < torch.exp(vllm_log_ratio)).sum()
@@ -199,7 +199,7 @@ class TestVLLMImportanceSampling:
         # Mask out last two tokens
         completion_mask = torch.tensor([[True, True, False, False]])
 
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
 
         # Should only consider masked tokens for sequence ratio calculation
         # With only first two tokens (both 3.0), avg=3.0, truncated to 2.0
@@ -212,18 +212,18 @@ class TestVLLMImportanceSampling:
         # Case 1: All ratios below threshold
         vllm_log_ratio = torch.log(torch.tensor([[0.5, 1.0, 1.5]]))
         completion_mask = torch.ones_like(vllm_log_ratio, dtype=torch.bool)
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
         assert torch.allclose(is_weights, torch.exp(vllm_log_ratio), atol=1e-5)
 
         # Case 2: All ratios above threshold
         vllm_log_ratio = torch.log(torch.tensor([[3.0, 4.0, 5.0]]))
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
         assert torch.allclose(is_weights, torch.tensor(2.0), atol=1e-5)
 
         # Case 3: Empty mask
         vllm_log_ratio = torch.log(torch.tensor([[1.0, 2.0, 3.0]]))
         completion_mask = torch.zeros_like(vllm_log_ratio, dtype=torch.bool)
-        is_weights = trainer._apply_vllm_importance_sampling(vllm_log_ratio, completion_mask)
+        is_weights = trainer._apply_rollout_importance_sampling(vllm_log_ratio, completion_mask)
         # Should still compute but result may not be meaningful
         assert is_weights.shape == vllm_log_ratio.shape
 
