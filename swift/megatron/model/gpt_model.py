@@ -395,7 +395,6 @@ class GPTModel(McoreGPTModel):
             return hidden_states
 
         if self.mtp_process:
-            mtp_labels = mtp_labels or labels.clone()
             hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)
             hidden_states = hidden_states_list[0]
             if loss_mask is None:
