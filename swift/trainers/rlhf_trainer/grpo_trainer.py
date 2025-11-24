@@ -805,9 +805,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
-                    if self.old_policy() or self.kl_in_reward or
-                    (self.use_vllm and self.rollout_importance_sampling_mode is not None) else None)
+                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -1340,7 +1338,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'vllm_per_token_logps'
             ]
         }
         sequence_parallel.prepare_inputs(inputs)
@@ -1425,7 +1423,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'vllm_per_token_logps'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
@@ -1561,7 +1559,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'vllm_per_token_logps'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
