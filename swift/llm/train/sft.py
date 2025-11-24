@@ -142,7 +142,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if not args.streaming:
+            if not args.streaming and args.truncation_strategy != 'split':
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -317,6 +317,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         origin_template_model = template.model
         template.model = None  # Avoid serializing the model.
+        if args.truncation_strategy == 'split':
+            if (args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template
+                    or args.model_meta.is_multimodal):
+                raise ValueError(
+                    '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+            assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
+
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue
@@ -325,7 +332,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 continue
             if not args.lazy_tokenize and not args.streaming:
                 # Compatible with cached_dataset, only additionally write length here.
-                preprocessor = AddLengthPreprocessor(template=template)
+                preprocessor_cls = EncodePreprocessor if args.truncation_strategy == 'split' else AddLengthPreprocessor
+                preprocessor = preprocessor_cls(template=template)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,

@@ -91,7 +91,8 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: In terms of priority, the `system` field from the dataset takes precedence, followed by `--system`, and finally the `default_system` set in the registered template.
 - 🔥max_length: Maximum token length after `tokenizer.encode` for a single data sample (to prevent OOM during training). Samples exceeding this limit are handled according to `truncation_strategy`. Default is `None`, meaning it's set to the model’s maximum supported sequence length (`max_model_len`).
   - In PPO, GRPO, and inference scenarios, `max_length` refers to `max_prompt_length`.
-- truncation_strategy: How to handle samples exceeding `max_length`. Options: `'delete'`, `'left'`, `'right'`, representing deletion, left-truncation, and right-truncation respectively. Default is `'delete'`.
+- truncation_strategy: How to handle samples whose tokens exceed `max_length`. Supports 'delete', 'left', 'right', and 'split', which represent deleting, left truncation, right truncation, and splitting into multiple data samples, respectively. The default is 'delete'.
+  - Note: `--truncation_strategy split` is only supported during pretraining, i.e., in `swift/megatron pt` scenarios, and requires "ms-swift>=3.11". This strategy will split oversized fields into multiple data samples to avoid token waste. (This feature is not compatible with cached_dataset)
   - Note: For multimodal models, if `truncation_strategy` is set to `'left'` or `'right'` during training, **ms-swift preserves all image tokens and other modality-specific tokens**, which may lead to OOM.
 - 🔥max_pixels: Maximum pixel count (H×W) for input images in multimodal models. Images exceeding this limit will be resized to avoid OOM during training. Default is `None` (no restriction).
   - Note: This parameter applies to all multimodal models. The Qwen2.5-VL specific parameter `MAX_PIXELS` (see bottom of doc) only affects Qwen2.5-VL.
@@ -572,7 +573,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
-- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo'], default is 'grpo'. For details, see this [pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
+- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
@@ -716,7 +717,6 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - exist_ok: If output_dir exists, do not raise an exception and overwrite the contents. The default value is False.
 - 🔥quant_method: Options are 'gptq', 'awq', 'bnb' or 'fp8', with the default being None. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize).
 - quant_n_samples: The number of samples for the validation set used by gptq/awq, with a default of 256.
-- max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
 - to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset). For more information, please refer to cached_dataset.
@@ -878,4 +878,4 @@ The meanings of the following parameters can be found in the example code [here]
 - VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.
 - SWIFT_TIMEOUT: (ms-swift >= 3.10) If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
-- SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device. Currently used for compatibility with PPU devices.
+- SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.

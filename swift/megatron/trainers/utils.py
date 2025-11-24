@@ -111,9 +111,8 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     if cp_size > 1:
         args = get_args()
         keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
-        if args.is_multimodal:
-            keys.append('decoder_input')
-        else:
+        if not args.is_multimodal:
+            # Multimodal models will handle CP in input_embeds.
             keys.append('input_ids')
 
         packed_seq_params = batch.get('packed_seq_params')

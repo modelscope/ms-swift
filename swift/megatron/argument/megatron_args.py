@@ -210,9 +210,6 @@ class RLHFMegatronArgumentsMixin:
 
         _check_not_supported()
         _check_batch_params()
-        # default loss_type if no loss_type is provided
-        assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
-            f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
@@ -476,7 +473,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1

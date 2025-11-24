@@ -1092,6 +1092,23 @@ def test_ernie_vl_thinking():
     assert response == '\n<think>\n' + response2
 
 
+def test_mistral_2506():
+    pt_engine = PtEngine('mistralai/Mistral-Small-3.2-24B-Instruct-2506')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response[:200] == (
+        'The image features a close-up of a kitten with striking blue eyes. The kitten has a soft, '
+        'fluffy coat with a mix of white, gray, and brown fur. Its fur pattern includes distinct '
+        'stripes, particularly ')
+
+
+def test_sensenova_si():
+    pt_engine = PtEngine('SenseNova/SenseNova-SI-1.1-InternVL3-8B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1168,4 +1185,6 @@ if __name__ == '__main__':
     # test_llava_onevision1_5()
     # test_paddle_ocr()
     # test_ernie_vl()
-    test_ernie_vl_thinking()
+    # test_ernie_vl_thinking()
+    # test_mistral_2506()
+    test_sensenova_si()

@@ -195,7 +195,7 @@
 - moe_router_bias_update_rate: 在无辅助损失负载均衡策略中，专家偏置的更新速率。专家偏置根据每个专家在全局批次中被分配的 token 数量进行更新，对于分配到的 token 较少的专家，偏置会增加；对于分配到的 token 较多的专家，偏置会减少。默认为None，从config.json中读取。
 - moe_router_enable_expert_bias: 在无辅助损失负载均衡策略中，带有动态专家偏置的 TopK 路由。路由决策基于路由分数与专家偏置之和。详情请参见：https://arxiv.org/abs/2408.15664。默认为None，自动从config.json读取。
 - moe_router_topk_scaling_factor: 默认为None。从config.json中读取。
-- moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 None。从config.json中读取。
+- moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"global_aux_loss"、"sinkhorn"、"none"。其中, "global_aux_loss"需要"megatron-core>=0.15"。默认值为 None。从config.json中读取。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
 - 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
   - 在"ms-swift<3.9"，其默认值为None，即等于`--tensor_model_parallel_size` 的数值，该默认值将在"ms-swift>=3.9"被修改。

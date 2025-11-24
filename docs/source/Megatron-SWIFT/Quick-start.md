@@ -54,9 +54,9 @@ MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
 ```
 
 推荐运行环境：
@@ -67,11 +67,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | torch        | >=2.0        | 2.7.1/2.8.0       |                    |
 | transformer_engine    | >=2.3       |          |                  |
 | apex |   |  0.1 | |
-| megatron_core    |   >=0.12    | 0.14      |                  |
+| megatron_core    |   >=0.12,<0.16    | 0.14      |                  |
 | flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.1      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.18 |             |      LoRA          |
+| peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
 
 
@@ -82,6 +82,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 多卡权重转换：将`CUDA_VISIBLE_DEVICES=0`删除即可使用多卡权重转换。
 - 转换精度测试：`--test_convert_precision true`将测试转换精度。在MoE大型模型的转换时，该参数所需时间较长，且需要更多的内存消耗，可酌情去除。
+- ms-swift支持了Mcore-Bridge来避免权重转换的额外耗时，请参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
