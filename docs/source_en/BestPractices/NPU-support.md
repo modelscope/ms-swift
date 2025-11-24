@@ -1,5 +1,22 @@
 # NPU Support
 
+We add Ascend NPU support in ms-swift, so you can fine-tune and run inference on Ascend NPUs.
+
+This document describes how to prepare the environment, fine-tune, run inference and deploy on NPUs.
+
+## Installation
+
+Base environment requirements:
+
+| Software  | Version         |
+| --------- | --------------- |
+| Python    | >= 3.10, < 3.12 |
+| CANN      | == 8.3.RC1      |
+| torch     | == 2.7.1        |
+| torch_npu | == 2.7.1        |
+
+For detailed environment setup, please refer to the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch).
+
 ## Environment Preparation
 
 Experiment Environment: 8 * Ascend 910B3 64G (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support of modelscope and swift~)
@@ -17,6 +34,9 @@ pip install ms-swift -U
 pip install torch-npu decorator
 # If you want to use deepspeed (to control memory usage, training speed might decrease)
 pip install deepspeed
+
+# If you need the evaluation functionality, please install the following package
+pip install evalscope[opencompass]
 ```
 
 Check if the test environment is installed correctly and whether the NPU can be loaded properly.
@@ -221,3 +241,46 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new
 ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
 ```
+
+## Current Support Status
+
+### Table 1: SFT Algorithms
+
+| Algorithm | Model Families              | Strategy              | Hardware          |
+| --------- | --------------------------- | --------------------- | ----------------- |
+| SFT       | Qwen2.5-0.5B-Instruct       | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen2.5-1.5B-Instruct       | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen2.5-7B-Instruct         | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen2.5-VL-3B-Instruct      | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen2.5-VL-7B-Instruct      | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen2.5-Omni-3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-8B                    | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-32B                   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-VL-30B-A3B-Instruct   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | InternVL3-8B                | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+
+---
+
+### Table 2: RL Algorithms
+
+| Algorithm | Model Families      | Strategy  | Rollout Engine | Hardware          |
+| --------- | ------------------- | --------- | -------------- | ----------------- |
+| **GRPO**  | Qwen2.5-7B-Instruct | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+| **GRPO**  | Qwen3-8B            | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+| **DPO**   | Qwen2.5-7B-Instruct | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+| **DPO**   | Qwen3-8B            | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+| **PPO**   | Qwen2.5-7B-Instruct | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+| **PPO**   | Qwen3-8B            | deepspeed | vllm-ascend    | Atlas 900 A2 PODc |
+
+---
+
+### Table 3: Modules Not Yet Supported / Fully Verified on NPUs
+
+| Item                     |
+| ------------------------ |
+| Liger-kernel             |
+| Quantization/QLoRA       |
+| Megatron-related modules |
+| Using sglang as inference engine |
