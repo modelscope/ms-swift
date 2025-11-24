@@ -16,7 +16,7 @@ swift rlhf \
     --vllm_max_model_len 16384 \
     --train_type full \
     --torch_dtype bfloat16 \
-    --dataset 'AI-ModelScope/clevr_cogen_a_train'#1000 \
+    --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --overlong_filter false \
     --importance_sampling_level token \
     --epsilon 0.2 \
