@@ -22,7 +22,7 @@ from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
 from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
-                               get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
+                               get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
@@ -81,6 +81,7 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _get_iters(self, train_dataset, val_dataset):
         origin_initialize_megatron = training.initialize_megatron
+        origin_validate_args = initialize.validate_args
 
         def initialize_megatron(*_args, **kwargs):
             res = origin_initialize_megatron(*_args, **kwargs)
@@ -109,11 +110,16 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Setting args.eval_iters: {args.eval_iters}')
             return res
 
+        def validate_args(args, *_args, **kwargs):
+            return origin_validate_args(args, *_args, **kwargs)
+
         training.initialize_megatron = initialize_megatron
+        initialize.validate_args = validate_args
         try:
             yield
         finally:
             training.initialize_megatron = origin_initialize_megatron
+            initialize.validate_args = origin_validate_args
 
     def new_cyclic_iter(self, iterable):
         args = get_args()
@@ -790,6 +796,7 @@ class BaseMegatronTrainer(ABC):
                 track_names.append('load_balancing_loss')
             if args.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
+            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=iteration,
@@ -800,7 +807,8 @@ class BaseMegatronTrainer(ABC):
                 force_initialize=True,
                 track_names=track_names,
                 num_layers=args.num_layers,
-                moe_layer_freq=args.moe_layer_freq)
+                moe_layer_freq=args.moe_layer_freq,
+                **track_moe_kwargs)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
@@ -1027,6 +1035,13 @@ class BaseMegatronTrainer(ABC):
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
+            if args.mtp_num_layers and batch.get('labels') is not None:
+                cu_seqlens = batch['packed_seq_params'].cu_seqlens_q.clone()
+                mtp_labels = batch['labels'].clone()
+                for _ in range(args.mtp_num_layers):
+                    mtp_labels[:, cu_seqlens[cu_seqlens < mtp_labels.shape[1]]] = -100
+                    cu_seqlens = cu_seqlens + 1
+                batch['mtp_labels'] = mtp_labels
         # slice batch along sequence dimension for context parallelism
         batch = get_batch_on_this_cp_rank(batch)
         return batch

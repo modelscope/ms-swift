@@ -63,6 +63,7 @@ class RLHFMegatronArgumentsMixin:
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
     offload_model: bool = False
+    offload_bridge: bool = False
 
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
@@ -495,6 +496,10 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_lora_rank: Optional[int] = None
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
+
+    # mtp
+    mtp_num_layers: Optional[int] = None
+    mtp_loss_scaling_factor: float = 0.1
 
     # fp8
     fp8_format: Literal['e4m3', 'hybrid'] = None

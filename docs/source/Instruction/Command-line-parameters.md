@@ -397,6 +397,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - vllm_disable_custom_all_reduce: 禁用自定义的 all-reduce 内核，回退到 NCCL。为了稳定性，默认为`True`。
 - vllm_enforce_eager: vllm使用pytorch eager模式还是建立cuda graph，默认为`False`。设置为True可以节约显存，但会影响效率。
 - vllm_mm_processor_cache_gb: 多模态处理器缓存大小（GiB），用于缓存已处理的多模态输入（如图像、视频）避免重复处理。默认为`4`。设置为`0`可禁用缓存但会降低性能（不推荐）。仅对多模态模型生效。
+- vllm_speculative_config: 推测解码配置，传入json字符串。默认为None。
 - vllm_disable_cascade_attn: 是否强制关闭V1引擎的cascade attention实现以防止潜在数值误差，默认为False，由vLLM内部逻辑决定是否使用。
 - 🔥vllm_limit_mm_per_prompt: 控制vllm使用多图，默认为`None`。例如传入`--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`。
 - vllm_max_lora_rank: 默认为`16`。vllm对于lora支持的参数。
@@ -712,6 +713,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - mcore_model: mcore格式模型路径。默认为None。
 - mcore_adapters: mcore格式模型的adapter路径列表，默认为空列表。
 - thread_count: `--to_mcore true`时的模型切片数。默认为None，根据模型大小自动设置，使得最大分片小于10GB。
+- 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - 🔥push_to_hub: 是否推送hub，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh)。

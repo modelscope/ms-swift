@@ -159,6 +159,12 @@ When running in Colocate mode, out-of-memory (OOM) issues may frequently occur. 
 --move_model_batches [批次数量]
 ```
 
+6. Store Megatron exported HF format weights for vLLM updates in CPU main memory to reduce GPU memory usage:
+
+```bash
+--offload_bridge true
+```
+
 ### 2. Async(External) Mode
 
 Training and inference resources are separated, with a dedicated inference server deployed.

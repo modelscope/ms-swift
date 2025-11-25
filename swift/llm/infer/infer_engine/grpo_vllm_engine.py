@@ -47,6 +47,7 @@ class GRPOVllmEngine(VllmEngine):
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
         logprobs_mode: Optional[str] = None,
+        speculative_config: Optional[Union[str, dict]] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -82,6 +83,7 @@ class GRPOVllmEngine(VllmEngine):
             load_format=load_format,
             mm_processor_cache_gb=mm_processor_cache_gb,
             logprobs_mode=logprobs_mode,
+            speculative_config=speculative_config,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,

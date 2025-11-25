@@ -404,6 +404,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
 - vllm_enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
 - vllm_mm_processor_cache_gb: The size (in GiB) of the multimodal processor cache, used to store processed multimodal inputs (e.g., images, videos) to avoid redundant processing. Default is 4. Setting it to 0 disables the cache but may degrade performance (not recommended). This option takes effect only for multimodal models.
+- vllm_speculative_config: Speculative decoding configuration, passed as a JSON string. Default: None.
 - vllm_disable_cascade_attn: Whether to forcibly disable the V1 engine’s cascade-attention implementation to avoid potential numerical issues. Defaults to False; vLLM’s internal heuristics determine whether cascade attention is actually used.
 - 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
@@ -730,6 +731,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - mcore_model: Path to the mcore format model. Default is None.
 - mcore_adapters: List of paths to mcore format model adapters, default is empty list.
 - thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
+- 🔥offload_bridge: Store Megatron exported HF format weights for vLLM updates in CPU main memory to reduce GPU memory usage. Default is False.
 - 🔥test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).

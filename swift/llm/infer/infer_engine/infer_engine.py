@@ -32,6 +32,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.task_type = self.model_info.task_type
         self.config = self.model_info.config
+        self.max_tokens_offset = 0
         if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
             logger.info('Create the default_template for the infer_engine')
@@ -220,7 +221,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             max_model_len = 8192
             logger.warning(
                 'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
-        max_max_tokens = max_model_len - num_tokens
+        max_max_tokens = max_model_len - num_tokens + self.max_tokens_offset
         if max_tokens is None:
             request_config.max_tokens = max_max_tokens
         elif max_max_tokens < request_config.max_tokens:

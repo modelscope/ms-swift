@@ -159,6 +159,12 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 --move_model_batches [批次数量]
 ```
 
+6. 将 Megatron 导出的用于 vLLM 更新的 HF 格式权重存放在 CPU 主存中，以降低 GPU 显存占用：
+
+```bash
+--offload_bridge true
+```
+
 ### 2. Async(External) Mode
 
 训练与推理资源分离，启动单独的推理服务器
