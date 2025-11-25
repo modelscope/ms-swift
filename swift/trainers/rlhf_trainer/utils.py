@@ -1162,13 +1162,10 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
 
     # Determine sequence lengths
     if seq_lengths is not None:
-        # Use provided seq_lengths directly
-        total_length = seq_lengths.sum().item()
-        if total_length > logits_to_keep:
-            # Adjust the first sequence length to account for truncation
-            adjustment = total_length - logits_to_keep
-            seq_lengths = seq_lengths.clone()
-            seq_lengths[0] = seq_lengths[0] - adjustment
+        # Use provided seq_lengths directly - they should already be adjusted
+        # by the caller (e.g., in _generate_and_score_completions)
+        # DO NOT adjust again here to avoid double adjustment
+        pass
     else:
         # Fallback: infer from position_ids
         from swift.utils.torch_utils import get_cu_seqlens_from_position_ids as get_cu_seqlens
@@ -1189,31 +1186,39 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
     cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=device), seq_lengths]), dim=0)
     max_seq_len = logits_to_keep  # All sequences will be padded to this length
 
-    # Initialize output tensors
-    logps_padded = torch.zeros(batch_size, max_seq_len, dtype=dtype, device=device)
+    # Initialize output tensors with padding value
+    logps_padded = torch.full((batch_size, max_seq_len), -1e10, dtype=dtype, device=device)
     completion_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
 
     # Unflatten: assign each sequence's logps to the corresponding row
+    # Use LEFT PADDING (right-align the data) to match the standard padding convention
     logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
 
     for i in range(batch_size):
         start_idx = cu_seqlens[i].item()
         end_idx = cu_seqlens[i + 1].item()
-        seq_len = seq_lengths[i].item()
+        seq_len = int(seq_lengths[i].item())
 
         actual_end_idx = min(end_idx, len(logps_flat))
         actual_len = actual_end_idx - start_idx
 
-        if actual_len < seq_len:
-            # pad at the beginning
-            pad_len = seq_len - actual_len
-            logps_padded[i, :pad_len] = -1e10  # Padding value
-            logps_padded[i, pad_len:seq_len] = logps_flat[start_idx:actual_end_idx]
-        else:
-            # Normal case
-            logps_padded[i, :seq_len] = logps_flat[start_idx:end_idx]
+        if actual_len <= 0:
+            continue
 
-        # Set mask for valid positions
-        completion_mask[i, :seq_len] = 1.0
+        # Left padding: place data at the RIGHT side of the row
+        # pad_len is the number of padding tokens at the beginning
+        pad_len = max_seq_len - seq_len
+
+        if actual_len < seq_len:
+            # Input data is shorter than expected seq_len
+            # This happens when logps_flat doesn't have enough data
+            # Place actual data at the rightmost positions
+            data_pad_len = max_seq_len - actual_len
+            logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
+            completion_mask[i, data_pad_len:] = 1.0
+        else:
+            # Normal case: seq_len tokens of data
+            logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
+            completion_mask[i, pad_len:] = 1.0
 
     return logps_padded, completion_mask

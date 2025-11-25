@@ -829,21 +829,30 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # Convert to tensor if all samples have vllm_logprobs
                     if all(lp is not None for lp in vllm_logprobs_list):
                         if self.template.padding_free:
-                            # In padding_free mode, use pad_logps_back_to_batch for consistency
-                            # Concatenate all vllm logprobs into a flat tensor
-                            vllm_logprobs_flat = []
-                            for lp in vllm_logprobs_list:
-                                # Take last logits_to_keep tokens (or all if shorter)
-                                lp_to_use = lp[-logits_to_keep:] if len(lp) >= logits_to_keep else lp
-                                vllm_logprobs_flat.extend(lp_to_use)
-
-                            # Convert to tensor [1, total_nnz]
-                            vllm_logprobs_rmpad = torch.tensor(
-                                vllm_logprobs_flat, dtype=torch.float32, device=self.accelerator.device).unsqueeze(0)
-
-                            # Restore to batch format using the same seq_lengths
-                            from swift.trainers.rlhf_trainer.utils import pad_logps_back_to_batch
+                            # In padding_free mode, seq_lengths includes prompts for sequences after the first one
+                            # (because logits_to_keep only removes the first prompt).
+                            # But vllm_logprobs only contains completion logprobs for each sequence.
+                            # So we need to use the actual vllm_logprobs lengths, not seq_lengths.
+                            #
+                            # We pad each sequence's vllm_logprobs to match seq_lengths[i] by prepending -1e10
+                            # for the prompt portion that vLLM doesn't have logprobs for.
                             seq_lengths = batch_encoded_inputs['seq_lengths']
+                            vllm_logprobs_aligned = []
+                            for i, lp in enumerate(vllm_logprobs_list):
+                                target_len = seq_lengths[i].item()
+                                vllm_len = len(lp)
+                                if vllm_len >= target_len:
+                                    # vLLM has more tokens than expected, take last target_len
+                                    vllm_logprobs_aligned.extend(lp[-target_len:])
+                                else:
+                                    # vLLM has fewer tokens (only completion), pad the front (prompt portion)
+                                    pad_len = target_len - vllm_len
+                                    vllm_logprobs_aligned.extend([-1e10] * pad_len + list(lp))
+
+                            # Convert to tensor and pad to batch format
+                            vllm_logprobs_rmpad = torch.tensor(
+                                vllm_logprobs_aligned, dtype=torch.float32, device=self.accelerator.device).unsqueeze(0)
+
                             batch_size = seq_lengths.shape[0]
                             vllm_logps_padded, _ = pad_logps_back_to_batch(
                                 logps_rmpad=vllm_logprobs_rmpad,
@@ -960,8 +969,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss_and_metrics(self, model, inputs):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
-
-        completion_mask = inputs['completion_mask']
+        if self.template.padding_free:
+            completion_mask = inputs['completion_mask_padded']
+        else:
+            completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
@@ -1461,7 +1472,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     entropy_rmpad = None
 
                 # Restore to batch shape using seq_lengths
-                logps, completion_mask = pad_logps_back_to_batch(
+                logps, padded_shape_mask = pad_logps_back_to_batch(
                     logps_rmpad=per_token_logps_rmpad.unsqueeze(0),  # [1, total_nnz]
                     logits_to_keep=logits_to_keep,
                     batch_size=batch_size,
@@ -1477,9 +1488,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     entropies = None
 
-                # Store the restored completion_mask back to inputs
-                # This eliminates the need to recompute it in loss functions
-                inputs['completion_mask'] = completion_mask
+                # In padding_free mode, the original completion_mask is [1, logits_to_keep] (flattened).
+                # We need to convert it to [batch_size, max_seq_len] format.
+                # The original mask correctly identifies completion vs prompt tokens.
+                if 'completion_mask_padded' not in inputs:
+                    original_completion_mask = inputs['completion_mask']  # [1, logits_to_keep]
+                    completion_mask_padded, _ = pad_logps_back_to_batch(
+                        logps_rmpad=original_completion_mask.float(),  # [1, logits_to_keep]
+                        logits_to_keep=logits_to_keep,
+                        batch_size=batch_size,
+                        seq_lengths=original_seq_lengths)
+                    # Combine with shape mask to ensure padding positions are also masked
+                    inputs['completion_mask_padded'] = (completion_mask_padded > 0.5) & (padded_shape_mask > 0.5)
 
             else:
                 logps = selective_log_softmax(logits, input_ids_for_logps)
@@ -2145,8 +2165,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = self.rollout_importance_sampling_mode
         threshold = self.rollout_importance_sampling_threshold
 
+        # Clamp log_ratio to prevent numerical overflow from padding values (-1e10)
+        # A log_ratio of 20 corresponds to exp(20) ≈ 485 million, which is already extreme
+        SAFETY_BOUND = 20.0
+        rollout_log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+
         # Compute importance sampling ratios: exp(log_ratio)
-        is_ratio = torch.exp(rollout_log_ratio)
+        is_ratio = torch.exp(rollout_log_ratio_safe)
 
         if mode == 'token_truncate':
             # Token-level truncated IS: clip ratios from above at threshold
@@ -2198,29 +2223,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         metrics = {}
 
+        # Clamp rollout logps to prevent numerical issues from padding values
+        # Padding values are typically -1e10, which would cause exp() overflow
+        LOGP_MIN = -100.0  # log(exp(-100)) is essentially 0 probability
+        rollout_per_token_logps_safe = torch.clamp(rollout_per_token_logps, min=LOGP_MIN)
+
         # Helper function for masked mean
         def masked_mean(x, mask):
             return (x * mask).sum() / mask.sum().clamp(min=1.0)
 
         # 1. Training policy perplexity (always computed)
-        mean_logps = (per_token_logps * completion_mask).sum(1) / completion_mask.sum(1)
+        mean_logps = (per_token_logps * completion_mask).sum(1) / completion_mask.sum(1).clamp(min=1.0)
         policy_ppl = torch.exp(-mean_logps).mean()
         metrics['ppl_policy'] = self.accelerator.gather_for_metrics(policy_ppl).nanmean().item()
 
         # 2. Rollout off-policy metrics
         # KL divergence: KL(π_policy || π_rollout) ≈ E[log(π_policy/π_rollout)]
-        log_ratio = per_token_logps - rollout_per_token_logps
+        log_ratio = per_token_logps - rollout_per_token_logps_safe
         kl_div = masked_mean(log_ratio, completion_mask)
         metrics['kl_rollout'] = self.accelerator.gather_for_metrics(kl_div).nanmean().item()
 
         # Rollout policy perplexity
-        mean_rollout_logps = (rollout_per_token_logps * completion_mask).sum(1) / completion_mask.sum(1)
-        rollout_ppl = torch.exp(-mean_rollout_logps)
+        mean_rollout_logps = (rollout_per_token_logps_safe
+                              * completion_mask).sum(1) / completion_mask.sum(1).clamp(min=1.0)
+        rollout_ppl = torch.exp(-mean_rollout_logps).mean()
         metrics['ppl_rollout'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
 
         # Log PPL difference (for easier monitoring of distribution drift)
         mean_log_prob_policy = masked_mean(per_token_logps, completion_mask)
-        mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask)
+        mean_log_prob_rollout = masked_mean(rollout_per_token_logps_safe, completion_mask)
         log_ppl_diff = -mean_log_prob_rollout - (-mean_log_prob_policy)  # log(ppl_policy) - log(ppl_rollout)
         metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff).nanmean().item()
 
