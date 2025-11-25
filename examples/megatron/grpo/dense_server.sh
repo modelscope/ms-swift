@@ -52,6 +52,7 @@ megatron rlhf \
     --loss_type grpo \
     --sleep_level 2 \
     --offload_model true \
+    --offload_bridge false \
     --offload_optimizer true \
     --log_interval 1 \
     --recompute_granularity selective \

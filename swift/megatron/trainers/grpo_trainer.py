@@ -222,8 +222,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         For server mode: Process weights in buckets to avoid memory spikes.
         """
         # Export weights returns an iterator
+        target_device = None
+        if self.args.offload_bridge:
+            target_device = 'cpu'
         with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models)
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
 
         if self.vllm_mode == 'colocate':
             # Colocate mode: load_weights supports iterator, pass directly
