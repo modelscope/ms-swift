@@ -312,11 +312,12 @@ class GPTBridge:
         # tp/etp
         mg_scale_inv = None
         tensor = mg_weight
-        if not isinstance(tensor, (list, tuple)):
-            tensor = [tensor]
-        if self._is_fp8_param(tensor[0]):
-            mg_scale_inv = [t._rowwise_scale_inv for t in tensor]
-            tensor = [t._rowwise_data for t in tensor]
+        if tensor is not None:
+            if not isinstance(tensor, (list, tuple)):
+                tensor = [tensor]
+            if self._is_fp8_param(tensor[0]):
+                mg_scale_inv = [t._rowwise_scale_inv for t in tensor]
+                tensor = [t._rowwise_data for t in tensor]
         del mg_weight
         if tensor is not None:
             assert isinstance(tensor, (list, tuple)), f'mg_key: {mg_key}'
@@ -848,14 +849,20 @@ class GPTBridge:
                             del gate_up_proj_weight
                         else:
                             hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.clone()
+                            if scale_inv is not None:
+                                hf_state_dict['gate_up_proj.weight_scale_inv'] = scale_inv.clone()
                     else:
                         if is_expert:
                             gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, 2, -1,
                                                                            gate_up_proj_weight.shape[-1])
+                            scale_inv = scale_inv.view(num_local_experts, 2, -1, scale_inv.shape[-1])
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
                                 hf_state_dict[f'{hf_i}.gate_proj.weight'] = gate_up_proj_weight[i][0].clone()
                                 hf_state_dict[f'{hf_i}.up_proj.weight'] = gate_up_proj_weight[i][1].clone()
+                                if scale_inv is not None:
+                                    hf_state_dict[f'{hf_i}.gate_proj.weight_scale_inv'] = scale_inv[i][0].clone()
+                                    hf_state_dict[f'{hf_i}.up_proj.weight_scale_inv'] = scale_inv[i][1].clone()
                             del gate_up_proj_weight
                         else:
                             gate_up_proj_weight = gate_up_proj_weight.view(2, -1, gate_up_proj_weight.shape[-1])
