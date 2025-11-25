@@ -27,6 +27,7 @@ from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
     from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
@@ -61,7 +62,11 @@ class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
-        kwargs = {'tp_group': self.model_comm_pgs.tp} if mcore_013 else {}
+        kwargs = {}
+        if mcore_015:
+            kwargs['tp_group'] = self.pg_collection.tp
+        elif mcore_013:
+            kwargs['tp_group'] = self.model_comm_pgs.tp
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -111,6 +116,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         sequence_len_offset: Optional[int] = None,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Perform a forward pass through the attention module.
@@ -232,7 +238,11 @@ class Qwen3NextSelfAttention(SelfAttention):
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
-        kwargs = {'cp_group': self.model_comm_pgs.cp} if mcore_013 else {}
+        kwargs = {}
+        if mcore_015:
+            kwargs['cp_group'] = self.pg_collection.cp
+        elif mcore_013:
+            kwargs['cp_group'] = self.model_comm_pgs.cp
         nvtx_range_push(suffix='rotary_pos_emb')
         if rotary_pos_emb is not None and not self.config.flash_decode:
             q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -494,6 +504,7 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
 
 
 class Qwen3NextBridge(GPTBridge):
+    hf_mtp_prefix = 'mtp.layers'
 
     def _set_state_dict(self,
                         mg_module,
@@ -504,7 +515,7 @@ class Qwen3NextBridge(GPTBridge):
                         *,
                         offset: float = 0,
                         is_expert: bool = False):
-        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key:
+        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key or 'enorm' in mg_key or 'hnorm' in mg_key:
             offset = 1 if to_mcore else -1
         return super()._set_state_dict(
             mg_module,
@@ -526,6 +537,15 @@ class Qwen3NextBridge(GPTBridge):
         elif layer_type == 'full_attention':
             hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
         return hf_state_dict
+
+    def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        hf_state_dict = self._remove_prefix(origin_hf_state_dict, 'mtp.')
+        for mg_key, key in zip(['enorm.weight', 'hnorm.weight', 'eh_proj.weight'],
+                               ['pre_fc_norm_embedding.weight', 'pre_fc_norm_hidden.weight', 'fc.weight']):
+            self._set_state_dict(mtp_layer, mg_key, hf_state_dict, key, to_mcore)
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'norm.weight', to_mcore)
+        if not to_mcore:
+            origin_hf_state_dict.update(self._add_prefix(hf_state_dict, 'mtp.'))
 
 
 register_megatron_model(

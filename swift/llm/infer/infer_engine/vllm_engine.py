@@ -70,6 +70,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        speculative_config: Optional[Union[str, dict]] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -131,6 +132,7 @@ class VllmEngine(InferEngine):
             task=task_type,
             disable_cascade_attn=disable_cascade_attn,
             mm_processor_cache_gb=mm_processor_cache_gb,
+            speculative_config=speculative_config,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -172,6 +174,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        speculative_config: Optional[Union[str, dict]] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -202,7 +205,7 @@ class VllmEngine(InferEngine):
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
-                'mm_processor_cache_gb'
+                'mm_processor_cache_gb', 'speculative_config'
         ]:
             if key in parameters:
                 if locals()[key] is not None:
@@ -406,10 +409,21 @@ class VllmEngine(InferEngine):
             else:
                 kwargs[key] = new_value
 
+        # Convert Swift's Chat Completions API style (logprobs: bool, top_logprobs: int)
+        # to vLLM's SamplingParams style (logprobs: int)
+        # vLLM semantics:
+        #   - logprobs=None: no logprobs returned
+        #   - logprobs=0: only sampled token's logprob
+        #   - logprobs=N: top-N tokens + sampled token (up to N+1 total)
         if request_config.logprobs:
-            kwargs['logprobs'] = 1
-            if request_config.top_logprobs is not None:
-                kwargs['logprobs'] = max(1, request_config.top_logprobs)
+            # If logprobs=True, return log probabilities
+            if request_config.top_logprobs is not None and request_config.top_logprobs > 0:
+                # Return top_logprobs most likely tokens at each position
+                # (plus sampled token if not in top-N)
+                kwargs['logprobs'] = request_config.top_logprobs
+            else:
+                # Return only the sampled token's logprob
+                kwargs['logprobs'] = 0
 
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:

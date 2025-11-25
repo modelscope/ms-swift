@@ -63,7 +63,7 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
@@ -91,7 +91,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v3'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -529,31 +529,36 @@ class Template(ProcessorMixin):
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
-        if chosen.channel is not None:
-            encoded['channel'] = chosen.channel
+        # compatible with `--truncation_strategy split`
+        batched = encoded
+        if not isinstance(batched, (list, tuple)):
+            batched = [batched]
+        for encoded in batched:
+            if chosen.channel is not None:
+                encoded['channel'] = chosen.channel
 
-        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
-        for key in list(encoded.keys()):
-            if encoded[key] is None:
-                encoded.pop(key)
-            elif key.endswith('length'):
-                value = encoded[key]
-                if isinstance(value, int):
-                    lengths.append(value)
-                elif isinstance(value, (tuple, list)):
-                    lengths += value
-        if return_length:
-            if self.task_type in {'reranker', 'generative_reranker'}:
-                encoded['length'] = lengths
+            lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
+            for key in list(encoded.keys()):
+                if encoded[key] is None:
+                    encoded.pop(key)
+                elif key.endswith('length'):
+                    value = encoded[key]
+                    if isinstance(value, int):
+                        lengths.append(value)
+                    elif isinstance(value, (tuple, list)):
+                        lengths += value
+            if return_length:
+                if self.task_type in {'reranker', 'generative_reranker'}:
+                    encoded['length'] = lengths
+                else:
+                    encoded['length'] = sum(lengths)
             else:
-                encoded['length'] = sum(lengths)
-        else:
-            encoded.pop('length', None)
-        if return_template_inputs:
-            encoded['template_inputs'] = chosen
-        if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = chosen.extra_kwargs
-        return encoded
+                encoded.pop('length', None)
+            if return_template_inputs:
+                encoded['template_inputs'] = chosen
+            if not self.remove_unused_columns:
+                encoded['_extra_kwargs'] = chosen.extra_kwargs
+        return batched[0] if len(batched) == 1 else batched
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         packed = {}
@@ -975,10 +980,10 @@ class Template(ProcessorMixin):
                          suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
-        for i in range(1, len(labels)):
-            if labels[i - 1] >= 0 and labels[i] == -100:
+        for i in range(1, len(labels) + 1):
+            if labels[i - 1] >= 0 and i < len(labels) and labels[i] == -100:
                 start = i
-            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
+            elif start > 0 and labels[i - 1] == -100 and (i == len(labels) or labels[i] >= 0):
                 # [0, 1, 2, -100(start), -100, 3(i), 4]
                 length = i - start
                 if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
@@ -1139,7 +1144,11 @@ class Template(ProcessorMixin):
                     if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                if (self.is_training or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words:
+                add_eos = inputs.extra_kwargs.get('add_eos')
+                if add_eos is None:
+                    add_eos = (self.is_training
+                               or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words
+                if add_eos:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1213,7 +1222,6 @@ class Template(ProcessorMixin):
                     encoded[key] = value
         else:
             encoded = self._encode(inputs)
-        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
@@ -1226,6 +1234,26 @@ class Template(ProcessorMixin):
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
+            elif self.truncation_strategy == 'split':
+                i = 0
+                batched = []
+                while i < length:
+                    splited = {}
+                    for key in ['input_ids', 'labels', 'loss_scale']:
+                        value = encoded.get(key)
+                        if value is not None:
+                            value = value[i:i + self.max_length]
+                            if key == 'labels' and len(value) > 0:
+                                value[0] = -100
+                            elif key == 'loss_scale' and len(value) > 0:
+                                value[0] = 0
+                        splited[key] = value
+                    splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
+                    batched.append(splited)
+                    i += self.max_length
+                return batched
+            else:
+                raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -1276,16 +1304,25 @@ class Template(ProcessorMixin):
                     encoded[k] = None
         return encoded
 
-    def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
+    def _get_megatron_cp_length(self, length) -> int:
+        cp_size = self.sequence_parallel_size
+        if not self.use_megatron or cp_size == 1:
+            return length
+        return math.ceil(length / (cp_size * 2)) * (cp_size * 2)
+
+    def _handle_megatron_cp(self, batch: List[Dict[str, Any]]) -> None:
         cp_size = self.sequence_parallel_size
         if not self.use_megatron or cp_size == 1:
             return
-        input_ids = encoded['input_ids']
-        padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
-        input_ids += [self.tokenizer.pad_token_id] * padding_len
-        encoded['labels'] += [-100] * padding_len
-        if encoded.get('loss_scale') is not None:
-            encoded['loss_scale'] += [0] * padding_len
+        for encoded in batch:
+            input_ids = encoded['input_ids']
+            padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
+            input_ids += [self.tokenizer.pad_token_id] * padding_len
+            encoded['labels'] += [-100] * padding_len
+            if encoded.get('loss_scale') is not None:
+                encoded['loss_scale'] += [0] * padding_len
+            if encoded.get('length') is not None:
+                encoded['length'] += padding_len
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1613,6 +1650,7 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        self._handle_megatron_cp(batch)
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'

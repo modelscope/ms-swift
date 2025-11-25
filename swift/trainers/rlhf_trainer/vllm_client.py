@@ -133,9 +133,14 @@ class VLLMClient:
 
         results = [None] * self.num_servers
         errors = [None] * self.num_servers
+        if isinstance(request_config, RequestConfig):
+            request_config = asdict(request_config)
 
         def process_chunk(i, chunk):
             try:
+                if len(chunk) > 0 and isinstance(chunk[0], RolloutInferRequest):
+                    chunk = [asdict(req) for req in chunk]
+
                 response = self.sessions[i].post(
                     f'{self.base_urls[i]}/infer/',
                     json={
@@ -208,7 +213,7 @@ class VLLMClient:
 
             pg = StatelessProcessGroup.create(
                 host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
-            comm = PyNcclCommunicator(pg, device=0)
+            comm = PyNcclCommunicator(pg, device=device)
             self.pynccl_comms.append(comm)
 
         atexit.register(self.close_communicator)

@@ -65,7 +65,7 @@ You can contact us and communicate with us by adding our group:
 - **Quantization Training**: Supports training quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
 - 🍊 **RLHF Training**: Supports human alignment training methods such as DPO, GRPO, RM, PPO, GKD, KTO, CPO, SimPO, ORPO for both pure text and multi-modal large models.
 - 🍓 **Multi-Modal Training**: Supports training on different modalities like images, videos, and audio, for tasks like VQA, captioning, OCR, and grounding.
-- 🥥 **Megatron Parallelism**: Supports accelerating CPT/SFT/DPO/KTO/RM using Megatron parallelism techniques, currently compatible with 200+ pure text large models, 100+ multi-modal large models.
+- 🥥 **Megatron Parallelism**: Supports accelerating CPT/SFT/GRPO/DPO/KTO/RM using Megatron parallelism techniques, currently compatible with 200+ pure text large models, 100+ multi-modal large models.
 - **Interface Training**: Provides capabilities for training, inference, evaluation, quantization through an interface, completing the whole large model pipeline.
 - **Plugin and Extension**: Supports custom model and dataset extensions, as well as customization of components like loss, metric, trainer, loss-scale, callback, optimizer.
 - 🍉 **Toolbox Capabilities**: Offers not only training support for large models and multi-modal large models but also covers the entire process of inference, evaluation, quantization, and deployment.
@@ -75,6 +75,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
 - 🎁 2025.10.28: Support [use yaml](examples/yaml) to configure command line parameters.
@@ -133,7 +134,7 @@ Running Environment:
 | torch        | >=2.0        | 2.8.0               |                                           |
 | transformers | >=4.33       | 4.57.1              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
-| peft         | >=0.11,<0.18 |                     |                                           |
+| peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.1/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.25 | 0.23.1              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.17.6              | Training                                  |

@@ -56,6 +56,9 @@
   - 子数据集: 该参数只有当dataset为ID或者文件夹时生效。若注册时指定了subsets，且只有一个子数据集，则默认选择注册时指定的子数据集，否则默认为'default'。你可以使用`/`来选择多个子数据集，例如：`<dataset_id>:subset1/subset2`。你也可以使用'all'来选择注册时指定的所有子数据集，例如：`<dataset_id>:all`。注册例子可以参考[这里](https://modelscope.cn/datasets/swift/garbage_competition)。
   - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
+- 🔥cached_dataset: 使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练/推理时，tokenize过程占用gpu时间。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
+  - 提示：在"ms-swift>=3.11"，cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。
+  - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf（需"ms-swift>=3.11"）。
 - 🔥split_dataset_ratio: 不指定val_dataset时从训练集拆分验证集的比例，默认为0.，即不从训练集切分验证集。
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
 - data_seed: 数据集随机种子，默认为42。
@@ -88,7 +91,8 @@
   - 注意：数据集中的system**优先级**最高，然后是`--system`，最后是注册template时设置的`default_system`。
 - 🔥max_length: 限制单数据集样本经过`tokenizer.encode`后的tokens最大长度，超过的数据样本会根据`truncation_strategy`参数进行处理（避免训练OOM）。默认为None，即设置为模型支持的tokens最大长度(max_model_len)。
   - 当PPO、GRPO和推理情况下，`max_length`代表`max_prompt_length`。
-- truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持`delete`、`left`和`right`，代表删除、左侧裁剪和右侧裁剪，默认为'delete'。
+- truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持'delete'、'left'、'right'和'split'，代表删除、左侧裁剪、右侧裁剪和切成多条数据样本，默认为'delete'。
+  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，需"ms-swift>=3.11"，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。（该特性不兼容cached_dataset）
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
@@ -393,6 +397,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - vllm_disable_custom_all_reduce: 禁用自定义的 all-reduce 内核，回退到 NCCL。为了稳定性，默认为`True`。
 - vllm_enforce_eager: vllm使用pytorch eager模式还是建立cuda graph，默认为`False`。设置为True可以节约显存，但会影响效率。
 - vllm_mm_processor_cache_gb: 多模态处理器缓存大小（GiB），用于缓存已处理的多模态输入（如图像、视频）避免重复处理。默认为`4`。设置为`0`可禁用缓存但会降低性能（不推荐）。仅对多模态模型生效。
+- vllm_speculative_config: 推测解码配置，传入json字符串。默认为None。
 - vllm_disable_cascade_attn: 是否强制关闭V1引擎的cascade attention实现以防止潜在数值误差，默认为False，由vLLM内部逻辑决定是否使用。
 - 🔥vllm_limit_mm_per_prompt: 控制vllm使用多图，默认为`None`。例如传入`--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`。
 - vllm_max_lora_rank: 默认为`16`。vllm对于lora支持的参数。
@@ -450,8 +455,6 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
   - 注意：若你要进行图像的数据增强，你需要将lazy_tokenize（或streaming）设置为True，并修改Template类中的encode方法。
-- cached_dataset: 训练中使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练时，tokenize过程占用gpu时间。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
-  - 注意：cached_dataset支持`--packing`，但不支持`--lazy_tokenize`和`--streaming`。
 - use_logits_to_keep: 通过在`forward`中根据labels传入logits_to_keep，减少无效logits的计算与存储，从而减少显存占用并加快训练速度。默认为None，进行自动选择。
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
@@ -560,19 +563,19 @@ reward模型参数将在PPO、GRPO中使用。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`, 注意对于多模态模型，
 左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
-- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
 - vllm_mode server 参数
+  - vllm_server_host: vLLM server host地址，默认为None。
+  - vllm_server_port: vLLM server 服务端口，默认为8000。
   - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
-  - vllm_server_host：vLLM server host地址，默认为None。
-  - vllm_server_port vLLM server 服务端口，默认为8000。
-  - vllm_server_timeout 连接vLLM server的超时时间，默认为 240s。
+  - vllm_server_timeout: 连接vLLM server的超时时间，默认为 240s。
   - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
-  - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE：环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
+  - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
 - vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
   - vllm_max_model_len: vllm透传参数，默认为None。
@@ -581,7 +584,7 @@ reward模型参数将在PPO、GRPO中使用。
   - vllm_enable_prefix_caching: vllm透传参数，默认为True。
   - vllm_tensor_parallel_size: tp并行数，默认为`1`。
   - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
-  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放。
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1, 2], 默认为0，不释放。
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
   - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
@@ -593,7 +596,7 @@ reward模型参数将在PPO、GRPO中使用。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
-- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://www.arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
+- importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
 - advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)。
 - kl_in_reward: 控制 KL 散度正则项的处理位置；`false`表示作为损失函数的独立正则项，`true`表示将 KL 直接并入奖励（从奖励中扣除）。默认情况与advantage_estimator绑定，`grpo`下默认为`false`，`rloo` 和 `reinforce_plus_plus` 下默认为 `true`。
 - scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
@@ -606,6 +609,8 @@ reward模型参数将在PPO、GRPO中使用。
 - top_entropy_quantile: 仅对熵值处于前指定分位的 token 参与损失计算，默认为1.0，即不过滤低熵 token，具体参考[文档](./GRPO/AdvancedResearch/entropy_mask.md)
 - log_entropy: 记录训练中的熵值变化动态，默认为False，具体参考[文档](./GRPO/GetStarted/GRPO.md#logged-metrics)
 
+##### 奖励函数参数
+内置的奖励函数参考[文档](./GRPO/DeveloperGuide/reward_function.md)
 cosine 奖励参数
 - cosine_min_len_value_wrong：cosine 奖励函数参数，生成错误答案时，最小长度对应的奖励值。默认值为-0.5。
 - cosine_max_len_value_wrong：生成错误答案时，最大长度对应的奖励值。默认值为0.0。
@@ -695,17 +700,18 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - exist_ok: 如果output_dir存在，不抛出异常，进行覆盖。默认为False。
 - 🔥quant_method: 可选为'gptq'、'awq'、'bnb'和'fp8'，默认为None。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize)。
 - quant_n_samples: gptq/awq的校验集采样数，默认为256。
-- max_length: 校准集的max_length, 默认值2048。
 - quant_batch_size: 量化batch_size，默认为1。
 - group_size: 量化group大小，默认为128。
-- to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。
-  - 注意：数据packing在训练时进行，而不在此处。
+- to_cached_dataset: 提前对数据集进行tokenize并导出，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset)。更多介绍请查看`cached_dataset`。
+  - 提示：cached_dataset需提前区分好训练集和验证集。你可以通过`--split_dataset_ratio`或者`--val_dataset`指定验证集内容。
+- template_mode: 用于支持对`swift rlhf`训练的`cached_dataset`功能。该参数只在`--to_cached_dataset true`时生效。可选项包括: 'train'、'rlhf'和'kto'。其中`swift pt/sft`使用'train'，`swift rlhf --rlhf_type kto`使用'kto'，其他rlhf算法使用'rlhf'。注意：当前'gkd', 'ppo', 'grpo'算法不支持`cached_dataset`功能。默认为'train'。
 - to_ollama: 产生ollama所需的Modelfile文件。默认为False。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - to_hf: Megatron格式权重转成HF格式。默认为False。
 - mcore_model: mcore格式模型路径。默认为None。
 - mcore_adapters: mcore格式模型的adapter路径列表，默认为空列表。
 - thread_count: `--to_mcore true`时的模型切片数。默认为None，根据模型大小自动设置，使得最大分片小于10GB。
+- 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - 🔥push_to_hub: 是否推送hub，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh)。
@@ -849,4 +855,4 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - VLLM_USE_V1: 用于切换vLLM使用V0/V1版本。
 - SWIFT_TIMEOUT: (ms-swift>=3.10) 若多模态数据集中存在图像URL，该参数用于控制获取图片的timeout，默认为20s。
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) 图像（多模态）资源的根目录。通过设置该参数，可以在数据集中使用相对于 `ROOT_IMAGE_DIR` 的相对路径。默认情况下，是相对于运行目录的相对路径。
-- SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) 单设备模式，可选值为"0"(默认值)/"1"，在此模式下，每个进程只能看到一个设备，目前用于兼容PPU设备
+- SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) 单设备模式，可选值为"0"(默认值)/"1"，在此模式下，每个进程只能看到一个设备

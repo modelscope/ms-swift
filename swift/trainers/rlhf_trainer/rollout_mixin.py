@@ -112,22 +112,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
+        args = self.args
+        self.use_fast_infer = args.use_vllm
+        if not args.use_vllm:
+            return
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
-
         # Initialize default values
-        args = self.args
-
-        self.use_fast_infer = args.use_vllm
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False
         self.rollout_enable_lora = False
         self.vllm_use_async_engine = False
-
-        if not args.use_vllm:
-            return
 
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
@@ -637,6 +634,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if self.engine.inner_model_executor.is_sleeping:
                 wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
                 kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+                aggressive_empty_cache()
                 self.engine.engine.wake_up(**kwargs)
 
         if self.state.global_step != self._last_loaded_step:
@@ -843,7 +841,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
-
+            input_data['add_eos'] = not choice.finish_reason == 'length'
             if output.rollout_infos:
                 multi_modal_keys = ['images', 'videos', 'audios']
                 for key in multi_modal_keys:

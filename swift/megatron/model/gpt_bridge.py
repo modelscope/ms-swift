@@ -14,7 +14,7 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
+from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
 
@@ -26,6 +26,7 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
     hf_layers_prefix = 'model.layers'
+    hf_mtp_prefix = 'model.layers'
     hf_embed_key = 'model.embed_tokens.weight'
     hf_final_layernorm_key = 'model.norm.weight'
     hf_lm_head_key = 'lm_head.weight'
@@ -64,8 +65,29 @@ class GPTBridge:
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
+        dp_size = dist.get_world_size() // self.etp_size // self.ep_size // self.pp_size
+        expert_decoder_rank_generator = mpu.RankGenerator(
+            tp=self.etp_size,
+            ep=self.ep_size,
+            dp=dp_size,
+            pp=self.pp_size,
+            cp=1,
+            order='tp-cp-ep-dp-pp',
+            rank_offset=0,
+        )
+        rank = dist.get_rank()
+        for ranks in expert_decoder_rank_generator.get_ranks('ep-pp'):
+            group = mpu.create_group(
+                ranks,
+                group_desc='EP-PP-GROUP',
+            )
+            if rank in ranks:
+                self.ep_pp_size = self.ep_size * self.pp_size
+                self.ep_pp_group = group
+                self.ep_pp_rank = dist.get_rank(group)
+
     def _init_meta_hf_model(self):
-        with torch.device('meta'), disable_safe_ddp_context_use_barrier():
+        with torch.device('meta'):
             self.hf_model, self.processor = get_model_tokenizer(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
@@ -79,7 +101,9 @@ class GPTBridge:
             # mla
             'linear_q_proj',
             'linear_q_up_proj',
-            'linear_kv_up_proj'
+            'linear_kv_up_proj',
+            # mtp
+            'eh_proj',
         }
         if self.args.task_type == 'causal_lm':
             dim0_keys.add('output_layer')
@@ -198,6 +222,9 @@ class GPTBridge:
         tensor = None if mg_weight is None else mg_weight.to('cuda')
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_group = self.etp_group if is_expert else self.tp_group
+        pp_group = self.ep_pp_group if is_expert else self.pp_group
+        pp_size = self.ep_pp_size if is_expert else self.pp_size
+        pp_rank = self.ep_pp_rank if is_expert else self.pp_rank
         if tensor is not None and tp_dim is not None and tp_size > 1:
             if tp_dim == 0:
                 # save memory
@@ -220,34 +247,26 @@ class GPTBridge:
                 tensor = torch.cat(output, dim=tp_dim)
             del output
         # pp/ep
-        for parallel_state in ['ep', 'pp']:
-            if parallel_state == 'pp' and self.pp_size > 1:
-                parallel_group = self.pp_group
-                parallel_rank = self.pp_rank
-            elif parallel_state == 'ep' and is_expert and self.ep_size > 1:
-                parallel_group = self.ep_group
-                parallel_rank = self.ep_rank
-            else:
-                continue
-            src_rank = torch.tensor([0 if tensor is None else parallel_rank], dtype=torch.int64, device='cuda')
-            dist.all_reduce(src_rank, group=parallel_group)
-            src_rank = dist.get_global_rank(parallel_group, src_rank.item())
+        if pp_size > 1:
+            src_rank = torch.tensor([0 if tensor is None else pp_rank], dtype=torch.int64, device='cuda')
+            dist.all_reduce(src_rank, group=pp_group)
+            src_rank = dist.get_global_rank(pp_group, src_rank.item())
             meta_data = torch.zeros(10, dtype=torch.int64, device='cuda')
             dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3}
             dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
             if tensor is None:
-                dist.broadcast(meta_data, src=src_rank, group=parallel_group)
-                if meta_data[0].item() > 0:
-                    shape = meta_data[1:1 + meta_data[0]].tolist()
-                    dtype = dtype_mapping_r[meta_data[-1].item()]
-                    tensor = torch.empty(shape, device='cuda', dtype=dtype)
-                    dist.broadcast(tensor, src=src_rank, group=parallel_group)
+                dist.broadcast(meta_data, src=src_rank, group=pp_group)
+                assert meta_data[0].item() > 0, f'meta_data: {meta_data}'
+                shape = meta_data[1:1 + meta_data[0]].tolist()
+                dtype = dtype_mapping_r[meta_data[-1].item()]
+                tensor = torch.empty(shape, device='cuda', dtype=dtype)
+                dist.broadcast(tensor, src=src_rank, group=pp_group)
             else:
                 meta_data[0] = tensor.ndim
                 meta_data[1:1 + tensor.ndim] = torch.tensor(tensor.shape, dtype=torch.int64, device='cuda')
                 meta_data[-1] = dtype_mapping[tensor.dtype]
-                dist.broadcast(meta_data, src=src_rank, group=parallel_group)
-                dist.broadcast(tensor, src=src_rank, group=parallel_group)
+                dist.broadcast(meta_data, src=src_rank, group=pp_group)
+                dist.broadcast(tensor, src=src_rank, group=pp_group)
         assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
             tensor = tensor + offset
@@ -273,10 +292,10 @@ class GPTBridge:
         is_modules_to_save = isinstance(sub_module, ModulesToSaveWrapper)
         if not to_mcore:
             state = torch.tensor([is_lora, is_modules_to_save], dtype=torch.bool, device='cuda')
-            if self.pp_size > 1:
+            if is_expert and self.ep_pp_size > 1:
+                dist.all_reduce(state, group=self.ep_pp_group)
+            elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(state, group=self.pp_group)
-            if is_expert and self.ep_size > 1:
-                dist.all_reduce(state, group=self.ep_group)
             is_lora, is_modules_to_save = state
         if is_lora and self._is_peft_format and param_key != 'layer_norm_weight':
             if to_mcore:
@@ -627,10 +646,10 @@ class GPTBridge:
             is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc1,
                                                               LoraParallelLinear) and self._is_peft_format
             is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
-            if self.pp_size > 1:
+            if is_expert and self.ep_pp_size > 1:
+                dist.all_reduce(is_lora, group=self.ep_pp_group)
+            elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
-            if is_expert and self.ep_size > 1:
-                dist.all_reduce(is_lora, group=self.ep_group)
             if is_lora:
                 assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                 if mg_mlp is None:
@@ -779,10 +798,10 @@ class GPTBridge:
                 is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc2,
                                                                   LoraParallelLinear) and self._is_peft_format
                 is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
-                if self.pp_size > 1:
+                if is_expert and self.ep_pp_size > 1:
+                    dist.all_reduce(is_lora, group=self.ep_pp_group)
+                elif not is_expert and self.pp_size > 1:
                     dist.all_reduce(is_lora, group=self.pp_group)
-                if is_expert and self.ep_size > 1:
-                    dist.all_reduce(is_lora, group=self.ep_group)
                 if is_lora:
                     assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
                     if mg_mlp is None:
@@ -1018,6 +1037,18 @@ class GPTBridge:
             else:
                 yield from list(self._add_prefix(res, hf_prefix).items())
                 hf_state_dict = {}
+
+        if (not to_mcore or is_pp_last_stage) and self.args.mtp_num_layers:
+            lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
+            layer_idx = 0
+            while layer_idx < self.args.mtp_num_layers:
+                res = self._convert_mtp_layer(lm_model, hf_state_dict, f'{self.hf_mtp_prefix}.', layer_idx, to_mcore)
+                layer_idx += 1
+                if to_mcore:
+                    yield
+                else:
+                    yield from list(self._add_prefix(res, hf_prefix).items())
+                    hf_state_dict = {}
         if not to_mcore or is_pp_last_stage:
             hf_state_dict.update(self._convert_post_process(mg_model, hf_state_dict, '', to_mcore))
         if to_mcore:
@@ -1025,6 +1056,48 @@ class GPTBridge:
         else:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+
+    def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:
+            self._set_state_dict(mtp_layer, key, hf_state_dict, key, to_mcore)
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'shared_head.norm.weight', to_mcore)
+
+    def _convert_mtp_layer(self, lm_model, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
+        mtp_layer = lm_model.mtp.layers[layer_idx] if hasattr(lm_model, 'mtp') else None
+        if self.hf_mtp_prefix == self.hf_layers_prefix:
+            hf_layer_idx = layer_idx + self.args.num_layers
+        else:
+            hf_layer_idx = layer_idx
+        hf_prefix = f'{hf_prefix}{hf_layer_idx}.'
+        if to_mcore:
+            origin_hf_state_dict = hf_state_dict
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+            if len(hf_state_dict) == 0:
+                logger.info_if(
+                    f'MTP Layer {mtp_layer.layer_number} safetensors weights not found, '
+                    'this part will be randomly initialized.',
+                    cond=is_last_rank())
+                for param in mtp_layer.parameters():
+                    if param.ndim == 2:
+                        mtp_layer.config.init_method(param.data)
+                return {}
+        else:
+            origin_hf_state_dict = {}
+            hf_state_dict = {}
+        # Weights for shared parts are not stored, refer to GLM4.6
+        # self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
+        #                      to_mcore)
+        # self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
+        self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict)
+        transformer_layer = None if mtp_layer is None else mtp_layer.transformer_layer
+        hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
+        hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore))
+        if to_mcore:
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+            hf_state_dict.update(origin_hf_state_dict)
+        return hf_state_dict
 
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
         self._is_peft_format = is_peft_format

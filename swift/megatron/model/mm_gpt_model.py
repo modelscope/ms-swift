@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from typing import Optional
 
+import megatron.core
 import torch
 from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -9,8 +11,11 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
+from packaging import version
 
 from .gpt_model import GPTModel
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class MultimodalGPTModel(MegatronModule):
@@ -35,6 +40,8 @@ class MultimodalGPTModel(MegatronModule):
         args = get_args()
         self.megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
         self.visual = None
+        if args.mtp_num_layers:
+            raise ValueError('MTP currently does not support multimodal models.')
         if pre_process and self.megatron_model_meta.visual_cls is not None:
             self.visual = self.megatron_model_meta.visual_cls(config)
 
@@ -63,7 +70,8 @@ class MultimodalGPTModel(MegatronModule):
                 res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
-                res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
+                group_kwargs = {'group': _self.tp_group} if mcore_013 else {}
+                res = scatter_to_sequence_parallel_region(res, **group_kwargs)
             return res
 
         VocabParallelEmbedding.forward = forward
@@ -82,6 +90,8 @@ class MultimodalGPTModel(MegatronModule):
         labels: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
+        *,
+        mtp_labels: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         if decoder_input is not None:
@@ -103,6 +113,7 @@ class MultimodalGPTModel(MegatronModule):
             labels=labels,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            mtp_labels=mtp_labels,
             **kwargs,
         )
 

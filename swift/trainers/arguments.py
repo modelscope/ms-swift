@@ -206,12 +206,16 @@ class VllmArguments:
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
     vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_speculative_config: Optional[Union[dict, str]] = None
     vllm_engine_kwargs: Optional[Union[dict, str]] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
     def __post_init__(self):
-        self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        if self.vllm_limit_mm_per_prompt is not None:
+            self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        if self.vllm_speculative_config is not None:
+            self.vllm_speculative_config = json_parse_to_dict(self.vllm_speculative_config)
         self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
@@ -237,6 +241,7 @@ class VllmArguments:
             'reasoning_parser': self.vllm_reasoning_parser,
             'disable_cascade_attn': self.vllm_disable_cascade_attn,
             'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
+            'speculative_config': self.vllm_speculative_config,
             'num_labels': self.num_labels,
             'engine_kwargs': self.vllm_engine_kwargs,
         }
@@ -324,7 +329,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
-    # GSPO https://www.arxiv.org/abs/2507.18071
+    # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     # RLOO, REINFORCE++
