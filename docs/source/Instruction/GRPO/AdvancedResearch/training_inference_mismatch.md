@@ -124,22 +124,21 @@ $$
 
 ### 1. KL 散度（KL Divergence）
 
-KL 散度衡量两个分布之间的差异，提供两种估计器：
+KL 散度衡量训练策略偏离 rollout 策略的程度。两个指标都估计 $\text{KL}(\pi_\theta \| \pi_{\text{vLLM}})$，这与重要性采样权重 $\rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}$ 直接相关。
 
 **直接估计器 `kl`**：
 
 $$
-\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) = \mathbb{E}\left[ \log \pi_{\text{vLLM}} - \log \pi_\theta \right]
+\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \log \frac{\pi_\theta}{\pi_{\text{vLLM}}} \right]
 $$
-
 
 **K3 估计器 `k3_kl`**：
 
 $$
-\text{KL}_{K3} = \mathbb{E}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
+\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) \approx \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
 $$
 
-K3 估计器在 KL 值较小时数值更稳定。
+K3 估计器在 KL 值较小时数值更稳定，且始终非负。
 
 ### 2. Perplexity (PPL)
 
