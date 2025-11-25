@@ -177,6 +177,8 @@ class GPTBridge:
                     tensor = tensor.view(torch.uint8)
                     param._rowwise_data.data.copy_(tensor)
                     scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
+                    if scale_inv.shape[-1] < 8:
+                        scale_inv = torch.concat([scale_inv, scale_inv.new_zeros((scale_inv.shape[0], 8-scale_inv.shape[1]))], dim=-1)
                     param._rowwise_scale_inv.data.copy_(scale_inv)
                     del param.get_high_precision_init_val
             else:
