@@ -113,6 +113,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return_details=True,
             logprobs=args.use_vllm)
 
+        self.disable_rollout_importance_sampling = False
+
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
         args = self.args
@@ -147,6 +149,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
             self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+            if self.enable_server_multi_turn:
+                if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
+                    logger.warning('Rollout importance sampling is disabled for server multi-turn mode')
+                self.disable_rollout_importance_sampling = True
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
             if self.use_gym_env:
                 self.reward_func_names = ['gym_reward']
@@ -940,6 +946,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return
 
         if args.multi_turn_scheduler:
+            if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
+                # TODO
+                logger.warning('Rollout importance sampling mode is not supported for multi-turn scheduler')
+                self.disable_rollout_importance_sampling = True
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
                 multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)

@@ -1026,7 +1026,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
-        if inputs.get('vllm_per_token_logps') is not None:
+        if inputs.get('vllm_per_token_logps') is not None and not self.disable_rollout_importance_sampling:
             vllm_per_token_logps = inputs['vllm_per_token_logps']
 
             # Always compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
