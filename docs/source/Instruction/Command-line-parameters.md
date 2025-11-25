@@ -423,6 +423,10 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - sglang_kv_cache_dtype: 用于k/v缓存存储的数据类型。'auto'表示将使用模型的数据类型。'fp8_e5m2'和'fp8_e4m3'适用于CUDA 11.8及以上版本。默认为'auto'。
 - sglang_enable_dp_attention: 为注意力机制启用数据并行，为前馈网络（FFN）启用张量并行。数据并行的规模（dp size）应等于张量并行的规模（tp size）。目前支持DeepSeek-V2/3以及Qwen2/3 MoE模型。默认为False。
 - sglang_disable_custom_all_reduce: 禁用自定义的 all-reduce 内核，回退到 NCCL。为了稳定性，默认为True。
+- sglang_speculative_algorithm: 推测算法，可选值：None、"EAGLE"、"EAGLE3"、"NEXTN"、"STANDALONE"、"NGRAM"。默认为None。
+- sglang_speculative_num_steps: 在推测解码中从草稿模型采样的步数。默认值为None。
+- sglang_speculative_eagle_topk: 在 EAGLE2 算法中每步从草稿模型采样的 token 数量。默认值为None。
+- sglang_speculative_num_draft_tokens: 在推测解码中从草稿模型采样的 token 数量。默认值为None。
 
 ### LMDeploy参数
 参数含义可以查看[lmdeploy文档](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig)。

@@ -177,8 +177,13 @@ class GPTBridge:
                     tensor = tensor.view(torch.uint8)
                     param._rowwise_data.data.copy_(tensor)
                     scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
-                    if scale_inv.shape[-1] < 8:
-                        scale_inv = torch.concat([scale_inv, scale_inv.new_zeros((scale_inv.shape[0], 8-scale_inv.shape[1]))], dim=-1)
+                    if scale_inv.shape[-1] < param._rowwise_scale_inv.shape[-1]:
+                        scale_inv = torch.concat([
+                            scale_inv,
+                            scale_inv.new_zeros(
+                                (scale_inv.shape[0], param._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
+                        ],
+                                                 dim=-1)
                     param._rowwise_scale_inv.data.copy_(scale_inv)
                     del param.get_high_precision_init_val
             else:
@@ -306,23 +311,25 @@ class GPTBridge:
     ):
         # tp/etp
         mg_scale_inv = None
-        if self._is_fp8_param(mg_weight):
-            mg_scale_inv = mg_weight._rowwise_scale_inv
-            tensor = mg_weight._rowwise_data
-        else:
-            tensor = mg_weight
+        tensor = mg_weight
+        if not isinstance(tensor, (list, tuple)):
+            tensor = [tensor]
+        if self._is_fp8_param(tensor[0]):
+            mg_scale_inv = [t._rowwise_scale_inv for t in tensor]
+            tensor = [t._rowwise_data for t in tensor]
         del mg_weight
-        if is_expert and tensor is not None:
+        if tensor is not None:
             assert isinstance(tensor, (list, tuple)), f'mg_key: {mg_key}'
-            tensor = torch.stack(tensor, dim=0)
+            tensor = torch.concat(tensor, dim=0)
             if mg_scale_inv is not None:
-                mg_scale_inv = torch.stack(mg_scale_inv, dim=0)
+                mg_scale_inv = torch.concat(mg_scale_inv, dim=0)
+        num_local_experts = self.args.num_experts // self.ep_size if is_expert else 1
         tp_dim = self._get_tp_split_dim(mg_key)
         is_linear_fc1 = (mg_key.split('.', 1)[0] == 'linear_fc1' and tp_dim is not None)
         if tensor is not None and is_linear_fc1:
-            tensor = tensor.view(-1, tensor.shape[-2] // 2, tensor.shape[-1])
+            tensor = tensor.view(num_local_experts * 2, -1, tensor.shape[-1])
             if mg_scale_inv is not None:
-                mg_scale_inv = mg_scale_inv.view(-1, mg_scale_inv.shape[-2] // 2, mg_scale_inv.shape[-1])
+                mg_scale_inv = mg_scale_inv.view(num_local_experts * 2, -1, mg_scale_inv.shape[-1])
 
         tensor = self._all_gather_tp(tensor, tp_dim, is_expert)
         tensor = self._broadcast_ep_pp(tensor, is_expert)
@@ -341,14 +348,10 @@ class GPTBridge:
         if self._only_last_rank and not is_last_rank():
             tensor = None
             mg_scale_inv = None
-        if tensor is not None and is_linear_fc1:
-            tensor = tensor.view(-1, tensor.shape[-2] * 2, tensor.shape[-1])
-            if not is_expert:
-                tensor = tensor.squeeze(0)
+        if is_expert and tensor is not None:
+            tensor = tensor.view(num_local_experts, -1, tensor.shape[-1])
             if mg_scale_inv is not None:
-                mg_scale_inv = mg_scale_inv.view(-1, mg_scale_inv.shape[-2] * 2, mg_scale_inv.shape[-1])
-                if not is_expert:
-                    mg_scale_inv = mg_scale_inv.squeeze(0)
+                mg_scale_inv = mg_scale_inv.view(num_local_experts, -1, mg_scale_inv.shape[-1])
         return tensor, mg_scale_inv
 
     def _set_state_dict(self,
