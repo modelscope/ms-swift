@@ -63,6 +63,7 @@ class RLHFMegatronArgumentsMixin:
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
     offload_model: bool = False
+    offload_bridge: bool = False
 
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None

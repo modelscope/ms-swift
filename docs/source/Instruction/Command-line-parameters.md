@@ -711,6 +711,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - mcore_model: mcore格式模型路径。默认为None。
 - mcore_adapters: mcore格式模型的adapter路径列表，默认为空列表。
 - thread_count: `--to_mcore true`时的模型切片数。默认为None，根据模型大小自动设置，使得最大分片小于10GB。
+- 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - 🔥push_to_hub: 是否推送hub，默认为False。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh)。
