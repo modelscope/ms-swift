@@ -361,9 +361,15 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
 
     The scheduler will automatically inject a tip prompt if the answer is incorrect, encouraging the model to recheck its reasoning. # noqa
     """
-    from .orm import MathAccuracy
-    tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-    acc_func = MathAccuracy()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        acc_func = kwargs.get('acc_function', None)
+        if acc_func is None:
+            from .orm import MathAccuracy
+            acc_func = MathAccuracy()
+        self.acc_func = acc_func
+        self.tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> List['RolloutOutput']:

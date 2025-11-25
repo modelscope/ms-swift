@@ -21,6 +21,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
+from swift.tuners.lora import LoraConfig
 from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
 from swift.utils.torch_utils import get_torch_device
 
@@ -742,6 +743,16 @@ class FlattenedTensorMetadata(BaseModel):
         if isinstance(v, str):
             return v
         raise ValueError('dtype must be a torch.dtype or str')
+
+
+class UpdateFlattenedAdapterRequest(BaseModel):
+    lora_int_id: int
+    peft_config: LoRAConfig
+    metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateFlattenedParamsRequest(BaseModel):
+    metadatas: List[FlattenedTensorMetadata]
 
 
 class FlattenedTensorBucket:
