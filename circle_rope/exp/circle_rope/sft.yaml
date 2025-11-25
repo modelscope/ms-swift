@@ -1,0 +1,87 @@
+# Circle-RoPE LoRA Training Configuration
+# This example demonstrates LoRA fine-tuning with Circle-RoPE
+
+# ==================== Model Configuration ====================
+# Replace with your Qwen2.5-VL model path
+model: /path/to/Qwen2.5-VL-7B-Instruct
+# Use the registered Circle-RoPE model type
+model_type: qwen2_5_vl_circle_rope
+
+# ==================== Training Type ====================
+train_type: lora  # LoRA fine-tuning
+torch_dtype: bfloat16
+attn_impl: flash_attn
+
+# ==================== LoRA Configuration ====================
+lora_rank: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+# For vision tower LoRA (optional):
+# lora_use_vit: true
+
+# ==================== Circle-RoPE Configuration ====================
+# Optional: Override default Circle-RoPE settings
+model_config_override: |
+  {
+    "circle_rope": {
+      "alpha": 0.5,
+      "radius": 10,
+      "method": "circle",
+      "AGE_mode": "strategy_4",
+      "move_to_origin": true
+    }
+  }
+
+# ==================== Dataset Configuration ====================
+dataset: your-dataset-name
+split_dataset_ratio: 0.1
+max_length: 8192
+
+# ==================== Training Hyperparameters ====================
+num_train_epochs: 3
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 1e-4
+weight_decay: 0.01
+
+# ==================== Learning Rate Schedule ====================
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+
+# ==================== Evaluation & Saving ====================
+eval_strategy: steps
+eval_steps: 500
+save_strategy: steps
+save_steps: 500
+save_total_limit: 5
+save_only_model: false
+
+# ==================== Logging ====================
+logging_steps: 10
+report_to: tensorboard
+
+# ==================== Data Loading ====================
+dataloader_num_workers: 4
+dataset_num_proc: 8
+remove_unused_columns: false
+
+# ==================== Output ====================
+output_dir: output/qwen2_5_vl_circle_rope_lora
+
+# ==================== Important Notes ====================
+# 1. Copy the circle_rope folder to your model directory first:
+#    cp -r circle_rope /path/to/Qwen2.5-VL-7B-Instruct/
+#
+# 2. The model will automatically use Circle-RoPE through the registered model type
+#
+# 3. For single GPU training:
+#    swift sft --config examples/circle_rope/sft.yaml
+#
+# 4. For multi-GPU training:
+#    CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft --config examples/circle_rope/sft.yaml
+#
+# 5. For full parameter training, see:
+#    - examples/circle_rope/full_sft_zero2.yaml (4-8 GPUs)
+#    - examples/circle_rope/full_sft_zero3.yaml (8+ GPUs or large models)

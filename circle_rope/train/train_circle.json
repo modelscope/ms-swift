@@ -1,0 +1,52 @@
+{
+  "model": "/home/ckpt/Qwen2.5-VL-7B-Instruct",
+  "model_type": "qwen2_5_vl",
+  "custom_register_path": "circle_rope/register.py",
+
+  "dataset": "/home/dataset/MAmmoTH-VL-Instruct-12M/merged_data-01-clean.jsonl",
+
+  "model_config_override": {
+    "architectures": [
+        "Qwen2_5_VLForConditionalGeneration_CircleRoPE"
+    ],
+    "circle_rope": {
+      "alpha": 0.5,
+      "radius": 10,
+      "method": "circle",
+      "AGE_mode": "strategy_4",
+      "move_to_origin": true
+    }
+  },
+
+  "train_type": "full",
+  "torch_dtype": "bfloat16",
+
+  "attn_impl": "flash_attention_2",
+  "packing": true,
+  "padding_free": true,
+  "use_liger_kernel": true,
+
+  "streaming": true,
+  "max_steps": 8000,
+
+  "num_train_epochs": 1,
+  "per_device_train_batch_size": 4,
+  "gradient_accumulation_steps": 8,
+  "learning_rate": 1e-5,
+  "warmup_ratio": 0.05,
+
+  "freeze_vit": true,
+
+  "max_length": 4096,
+  "output_dir": "/home/ccwang/exp/ms/q25-7b-circle",
+  "report_to": "wandb",
+
+  "save_steps": 500,
+  "save_total_limit": 20,
+  "logging_steps": 10,
+
+  "load_from_cache_file": false,
+  "split_dataset_ratio": 0.001,
+  "dataloader_num_workers": 32,
+  "dataset_num_proc": 256
+}

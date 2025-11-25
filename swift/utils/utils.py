@@ -151,7 +151,7 @@ def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[
         argv = sys.argv[1:]
     if len(argv) > 0 and argv[0].endswith('.json'):
         json_path = os.path.abspath(os.path.expanduser(argv[0]))
-        args, = parser.parse_json_file(json_path)
+        args, = parser.parse_json_file(json_path, allow_extra_keys=True)
         remaining_args = argv[1:]
     else:
         args, remaining_args = parser.parse_args_into_dataclasses(argv, return_remaining_strings=True)

@@ -1,0 +1,61 @@
+{
+    "architectures": [
+        "Qwen2_5_VLForConditionalGeneration_CircleRoPE"
+    ],
+    "attention_dropout": 0.0,
+    "auto_map": {
+        "AutoConfig": "modular_qwen2_5_vl_circle_rope.Qwen2_5_VLConfig_CircleRoPE",
+        "AutoModelForCausalLM": "modular_qwen2_5_vl_circle_rope.Qwen2_5_VLForConditionalGeneration_CircleRoPE"
+    },
+    "bos_token_id": 151643,
+    "circle_rope": {
+        "alpha": 0.5,
+        "radius": 10,
+        "method": "circle",
+        "AGE_mode": "strategy_4",
+        "move_to_origin": true
+    },
+    "eos_token_id": 151645,
+    "hidden_act": "silu",
+    "hidden_size": 2048,
+    "image_token_id": 151655,
+    "initializer_range": 0.02,
+    "intermediate_size": 11008,
+    "max_position_embeddings": 128000,
+    "max_window_layers": 70,
+    "model_type": "qwen2_5_vl",
+    "num_attention_heads": 16,
+    "num_hidden_layers": 36,
+    "num_key_value_heads": 2,
+    "rms_norm_eps": 1e-06,
+    "rope_scaling": {
+        "mrope_section": [
+            16,
+            24,
+            24
+        ],
+        "rope_type": "default",
+        "type": "default"
+    },
+    "rope_theta": 1000000.0,
+    "sliding_window": 32768,
+    "tie_word_embeddings": true,
+    "torch_dtype": "bfloat16",
+    "transformers_version": "4.49.0",
+    "use_cache": false,
+    "use_sliding_window": false,
+    "video_token_id": 151656,
+    "vision_config": {
+        "hidden_size": 1280,
+        "in_chans": 3,
+        "model_type": "qwen2_5_vl",
+        "out_hidden_size": 2048,
+        "spatial_patch_size": 14,
+        "tokens_per_second": 2,
+        "torch_dtype": "bfloat16"
+    },
+    "vision_end_token_id": 151653,
+    "vision_start_token_id": 151652,
+    "vision_token_id": 151654,
+    "vocab_size": 151936
+}

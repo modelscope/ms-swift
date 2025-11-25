@@ -11,11 +11,12 @@ from swift.plugin import extra_callbacks
 from swift.ray import RayHelper
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
-from ..argument import TrainArguments
-from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
-from ..infer import prepare_generation_config
-from .tuner import TunerMixin
+
+from swift.llm.argument import TrainArguments
+from swift.llm.base import SwiftPipeline
+from swift.llm.dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
+from swift.llm.infer import prepare_generation_config
+from swift.llm.train.tuner import TunerMixin
 
 logger = get_logger()
 
@@ -350,3 +351,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
 def sft_main(args: Optional[Union[List[str], TrainArguments]] = None):
     return SwiftSft(args).main()
+
+
+if __name__ == '__main__':
+    sft_main()

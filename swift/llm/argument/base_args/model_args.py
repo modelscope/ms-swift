@@ -48,6 +48,7 @@ class ModelArguments:
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     rope_scaling: Optional[str] = None
+    model_config_override: Optional[str] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
     max_model_len: Optional[int] = None
@@ -175,10 +176,17 @@ class ModelArguments:
                 new_special_tokens.append(token)
         self.new_special_tokens = new_special_tokens
 
+    def _init_model_config_override(self):
+        """Parse model_config_override from JSON string to dict"""
+        if self.model_config_override:
+            self.model_config_override = json_parse_to_dict(self.model_config_override, strict=False)
+            logger.info(f'model_config_override: {self.model_config_override}')
+
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
         self._init_new_special_tokens()
+        self._init_model_config_override()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_max_memory()
@@ -199,6 +207,7 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
+            'model_config_override': self.model_config_override,
             'max_model_len': self.max_model_len,
             'task_type': self.task_type,
             'num_labels': self.num_labels,

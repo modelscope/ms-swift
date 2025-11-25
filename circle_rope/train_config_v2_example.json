@@ -1,0 +1,25 @@
+{
+  "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+  "model_type": "qwen2_5_vl_circle_rope_v2",
+  "custom_register_path": ["circle_rope/register_v2.py"],
+  "model_config_override": {
+    "architectures": ["Qwen2_5_VLForConditionalGeneration_CircleRoPE_V2"],
+    "circle_rope": {
+      "circle_r": 10000,
+      "base": 10000,
+      "mrope_section": [16, 24, 24]
+    }
+  },
+  "dataset": "your_dataset",
+  "num_train_epochs": 1,
+  "per_device_train_batch_size": 1,
+  "gradient_accumulation_steps": 16,
+  "learning_rate": 1e-5,
+  "max_length": 8192,
+  "gradient_checkpointing": true,
+  "save_strategy": "epoch",
+  "logging_steps": 10,
+  "output_dir": "output/qwen2_5_vl_circle_rope_v2",
+  "bf16": true,
+  "deepspeed": "zero2"
+}

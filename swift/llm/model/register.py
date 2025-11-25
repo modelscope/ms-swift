@@ -254,6 +254,56 @@ def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
         logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
 
 
+def _apply_model_config_override(model_config: PretrainedConfig, override_dict: Dict[str, Any]) -> None:
+    """
+    Apply model_config_override to dynamically modify config.
+
+    Supports:
+    - Modifying existing parameters
+    - Adding new parameters
+    - Modifying nested configs (e.g., vision_config, circle_rope)
+    - Changing auto_map to switch model classes
+
+    Args:
+        model_config: The model config to modify
+        override_dict: Dictionary of config overrides
+    """
+    logger.info(f'Applying model_config_override: {override_dict}')
+
+    # Handle special fields that need special treatment
+    special_fields = {'auto_map', 'architectures'}
+
+    for key, value in override_dict.items():
+        if key in special_fields:
+            # For auto_map and architectures, directly set on the config
+            setattr(model_config, key, value)
+            logger.info(f'Set {key}: {value}')
+        elif isinstance(value, dict):
+            # For nested configs, recursively set attributes
+            existing_value = getattr(model_config, key, None)
+            if existing_value is None:
+                # If the attribute doesn't exist, create it
+                setattr(model_config, key, value)
+                logger.info(f'Created new config attribute {key}: {value}')
+            elif isinstance(existing_value, dict):
+                # Merge with existing dict
+                existing_value.update(value)
+                logger.info(f'Updated dict attribute {key}: {value}')
+            elif isinstance(existing_value, PretrainedConfig):
+                # Update nested config object
+                for sub_key, sub_value in value.items():
+                    setattr(existing_value, sub_key, sub_value)
+                logger.info(f'Updated nested config {key}.{sub_key}: {sub_value}')
+            else:
+                # Replace the value
+                setattr(model_config, key, value)
+                logger.info(f'Replaced attribute {key}: {value}')
+        else:
+            # For simple values, use HfConfigFactory to recursively set
+            HfConfigFactory.set_config_attr(model_config, key, value, ensure_set=True)
+            logger.info(f'Set config attribute {key}: {value}')
+
+
 def get_model_tokenizer_from_local(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -277,6 +327,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     HfConfigFactory.compat_zero3(model_config)
     leaf_modules = kwargs.get('leaf_modules')
     rope_scaling = kwargs.get('rope_scaling')
+    model_config_override = kwargs.get('model_config_override')
     max_model_len = kwargs.get('max_model_len')
     return_dummy_model = kwargs.get('return_dummy_model')
     model_meta = kwargs.get('model_meta')
@@ -284,6 +335,10 @@ def get_model_tokenizer_from_local(model_dir: str,
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
     if max_model_len:
         HfConfigFactory.set_max_model_len(model_config, max_model_len)
+
+    # Apply model_config_override to modify config dynamically
+    if model_config_override:
+        _apply_model_config_override(model_config, model_config_override)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
@@ -698,6 +753,7 @@ def get_model_tokenizer(
         attn_impl: Optional[str] = None,
         new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
+        model_config_override: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
@@ -748,6 +804,7 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
+    kwargs['model_config_override'] = model_config_override
     kwargs['model_meta'] = model_meta
     kwargs['max_model_len'] = max_model_len
     kwargs['return_dummy_model'] = return_dummy_model
