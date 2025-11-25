@@ -167,9 +167,9 @@ $$
 $$
 
 - `chi2_token`: Token-level χ² divergence, $\mathbb{E}[\rho_t^2] - 1$
-- `chi2_seq`: Sequence-level χ² divergence, $\mathbb{E}[(\prod_t \rho_t)^2] - 1$
+- `chi2_seq`: Sequence-level χ² divergence (geometric mean based), $\mathbb{E}[\rho_{\text{geo}}^2] - 1$, where $\rho_{\text{geo}} = \exp(\frac{1}{T}\sum_t \log \rho_t)$
 
-Higher χ² divergence indicates larger IS weight variance and less stable training.
+Higher χ² divergence indicates larger IS weight variance and less stable training. `chi2_seq` uses geometric mean instead of product, making it comparable in scale to `chi2_token`.
 
 ### 4. Effective Sample Size (ESS)
 

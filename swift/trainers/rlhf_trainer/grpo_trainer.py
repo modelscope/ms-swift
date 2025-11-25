@@ -2305,11 +2305,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
         metrics['chi2_token'] = self.accelerator.gather_for_metrics(chi2_token).nanmean().item()
 
-        # Sequence-level: E_seq[(Π ρ_t)²] - 1 = E_seq[exp(2 * Σ log ρ_t)] - 1
-        log_ratio_sum = (log_ratio * completion_mask).sum(-1)  # Σ log ρ_t per sequence
-        log_ratio_sum_safe = torch.clamp(log_ratio_sum, min=-SAFETY_BOUND, max=SAFETY_BOUND)
-        rho_squared_seq = torch.exp(2.0 * log_ratio_sum_safe)  # (Π ρ_t)²
-        chi2_seq = rho_squared_seq.mean() - 1.0
+        # Sequence-level (geometric mean): E_seq[ρ_geo²] - 1
+        # where ρ_geo = exp(mean(log ρ_t)) is the geometric mean of token-level ratios
+        # This is more interpretable than the product-based chi2_seq, as it's normalized by sequence length
+        # and comparable to other per-token metrics like chi2_token
+        log_ratio_mean = masked_mean(log_ratio, completion_mask, axis=-1)  # mean(log ρ_t) per sequence
+        log_ratio_mean_safe = torch.clamp(log_ratio_mean, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_geo = torch.exp(log_ratio_mean_safe)  # geometric mean of ρ_t
+        chi2_seq = (rho_geo.square().mean() - 1.0)
         metrics['chi2_seq'] = self.accelerator.gather_for_metrics(chi2_seq).nanmean().item()
 
         return metrics

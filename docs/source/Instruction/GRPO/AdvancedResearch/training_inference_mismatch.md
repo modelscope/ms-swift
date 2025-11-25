@@ -166,9 +166,9 @@ $$
 $$
 
 - `chi2_token`：Token 级别 χ² 散度，$\mathbb{E}[\rho_t^2] - 1$
-- `chi2_seq`：Sequence 级别 χ² 散度，$\mathbb{E}[(\prod_t \rho_t)^2] - 1$
+- `chi2_seq`：Sequence 级别 χ² 散度（基于几何平均），$\mathbb{E}[\rho_{\text{geo}}^2] - 1$，其中 $\rho_{\text{geo}} = \exp(\frac{1}{T}\sum_t \log \rho_t)$
 
-χ² 散度越大，表示 IS 权重方差越大，训练越不稳定。
+χ² 散度越大，表示 IS 权重方差越大，训练越不稳定。`chi2_seq` 使用几何平均而非乘积，使其与 `chi2_token` 在量级上可比较。
 
 ### 4. Effective Sample Size (ESS)
 
