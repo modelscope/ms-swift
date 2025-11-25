@@ -919,19 +919,21 @@ class BaseMegatronTrainer(ABC):
 
     def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Merge all active adapters
-                    module.merge(adapter_names=[adapter_name])
+        with torch.no_grad():
+            for model in self.unwrapped_models:
+                for module in model.modules():
+                    if isinstance(module, LoraParallelLinear):
+                        # Merge all active adapters
+                        module.merge(adapter_names=[adapter_name])
 
     def unmerge_lora_adapters(self):
         """Unmerge LoRA adapters to restore training state."""
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Unmerge to restore separate LoRA weights for training
-                    module.unmerge()
+        with torch.no_grad():
+            for model in self.unwrapped_models:
+                for module in model.modules():
+                    if isinstance(module, LoraParallelLinear):
+                        # Unmerge to restore separate LoRA weights for training
+                        module.unmerge()
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()

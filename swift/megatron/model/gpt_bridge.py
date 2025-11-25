@@ -178,8 +178,8 @@ class GPTBridge:
                     param._rowwise_scale_inv.data.copy_(hf_scale_inv)
                     del param.get_high_precision_init_val
             else:
-                param.data.copy_(tensor)
                 assert hf_scale_inv is None, f'hf_scale_inv: {hf_scale_inv}'
+                param.data.copy_(tensor)
 
     @staticmethod
     def _is_fp8_param(param):
@@ -293,12 +293,13 @@ class GPTBridge:
                 dist.broadcast(tensor, src=src_rank, group=pp_group)
         return tensor
 
-    def _get_weight(self,
-                    mg_weight: Union[torch.Tensor, List[torch.Tensor]],
-                    mg_key: Optional[str],
-                    offset: float = 0,
-                    is_expert: bool = False,
-                    ):
+    def _get_weight(
+        self,
+        mg_weight: Union[torch.Tensor, List[torch.Tensor]],
+        mg_key: Optional[str],
+        offset: float = 0,
+        is_expert: bool = False,
+    ):
         # tp/etp
         mg_scale_inv = None
         if self._is_fp8_param(mg_weight):
@@ -408,7 +409,8 @@ class GPTBridge:
             else:
                 if is_modules_to_save:
                     self._peft_modules_to_save.add(hf_module_key)
-                weight, scale_inv = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset, is_expert)
+                weight, scale_inv = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset,
+                                                     is_expert)
                 if weight is not None:
                     hf_state_dict[hf_key] = weight
                 if scale_inv is not None:
@@ -513,8 +515,8 @@ class GPTBridge:
                                                                                              lora_B.shape[-1]).clone()
                     hf_state_dict['v_proj.lora_B.weight'] = lora_B[:, -kv_dim:, :].reshape(-1, lora_B.shape[-1]).clone()
             elif not self._is_peft_format:
-                mg_attn_weight, scale_inv = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.weight.data,
-                                                  'linear_qkv.weight')
+                mg_attn_weight, scale_inv = self._get_weight(
+                    None if mg_attn is None else mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
                 if mg_attn_weight is not None:
                     mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
                     hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size).clone()
@@ -525,12 +527,12 @@ class GPTBridge:
                                                                                             args.hidden_size).clone()
                 if scale_inv is not None:
                     scale_inv = scale_inv.reshape((num_query_groups, -1, hidden_size_block))
-                    hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:, :q_block, :].reshape(-1, hidden_size_block).clone()
-                    hf_state_dict['k_proj.weight_scale_inv'] = scale_inv[:,
-                                                                    q_block:-kv_block, :].reshape(-1,
-                                                                                              hidden_size_block).clone()
-                    hf_state_dict['v_proj.weight_scale_inv'] = scale_inv[:, -kv_block:, :].reshape(-1,
-                                                                                            hidden_size_block).clone()
+                    hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:, :q_block, :].reshape(
+                        -1, hidden_size_block).clone()
+                    hf_state_dict['k_proj.weight_scale_inv'] = scale_inv[:, q_block:-kv_block, :].reshape(
+                        -1, hidden_size_block).clone()
+                    hf_state_dict['v_proj.weight_scale_inv'] = scale_inv[:, -kv_block:, :].reshape(
+                        -1, hidden_size_block).clone()
                 del mg_attn_weight
         self._set_state_dict(mg_attn, 'linear_proj.weight', hf_state_dict, 'o_proj.weight', to_mcore)
 
@@ -546,7 +548,7 @@ class GPTBridge:
                 self._set_weight(mg_attn.linear_qkv.bias, linear_qkv_bias, 'linear_qkv.bias')
             else:
                 mg_attn_bias, _ = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
-                                                'linear_qkv.bias')
+                                                   'linear_qkv.bias')
                 if mg_attn_bias is not None:
                     mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
                     hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1).clone()
@@ -769,8 +771,10 @@ class GPTBridge:
                     else:
                         lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight
                         lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name].weight
-                lora_A, _ = self._get_weight(lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
-                lora_B, _ = self._get_weight(lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
+                lora_A, _ = self._get_weight(
+                    lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                lora_B, _ = self._get_weight(
+                    lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if lora_A is not None:
                     if hasattr(hf_mlp, 'gate_up_proj'):
                         self._peft_target_modules.update({'gate_up_proj'})
@@ -848,7 +852,6 @@ class GPTBridge:
                                 hf_state_dict['gate_proj.weight_scale_inv'] = scale_inv[0].clone()
                                 hf_state_dict['up_proj.weight_scale_inv'] = scale_inv[1].clone()
 
-                                
         # linear_fc2
         if is_expert:
             if to_mcore:
