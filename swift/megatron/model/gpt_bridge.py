@@ -86,10 +86,6 @@ class GPTBridge:
                 self.ep_pp_size = self.ep_size * self.pp_size
                 self.ep_pp_group = group
                 self.ep_pp_rank = dist.get_rank(group)
-        if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
-            from transformer_engine.pytorch import Float8BlockQuantizer
-            from transformer_engine_torch import DType as TE_DType
-            self.fp8_quantizer = Float8BlockQuantizer(TE_DType.kFloat8E4M3, rowwise=True, columnwise=True)
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
@@ -178,11 +174,8 @@ class GPTBridge:
                 else:
                     tensor = tensor.view(torch.uint8)
                     param._rowwise_data.data.copy_(tensor)
-                    # TODO: remove columns
-                    param._columnwise_data.data.copy_(tensor.permute([tensor.ndim - 1] + list(range(tensor.ndim - 1))))
                     hf_scale_inv = hf_scale_inv.reshape(-1, hf_scale_inv.shape[-1])
                     param._rowwise_scale_inv.data.copy_(hf_scale_inv)
-                    param._columnwise_scale_inv.data.copy_(hf_scale_inv.T)
                     del param.get_high_precision_init_val
             else:
                 param.data.copy_(tensor)
@@ -283,7 +276,7 @@ class GPTBridge:
             dist.all_reduce(src_rank, group=pp_group)
             src_rank = dist.get_global_rank(pp_group, src_rank.item())
             meta_data = torch.zeros(10, dtype=torch.int64, device='cuda')
-            dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3}
+            dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3, torch.uint8: 4}
             dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
             if tensor is None:
                 dist.broadcast(meta_data, src=src_rank, group=pp_group)
@@ -308,7 +301,6 @@ class GPTBridge:
                     ):
         # tp/etp
         mg_scale_inv = None
-        # TODO: is_fp8
         if self._is_fp8_param(mg_weight):
             mg_scale_inv = mg_weight._rowwise_scale_inv
             tensor = mg_weight._rowwise_data
@@ -329,7 +321,7 @@ class GPTBridge:
 
         tensor = self._all_gather_tp(tensor, tp_dim, is_expert)
         tensor = self._broadcast_ep_pp(tensor, is_expert)
-        if mg_scale_inv is not None:
+        if tensor.dtype == torch.uint8:
             mg_scale_inv = self._all_gather_tp(mg_scale_inv, tp_dim, is_expert)
             mg_scale_inv = self._broadcast_ep_pp(mg_scale_inv, is_expert)
             tensor = tensor.view(torch.float8_e4m3fn)
