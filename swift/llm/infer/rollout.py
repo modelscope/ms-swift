@@ -26,11 +26,11 @@ from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
+                                               UpdateFlattenedAdapterRequest, UpdateFlattenedParamsRequest,
                                                patch_vllm_load_adapter)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import (InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest,
-                       UpdateFlattenedParamsRequest, UpdateWeightsRequest)
+from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
     from vllm.utils import get_open_port
