@@ -870,7 +870,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 lp_tensor = lp[-logits_to_keep:] if len(lp) >= logits_to_keep else lp
                                 # Pad if needed
                                 if len(lp_tensor) < max_len:
-                                    lp_tensor = [-1e10] * (max_len - len(lp_tensor)) + lp_tensor
+                                    # right padding
+                                    lp_tensor = lp_tensor + [-1e10] * (max_len - len(lp_tensor))
                                 padded_logprobs.append(lp_tensor)
                             batch_encoded_inputs['vllm_per_token_logps'] = torch.tensor(
                                 padded_logprobs, dtype=torch.float32, device=self.accelerator.device)
@@ -1497,9 +1498,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         logps_rmpad=original_completion_mask.float(),  # [1, logits_to_keep]
                         logits_to_keep=logits_to_keep,
                         batch_size=batch_size,
-                        seq_lengths=original_seq_lengths)
+                        seq_lengths=original_seq_lengths,
+                        pad_value=0.0)
                     # Combine with shape mask to ensure padding positions are also masked
-                    inputs['completion_mask_padded'] = (completion_mask_padded > 0.5) & (padded_shape_mask > 0.5)
+                    inputs['completion_mask_padded'] = completion_mask_padded
 
             else:
                 logps = selective_log_softmax(logits, input_ids_for_logps)

@@ -1136,24 +1136,26 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
                             logits_to_keep: int = None,
                             batch_size: int = None,
                             seq_lengths: Optional[torch.Tensor] = None,
-                            dtype: Optional[torch.dtype] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                            dtype: Optional[torch.dtype] = None,
+                            pad_value: float = -1e10) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Restore padding-free logprobs back to [batch_size, seq_len] shape.
+    Restore padding-free logprobs back to [batch_size, seq_len] shape with LEFT PADDING.
 
     - Input: logps in rmpad format [1, total_nnz]
-    - Output: logps in batch format [batch_size, max_seq_len]
+    - Output: logps in batch format [batch_size, max_seq_len] with data right-aligned
 
     Args:
         logps_rmpad: [1, total_nnz] per-token log probabilities in padding_free format
         position_ids: [1, total_nnz] position ids to determine sequence boundaries (deprecated, use seq_lengths)
-        logits_to_keep: number of tokens to keep per sequence
+        logits_to_keep: number of tokens to keep per sequence (= max_seq_len)
         batch_size: number of sequences in the batch
         seq_lengths: [batch_size] actual sequence lengths (preferred over position_ids)
         dtype: optional dtype for output, defaults to logps_rmpad.dtype
+        pad_value: value to use for padding positions (default: -1e10 for logps, use 0.0 for masks)
 
     Returns:
-        logps_padded: [batch_size, logits_to_keep] padded log probabilities
-        completion_mask: [batch_size, logits_to_keep] mask indicating valid positions
+        logps_padded: [batch_size, logits_to_keep] padded log probabilities (left-padded, data right-aligned)
+        valid_mask: [batch_size, logits_to_keep] mask indicating valid (non-padding) positions
     """
     if dtype is None:
         dtype = logps_rmpad.dtype
@@ -1187,8 +1189,8 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
     max_seq_len = logits_to_keep  # All sequences will be padded to this length
 
     # Initialize output tensors with padding value
-    logps_padded = torch.full((batch_size, max_seq_len), -1e10, dtype=dtype, device=device)
-    completion_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+    logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
+    valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
 
     # Unflatten: assign each sequence's logps to the corresponding row
     # Use LEFT PADDING (right-align the data) to match the standard padding convention
@@ -1215,10 +1217,10 @@ def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
             # Place actual data at the rightmost positions
             data_pad_len = max_seq_len - actual_len
             logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
-            completion_mask[i, data_pad_len:] = 1.0
+            valid_mask[i, data_pad_len:] = 1.0
         else:
             # Normal case: seq_len tokens of data
             logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
-            completion_mask[i, pad_len:] = 1.0
+            valid_mask[i, pad_len:] = 1.0
 
-    return logps_padded, completion_mask
+    return logps_padded, valid_mask

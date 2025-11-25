@@ -573,7 +573,7 @@ class VllmEngine(InferEngine):
 
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(content, template)  # Use content instead of response for tool calls
-            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
+            token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(
