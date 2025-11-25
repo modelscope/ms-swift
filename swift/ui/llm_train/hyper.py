@@ -137,7 +137,7 @@ class Hyper(BaseUI):
                     gr.Textbox(elem_id='output_dir', scale=20)
                     gr.Dropdown(
                         elem_id='attn_impl',
-                        value='flash_attention_2',
+                        value=None,
                         choices=[None, 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3'],
                         scale=20)
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=20)
