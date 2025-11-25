@@ -81,7 +81,7 @@ class PaddleOCRTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         if self.mode == 'vllm':
-            assert NotImplementedError
+            return ['<|IMAGE_START|><|IMAGE_PLACEHOLDER|><|IMAGE_END|>']
         return ['<|IMAGE_START|>', [-100], '<|IMAGE_END|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:

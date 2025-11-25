@@ -190,6 +190,8 @@ swift infer \
     --stream true
 ```
 
+提示：如果在vLLM权重更新期间遇到 GPU OOM 问题，您可以设置 `--offload_bridge true` 将张量卸载到 CPU 并减少 GPU 内存使用量。
+
 ## 导出与转换精度测试
 
 Mcore-Bridge除了支持在训练中进行safetensors的转换和保存，也支持了`megatron export`命令用于单独的权重导出。`megatron export`支持在权重转换时，对转换精度进行测试，这在接入新模型时验证接入准确性很有帮助。通常，Megatron-SWIFT已经接入的模型不会出现精度不对齐的情况，你可以放心设置`--test_convert_precision false`。

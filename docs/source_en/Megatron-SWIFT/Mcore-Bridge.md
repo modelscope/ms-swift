@@ -200,6 +200,8 @@ swift infer \
     --stream true
 ```
 
+Tip: If you encounter GPU OOM issues during weight synchronization with vLLM, you can set `--offload_bridge true` to offload intermediate tensors to the CPU and reduce GPU memory usage.
+
 ## Export and Conversion Precision Testing
 
 In addition to supporting safetensors conversion and saving during training, Mcore-Bridge also supports the `megatron export` command for standalone weight export. `megatron export` supports conversion precision testing during weight conversion, which is very helpful for verifying accuracy when integrating new models. Typically, models already integrated into Megatron-SWIFT will not have precision misalignment issues, so you can confidently set `--test_convert_precision false`.

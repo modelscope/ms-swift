@@ -36,6 +36,7 @@ megatron rlhf \
     --loss_type grpo \
     --sleep_level 2 \
     --offload_model true \
+    --offload_bridge false \
     --offload_optimizer true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer \
