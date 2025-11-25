@@ -2210,52 +2210,107 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     ) -> Dict[str, float]:
         """
         Compute off-policy diagnostic metrics (always computed for monitoring).
+        reference: verl/verl/trainer/ppo/rollout_corr_helper.py
 
         These metrics help diagnose the off-policy gap between rollout and training policies,
         which can arise from policy mismatch (e.g., vLLM BF16 vs FSDP FP32), model staleness,
         or general distribution shifts.
 
+        Key metrics:
+        - kl: Direct KL divergence estimator KL(π_rollout || π_training)
+        - k3_kl: K3 KL estimator for stability (more stable for small KL)
+        - training_ppl: Perplexity of training policy
+        - rollout_ppl: Perplexity of rollout policy
+        - log_ppl_diff: Difference in log perplexities
+        - ppl_ratio: Ratio of training PPL to rollout PPL
+        - chi2_token: Token-level χ² divergence E[ρ²] - 1
+        - chi2_seq: Sequence-level χ² divergence E[(∏ρ_t)²] - 1
+
         Args:
-            per_token_logps: Log probs from policy model, shape [B, T]
-            rollout_per_token_logps: Log probs from rollout, shape [B, T]
+            per_token_logps: Log probs from training policy model, shape [B, T]
+            rollout_per_token_logps: Log probs from rollout policy, shape [B, T]
             completion_mask: Boolean mask for completion tokens, shape [B, T]
 
         Returns:
-            Dictionary with metrics: kl, ppl_policy, ppl_rollout, log_ppl_diff
+            Dictionary with off-policy diagnostic metrics
         """
+        SAFETY_BOUND = 20.0
         metrics = {}
 
-        # Clamp rollout logps to prevent numerical issues from padding values
-        # Padding values are typically -1e10, which would cause exp() overflow
-        LOGP_MIN = -100.0  # log(exp(-100)) is essentially 0 probability
-        rollout_per_token_logps_safe = torch.clamp(rollout_per_token_logps, min=LOGP_MIN)
-
         # Helper function for masked mean
-        def masked_mean(x, mask):
-            return (x * mask).sum() / mask.sum().clamp(min=1.0)
+        def masked_mean(x, mask, axis=None):
+            if axis is None:
+                return (x * mask).sum() / mask.sum().clamp(min=1.0)
+            else:
+                return (x * mask).sum(axis) / mask.sum(axis).clamp(min=1.0)
 
         # 1. Training policy perplexity (always computed)
-        mean_logps = (per_token_logps * completion_mask).sum(1) / completion_mask.sum(1).clamp(min=1.0)
-        policy_ppl = torch.exp(-mean_logps).mean()
-        metrics['ppl_policy'] = self.accelerator.gather_for_metrics(policy_ppl).nanmean().item()
+        # Formula: exp(-1/|T| * Σ log π_training(y_t|y_<t))
+        mean_log_prob_training = masked_mean(per_token_logps, completion_mask, axis=-1)  # (batch_size,)
+        training_ppl = torch.exp(-mean_log_prob_training).mean()  # Batch mean of per-sequence PPL
+        metrics['training_ppl'] = self.accelerator.gather_for_metrics(training_ppl).nanmean().item()
 
-        # 2. Rollout off-policy metrics
-        # KL divergence: KL(π_policy || π_rollout) ≈ E[log(π_policy/π_rollout)]
-        log_ratio = per_token_logps - rollout_per_token_logps_safe
-        kl_div = masked_mean(log_ratio, completion_mask)
-        metrics['kl_rollout'] = self.accelerator.gather_for_metrics(kl_div).nanmean().item()
+        # Also log log-ppl for easier analysis (avoids exponential scale)
+        metrics['training_log_ppl'] = self.accelerator.gather_for_metrics(
+            (-mean_log_prob_training).mean()).nanmean().item()
 
-        # Rollout policy perplexity
-        mean_rollout_logps = (rollout_per_token_logps_safe
-                              * completion_mask).sum(1) / completion_mask.sum(1).clamp(min=1.0)
-        rollout_ppl = torch.exp(-mean_rollout_logps).mean()
-        metrics['ppl_rollout'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
+        # 2. Compute rollout off-policy metrics
+        # 2a. kl: Direct estimator for KL(π_rollout || π_training)
+        # This is the standard KL divergence: E[log(π_rollout) - log(π_training)]
+        # Positive value means rollout policy is more confident than training policy
+        kl = masked_mean(rollout_per_token_logps - per_token_logps, completion_mask)
+        metrics['kl'] = self.accelerator.gather_for_metrics(kl).nanmean().item()
 
-        # Log PPL difference (for easier monitoring of distribution drift)
-        mean_log_prob_policy = masked_mean(per_token_logps, completion_mask)
-        mean_log_prob_rollout = masked_mean(rollout_per_token_logps_safe, completion_mask)
-        log_ppl_diff = -mean_log_prob_rollout - (-mean_log_prob_policy)  # log(ppl_policy) - log(ppl_rollout)
-        metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff).nanmean().item()
+        # 2b. k3_kl: K3 estimator for KL(π_rollout || π_training)
+        # More stable for small KL values using: E[exp(log_ratio) - log_ratio - 1]
+        # Formula: KL ≈ E[r - log(r) - 1] where r = π_training/π_rollout
+        log_ratio = per_token_logps - rollout_per_token_logps
+        log_ratio *= completion_mask
+        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        k3_kl = masked_mean(k3_kl_matrix, completion_mask)
+        metrics['k3_kl'] = self.accelerator.gather_for_metrics(k3_kl).nanmean().item()
+
+        # 2c. Rollout policy perplexity
+        mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask, axis=-1)  # (batch_size,)
+        rollout_ppl = torch.exp(-mean_log_prob_rollout).mean()  # Batch mean of per-sequence PPL
+        metrics['rollout_ppl'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
+        metrics['rollout_log_ppl'] = self.accelerator.gather_for_metrics(
+            (-mean_log_prob_rollout).mean()).nanmean().item()
+
+        # 2d. Log PPL difference (sequence-level perplexity difference)
+        # log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        # Since ppl = exp(-log_prob), we have:
+        #   log(ppl_ratio) = log(training_ppl/rollout_ppl) = log_ppl_diff
+        # Positive value means training assigns lower probability (higher PPL) than rollout
+        log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.mean()).nanmean().item()
+        metrics['log_ppl_abs_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.abs().mean()).nanmean().item()
+        metrics['log_ppl_diff_max'] = self.accelerator.gather_for_metrics(log_ppl_diff.max()).max().item()
+        metrics['log_ppl_diff_min'] = self.accelerator.gather_for_metrics(log_ppl_diff.min()).min().item()
+
+        # 2e. PPL ratio (how much higher is training PPL vs rollout PPL)
+        # IMPORTANT: Compute per-sequence ratio first, then average
+        # For numerical stability, compute in log space using log_ppl_diff
+        # Note: log_ppl_diff = log(ppl_ratio), so ppl_ratio = exp(log_ppl_diff)
+        ppl_ratio = torch.exp(log_ppl_diff).mean()
+        metrics['ppl_ratio'] = self.accelerator.gather_for_metrics(ppl_ratio).nanmean().item()
+
+        # 2f. Chi-squared divergence: χ²(π_training || π_rollout) = E_μ[ρ²] - 1
+        # where ρ = π_training / π_rollout and μ = π_rollout (rollout distribution)
+        # This measures the variance of importance sampling weights
+        # Token-level: E_token[ρ²] - 1 (averaged over all tokens)
+        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_token = torch.exp(log_ratio_safe)  # ρ = π_training / π_rollout (token-level)
+        rho_squared_token = rho_token.square()
+        chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
+        metrics['chi2_token'] = self.accelerator.gather_for_metrics(chi2_token).nanmean().item()
+
+        # Sequence-level: E_seq[(Π ρ_t)²] - 1 = E_seq[exp(2 * Σ log ρ_t)] - 1
+        log_ratio_sum = (log_ratio * completion_mask).sum(-1)  # Σ log ρ_t per sequence
+        log_ratio_sum_safe = torch.clamp(log_ratio_sum, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_squared_seq = torch.exp(2.0 * log_ratio_sum_safe)  # (Π ρ_t)²
+        chi2_seq = rho_squared_seq.mean() - 1.0
+        metrics['chi2_seq'] = self.accelerator.gather_for_metrics(chi2_seq).nanmean().item()
 
         return metrics
 
@@ -2266,7 +2321,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_mask: torch.Tensor,
     ) -> Dict[str, float]:
         """
-        Compute importance sampling correction metrics (ESS, clipped_frac, is_weight_mean).
+        Compute importance sampling correction metrics (ess, clipped_frac, is_weight_mean).
         Only called when rollout_importance_sampling_mode is enabled.
 
         Args:
@@ -2275,10 +2330,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             completion_mask: Boolean mask for completion tokens, shape [B, T]
 
         Returns:
-            Dictionary with IS-specific metrics
+            Dictionary with IS-specific metrics:
+                - is_weight_mean: Mean of IS weights
+                - ess: Effective Sample Size = 1 / E[(w_i / E[w_i])²]
+                - clipped_frac: Fraction of clipped/masked samples
         """
         metrics = {}
         SAFETY_BOUND = 20.0
+        threshold = self.rollout_importance_sampling_threshold
+        threshold_lower = 1.0 / threshold  # Default lower threshold (reciprocal of upper)
 
         # Helper function for masked mean
         def masked_mean(x, mask):
@@ -2288,28 +2348,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         log_ratio_safe = torch.clamp(vllm_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
         is_ratio = torch.exp(log_ratio_safe)
 
-        # Compute sequence-level ratios for ESS and clipped_frac
-        log_r = torch.log(is_ratio.clamp(min=1e-10))
-        seq_log_ratios = (log_r * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
-        seq_ratios = torch.exp(seq_log_ratios)
-
-        # ESS = 1 / E[(w/E[w])²] - measures effective number of independent samples
-        # For distributed training, gather all seq_ratios across ranks first
-        all_seq_ratios = self.accelerator.gather_for_metrics(seq_ratios)
-        mean_seq_ratio = all_seq_ratios.mean()
-        seq_ratios_normalized = all_seq_ratios / (mean_seq_ratio + 1e-8)
-        ess = 1.0 / (seq_ratios_normalized**2).mean().clamp(min=1e-10)
-        # Normalize by batch size to get relative ESS in [0, 1]
-        num_sequences = max(len(all_seq_ratios), 1)
-        ess_normalized = ess / num_sequences
-        metrics['ess'] = ess_normalized.item()
-
-        # 2. IS weight statistics
+        # 1. IS weight statistics
         mean_is_weight = masked_mean(is_weights, completion_mask)
         metrics['is_weight_mean'] = self.accelerator.gather_for_metrics(mean_is_weight).nanmean().item()
 
+        # 2. Compute Effective Sample Size (ESS) for IS weights
+        # ESS = 1 / E[(w_i / E[w_i])²] (using clamped weights for stability)
+        # This measures how many "effective" independent samples we have after IS weighting
+        weights_for_ess = is_weights.clamp(min=threshold_lower, max=threshold)
+        mean_for_ess = masked_mean(weights_for_ess, completion_mask)
+        is_weights_normalized = weights_for_ess / (mean_for_ess + 1e-8)  # Avoid division by zero
+        ess = 1.0 / masked_mean(is_weights_normalized.square(), completion_mask).clamp(min=1e-10)
+        metrics['ess'] = self.accelerator.gather_for_metrics(ess).nanmean().item()
+
         # 3. Fraction of clipped/masked samples
-        threshold = self.rollout_importance_sampling_threshold
         if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
             # Token-level
             if self.rollout_importance_sampling_mode == 'token_truncate':
@@ -2319,6 +2371,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
         else:
             # Sequence-level (both truncate and mask)
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
             clipped_frac = (seq_ratios > threshold).float().mean()
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
 

@@ -40,7 +40,6 @@ $$
 $$
 
 其中样本来自 $\pi_{\text{vLLM}}$，但梯度是基于 $\pi_\theta$ 计算的，这**破坏了算法的 on-policy 假设**，引入了训推不一致的问题。
-- 最终性能下降
 
 ## Solution
 
@@ -108,7 +107,7 @@ $$
 
 ### 四种校正模式
 
-结合粒度和控制策略，共有四种校正模式（通过 `--rollout_importance_sampling_mode` 参数选择）：
+结合粒度和控制策略，共设置四种校正模式（通过 `--rollout_importance_sampling_mode` 参数选择）：
 
 | 模式 | 说明 |
 |------|------|
@@ -121,17 +120,26 @@ $$
 
 ## Metrics
 
-为了监控训练中训推不一致的程度，我们在log中加入以下指标：
+为了监控训练中训推不一致的程度，我们在log中加入以下指标（前缀为 `rollout_correction/`）：
 
 ### 1. KL 散度（KL Divergence）
 
-KL 散度衡量两个分布之间的差异：
+KL 散度衡量两个分布之间的差异，提供两种估计器：
+
+**直接估计器 `kl`**：
 
 $$
-\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) \approx \frac{1}{|y|} \sum_{t=1}^{|y|} \log \frac{\pi_\theta(y_t|x, y_{<t})}{\pi_{\text{vLLM}}(y_t|x, y_{<t})}
+\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) = \mathbb{E}\left[ \log \pi_{\text{vLLM}} - \log \pi_\theta \right]
 $$
 
-该指标直接反映了训练模型与 vLLM 模型之间的分布偏离程度。
+
+**K3 估计器 `k3_kl`**：
+
+$$
+\text{KL}_{K3} = \mathbb{E}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
+$$
+
+K3 估计器在 KL 值较小时数值更稳定。
 
 ### 2. Perplexity (PPL)
 
@@ -141,21 +149,40 @@ $$
 \text{PPL} = \exp\left( -\frac{1}{|y|} \sum_{t=1}^{|y|} \log p(y_t) \right)
 $$
 
-分别计算 推理模型（`ppl_rollout`） 和 训练模型（`ppl_policy`）的 PPL ，两者的差异可以反映 mismatch 的程度。
+相关指标：
+- `training_ppl` / `training_log_ppl`：训练策略的 PPL 及其对数
+- `rollout_ppl` / `rollout_log_ppl`：rollout 策略的 PPL 及其对数
+- `log_ppl_diff`：log PPL 差异，正值表示训练策略分配的概率更低
+- `log_ppl_abs_diff`：log PPL 绝对差异
+- `log_ppl_diff_max` / `log_ppl_diff_min`：log PPL 差异的最大/最小值
+- `ppl_ratio`：PPL 比率 $\frac{\text{PPL}_{\text{training}}}{\text{PPL}_{\text{rollout}}}$
 
-### 3. Effective Sample Size (ESS)
+### 3. χ² 散度（Chi-squared Divergence）
+
+χ² 散度衡量重要性采样权重的方差：
+
+$$
+\chi^2(\pi_\theta \| \pi_{\text{vLLM}}) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho^2 \right] - 1, \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
+$$
+
+- `chi2_token`：Token 级别 χ² 散度，$\mathbb{E}[\rho_t^2] - 1$
+- `chi2_seq`：Sequence 级别 χ² 散度，$\mathbb{E}[(\prod_t \rho_t)^2] - 1$
+
+χ² 散度越大，表示 IS 权重方差越大，训练越不稳定。
+
+### 4. Effective Sample Size (ESS)
 
 有效样本大小衡量重要性采样后实际起作用的样本数量：
 
 $$
-\text{ESS} = \frac{1}{\mathbb{E}\left[\left(\frac{w}{\mathbb{E}[w]}\right)^2\right]} = \frac{(\sum_i w_i)^2}{\sum_i w_i^2}
+\text{ESS} = \frac{1}{\mathbb{E}\left[\left(\frac{w}{\mathbb{E}[w]}\right)^2\right]}
 $$
 
-ESS 值越大，表示重要性采样权重分布越均匀，样本的有效利用率越高。
+ESS 值越大（接近1），表示重要性采样权重分布越均匀，样本的有效利用率越高。当所有权重相等时（on-policy），ESS = 1；当权重差异很大时（严重 off-policy），ESS 会很小。
 
-### 4. IS 权重统计
+### 5. IS 权重统计
 
-- `is_weight_mean`：平均重要性采样权重
+- `is_weight_mean`：平均重要性采样权重，理想值为 1.0
 - `clipped_frac`：被截断或屏蔽的样本比例
 
 
@@ -163,11 +190,11 @@ ESS 值越大，表示重要性采样权重分布越均匀，样本的有效利�
 
 ### 启用重要性采样校正
 
-通过以下参数启用校正机制：
+在GRPO训练中，设置以下参数启用校正机制：
 
-```bash
---rollout_importance_sampling_mode sequence_truncate \
---rollout_importance_sampling_threshold 2.0
+```
+--rollout_importance_sampling_mode （默认为None）
+--rollout_importance_sampling_threshold （默认为2）
 ```
 
 
@@ -175,3 +202,4 @@ ESS 值越大，表示重要性采样权重分布越均匀，样本的有效利�
 
 1. https://yingru.notion.site/When-Speed-Kills-Stability-Demystifying-RL-Collapse-from-the-Training-Inference-Mismatch-271211a558b7808d8b12d403fd15edda
 2. https://fengyao.notion.site/off-policy-rl
+3. https://github.com/volcengine/verl/blob/main/verl/trainer/ppo/rollout_corr_helper.py
