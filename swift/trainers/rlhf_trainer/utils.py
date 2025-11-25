@@ -744,6 +744,16 @@ class FlattenedTensorMetadata(BaseModel):
         raise ValueError('dtype must be a torch.dtype or str')
 
 
+class UpdateFlattenedAdapterRequest(BaseModel):
+    lora_int_id: int
+    peft_config: dict
+    metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateFlattenedParamsRequest(BaseModel):
+    metadatas: List[FlattenedTensorMetadata]
+
+
 class FlattenedTensorBucket:
     """
     A bucket that flattens multiple tensors into a single tensor for efficient processing
