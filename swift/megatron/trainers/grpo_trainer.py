@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 import pandas as pd
@@ -500,40 +500,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         def _get_encoded_batch(rollout_batch, advantages):
             template = self.template
             with self._template_context(template):
-                encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
+                encoded_list = [template.encode(data, return_length=True) for data in rollout_batch]
+                lengths_tensor = torch.tensor([item['length'] for item in encoded_list],
+                                              dtype=torch.long,
+                                              device=self.device)
                 encoded_batch = to_device(
-                    template.data_collator(encoded_batch, padding_to=get_padding_to(args)), self.device)
+                    template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
             labels = encoded_batch['labels']
             assert self.template.padding_free
-            position_ids = encoded_batch.get('text_position_ids')
-            if position_ids is None:
-                position_ids = encoded_batch.get('position_ids')
-            squeezed_position_ids = position_ids.squeeze()
-            assert squeezed_position_ids is not None
-            # Remove trailing padding zeros from position_ids to avoid interference
-            # Find the last non-zero position
-            last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
-            if len(last_nonzero_idx) > 0:
-                # Keep only up to the last non-zero position + 1 to include the last valid position
-                squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
-
-            # Calculate lengths based on sequence boundaries (position_ids == 0)
-            lengths = torch.diff(
-                torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
-                           torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
-            advantages = torch.repeat_interleave(advantages, lengths)
+            advantages = torch.repeat_interleave(advantages, lengths_tensor)
             truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
                                           dtype=torch.bool,
                                           device=self.device)
-            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
-            padding_length = labels.shape[1] - truncated_mask.shape[1]
+            truncated_mask = torch.repeat_interleave(truncated_mask, lengths_tensor).unsqueeze(0)
+            actual_tokens = lengths_tensor.sum().item()
+            padding_length = labels.shape[1] - actual_tokens
             if padding_length > 0:
                 padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
                 truncated_mask = torch.cat([truncated_mask, padding], dim=1)
             # Pad advantages to match the original position_ids length
-            original_length = position_ids.shape[1]
-            if advantages.shape[0] < original_length:
-                padding_length = original_length - advantages.shape[0]
+            if advantages.shape[0] < labels.shape[1]:
+                padding_length = labels.shape[1] - advantages.shape[0]
                 padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
                 advantages = torch.cat([advantages, padding])
 
@@ -543,7 +530,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'truncated_mask': truncated_mask,
                 'advantages': advantages,
                 'num_samples': len(rollout_batch),
-                'seq_lengths': lengths,
+                'seq_lengths': lengths_tensor,
             })
 
             return encoded_batch
@@ -1057,9 +1044,37 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
         lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
 
+        target_token_count = completion_mask.shape[-1]
+        lengths_total = lengths_with_padding.sum().item()
+        if lengths_total != target_token_count:
+            lengths_with_padding = lengths_with_padding.clone()
+            diff = target_token_count - lengths_total
+            lengths_with_padding[-1] = lengths_with_padding[-1] + diff
+            if lengths_with_padding[-1] <= 0:
+                raise RuntimeError('Invalid packed sequence metadata: negative padded length after adjustment.')
+
+        def _pad_or_trim_last_dim(tensor: Optional[torch.Tensor], target_len: int) -> Optional[torch.Tensor]:
+            if tensor is None:
+                return None
+            current_len = tensor.shape[-1]
+            if current_len == target_len:
+                return tensor
+            if current_len < target_len:
+                pad_shape = (*tensor.shape[:-1], target_len - current_len)
+                padding = torch.zeros(pad_shape, device=tensor.device, dtype=tensor.dtype)
+                return torch.cat([tensor, padding], dim=-1)
+            return tensor[..., :target_len]
+
         # get_logps with per_token=True now returns full sequences (all_gather in CP mode)
         per_token_logps = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
+        per_token_logps = _pad_or_trim_last_dim(per_token_logps, target_token_count)
+
+        if self.beta != 0.0:
+            data['ref_per_token_logps'] = _pad_or_trim_last_dim(data.get('ref_per_token_logps'), target_token_count)
+
+        if data.get('old_per_token_logps') is not None:
+            data['old_per_token_logps'] = _pad_or_trim_last_dim(data['old_per_token_logps'], target_token_count)
 
         if self.args.overlong_filter and truncated_mask.any():
             completion_mask = completion_mask & (~truncated_mask)
