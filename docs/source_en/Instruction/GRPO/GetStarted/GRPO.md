@@ -256,6 +256,20 @@ If the `log_entropy` parameter is set, additional entropy-related metrics will b
 If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
 - entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.
 
+Training-inference consistency metrics, prefixed with rollout_correction (ms-swift>=3.11):
+- `kl` / `k3_kl`: KL divergence between training policy and rollout policy (direct estimator / K3 estimator)
+- `training_ppl` / `rollout_ppl`: Perplexity of training policy and rollout policy
+- `log_ppl_diff`: Log PPL difference, reflects the degree of distribution shift
+- `ppl_ratio`: PPL ratio
+- `chi2_token` / `chi2_seq`: Token/Sequence-level χ² divergence
+
+IS correction metrics (requires setting rollout_importance_sampling_mode):
+- `is_weight_mean`: Average importance sampling weight
+- `ess`: Effective Sample Size
+- `clipped_frac`: Fraction of samples that were truncated or masked
+
+> For detailed explanation of training-inference consistency metrics, please refer to [Training-Inference-Mismatch](../AdvancedResearch/training_inference_mismatch.md)
+
 If `log_completions` is set, the training dynamics will be saved in the output directory, including:
 - step: The training step at the time of logging.
 - prompt: The model input.

@@ -100,6 +100,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.completion_length_limit_scope = args.completion_length_limit_scope
         self.async_generate = args.async_generate
 
+        # Enable logprobs for vLLM importance sampling if requested
+
         self.request_config = RequestConfig(
             n=1,
             max_tokens=args.max_completion_length,
@@ -108,7 +110,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True)
+            return_details=True,
+            logprobs=args.use_vllm)
+
+        self.disable_rollout_importance_sampling = False
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
@@ -144,6 +149,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
             self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+            if self.enable_server_multi_turn:
+                if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
+                    logger.warning('Rollout importance sampling is disabled for server multi-turn mode')
+                self.disable_rollout_importance_sampling = True
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
             if self.use_gym_env:
                 self.reward_func_names = ['gym_reward']
@@ -226,6 +235,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
                 engine_kwargs=self.args.vllm_engine_kwargs,
+                logprobs_mode='processed_logprobs',
                 **lora_kwargs,
             )
             set_expandable_segments(True)
@@ -839,9 +849,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if output.rollout_infos:
                 input_data['rollout_infos'] = output.rollout_infos
 
+            # Extract vLLM logprobs for importance sampling if available
+            if choice.logprobs is not None:
+                # Extract logprobs from the response
+                # logprobs format: {'content': [{'token': ..., 'logprob': ..., 'bytes': ...}, ...]}
+                if 'content' in choice.logprobs:
+                    vllm_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['vllm_logprobs'] = vllm_logprobs
+
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
-            input_data['add_eos'] = not choice.finish_reason == 'length'
+            input_data['add_eos'] = False
             if output.rollout_infos:
                 multi_modal_keys = ['images', 'videos', 'audios']
                 for key in multi_modal_keys:
@@ -928,6 +946,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return
 
         if args.multi_turn_scheduler:
+            if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
+                # TODO
+                logger.warning('Rollout importance sampling mode is not supported for multi-turn scheduler')
+                self.disable_rollout_importance_sampling = True
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
                 multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)

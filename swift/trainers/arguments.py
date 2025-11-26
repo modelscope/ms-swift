@@ -343,6 +343,12 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # dataset
     dataset_shuffle: Optional[bool] = True
 
+    # Rollout Importance Sampling Correction (off-policy correction)
+    # Set to None to disable, or choose from: 'token_truncate', 'token_mask', 'sequence_truncate', 'sequence_mask'
+    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+                                                       'sequence_mask']] = None
+    rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
