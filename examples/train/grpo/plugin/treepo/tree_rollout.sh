@@ -7,18 +7,17 @@
 # For more details on tool invocation, dialogue termination criteria, and other logic, please refer to the TreeRolloutScheduler implementation.
 
 # First: Run swift rollout to deploy rollout server
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model Qwen/Qwen2.5-0.5B \
     --vllm_use_async_engine true \
     --external_plugins examples/train/grpo/plugin/treepo/tree_rollout_plugin.py \
     --multi_turn_scheduler tree_rollout_scheduler \
-    --max_turns 6 \
-    --vllm_data_parallel_size 2
+    --max_turns 6
 
 
 # Second: Run swift rlhf to train GRPO model
-CUDA_VISIBLE_DEVICES=2 \
+CUDA_VISIBLE_DEVICES=1 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-0.5B \
