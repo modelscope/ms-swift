@@ -905,7 +905,7 @@ class GPTBridge:
                     mg_lora_A = mg_mlp.linear_fc2.lora_A[self._adapter_name]
                     mg_lora_A = [getattr(mg_lora_A, f'weight{i}')
                                  for i in range(num_local_experts)] if is_expert else mg_lora_A.weight
-                    mg_lora_B = mg_mlp.linear_fc2.lora_A[self._adapter_name]
+                    mg_lora_B = mg_mlp.linear_fc2.lora_B[self._adapter_name]
                     mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
                                  for i in range(num_local_experts)] if is_expert else mg_lora_B.weight
                     lora_A = torch.concat([
