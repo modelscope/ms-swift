@@ -14,6 +14,7 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
+from swift.llm.argument.base_args.quant_args import QuantizeArguments
 from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
@@ -338,6 +339,7 @@ class GPTBridge:
             mg_scale_inv = self._all_gather_tp(mg_scale_inv, tp_dim, is_expert)
             mg_scale_inv = self._broadcast_ep_pp(mg_scale_inv, is_expert)
             tensor = tensor.view(torch.float8_e4m3fn)
+            mg_scale_inv = mg_scale_inv[..., :tensor.shape[-1] // self.fp8_block_size].contiguous()
         assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
@@ -855,7 +857,8 @@ class GPTBridge:
                         if is_expert:
                             gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, 2, -1,
                                                                            gate_up_proj_weight.shape[-1])
-                            scale_inv = scale_inv.view(num_local_experts, 2, -1, scale_inv.shape[-1])
+                            if scale_inv is not None:
+                                scale_inv = scale_inv.view(num_local_experts, 2, -1, scale_inv.shape[-1])
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
                                 hf_state_dict[f'{hf_i}.gate_proj.weight'] = gate_up_proj_weight[i][0].clone()
@@ -1280,6 +1283,11 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
+                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
+                    from transformers.utils.quantization_config import FineGrainedFP8Config
+                    modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
+                    self.hf_model.config.quantization_config = FineGrainedFP8Config(
+                        modules_to_not_convert=modules_to_not_convert)
                 self.hf_model.config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
                     custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
