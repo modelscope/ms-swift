@@ -41,7 +41,6 @@ megatron rlhf \
   --offload_optimizer true \
   --log_interval 1 \
   --recompute_granularity selective \
-  --max_epochs 1 \
   --finetune \
   --lr 1e-6 \
   --num_workers 8 \
