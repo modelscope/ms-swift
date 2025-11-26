@@ -17,7 +17,7 @@ from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download,
 from swift.llm.argument.base_args.quant_args import QuantizeArguments
 from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import Fp8Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -87,6 +87,13 @@ class GPTBridge:
                 self.ep_pp_size = self.ep_size * self.pp_size
                 self.ep_pp_group = group
                 self.ep_pp_rank = dist.get_rank(group)
+                self._fp8_quantizer = None
+
+    @property
+    def fp8_quantizer(self):
+        if self._fp8_quantizer is None:
+            self._fp8_quantizer = Fp8Dequantizer()
+        return self._fp8_quantizer
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
@@ -158,14 +165,14 @@ class GPTBridge:
         tp_dim = self._get_tp_split_dim(mg_key)
         tensor = self._split_tp(hf_weight, tp_dim, is_expert)
         del hf_weight
+        if not isinstance(mg_param, (list, tuple)):
+            mg_param = [mg_param]
         if hf_scale_inv is not None:
             hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert)
             hf_scale_inv = hf_scale_inv.chunk(len(mg_param), dim=0)
         if offset:
             assert hf_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
-        if not isinstance(mg_param, (list, tuple)):
-            mg_param = [mg_param]
         tensor_list = tensor.chunk(len(mg_param), dim=0)
         for i, param in enumerate(mg_param):
             tensor = tensor_list[i].reshape(*param.shape)
@@ -188,7 +195,8 @@ class GPTBridge:
                     param._rowwise_scale_inv.data.copy_(scale_inv)
                     del param.get_high_precision_init_val
             else:
-                assert hf_scale_inv is None, f'hf_scale_inv: {hf_scale_inv}'
+                if hf_scale_inv is not None:
+                    tensor = self.fp8_quantizer.convert(tensor, hf_scale_inv[i])
                 param.data.copy_(tensor)
 
     @staticmethod
