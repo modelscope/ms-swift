@@ -332,6 +332,11 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
+    # SAPO https://arxiv.org/abs/2511.20347
+    # Temperature parameters for soft adaptive gate
+    tau_pos: float = 1.0  # Temperature for positive advantages (controls gate sharpness for upper bound)
+    tau_neg: float = 1.05  # Temperature for negative advantages (controls gate sharpness for lower bound)
+
     # RLOO, REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward

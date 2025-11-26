@@ -1076,6 +1076,26 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+        elif self.loss_type == 'sapo':
+            # SAPO: Soft Adaptive Policy Optimization
+            # Replace hard clipping with temperature-controlled soft gate
+            # gate = sigmoid(tau * (r - 1)), where r is the importance sampling ratio
+            advantages_expanded = advantages.unsqueeze(1)
+
+            # Compute soft gate for positive advantages
+            # gate_pos = sigmoid(tau_pos * (r - 1))
+            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+
+            # Compute soft gate for negative advantages
+            # gate_neg = sigmoid(tau_neg * (r - 1))
+            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+
+            # Apply gate based on advantage sign
+            # For positive advantages, use gate_pos; for negative advantages, use gate_neg
+            is_positive = advantages_expanded > 0
+            soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+
+            per_token_loss = -soft_gate * advantages_expanded
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1094,7 +1114,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rollout_is_weights = inputs['rollout_is_weights']
             per_token_loss = per_token_loss * rollout_is_weights
 
-        if self.loss_type == 'grpo':
+        if self.loss_type in ['grpo', 'sapo']:
             # completion_mask is now always [batch_size, seq_len] after pad_back
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
@@ -1141,6 +1161,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
             gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
             metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
+        elif self.loss_type == 'sapo':
+            pass
         else:
             is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
             is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
@@ -2009,6 +2031,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # GSPO, https://arxiv.org/abs/2507.18071
         self.importance_sampling_level = args.importance_sampling_level
+
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
 
         # RLOO,
         self.advantage_estimator = args.advantage_estimator

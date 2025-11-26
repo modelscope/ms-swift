@@ -1,6 +1,6 @@
 # Loss Types
 
-GRPO训练支持五种不同的loss类型，主要区别在于归一化的维度上有所不同。
+GRPO训练支持多种不同的loss类型，主要区别在于归一化的维度和梯度处理方式上有所不同。
 
 ## 损失函数
 
@@ -12,11 +12,18 @@ $$\mathcal{L}_{i,t} = -\min\left(\rho_{i,t} A_{i,t}, \text{clip}(\rho_{i,t}, 1-\
 
 $$\mathcal{L}_{i,t}^{\text{CISPO}} = -\text{detach}\left(\min(\rho_{i,t}, \epsilon_{\text{high}})\right) \cdot A_{i,t} \cdot \log \pi_\theta(y_{i,t}|y_{i,<t})$$
 
+当设置`loss_type sapo`时，使用软门控替代硬裁剪，详见 [SAPO](../AdvancedResearch/SAPO.md)
+
+$$\mathcal{L}_{i,t}^{\text{SAPO}} = -g_{i,t} \cdot A_{i,t}$$
+
+其中 $g_{i,t} = \sigma(\tau \cdot (\rho_{i,t} - 1))$ 是温度控制的软门控函数。
+
 其中：
 - $\rho_{i,t} = \frac{\pi_\theta(y_{i,t}|y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}|y_{i,<t})}$ 是重要性采样权重
 - $A_{i,t}$ 是优势函数
 - $\epsilon$ 和 $\epsilon_{\text{high}}$ 是clipping参数
 - $\text{detach}(\cdot)$ 表示该项不参与梯度计算
+- $\sigma(\cdot)$ 是 sigmoid 函数，$\tau$ 是温度参数
 
 ## GRPO
 
@@ -100,3 +107,11 @@ $$\mathcal{L}_{\text{DAPO}} = \frac{\sum_{i=1}^{N} \sum_{t=1}^{T_i} \mathcal{L}_
 - $N_p$ 是第$p$个进程的样本数量
 
 **归一化维度：** 全局token维度（跨所有进程的completion token总数）
+
+## SAPO
+
+`--loss_type sapo`
+
+SAPO使用温度控制的软门控替代硬裁剪，实现平滑的梯度衰减。归一化方式与GRPO相同。
+
+详细说明请参考 [SAPO](../AdvancedResearch/SAPO.md)
