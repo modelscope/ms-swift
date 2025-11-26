@@ -149,10 +149,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
             self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
-            if self.enable_server_multi_turn:
-                if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
-                    logger.warning('Rollout importance sampling is disabled for server multi-turn mode')
-                self.disable_rollout_importance_sampling = True
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
             if self.use_gym_env:
                 self.reward_func_names = ['gym_reward']
@@ -545,6 +541,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         rollout_infos = [{} for _ in range(orig_size)]
         response_token_ids = [[] for _ in range(orig_size)]
         response_loss_mask = [[] for _ in range(orig_size)]
+        rollout_logprobs = [[] for _ in range(orig_size)]
         is_continuations = [False] * orig_size
         # Attach index to inputs for tracking
         requests = self.inputs2requests(inputs)
@@ -587,6 +584,25 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 if args.max_turns:
                     stop = stop or (current_turn >= args.max_turns)
                 if stop:
+                    # For stopped dialogues, also collect final turn's logprobs
+                    is_continuation = is_continuations[index]
+                    current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
+                    if current_logprobs:
+                        if is_continuation and rollout_logprobs[index]:
+                            rollout_logprobs[index][-1].extend(current_logprobs)
+                        else:
+                            rollout_logprobs[index].append(current_logprobs)
+
+                    # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
+                    # clear them to disable rollout importance sampling correction (which requires complete logprobs)
+                    final_rollout_logprobs = rollout_logprobs[index]
+                    if response_token_ids[index] and rollout_logprobs[index]:
+                        total_token_count = sum(len(turn_ids) for turn_ids in response_token_ids[index])
+                        total_logprob_count = sum(len(turn_lps) for turn_lps in rollout_logprobs[index])
+                        if total_token_count != total_logprob_count:
+                            # Incomplete logprobs, clear them
+                            final_rollout_logprobs = []
+
                     rollout_outputs[index] = RolloutOutput(
                         response=output.response,
                         messages=requests[index].messages,
@@ -594,7 +610,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                         response_loss_mask=response_loss_mask[index],
                         rollout_infos={
                             **rollout_infos[index], 'num_turns': current_turn
-                        })
+                        },
+                        rollout_logprobs=final_rollout_logprobs)
                     continue
                 is_continuation = is_continuations[index]
                 step_result = self.multi_turn_scheduler.step(requests[index], output.response.choices[0], current_turn)
@@ -620,6 +637,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     # Always overwrite the rollout info for this step.
                     # If you need to keep all step-wise details, switch to append or merge instead.
                     rollout_infos[index].update(step_result['rollout_infos'])
+
+                # Track rollout_logprobs for rollout importance sampling correction
+                current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
+                if current_logprobs:
+                    if is_continuation and rollout_logprobs[index]:
+                        rollout_logprobs[index][-1].extend(current_logprobs)
+                    else:
+                        rollout_logprobs[index].append(current_logprobs)
+
                 if current_request.messages[-1]['role'] == 'assistant':
                     # for continuation, we add dummy response, add here
                     current_request.messages.append({'role': 'assistant', 'content': None})
@@ -824,6 +850,22 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         return False
 
+    @staticmethod
+    def _extract_logprobs_from_choice(response_choice) -> List[float]:
+        """Extract logprobs list from response choice for rollout importance sampling.
+
+        Args:
+            response_choice: The response choice containing logprobs
+
+        Returns:
+            List of logprob values, or empty list if not available
+        """
+        if response_choice.logprobs is None:
+            return []
+        if 'content' in response_choice.logprobs:
+            return [item['logprob'] for item in response_choice.logprobs['content']]
+        return []
+
     def _postprocess_rollout_outputs(self, inputs: DataType, outputs: List[RolloutOutput]) -> DataType:
         """Postprocess rollout outputs by merging them back into inputs"""
 
@@ -849,13 +891,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if output.rollout_infos:
                 input_data['rollout_infos'] = output.rollout_infos
 
-            # Extract vLLM logprobs for importance sampling if available
-            if choice.logprobs is not None:
-                # Extract logprobs from the response
+            # Extract rollout logprobs for importance sampling if available
+            # Keep the same structure as response_token_ids (List[List[float]] for multi-turn)
+            if output.rollout_logprobs:
+                # Multi-turn scenario: preserve the nested structure to match response_token_ids
+                input_data['rollout_logprobs'] = output.rollout_logprobs
+            elif choice.logprobs is not None:
+                # Single-turn scenario: extract from response and wrap in list for consistency
                 # logprobs format: {'content': [{'token': ..., 'logprob': ..., 'bytes': ...}, ...]}
                 if 'content' in choice.logprobs:
-                    vllm_logprobs = [item['logprob'] for item in choice.logprobs['content']]
-                    input_data['vllm_logprobs'] = vllm_logprobs
+                    rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['rollout_logprobs'] = [rollout_logprobs]
 
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
@@ -946,13 +992,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return
 
         if args.multi_turn_scheduler:
-            if getattr(args, 'rollout_importance_sampling_mode', None) is not None:
-                # TODO
-                logger.warning('Rollout importance sampling mode is not supported for multi-turn scheduler')
-                self.disable_rollout_importance_sampling = True
+            # Get tokenizer for scheduler (needed in colocate mode where infer_engine may be None)
+            tokenizer = getattr(self, 'processing_class', None)
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](
+                    max_turns=args.max_turns, tokenizer=tokenizer)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
