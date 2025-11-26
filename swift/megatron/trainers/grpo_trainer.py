@@ -86,7 +86,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # SAPO, https://arxiv.org/abs/2511.20347
         self.tau_pos = args.tau_pos
         self.tau_neg = args.tau_neg
-        self.enable_offload = False
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -108,6 +107,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
+
+        self.enable_offload = False
 
         # sampling params
         self.request_config = RequestConfig(
@@ -1134,20 +1135,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             else:
                 raise NotImplementedError
         elif self.loss_type == 'sapo':
-            # SAPO: Soft Adaptive Policy Optimization
-            # Replace hard clipping with temperature-controlled soft gate
-            # gate = sigmoid(tau * (r - 1)), where r is the importance sampling ratio
             if self.template.padding_free:
-
                 advantages = advantages[-coef_1.shape[1]:]
-                # Compute soft gate for positive advantages
-                # gate_pos = sigmoid(tau_pos * (r - 1))
                 gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
-                # Compute soft gate for negative advantages
-                # gate_neg = sigmoid(tau_neg * (r - 1))
                 gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
-
-                # Apply gate based on advantage sign
                 is_positive = advantages.unsqueeze(0) > 0
                 soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 

@@ -1077,21 +1077,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
         elif self.loss_type == 'sapo':
-            # SAPO: Soft Adaptive Policy Optimization
-            # Replace hard clipping with temperature-controlled soft gate
-            # gate = sigmoid(tau * (r - 1)), where r is the importance sampling ratio
             advantages_expanded = advantages.unsqueeze(1)
-
-            # Compute soft gate for positive advantages
-            # gate_pos = sigmoid(tau_pos * (r - 1))
             gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
-
-            # Compute soft gate for negative advantages
-            # gate_neg = sigmoid(tau_neg * (r - 1))
             gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
-
-            # Apply gate based on advantage sign
-            # For positive advantages, use gate_pos; for negative advantages, use gate_neg
             is_positive = advantages_expanded > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 
