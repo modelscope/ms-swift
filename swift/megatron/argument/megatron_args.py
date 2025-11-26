@@ -46,8 +46,8 @@ class RLHFMegatronArgumentsMixin:
 
     # SAPO https://arxiv.org/abs/2511.20347
     # Temperature parameters for soft adaptive gate
-    tau_pos: float = 1.0  # Temperature for positive advantages (controls gate sharpness for upper bound)
-    tau_neg: float = 1.05  # Temperature for negative advantages (controls gate sharpness for lower bound)
+    tau_pos: float = 1.0
+    tau_neg: float = 1.05
 
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
