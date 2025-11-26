@@ -31,7 +31,7 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/treepo/tree_rollout_plugin.py \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --split_dataset_ratio 0 \
-    --max_completion_length 1024 \
+    --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
     --learning_rate 1e-6 \
@@ -41,7 +41,7 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 4 \
+    --num_generations 8 \
     --temperature 1.0 \
     --top_p 0.9 \
     --top_k 50 \

@@ -15,18 +15,15 @@
 The complete training script can be found at [script](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/treepo/tree_rollout.sh).
 
 ## Test Data
-|                        | batch size | num generation | max_tree_deep | total_infer | saving ratio |
-| ---------------------- | ---------- | -------------- | ------------- | ----------- | ------------ |
-| base                   | 4          | 4              | 4             | 1808        | 0.00%        |
-| tree(max_divergence=3) | 4          | 4              | 4             | 1458        | 19.36%       |
-|                        |            |                |               |             |              |
-| base                   | 8          | 8              | 4             | 5965        | 0.00%        |
-| tree(max_divergence=3) | 8          | 8              | 4             | 3678        | 38.34%       |
-|                        |            |                |               |             |              |
-| base                   | 8          | 8              | 5             | 4312        | 0.00%        |
-| tree(max_divergence=2) | 8          | 8              | 5             | 2513        | 52.69%       |
-| tree(max_divergence=3) | 8          | 8              | 5             | 2990        | 30.66%       |
-|                        |            |                |               |             |              |
-| base                   | 8          | 8              | 6             | 5202        | 0.00%        |
-| tree(max_divergence=2) | 8          | 8              | 6             | 3348        | 35.64%       |
-| tree(max_divergence=3) | 8          | 8              | 6             | 3888        | 25.26%       |
+| /                       | batch size | num generation | max_tree_deep | total_infer | saving ratio |
+| ----------------------- | ---------- | -------------- | ------------- | ----------- | ------------ |
+| original implementation | 8          | 8              | 4             | 5965        | 0.00%        |
+| tree(max_divergence=3)  | 8          | 8              | 4             | 3678        | 38.34%       |
+|                         |            |                |               |             |              |
+| original implementation | 8          | 8              | 5             | 4312        | 0.00%        |
+| tree(max_divergence=2)  | 8          | 8              | 5             | 2513        | 52.69%       |
+| tree(max_divergence=3)  | 8          | 8              | 5             | 2990        | 30.66%       |
+|                         |            |                |               |             |              |
+| original implementation | 8          | 8              | 6             | 5202        | 0.00%        |
+| tree(max_divergence=2)  | 8          | 8              | 6             | 3348        | 35.64%       |
+| tree(max_divergence=3)  | 8          | 8              | 6             | 3888        | 25.26%       |
