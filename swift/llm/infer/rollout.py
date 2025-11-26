@@ -338,6 +338,9 @@ class SwiftRolloutDeploy(SwiftPipeline):
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         kwargs.update(args.get_vllm_engine_kwargs())
         kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
+        # Important: Use processed_logprobs so temperature scaling affects the logprobs
+        # This is required for correct importance sampling in rollout correction
+        kwargs['logprobs_mode'] = 'processed_logprobs'
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
