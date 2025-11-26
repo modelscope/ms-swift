@@ -563,7 +563,7 @@ reward模型参数将在PPO、GRPO中使用。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`, 注意对于多模态模型，
 左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
-- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
@@ -592,6 +592,8 @@ reward模型参数将在PPO、GRPO中使用。
 - num_iterations: 每条数据的更新次数，[GRPO论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- tau_pos: [SAPO](https://arxiv.org/abs/2511.20347)算法中正优势的温度参数，控制软门控函数的锐度。较大值使门控更锐利（接近硬裁剪），较小值使门控更平滑。默认为1.0。
+- tau_neg: SAPO算法中负优势的温度参数，控制软门控函数的锐度。通常设置`tau_neg > tau_pos`以对负优势施加更强约束。默认为1.05。
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。

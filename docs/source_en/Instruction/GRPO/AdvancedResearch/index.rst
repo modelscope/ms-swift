@@ -12,3 +12,4 @@ Advanced Research
    CHORD.md
    CISPO.md
    training_inference_mismatch.md
+   SAPO.md

@@ -574,7 +574,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
-- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
@@ -605,6 +605,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - num_iterations: The number of updates per data sample, corresponding to the $\mu$ value in the GRPO paper. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
+- tau_pos: Temperature parameter for positive advantages in [SAPO](https://arxiv.org/abs/2511.20347) algorithm, controlling the sharpness of the soft gating function. Larger values make the gate sharper (closer to hard clipping), smaller values make it smoother. Default is 1.0.
+- tau_neg: Temperature parameter for negative advantages in SAPO algorithm, controlling the sharpness of the soft gating function. Typically set `tau_neg > tau_pos` to apply stronger constraints on negative advantages. Default is 1.05.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.

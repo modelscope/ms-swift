@@ -82,7 +82,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.top_entropy_quantile = args.top_entropy_quantile
         self.importance_sampling_level = args.importance_sampling_level
-        self.enable_offload = False
+
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -104,6 +107,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
+
+        self.enable_offload = False
 
         # sampling params
         self.request_config = RequestConfig(
@@ -1129,6 +1134,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
             else:
                 raise NotImplementedError
+        elif self.loss_type == 'sapo':
+            if self.template.padding_free:
+                advantages = advantages[-coef_1.shape[1]:]
+                gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+                gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+                is_positive = advantages.unsqueeze(0) > 0
+                soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+
+                per_token_loss = -soft_gate * advantages.unsqueeze(0)
+            else:
+                raise NotImplementedError
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1155,7 +1171,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        if self.loss_type == 'grpo':
+        if self.loss_type in ['grpo', 'sapo']:
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
 
@@ -1215,6 +1231,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
+        elif self.loss_type == 'sapo':
+            # SAPO: No hard clipping, skip clipping metrics
+            pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             if self.template.padding_free:
                 # Use coef_1 before clamping for metrics (need to expand if sequence-level)
