@@ -311,8 +311,6 @@ class GPTModel(McoreGPTModel):
             **kwargs,
         )
 
-        args = get_args()
-        labels = labels if args.task_type == 'causal_lm' else None
         # MTP: https://github.com/NVIDIA/Megatron-LM/issues/1661
         return self._postprocess(
             hidden_states=hidden_states,
@@ -361,6 +359,8 @@ class GPTModel(McoreGPTModel):
         Applies Multi-Token Prediction if enabled, generates output logits through
         the output layer, and computes language model loss when labels are provided.
         """
+        args = get_args()
+        labels = labels if args.task_type == 'causal_lm' else None
         in_inference_mode = inference_context is not None and not self.training
         if in_inference_mode:
             assert runtime_gather_output, 'Inference must always gather TP logits'
@@ -390,11 +390,13 @@ class GPTModel(McoreGPTModel):
             return hidden_states
 
         if self.mtp_process:
+            from ..trainers.utils import split_cp_inputs
             hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)
             hidden_states = hidden_states_list[0]
             if loss_mask is None:
                 # if loss_mask is not provided, use all ones as loss_mask
-                loss_mask = torch.ones_like(mtp_labels)
+                loss_mask = torch.ones_like(labels)
+            cu_seqlens = packed_seq_params.cu_seqlens_q.clone()
             for mtp_layer_number in range(self.config.mtp_num_layers):
                 # output
                 mtp_logits, _ = self.output_layer(
@@ -402,10 +404,17 @@ class GPTModel(McoreGPTModel):
                     weight=output_weight,
                     runtime_gather_output=runtime_gather_output,
                 )
+                # compat thd format
+                mtp_labels[:, cu_seqlens[cu_seqlens < mtp_labels.shape[1]]] = -100
+                cu_seqlens = cu_seqlens + 1
+                if args.context_parallel_size > 1:
+                    mtp_labels_ = split_cp_inputs(mtp_labels, packed_seq_params.cu_seqlens_q, dim=1)
+                else:
+                    mtp_labels_ = mtp_labels
                 # Calc loss for the current Multi-Token Prediction (MTP) layers.
-                mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
+                mtp_labels_, _ = roll_tensor(mtp_labels_, shifts=-1, dims=-1, cp_group=self.cp_group)
                 loss_mask, num_tokens = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
-                mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                mtp_loss = self.compute_language_model_loss(mtp_labels_, mtp_logits)
                 mtp_loss = loss_mask * mtp_loss
                 if self.training:
                     # TODO(shifangx): remove the use of parallel_state here
