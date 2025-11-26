@@ -20,15 +20,15 @@
 > subset size: 1,000 samples
 > 1 GPU for training, 1 GPU for inference
 
-| \                       | batch_size | num_generation | max_tree_deep | global_step | total inference calls | saving ratio | train_speed(iter/s) | improvement rate |
-|-------------------------| ---------- | -------------- | ------------- | ----------- | --------------------- | ------------ | ------------------- | ---------------- |
-| original implementation | 8          | 8              | 4             | 200         | 5965                  | 0.00%        | 0.292436            | 0.00%            |
-| tree(max_divergence=3)  | 8          | 8              | 4             | 200         | 3678                  | 38.34%       | 0.31819             | 8.81%            |
-|                         |            |                |               |             |                       |              |                     |                  |
-| original implementation | 8          | 8              | 5             | 105         | 4312                  | 0.00%        | 0.261324            | 0.00%            |
-| tree(max_divergence=2)  | 8          | 8              | 5             | 105         | 2513                  | 52.69%       | 0.336639            | 28.82%           |
-| tree(max_divergence=3)  | 8          | 8              | 5             | 105         | 2990                  | 30.66%       | 0.308791            | 18.16%           |
-|                         |            |                |               |             |                       |              |                     |                  |
-| original implementation | 8          | 8              | 6             | 105         | 5202                  | 0.00%        | 0.24832             | 0.00%            |
-| tree(max_divergence=2)  | 8          | 8              | 6             | 105         | 3348                  | 35.64%       | 0.27755             | 11.77%           |
-| tree(max_divergence=3)  | 8          | 8              | 6             | 105         | 3888                  | 25.26%       | 0.272339            | 9.67%            |
+| \                       | batch_size | num_generation | max_tree_depth | global_step | total inference calls | saving ratio | train_speed(iter/s) | improvement rate |
+| ----------------------- | ---------- | -------------- | -------------- | ----------- | --------------------- | ------------ | ------------------- | ---------------- |
+| original implementation | 8          | 8              | 4              | 200         | 5965                  | 0.00%        | 0.292436            | 0.00%            |
+| tree(max_divergence=3)  | 8          | 8              | 4              | 200         | 3678                  | 38.34%       | 0.31819             | 8.81%            |
+|                         |            |                |                |             |                       |              |                     |                  |
+| original implementation | 8          | 8              | 5              | 105         | 4312                  | 0.00%        | 0.261324            | 0.00%            |
+| tree(max_divergence=2)  | 8          | 8              | 5              | 105         | 2513                  | 52.69%       | 0.336639            | 28.82%           |
+| tree(max_divergence=3)  | 8          | 8              | 5              | 105         | 2990                  | 30.66%       | 0.308791            | 18.16%           |
+|                         |            |                |                |             |                       |              |                     |                  |
+| original implementation | 8          | 8              | 6              | 105         | 5202                  | 0.00%        | 0.24832             | 0.00%            |
+| tree(max_divergence=2)  | 8          | 8              | 6              | 105         | 3348                  | 35.64%       | 0.27755             | 11.77%           |
+| tree(max_divergence=3)  | 8          | 8              | 6              | 105         | 3888                  | 25.26%       | 0.272339            | 9.67%            |

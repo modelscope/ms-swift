@@ -28,7 +28,7 @@ class TreeRolloutScheduler(MultiTurnScheduler):
     Attributes:
         max_tree_width (int):
             For GRPO, it must be equal to num_generations.
-        max_tree_deep (int):
+        max_tree_depth (int):
             Controls the maximum number of reasoning turns for a single prompt.
         root_divergence (int):
             Number of branches generated in the first-round inference at the root node.
@@ -41,7 +41,7 @@ class TreeRolloutScheduler(MultiTurnScheduler):
     def __init__(self, infer_engine=None, max_turns=None, *args, **kwargs):
         super().__init__(infer_engine, max_turns, *args, **kwargs)
         self.max_tree_width = 8
-        self.max_tree_deep = max_turns | 6
+        self.max_tree_depth = max_turns | 6
         self.max_divergence = 2
         self.divergence_strategy = 'logprobs'
         self.root_divergence = 1
@@ -213,7 +213,7 @@ class TreeRolloutScheduler(MultiTurnScheduler):
             sample.status = SampleStatus.FINISHED
             sample.finished_reason = FinishedReason.MAX_INFER_STEP
 
-        elif sample.depth >= self.max_tree_deep - 1:
+        elif sample.depth >= self.max_tree_depth - 1:
             sample.status = SampleStatus.FINISH_NEXT_INFER
 
         return sample.status == SampleStatus.FINISHED
