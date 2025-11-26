@@ -1,3 +1,4 @@
+# 8 * 95GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 OMP_NUM_THREADS=14 \
 NPROC_PER_NODE=8 \
