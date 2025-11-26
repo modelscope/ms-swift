@@ -1314,12 +1314,12 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
-                if (self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise'
-                        and self.hf_model.config.quantization_config is None):
-                    from transformers.utils.quantization_config import FineGrainedFP8Config
-                    modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
-                    self.hf_model.config.quantization_config = FineGrainedFP8Config(
-                        modules_to_not_convert=modules_to_not_convert)
+                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
+                    if self.hf_model.config.quantization_config is None:
+                        from transformers.utils.quantization_config import FineGrainedFP8Config
+                        modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
+                        self.hf_model.config.quantization_config = FineGrainedFP8Config(
+                            modules_to_not_convert=modules_to_not_convert)
                 else:
                     del self.hf_model.config.quantization_config
                 self.hf_model.config.save_pretrained(output_dir)

@@ -386,12 +386,13 @@ class GPTModel(McoreGPTModel):
             return hidden_states
 
         if self.mtp_process:
+            mtp_labels = labels.clone()
             from ..trainers.utils import split_cp_inputs
             hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)
             hidden_states = hidden_states_list[0]
             if loss_mask is None:
                 # if loss_mask is not provided, use all ones as loss_mask
-                loss_mask = torch.ones_like(labels)
+                loss_mask = mtp_labels.new_ones((1, packed_seq_params.cu_seqlens_q[-1]))
             cu_seqlens = packed_seq_params.cu_seqlens_q
             for mtp_layer_number in range(self.config.mtp_num_layers):
                 # output
@@ -401,9 +402,16 @@ class GPTModel(McoreGPTModel):
                     runtime_gather_output=runtime_gather_output,
                 )
                 # Calc loss for the current Multi-Token Prediction (MTP) layers.
-                loss_mask, num_tokens = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
-                mtp_loss = self.compute_language_model_loss(labels, mtp_logits)
-                mtp_loss = loss_mask * mtp_loss
+                mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
+                loss_mask[:, cu_seqlens[:-1]] = 0
+                loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)
+                if args.context_parallel_size > 1:
+                    loss_mask_ = split_cp_inputs(loss_mask, cu_seqlens, dim=1)
+                else:
+                    loss_mask_ = loss_mask
+                mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                mtp_loss = loss_mask_ * mtp_loss
+                num_tokens = loss_mask_.sum()
                 if self.training:
                     # TODO(shifangx): remove the use of parallel_state here
                     # after moving loss logging to loss_func in pretrain_gpt.py
