@@ -143,7 +143,7 @@
 
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。
-- fp8_recipe: 用于前向和反向传播中 FP8 张量的 FP8 算法方案。可选为'tensorwise', 'delayed', 'mxfp8', 'blockwise'。默认为'delayed'。
+- fp8_recipe: 用于前向和反向传播中 FP8 张量的 FP8 算法方案。可选为'tensorwise', 'delayed', 'mxfp8', 'blockwise'。默认为'delayed'。其中blockwise fp8需要 cuda129 以上版本。
 - fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
 - fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
 - fp8_param_gather: 保持计算参数为 fp8（不使用任何其他中间数据类型），并在 fp8 格式下执行参数的 all-gather 操作。默认为False。
