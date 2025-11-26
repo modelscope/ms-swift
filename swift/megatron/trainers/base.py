@@ -1037,8 +1037,6 @@ class BaseMegatronTrainer(ABC):
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
-            if args.mtp_num_layers and batch.get('labels') is not None:
-                batch['mtp_labels'] = batch['labels']
         # slice batch along sequence dimension for context parallelism
         batch = get_batch_on_this_cp_rank(batch)
         return batch
