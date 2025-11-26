@@ -67,7 +67,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - dataset_shuffle: Whether to shuffle the training dataset. Default is `True`.
   - Note: **Shuffling in CPT/SFT involves two parts**: dataset-level shuffling (controlled by `dataset_shuffle`) and dataloader-level shuffling (controlled by `train_dataloader_shuffle`).
 - val_dataset_shuffle: Whether to shuffle the validation dataset. Default is `False`.
-- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`.
+- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
   - Note: You must set `--max_steps` explicitly, as streaming datasets do not have a defined length. You can achieve behavior equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and a large `max_steps`. Alternatively, set `max_epochs` to ensure training stops after the specified number of epochs, allowing model evaluation and checkpoint saving.
   - Note: Streaming avoids waiting for preprocessing by overlapping it with training. However, preprocessing is only performed on rank 0 and then distributed to other processes. **This is typically less efficient than non-streaming data sharding**. When the training `world_size` is large, preprocessing and data distribution can become a bottleneck.
 - interleave_prob: Default is `None`. By default, multiple datasets are combined using `concatenate_datasets` from the datasets library. If this parameter is set, `interleave_datasets` is used instead. This is typically used for combining streaming datasets and is passed directly to `interleave_datasets`.

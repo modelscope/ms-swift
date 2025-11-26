@@ -335,7 +335,7 @@ class GPTBridge:
                 mg_scale_inv = torch.concat(mg_scale_inv, dim=0)
         num_local_experts = self.args.num_experts // self.ep_size if is_expert else 1
         tp_dim = self._get_tp_split_dim(mg_key)
-        is_linear_fc1 = (mg_key.split('.', 1)[0] == 'linear_fc1' and tp_dim is not None)
+        is_linear_fc1 = (mg_key is not None and mg_key.split('.', 1)[0] == 'linear_fc1' and tp_dim is not None)
         if tensor is not None and is_linear_fc1:
             tensor = tensor.view(num_local_experts * 2, -1, tensor.shape[-1])
             if mg_scale_inv is not None:
@@ -657,7 +657,7 @@ class GPTBridge:
             hf_state_dict = {}
         # linear_fc1
         if to_mcore:
-            has_scale_inv = any('.weight_scale_inv' in k for k in hf_state_dict.keys())
+            has_scale_inv = any('_scale_inv' in k for k in hf_state_dict.keys())
             if isinstance(mg_mlp.linear_fc1, LoraParallelLinear):
                 mg_lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name]
                 mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
@@ -717,6 +717,11 @@ class GPTBridge:
                             gate_up_proj_weight = hf_state_dict['gate_up_proj'].load().transpose(1, 2)
                             gate_up_proj_weight = gate_up_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
+                            if has_scale_inv:
+                                gate_up_scale_inv = hf_state_dict['gate_up_proj_scale_inv'].load().transpose(1, 2)
+                                gate_up_scale_inv = gate_up_scale_inv[ep_rank * num_local_experts:(ep_rank + 1)
+                                                                      * num_local_experts]
+
                         else:
                             gate_up_proj_weight = torch.concat([
                                 hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.weight'].load()
@@ -729,10 +734,12 @@ class GPTBridge:
                                     load() for i in range(num_local_experts)
                                 ],
                                                                  dim=0)
-                                gate_up_scale_inv = gate_up_scale_inv.reshape(num_local_experts * 2, -1,
-                                                                              gate_up_scale_inv.shape[-1])
+
                         gate_up_proj_weight = gate_up_proj_weight.reshape(num_local_experts * 2, -1,
                                                                           gate_up_proj_weight.shape[-1])
+                        if has_scale_inv:
+                            gate_up_scale_inv = gate_up_scale_inv.reshape(num_local_experts * 2, -1,
+                                                                          gate_up_scale_inv.shape[-1])
                     else:
                         gate_up_proj_weight = hf_state_dict['gate_up_proj.weight'].load()
                         gate_up_proj_weight = gate_up_proj_weight.view(2, -1, gate_up_proj_weight.shape[-1])
@@ -850,6 +857,13 @@ class GPTBridge:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 hf_state_dict['gate_up_proj'] = gate_up_proj_weight.clone()
+                                if scale_inv is not None:
+                                    scale_inv = scale_inv.transpose(1, 2)
+                                    if 'gate_up_proj_scale_inv' in hf_state_dict:
+                                        scale_inv = torch.concat([hf_state_dict['gate_up_proj_scale_inv'], scale_inv],
+                                                                 dim=0)
+                                    hf_state_dict['gate_up_proj_scale_inv'] = scale_inv.clone()
+
                             else:
                                 for i in range(num_local_experts):
                                     hf_i = i + ep_rank * num_local_experts
@@ -917,6 +931,10 @@ class GPTBridge:
                         down_proj_weight = down_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                             * num_local_experts].reshape(
                                                                 -1, down_proj_weight.shape[-1])
+                        if has_scale_inv:
+                            down_scale_inv = hf_state_dict['down_proj_scale_inv'].load().transpose(1, 2)
+                            down_scale_inv = down_scale_inv[ep_rank * num_local_experts:(ep_rank + 1)
+                                                            * num_local_experts].reshape(-1, down_scale_inv.shape[-1])
                     else:
                         down_proj_weight = torch.concat([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight'].load()
@@ -983,6 +1001,11 @@ class GPTBridge:
                             if 'down_proj' in hf_state_dict:
                                 down_proj_weight = torch.concat([hf_state_dict['down_proj'], down_proj_weight], dim=0)
                             hf_state_dict['down_proj'] = down_proj_weight.clone()
+                            if scale_inv is not None:
+                                scale_inv = scale_inv.transpose(1, 2)
+                                if 'down_proj_scale_inv' in hf_state_dict:
+                                    scale_inv = torch.concat([hf_state_dict['down_proj_scale_inv'], scale_inv], dim=0)
+                                hf_state_dict['down_proj_scale_inv'] = scale_inv.clone()
                         else:
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
@@ -1291,7 +1314,8 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
-                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
+                if (self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise'
+                        and self.hf_model.config.quantization_config is None):
                     from transformers.utils.quantization_config import FineGrainedFP8Config
                     modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
                     self.hf_model.config.quantization_config = FineGrainedFP8Config(

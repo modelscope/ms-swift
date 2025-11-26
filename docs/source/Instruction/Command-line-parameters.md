@@ -68,7 +68,7 @@
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**CPT/SFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
 - val_dataset_shuffle: 是否对val_dataset进行随机操作。默认为False。
-- streaming: 流式读取并处理数据集，默认False。
+- streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
   - 注意：需要额外设置`--max_steps`，因为流式数据集无法获得其长度。你可以通过设置`--save_strategy epoch`并设置较大的max_steps来实现与`--num_train_epochs`等效的训练。或者，你也可以设置`max_epochs`确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
 - interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。
