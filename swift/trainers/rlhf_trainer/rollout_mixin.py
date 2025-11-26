@@ -28,7 +28,7 @@ from transformers import PreTrainedModel, TrainerCallback
 
 from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.plugin import MultiTurnScheduler, multi_turns, TreeRolloutScheduler
+from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
 from swift.utils import get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
@@ -108,7 +108,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            logprobs=args.tree_rollout,
             return_details=True)
 
     def _prepare_vllm(self):
@@ -135,7 +134,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 self.vllm_client.get_engine_type()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
                 use_gym_env = [self.vllm_client.use_gym_env]
-                enable_multi_turn = [self.vllm_client.enable_multi_turn or args.tree_rollout]
+                enable_multi_turn = [self.vllm_client.enable_multi_turn]
                 enable_lora = [self.vllm_client.enable_lora]
             else:
                 vllm_use_async_engine = [False]
@@ -722,12 +721,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return []
 
         if self.accelerator.is_main_process:
-            if self.args.tree_rollout:
-                all_outputs: List[RolloutOutput] = self.multi_turn_scheduler.run(
-                    infer_request=all_requests, request_config=request_config)
-            else:
-                all_outputs: List[RolloutOutput] = self._engine_infer(
-                    infer_requests=all_requests, request_config=request_config)
+            all_outputs: List[RolloutOutput] = self._engine_infer(
+                infer_requests=all_requests, request_config=request_config)
             if len(all_outputs) != len(all_requests):
                 all_outputs = self._sort_by_request_id(all_outputs)
         else:
@@ -935,13 +930,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if args.multi_turn_scheduler:
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler_class = multi_turns[args.multi_turn_scheduler]
-
-                if args.tree_rollout:
-                    assert issubclass(multi_turn_scheduler_class, TreeRolloutScheduler)
-
-                multi_turn_scheduler = multi_turn_scheduler_class(
-                    max_turns=args.max_turns, vllm_client=self.vllm_client, args=args)
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)

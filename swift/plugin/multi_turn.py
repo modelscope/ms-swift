@@ -1,21 +1,15 @@
 import asyncio
-import random
 from abc import ABC
-from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
-from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
-                                      RolloutOutput)
-from swift.llm.template import RolloutInferRequest
 from swift.plugin import ContextManager, Env, context_managers, envs
-from swift.plugin.tree_rollout import (DataSampleTree, DivergenceStrategyMapping, SampleStatus,
-                                       _increment_tree_idx_depth, _repeat_list_interleave, extract_last_boxed)
-from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
 from swift.utils import remove_response
 
 if TYPE_CHECKING:
+    from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
+                                          RolloutOutput)
+    from swift.llm.template import RolloutInferRequest
     from swift.llm.infer.infer_engine import GRPOVllmEngine
     from swift.llm.utils import Messages
 
@@ -668,186 +662,8 @@ class GYMScheduler(RolloutScheduler):
                 await self._close_env_async(env)
 
 
-class TreeRolloutScheduler:
-    """
-    Base class for multi-turn tree-rollout scheduling.
-
-    Provides default implementation for multi-turn conversation management.
-
-    CUSTOMIZATION:
-        Implement the required `step()` method and optionally override `check_finished()`
-        - Uses TreeRolloutScheduler's run() method infrastructure
-        - Only need to implement turn transition logic in step()
-        - Optionally customize termination conditions
-    """
-    def __init__(self, vllm_client: VLLMClient = None, *args, **kwargs):
-        self.max_tree_width = kwargs['args'].num_generations
-        self.max_tree_deep = kwargs['args'].max_tree_deep
-        self.max_divergence = kwargs['args'].tree_max_divergence
-        self.divergence_strategy = kwargs['args'].tree_divergence_strategy
-        self.root_divergence = kwargs['args'].tree_root_divergence
-
-        self.vllm_client = vllm_client
-        self.executor = ThreadPoolExecutor(max_workers=self.max_tree_width)
-
-    def run(self, infer_request: Union[List[RolloutInferRequest], RolloutInferRequest], request_config: 'RequestConfig',
-            **kwargs) -> List['RolloutOutput']:
-        if isinstance(infer_request, RolloutInferRequest):
-            infer_request = [infer_request]
-        else:
-            infer_request = list(infer_request)
-
-        finished_rollout_by_root: Dict[int, List[RolloutOutput]] = {i: [] for i in range(len(infer_request))}
-        finished_samples: Dict[int, List[DataSampleTree]] = {i: [] for i in range(len(infer_request))}
-
-        samples_to_infer = []
-
-        for root_idx in range(len(infer_request)):
-            samples_to_infer.append(
-                DataSampleTree(
-                    tree_idx=str(root_idx),
-                    request_id=infer_request[root_idx].uuid,
-                    messages=infer_request[root_idx].messages,
-                    status=SampleStatus.TO_INFER))
-
-        # first step
-        next_infer_step = 1
-        samples_to_infer = _repeat_list_interleave(samples_to_infer, self.root_divergence)
-        samples_to_infer = _increment_tree_idx_depth(samples_to_infer, next_infer_step)
-
-        while len(samples_to_infer) > 0:
-            vllm_inputs = [
-                RolloutInferRequest(messages=sample.messages, uuid=sample.request_id) for sample in samples_to_infer
-            ]
-
-            res = self.vllm_client.infer(
-                [asdict(req) for req in vllm_inputs],
-                asdict(request_config),
-            )
-
-            if all(isinstance(output, RolloutOutput) for output in res):
-                outputs: List[ChatCompletionResponse] = [output.response for output in res]
-            else:
-                assert all(isinstance(output, ChatCompletionResponse) for output in res)
-                outputs: List[ChatCompletionResponse] = res
-
-            assert len(vllm_inputs) == len(
-                outputs), f'outputs length {len(outputs)} != inputs length {len(vllm_inputs)}'
-
-            samples_last_step = deepcopy(samples_to_infer)
-            samples_to_infer = []
-
-            for idx, (sample, output) in enumerate(zip(samples_last_step, outputs)):
-                assert len(output.choices) == 1, 'vllm should only generate one output'
-                self.check_finished(sample, output)
-
-                # bind the output and request
-                output.id = sample.request_id
-                choice = output.choices[0]
-                child_sample = deepcopy(sample)
-                child_sample.extend_response(choice)
-
-                if child_sample.status == SampleStatus.FINISHED:
-                    finished_samples[child_sample.root_node].append(child_sample)
-                    finished_rollout_by_root[child_sample.root_node].append(
-                        RolloutOutput(
-                            response=output,
-                            messages=deepcopy(child_sample.messages),
-                            response_token_ids=deepcopy(child_sample.all_response_ids)))
-                else:
-                    samples_to_infer.append(child_sample)
-
-            # if we have budget, do divergence
-            if len(samples_to_infer) > 0 and self.max_divergence > 1:
-                for root_idx in finished_samples.keys():
-                    root_to_infer_samples = [sample for sample in samples_to_infer if sample.root_node == root_idx]
-                    root_finished_samples = finished_samples[root_idx]
-
-                    budget = self.max_tree_width - len(root_finished_samples) - len(root_to_infer_samples)
-
-                    if budget > 0 and len(root_to_infer_samples) > 0:
-                        divergence_executor = DivergenceStrategyMapping[self.divergence_strategy]
-                        if not divergence_executor:
-                            raise ValueError(
-                                f"[Tree Rollout] The divergence strategy: {self.divergence_strategy} doesn't exist.")
-
-                        divergence_samples = divergence_executor.apply(root_idx, root_to_infer_samples, budget,
-                                                                       self.max_divergence - 1)
-                        samples_to_infer.extend(divergence_samples)
-
-            # before end loop, if finished_count < max_tree_width, fall back
-            if len(samples_to_infer) == 0 and any(count < self.max_tree_width
-                                                  for count in [len(value) for value in finished_samples.values()]):
-                samples_to_infer = self.fall_back_to_divergence(finished_samples)
-
-            # tools call etc
-            futures = [self.executor.submit(self.step, sample) for sample in samples_to_infer]
-            wait(futures, return_when=ALL_COMPLETED)
-
-            next_infer_step += 1
-            samples_to_infer = _increment_tree_idx_depth(samples_to_infer, next_infer_step)
-
-        # flatten finished outputs
-        return [traj for lst in finished_rollout_by_root.values() for traj in lst]
-
-    def step(self, sample: DataSampleTree, **kwargs):
-        """
-        You need to rewrite or modify this method to customize the next round of prompts, such as tools call.
-        """
-
-        if sample.status == SampleStatus.FINISH_NEXT_INFER:
-            prompt = 'In this round of responses, you must generate an answer.'
-        else:
-            prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-
-        sample.messages.append({'role': 'user', 'content': prompt})
-
-    def check_finished(self, sample: DataSampleTree, output: ChatCompletionResponse, **kwargs) -> bool:
-        """
-        Rewrite this method to add custom check logic
-        """
-
-        boxed_answer = extract_last_boxed(output.choices[0].message.content)
-
-        if sample.status == SampleStatus.FINISH_NEXT_INFER:
-            sample.status = SampleStatus.FINISHED
-
-        elif boxed_answer is not None:
-            sample.status = SampleStatus.FINISHED
-
-        elif sample.depth >= self.max_tree_deep - 1:
-            sample.status = SampleStatus.FINISH_NEXT_INFER
-
-        return sample.status == SampleStatus.FINISHED
-
-    def fall_back_to_divergence(
-            self,
-            finished_samples: Dict[int, List[DataSampleTree]],
-    ) -> List[DataSampleTree]:
-        """
-        All nodes have completed inference, but there is still budget available, fall back.
-        """
-
-        sample_to_infer = []
-        for root_idx, sample_list in finished_samples.items():
-            if len(sample_list) >= self.max_tree_width:
-                continue
-
-            diff_count = self.max_tree_width - len(sample_list)
-            result = random.sample(sample_list, min(diff_count, len(sample_list)))
-
-            result_copy = deepcopy(result)
-            for sample in result_copy:
-                sample.status = SampleStatus.TO_INFER
-
-            sample_to_infer.extend(result_copy)
-
-        return sample_to_infer
-
-
 multi_turns = {
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
     'thinking_tips_scheduler': ThinkingModelTipsScheduler,
-    'tree_rollout_scheduler': TreeRolloutScheduler,
 }

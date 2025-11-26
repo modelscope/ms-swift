@@ -309,13 +309,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
 
-    # tree rollout
-    tree_rollout: bool = False
-    max_tree_deep: Optional[int] = 8
-    tree_root_divergence: Optional[int] = 1
-    tree_max_divergence: Optional[int] = 2
-    tree_divergence_strategy: Optional[str] = 'logprob'
-
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
     max_resample_times: int = 3

@@ -15,6 +15,13 @@ class SampleStatus(Enum):
     TO_INFER = 'to_infer'
     FINISH_NEXT_INFER = 'finish_next_infer'
     FINISHED = 'finished'
+    ROLLBACK = 'rollback'
+
+
+class FinishedReason(Enum):
+    ANSWER = 'finished_with_answer'
+    MAX_INFER_STEP = 'finished_with_max_infer_steps'
+    UNFINISHED = 'unfinished'
 
 
 @dataclass
@@ -39,6 +46,7 @@ class DataSampleTree:
     token_count_per_step: List[int] = field(default_factory=list)
 
     status: SampleStatus = SampleStatus.INITIAL
+    finished_reason: FinishedReason = FinishedReason.UNFINISHED
 
     @property
     def root_node(self):
@@ -47,6 +55,23 @@ class DataSampleTree:
     @property
     def depth(self):
         return len(self.tree_idx.split('/')) - 1
+
+    @property
+    def response_num(self):
+        return len(self.all_response_ids)
+
+    def response_truncate(self, truncate_len: int):
+        """
+        Before rollback, truncate the response.
+        """
+
+        if truncate_len < 1:
+            return
+
+        self.logprobs = self.logprobs[:-truncate_len]
+        self.all_response_ids = self.all_response_ids[:-truncate_len]
+        self.messages = self.messages[:-(truncate_len * 2 - 1)]
+        self.last_response = None
 
     def extend_response(self, choice: ChatCompletionResponseChoice):
         self.extend_response_text(choice.message.content)
@@ -187,7 +212,4 @@ class AvgDivergence(AbstractDivergence):
         return weights.tolist()
 
 
-DivergenceStrategyMapping = {
-    'logprob': LogProbDivergence,
-    'average': AvgDivergence
-}
+DivergenceStrategyMapping = {'logprobs': LogProbDivergence, 'average': AvgDivergence}
