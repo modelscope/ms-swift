@@ -747,7 +747,7 @@ class FlattenedTensorMetadata(BaseModel):
 
 class UpdateFlattenedAdapterRequest(BaseModel):
     lora_int_id: int
-    peft_config: LoRAConfig
+    peft_config: LoraConfig
     metadatas: List[FlattenedTensorMetadata]
 
 
