@@ -67,7 +67,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - dataset_shuffle: Whether to shuffle the training dataset. Default is `True`.
   - Note: **Shuffling in CPT/SFT involves two parts**: dataset-level shuffling (controlled by `dataset_shuffle`) and dataloader-level shuffling (controlled by `train_dataloader_shuffle`).
 - val_dataset_shuffle: Whether to shuffle the validation dataset. Default is `False`.
-- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`.
+- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
   - Note: You must set `--max_steps` explicitly, as streaming datasets do not have a defined length. You can achieve behavior equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and a large `max_steps`. Alternatively, set `max_epochs` to ensure training stops after the specified number of epochs, allowing model evaluation and checkpoint saving.
   - Note: Streaming avoids waiting for preprocessing by overlapping it with training. However, preprocessing is only performed on rank 0 and then distributed to other processes. **This is typically less efficient than non-streaming data sharding**. When the training `world_size` is large, preprocessing and data distribution can become a bottleneck.
 - interleave_prob: Default is `None`. By default, multiple datasets are combined using `concatenate_datasets` from the datasets library. If this parameter is set, `interleave_datasets` is used instead. This is typically used for combining streaming datasets and is passed directly to `interleave_datasets`.
@@ -430,6 +430,11 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 - sglang_kv_cache_dtype: Data type for KV cache storage. 'auto' means it will use the model's data type. 'fp8_e5m2' and 'fp8_e4m3' are supported on CUDA 11.8 and above. Default is 'auto'.
 - sglang_enable_dp_attention: Enables data parallelism for attention and tensor parallelism for FFN. The data parallelism size (dp size) should be equal to the tensor parallelism size (tp size). Currently supports DeepSeek-V2/3 and Qwen2/3 MoE models. Default is False.
 - sglang_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is True.
+- sglang_speculative_algorithm: Speculative algorithm. Available options: None, "EAGLE", "EAGLE3", "NEXTN", "STANDALONE", "NGRAM". Default is None.
+- sglang_speculative_num_steps: The number of steps sampled from the draft model in speculative decoding. Default is None.
+- sglang_speculative_eagle_topk: The number of tokens sampled from the draft model at each step in the EAGLE2 algorithm. Default is None.
+- sglang_speculative_num_draft_tokens: The number of tokens sampled from the draft model in speculative decoding. Default is None.
+
 
 ### LMDeploy Arguments
 

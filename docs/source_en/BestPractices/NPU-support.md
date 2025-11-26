@@ -19,7 +19,7 @@ For detailed environment setup, please refer to the [Ascend PyTorch installation
 
 ## Environment Preparation
 
-Experiment Environment: 8 * Ascend 910B3 64G (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support of modelscope and swift~)
+Experiment Environment: 8 * Ascend 910B3 64G
 
 ```shell
 # Create a new conda virtual environment (optional)
