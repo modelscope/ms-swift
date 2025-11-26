@@ -1,23 +1,18 @@
-# demo: thinking -> non-thinking
-# 4 * 70GiB; 40s/it
+# 8 * 95GiB
+# "cuda>=12.9"
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
-    --model ZhipuAI/GLM-4.5-Air-FP8 \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 \
     --load_safetensors true \
     --save_safetensors true \
-    --mtp_num_layers 1 \
     --fp8_recipe blockwise \
     --fp8_format e4m3 \
     --fp8_param_gather true \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
-    --train_type lora \
-    --lora_rank 128 \
-    --lora_alpha 256 \
-    --target_modules all-linear \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_permute_fusion true \
@@ -32,10 +27,10 @@ megatron sft \
     --max_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
-    --lr 1e-4 \
+    --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
-    --min_lr 1e-5 \
-    --save megatron_output/GLM-4.5-Air-FP8 \
+    --min_lr 1e-6 \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507-FP8 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
@@ -44,6 +39,22 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
+    --moe_expert_capacity_factor 2 \
+    --use_precision_aware_optimizer true \
+    --exp_avg_dtype bf16 \
+    --exp_avg_sq_dtype bf16 \
     --attention_backend flash \
     --model_author swift \
     --model_name swift-robot
+
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#     --model megatron_output/Qwen3-30B-A3B-Instruct-2507-FP8/vx-xxx/checkpoint-xxx \
+#     --stream true
+
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#     --model megatron_output/Qwen3-30B-A3B-Instruct-2507-FP8/vx-xxx/checkpoint-xxx \
+#     --infer_backend vllm \
+#     --vllm_max_model_len 8192 \
+#     --stream true
