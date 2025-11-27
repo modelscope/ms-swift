@@ -1279,7 +1279,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # log_completions
         if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
-                and (self._step) != self._last_logged_step):
+                and self._step != self._last_logged_step):
             table = {
                 'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
