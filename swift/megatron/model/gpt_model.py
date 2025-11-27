@@ -408,7 +408,7 @@ class GPTModel(McoreGPTModel):
                 if args.context_parallel_size > 1:
                     loss_mask_ = split_cp_inputs(loss_mask, cu_seqlens, dim=1)
                 else:
-                    loss_mask_ = loss_mask
+                    loss_mask_ = loss_mask.clone()
                 mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
                 mtp_loss = loss_mask_ * mtp_loss
                 num_tokens = loss_mask_.sum()
