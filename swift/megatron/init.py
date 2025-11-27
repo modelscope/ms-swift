@@ -13,9 +13,8 @@ import peft
 try:
     # Enable Megatron on Ascend NPU
     import mindspeed.megatron_adaptor  # F401
-    HAS_MINDSPEED = True
 except ImportError:
-    HAS_MINDSPEED = False
+    pass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -813,11 +812,6 @@ def _patch_megatron():
 
 
 def init_megatron_env() -> None:
-    if HAS_MINDSPEED:
-        from mindspeed.megatron_adaptor import repatch
-
-        # a workaround for not finding transformer_engine on Ascend NPU
-        repatch({})
 
     if 'MEGATRON_LM_PATH' not in os.environ:
         # TODO: Synchronization issues may occur in DDP scenarios
