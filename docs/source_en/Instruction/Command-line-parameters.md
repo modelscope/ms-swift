@@ -200,7 +200,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - 🔥learning_rate:  Learning rate. **Default is `1e-5` for full-parameter training, and `1e-4` for LoRA and other tuners**.
   - Tip: If you want to set `min_lr`, you can pass the arguments `--lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'`.
 - 🔥vit_lr: Specifies the learning rate for the ViT module when training multimodal models. Default is `None`, same as `learning_rate`. Typically used together with `--freeze_vit` and `--freeze_aligner`.
-  - Note: The "learning_rate" printed in the logs is the learning rate of `param_groups[0]`.
+  - Note: The "learning_rate" printed in the logs is the learning rate of `param_groups[0]`, where the order of param_groups is vit, aligner, llm (if it contains trainable parameters).
 - 🔥aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
 - lr_scheduler_type: Type of learning rate scheduler. Default is `'cosine'`.
 - lr_scheduler_kwargs: Additional arguments for the learning rate scheduler. Default is `None`.
