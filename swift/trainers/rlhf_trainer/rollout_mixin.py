@@ -993,7 +993,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
