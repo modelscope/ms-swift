@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
+import torch.nn.functional as F
 import torch_npu
 from torch import nn
-import torch.nn.functional as F
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
@@ -35,7 +35,9 @@ def npu_swiglu_forward(self, hidden_state):
     return self.down_proj(
         torch_npu.npu_swiglu(torch.cat((self.gate_proj(hidden_state), self.up_proj(hidden_state)), dim=-1), dim=-1))
 
+
 class GmmFunction(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, x, weight, group_list, split_size):
         ctx.save_for_backward(x, weight)
@@ -61,6 +63,7 @@ class GmmFunction(torch.autograd.Function):
 
         return dx[0], dw, None, None
 
+
 def moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """ """
     batch_size, sequence_length, hidden_dim = hidden_states.shape
@@ -75,9 +78,9 @@ def moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    final_hidden_states = torch.zeros(
-        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
+    final_hidden_states = torch.zeros((batch_size * sequence_length, hidden_dim),
+                                      dtype=hidden_states.dtype,
+                                      device=hidden_states.device)
 
     # One hot encode the selected experts to create an expert mask
     # this will be used to easily index which expert is going to be sollicitated
@@ -102,7 +105,7 @@ def moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     tokens_per_experts = torch.sum(expert_mask, dim=(1, 2))
     group_list = torch.cumsum(tokens_per_experts, dim=0)
 
-    cpu_group_list = group_list.to("cpu", non_blocking=False)
+    cpu_group_list = group_list.to('cpu', non_blocking=False)
     cpu_group_list = [0] + cpu_group_list.tolist()
     split_size = [cpu_group_list[i + 1] - cpu_group_list[i] for i in range(len(cpu_group_list) - 1)]
 
