@@ -197,8 +197,8 @@ gradient_checkpointing: true
 - adam_beta2: 默认为0.95。
 - 🔥learning_rate: 学习率，**全参数训练默认为1e-5，LoRA训练等tuners为1e-4**。
   - 提示：若要设置`min_lr`，您可以传入参数`--lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'`。
-- 🔥vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。
-  - 通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
+- 🔥vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
+  - 提示：在日志中打印的"learning_rate"为`param_groups[0]`的学习率。
 - 🔥aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - lr_scheduler_type: lr_scheduler类型，默认为'cosine'。
 - lr_scheduler_kwargs: lr_scheduler其他参数。默认为None。
