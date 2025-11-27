@@ -1278,7 +1278,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         reporting_metric = {**avg_metric, **custom_metrics}
 
         # log_completions
-        if self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0:
+        if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
+                and self._step != self._last_logged_step):
             table = {
                 'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
@@ -1297,6 +1298,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 #     wandb_writer.define_metric('completions', step_metric='gen_step')
                 #     self.init_custom_metric = True
                 wandb_writer.log({'completions': wandb.Table(dataframe=df)})
+            self._last_logged_step = self._step
 
         return loss, reporting_metric
 
@@ -1486,6 +1488,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
+        self._last_logged_step = -1
         self._logs = {
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),
