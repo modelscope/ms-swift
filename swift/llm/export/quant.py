@@ -189,7 +189,7 @@ class QuantEngine(ProcessorMixin):
         prefix = ''
         if hasattr(model_arch, 'language_model'):
             language_model = [lm for lm in model_arch.language_model if not lm.endswith('lm_head')]
-            assert len(language_model) == 1, f'mllm_arch.language_model: {language_model}'
+            assert len(language_model) == 1, f'model_arch.language_model: {language_model}'
             prefix = language_model[0]
             model = deep_getattr(model, prefix)
 
