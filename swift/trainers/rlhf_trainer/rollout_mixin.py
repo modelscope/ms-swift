@@ -1006,12 +1006,18 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if not inputs:
             return []
+        if all(isinstance(data, RolloutInferRequest) for data in inputs):
+            return inputs
+
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
         requests_dicts = []
 
         for data in inputs:
+            if isinstance(data, RolloutInferRequest):
+                requests_dicts.append(asdict(data))
+                continue
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
             if 'uuid' not in request_data:
                 request_data['uuid'] = data['request_id']
