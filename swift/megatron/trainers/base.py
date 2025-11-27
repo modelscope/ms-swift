@@ -296,7 +296,10 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-
+        if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
+            aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
+            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
         # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
