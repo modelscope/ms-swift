@@ -110,7 +110,7 @@ optimizer.step()
 
 训练脚本示例参考[examples](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo)
 
-GROP参数参考[文档](../../../Instruction/Command-line-parameters.md#grpo参数)
+GRPO参数参考[文档](../../../Instruction/Command-line-parameters.md#grpo参数)
 
 ## 集群支持
 
