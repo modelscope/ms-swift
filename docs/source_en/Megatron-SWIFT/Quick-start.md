@@ -6,12 +6,12 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | Method                 | Full-Parameter | LoRA | MoE  | Multimodal | FP8  |
 | ---------------------- | -------------- | ---- | ---- | ---------- | ---- |
 | Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
-| Supervised Fine-Tuning | ✅              | ✅    | ✅    | ✅          | ✅    |
-| GRPO                   | ✅              | ✅    | ✅    | ✅          | ✅    |
-| DPO                    | ✅              | ✅    | ✅    | ✅          | ✅    |
-| KTO                    | ✅              | ✅    | ✅    | ✅          | ✅    |
-| RM                     | ✅              | ✅    | ✅    | ✅          | ✅    |
-| Sequence Classification   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
 
