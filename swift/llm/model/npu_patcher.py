@@ -36,7 +36,7 @@ def npu_swiglu_forward(self, hidden_state):
         torch_npu.npu_swiglu(torch.cat((self.gate_proj(hidden_state), self.up_proj(hidden_state)), dim=-1), dim=-1))
 
 
-class GmmFunction(torch.autograd.Function):
+class NpuGmmFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x, weight, group_list, split_size):
@@ -64,7 +64,7 @@ class GmmFunction(torch.autograd.Function):
         return dx[0], dw, None, None
 
 
-def moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+def npu_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """ """
     batch_size, sequence_length, hidden_dim = hidden_states.shape
     hidden_states = hidden_states.view(-1, hidden_dim)
@@ -109,10 +109,10 @@ def moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     cpu_group_list = [0] + cpu_group_list.tolist()
     split_size = [cpu_group_list[i + 1] - cpu_group_list[i] for i in range(len(cpu_group_list) - 1)]
 
-    up_res = GmmFunction.apply(permuted_tokens, w1, group_list, split_size)
-    gate_res = GmmFunction.apply(permuted_tokens, w2, group_list, split_size)
+    up_res = NpuGmmFunction.apply(permuted_tokens, w1, group_list, split_size)
+    gate_res = NpuGmmFunction.apply(permuted_tokens, w2, group_list, split_size)
     act_res = torch_npu.npu_swiglu(torch.cat([gate_res, up_res], dim=-1))
-    down_res = GmmFunction.apply(act_res, w3, group_list, split_size)
+    down_res = NpuGmmFunction.apply(act_res, w3, group_list, split_size)
 
     probs = routing_weights
     num_unpermuted_tokens = probs.numel()
@@ -142,6 +142,6 @@ modeling_qwen3.apply_rotary_pos_emb = npu_apply_rotary_pos_emb
 modeling_qwen3.Qwen3MLP.forward = npu_swiglu_forward
 
 modeling_qwen3_moe.Qwen3MoeRMSNorm = NpuRMSNorm
-modeling_qwen3_moe.Qwen3MoeSparseMoeBlock.forward = moe_block_forward
+modeling_qwen3_moe.Qwen3MoeSparseMoeBlock.forward = npu_moe_block_forward
 modeling_qwen3_moe.apply_rotary_pos_emb = npu_apply_rotary_pos_emb
 modeling_qwen3_moe.Qwen3MoeMLP.forward = npu_swiglu_forward
