@@ -16,7 +16,7 @@
 - **Agent训练**：支持Agent template，准备一套数据集可用于不同模型的训练。
 - 🍊 **训练任务**：支持预训练和指令微调，以及DPO、GKD、KTO、RM、CPO、SimPO、ORPO等训练任务，支持**Embedding/Reranker**和序列分类任务。
 - 🥥 **Megatron并行技术**：提供TP/PP/SP/CP/ETP/EP/VPP并行策略，**MoE模型加速可达10倍**。支持250+纯文本大模型和100+多模态大模型的全参数和LoRA训练方法。支持CPT/SFT/GRPO/DPO/KTO/RM训练任务。
-- 🍉 **强化学习**：内置**丰富GRPO族算法**，包括GRPO、DAPO、GSPO、SAPO、CISPO、CHORD、RLOO、Reinforce++等，支持同步和异步vLLM引擎推理加速，可使用插件拓展奖励函数、多轮推理Scheduler以及环境等。
+- 🍉 **强化学习**：内置**丰富GRPO族算法**，包括GRPO、DAPO、GSPO、SAPO、CISPO、CHORD、RLOO、Reinforce++等，支持同步和异步vLLM引擎推理加速，可使用插件拓展奖励函数、多轮推理调度器以及环境等。
 - **全链路能力**：覆盖训练、推理、评测、量化和部署全流程。
 - **界面训练**：提供使用Web-UI界面的方式进行训练、推理、评测、量化，完成大模型的全链路。
 - **推理加速**：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
