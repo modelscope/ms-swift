@@ -978,7 +978,7 @@ def _patch_deepstack_process(model):
 
 
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
-    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+    if hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
                                                                 check_model_inputs, Cache, is_torchdynamo_compiling)
