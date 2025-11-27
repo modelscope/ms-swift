@@ -1051,10 +1051,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     request_data['images'] = [_process_image_data(img) for img in imgs]
 
                 if 'tools' in request_data and isinstance(request_data['tools'], str):
-                    from json import JSONDecodeError
                     try:
                         request_data['tools'] = json.loads(request_data['tools'])
-                    except JSONDecodeError:
+                    except json.JSONDecodeError:
                         pass
 
                 request_obj = from_dict(RolloutInferRequest, request_data)
