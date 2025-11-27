@@ -82,7 +82,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.top_entropy_quantile = args.top_entropy_quantile
         self.importance_sampling_level = args.importance_sampling_level
-        self.enable_offload = False
+
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -104,6 +107,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
+
+        self.enable_offload = False
 
         # sampling params
         self.request_config = RequestConfig(
@@ -1129,6 +1134,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
             else:
                 raise NotImplementedError
+        elif self.loss_type == 'sapo':
+            if self.template.padding_free:
+                advantages = advantages[-coef_1.shape[1]:]
+                gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+                gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+                is_positive = advantages.unsqueeze(0) > 0
+                soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+
+                per_token_loss = -soft_gate * advantages.unsqueeze(0)
+            else:
+                raise NotImplementedError
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1155,7 +1171,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        if self.loss_type == 'grpo':
+        if self.loss_type in ['grpo', 'sapo']:
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
 
@@ -1215,6 +1231,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
+        elif self.loss_type == 'sapo':
+            # SAPO: No hard clipping, skip clipping metrics
+            pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             if self.template.padding_free:
                 # Use coef_1 before clamping for metrics (need to expand if sequence-level)
@@ -1315,7 +1334,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
@@ -1328,45 +1347,60 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if not inputs:
             return []
+
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_dicts = []
+        requests_list = []
 
         for data in inputs:
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data['request_id']
-            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {
-                    k: v
-                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+            if isinstance(data, RolloutInferRequest):
+                request_obj = data
+            else:
+                request_data = {
+                    key: data[key]
+                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
                 }
-                if extra_fields:
-                    request_data['data_dict'] = extra_fields
-            elif self.multi_turn_scheduler:
-                base_data_dict = {}
-                if 'data_dict' in data:
-                    if isinstance(data['data_dict'], dict):
-                        base_data_dict = data['data_dict']
-                    else:
-                        raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {
-                    k: v
-                    for k, v in data.items()
-                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                }
-                final_data_dict = {**extra_data, **base_data_dict}
-                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+                if 'uuid' not in request_data:
+                    request_data['uuid'] = data['request_id']
+                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                    extra_fields = {
+                        k: v
+                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                    }
+                    if extra_fields:
+                        request_data['data_dict'] = extra_fields
+                elif self.multi_turn_scheduler:
+                    base_data_dict = {}
+                    if 'data_dict' in data:
+                        if isinstance(data['data_dict'], dict):
+                            base_data_dict = data['data_dict']
+                        else:
+                            raise ValueError('data_dict exists but is not a dictionary')
+                    extra_data = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                    }
+                    final_data_dict = {**extra_data, **base_data_dict}
+                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
-            requests_dicts.append(request_data)
+                if 'images' in request_data and request_data['images']:
+                    imgs = request_data['images']
+                    if not isinstance(imgs, list):
+                        imgs = [imgs]
+                    request_data['images'] = [_process_image_data(img) for img in imgs]
 
-        for request in requests_dicts:
-            if 'images' in request and request['images']:
-                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
-                    request['images'], list) else _process_image_data(request['images']))
+                if 'tools' in request_data and isinstance(request_data['tools'], str):
+                    try:
+                        request_data['tools'] = json.loads(request_data['tools'])
+                    except json.JSONDecodeError:
+                        pass
 
-        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+                request_obj = from_dict(RolloutInferRequest, request_data)
+            requests_list.append(request_obj)
+
+        return requests_list
 
     def _preprocess_inputs(self, inputs: DataType) -> DataType:
         """Preprocess inputs before inference"""

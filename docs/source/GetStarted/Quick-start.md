@@ -1,22 +1,27 @@
 # 快速开始
 
-ms-swift是魔搭社区提供的大模型与多模态大模型训练部署框架，现已支持600+大模型与300+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。模型开发者可以在ms-swift框架中一站式完成围绕大模型的各类需求。目前ms-swift的主要能力包含：
+🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持600+纯文本大模型与300+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3-Next、InternLM3、GLM4.5、Mistral、DeepSeek-R1、Llama4等模型，多模态大模型包括：Qwen3-VL、Qwen3-Omni、Llava、InternVL3.5、MiniCPM-V-4、Ovis2.5、GLM4.5-V、DeepSeek-VL2等模型。
 
-- 🍎 模型类型：支持600+纯文本大模型、300+多模态大模型以及All-to-All全模态模型、序列分类模型、Embedding模型训练到部署全流程。
-- 数据集类型：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
-- 硬件支持：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU、MPS等。
-- 轻量训练：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
-- 分布式训练：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP、Megatron等分布式训练技术。
-- 量化训练：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
-- 🍊 RLHF训练：支持纯文本大模型和多模态大模型的DPO、GRPO、RM、PPO、GKD、KTO、CPO、SimPO、ORPO等人类对齐训练方法。
-- 🍓 多模态训练：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
-- 🥥 Megatron并行技术：支持使用Megatron并行技术对CPT/SFT/DPO/KTO/RM进行加速，现支持200+纯文本大模型和100+多模态大模型。
-- 界面训练：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
-- 插件化与拓展：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
-- 🍉 工具箱能力：除了对大模型和多模态大模型的训练支持外，还支持其推理、评测、量化和部署全流程。
-- 推理加速：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
-- 模型评测：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
-- 模型量化：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速，并支持继续训练。
+🍔 除此之外，ms-swift汇集了最新的训练技术，包括集成Megatron并行技术，包括TP、PP、CP、EP等为训练提供加速，以及众多GRPO算法族强化学习的算法，包括：GRPO、DAPO、GSPO、SAPO、CISPO、RLOO、Reinforce++等提升模型智能。ms-swift支持广泛的训练任务，包括DPO、KTO、RM、CPO、SimPO、ORPO等偏好学习算法，以及Embedding、Reranker、序列分类任务。ms-swift提供了大模型训练全链路的支持，包括使用vLLM、SGLang和LMDeploy对推理、评测、部署模块提供加速，以及使用GPTQ、AWQ、BNB、FP8技术对大模型进行量化。
+
+**为什么选择ms-swift？**
+- 🍎 **模型类型**：支持600+纯文本大模型、**300+多模态大模型**以及All-to-All全模态模型训练到部署全流程，热门模型Day0支持。
+- **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种任务数据集，并支持自定义数据集，用户只需准备数据集即可一键训练。
+- **硬件支持**：支持A10/A100/H100、RTX系列、T4/V100、CPU、MPS以及国产硬件Ascend NPU等。
+- **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、LLaMAPro、LongLoRA、LoRA-GA、ReFT、RS-LoRA、Adapter、LISA等轻量微调方式。
+- **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练，7B模型训练只需9GB训练资源。
+- **显存优化**: GaLore、Q-Galore、UnSloth、Liger-Kernel、Flash-Attention 2/3 以及 **Ulysses和Ring-Attention序列并行技术**支持，降低长文本训练显存占用。
+- **分布式训练**：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP/FSDP2以及Megatron等分布式训练技术。
+- 🍓 **多模态训练**：支持多模态packing技术提升训练速度100%+，支持文本、图像、视频和语音混合模态数据训练，支持vit/aligner/llm单独控制。
+- **Agent训练**：支持Agent template，准备一套数据集可用于不同模型的训练。
+- 🍊 **训练任务**：支持预训练和指令微调，以及DPO、GKD、KTO、RM、CPO、SimPO、ORPO等训练任务，支持**Embedding/Reranker**和序列分类任务。
+- 🥥 **Megatron并行技术**：提供TP/PP/SP/CP/ETP/EP/VPP并行策略，**MoE模型加速可达10倍**。支持250+纯文本大模型和100+多模态大模型的全参数和LoRA训练方法。支持CPT/SFT/GRPO/DPO/KTO/RM训练任务。
+- 🍉 **强化学习**：内置**丰富GRPO族算法**，包括GRPO、DAPO、GSPO、SAPO、CISPO、CHORD、RLOO、Reinforce++等，支持同步和异步vLLM引擎推理加速，可使用插件拓展奖励函数、多轮推理调度器以及环境等。
+- **全链路能力**：覆盖训练、推理、评测、量化和部署全流程。
+- **界面训练**：提供使用Web-UI界面的方式进行训练、推理、评测、量化，完成大模型的全链路。
+- **推理加速**：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
+- **模型评测**：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
+- **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 
 ## 安装

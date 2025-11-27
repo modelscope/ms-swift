@@ -5,6 +5,7 @@ from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+import transformers
 from packaging import version
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -983,6 +984,9 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
                                                                 check_model_inputs, Cache, is_torchdynamo_compiling)
     from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
     output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
+
+    if version.parse(transformers.__version__) >= version.parse('4.57.2'):
+        check_model_inputs = check_model_inputs()
 
     @check_model_inputs
     def forward(

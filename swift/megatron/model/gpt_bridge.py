@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import copy
-from typing import Optional
+from typing import List, Optional, Union
 
 import megatron.core
 import torch
@@ -14,9 +14,10 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
+from swift.llm.argument.base_args.quant_args import QuantizeArguments
 from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import Fp8Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -25,6 +26,7 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
+    fp8_block_size = 128
     hf_layers_prefix = 'model.layers'
     hf_mtp_prefix = 'model.layers'
     hf_embed_key = 'model.embed_tokens.weight'
@@ -85,6 +87,13 @@ class GPTBridge:
                 self.ep_pp_size = self.ep_size * self.pp_size
                 self.ep_pp_group = group
                 self.ep_pp_rank = dist.get_rank(group)
+                self._fp8_quantizer = None
+
+    @property
+    def fp8_quantizer(self):
+        if self._fp8_quantizer is None:
+            self._fp8_quantizer = Fp8Dequantizer()
+        return self._fp8_quantizer
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
@@ -133,38 +142,70 @@ class GPTBridge:
                 elif key in {'linear_fc1'}:
                     return 1
 
+    def _split_tp(self, hf_weight, tp_dim, is_expert):
+        tp_size = self.etp_size if is_expert else self.tp_size
+        tp_rank = self.etp_rank if is_expert else self.tp_rank
+        if tp_dim is not None and tp_size > 1:
+            tensor = hf_weight.chunk(tp_size, dim=tp_dim)[tp_rank]
+        else:
+            tensor = hf_weight
+        return tensor
+
     def _set_weight(
         self,
-        mg_param: torch.Tensor,
+        mg_param: Union[torch.Tensor, List[torch.Tensor]],
         hf_weight: torch.Tensor,
         mg_key: str,
         offset: float = 0,
         is_expert: bool = False,
+        *,
+        hf_scale_inv: Optional[torch.Tensor] = None,
     ):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
-        hf_weight = hf_weight.to(device=mg_param.device, dtype=mg_param.dtype)
-        tp_size = self.etp_size if is_expert else self.tp_size
-        tp_rank = self.etp_rank if is_expert else self.tp_rank
-        tp_group = self.etp_group if is_expert else self.tp_group
-        if tp_dim is not None and tp_size > 1:
-            if tp_rank == 0:
-                splited_weights = [t.contiguous() for t in hf_weight.chunk(tp_size, dim=tp_dim)]
-            else:
-                splited_weights = None
-            tensor = torch.empty_like(mg_param.data)
-            dist.scatter(
-                tensor,
-                splited_weights,
-                src=dist.get_global_rank(tp_group, 0),
-                group=tp_group,
-            )
-            del splited_weights
-        else:
-            tensor = hf_weight
+        tensor = self._split_tp(hf_weight, tp_dim, is_expert)
+        del hf_weight
+        if not isinstance(mg_param, (list, tuple)):
+            mg_param = [mg_param]
+        if hf_scale_inv is not None:
+            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert)
+            hf_scale_inv = hf_scale_inv.chunk(len(mg_param), dim=0)
         if offset:
+            assert hf_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
-        mg_param.data.copy_(tensor)
+        tensor_list = tensor.chunk(len(mg_param), dim=0)
+        for i, param in enumerate(mg_param):
+            tensor = tensor_list[i].reshape(*param.shape)
+            if self._is_fp8_param(param):
+                if hf_scale_inv is None:
+                    param.data.copy_(tensor)
+                    param._high_precision_init_val.copy_(tensor)
+                else:
+                    scale_inv = hf_scale_inv[i]
+                    tensor = tensor.view(torch.uint8)
+                    param._rowwise_data.data.copy_(tensor)
+                    scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
+                    if scale_inv.shape[-1] < param._rowwise_scale_inv.shape[-1]:
+                        scale_inv = torch.concat([
+                            scale_inv,
+                            scale_inv.new_zeros(
+                                (scale_inv.shape[0], param._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
+                        ],
+                                                 dim=-1)
+                    param._rowwise_scale_inv.data.copy_(scale_inv)
+                    del param.get_high_precision_init_val
+            else:
+                if hf_scale_inv is not None:
+                    tensor = self.fp8_quantizer.convert(tensor, hf_scale_inv[i])
+                param.data.copy_(tensor)
+
+    @staticmethod
+    def _is_fp8_param(param):
+        try:
+            from transformer_engine.pytorch import Float8BlockwiseQTensor
+            return isinstance(param, Float8BlockwiseQTensor)
+        except ImportError:
+            return False
 
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
@@ -212,19 +253,14 @@ class GPTBridge:
                 dist.broadcast_object_list(meta_data, src=src_rank, group=self.pp_group)
                 hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
                 for k, v in hf_state_dict.items():
-                    v = self._get_weight(deep_getattr(mg_module, k, None), None)
+                    v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
                     hf_state_dict[k] = v
             return self._add_prefix(hf_state_dict, hf_prefix)
 
-    def _get_weight(self, mg_weight: torch.Tensor, mg_key: Optional[str], offset: float = 0, is_expert: bool = False):
-        # tp/etp
-        tp_dim = self._get_tp_split_dim(mg_key)
-        tensor = None if mg_weight is None else mg_weight.to('cuda')
+    def _all_gather_tp(self, tensor, tp_dim, is_expert):
+        tensor = None if tensor is None else tensor.to('cuda')
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_group = self.etp_group if is_expert else self.tp_group
-        pp_group = self.ep_pp_group if is_expert else self.pp_group
-        pp_size = self.ep_pp_size if is_expert else self.pp_size
-        pp_rank = self.ep_pp_rank if is_expert else self.pp_rank
         if tensor is not None and tp_dim is not None and tp_size > 1:
             if tp_dim == 0:
                 # save memory
@@ -246,13 +282,19 @@ class GPTBridge:
                 )
                 tensor = torch.cat(output, dim=tp_dim)
             del output
+        return tensor
+
+    def _broadcast_ep_pp(self, tensor, is_expert):
+        pp_group = self.ep_pp_group if is_expert else self.pp_group
+        pp_size = self.ep_pp_size if is_expert else self.pp_size
+        pp_rank = self.ep_pp_rank if is_expert else self.pp_rank
         # pp/ep
         if pp_size > 1:
             src_rank = torch.tensor([0 if tensor is None else pp_rank], dtype=torch.int64, device='cuda')
             dist.all_reduce(src_rank, group=pp_group)
             src_rank = dist.get_global_rank(pp_group, src_rank.item())
             meta_data = torch.zeros(10, dtype=torch.int64, device='cuda')
-            dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3}
+            dtype_mapping = {torch.float64: 0, torch.float32: 1, torch.float16: 2, torch.bfloat16: 3, torch.uint8: 4}
             dtype_mapping_r = {v: k for k, v in dtype_mapping.items()}
             if tensor is None:
                 dist.broadcast(meta_data, src=src_rank, group=pp_group)
@@ -267,14 +309,61 @@ class GPTBridge:
                 meta_data[-1] = dtype_mapping[tensor.dtype]
                 dist.broadcast(meta_data, src=src_rank, group=pp_group)
                 dist.broadcast(tensor, src=src_rank, group=pp_group)
+        return tensor
+
+    def _get_weight(
+        self,
+        mg_weight: Union[torch.Tensor, List[torch.Tensor]],
+        mg_key: Optional[str],
+        offset: float = 0,
+        is_expert: bool = False,
+    ):
+        # tp/etp
+        mg_scale_inv = None
+        tensor = mg_weight
+        if tensor is not None:
+            if not isinstance(tensor, (list, tuple)):
+                tensor = [tensor]
+            if self._is_fp8_param(tensor[0]):
+                mg_scale_inv = [t._rowwise_scale_inv for t in tensor]
+                tensor = [t._rowwise_data for t in tensor]
+        del mg_weight
+        if tensor is not None:
+            assert isinstance(tensor, (list, tuple)), f'mg_key: {mg_key}'
+            tensor = torch.concat(tensor, dim=0)
+            if mg_scale_inv is not None:
+                mg_scale_inv = torch.concat(mg_scale_inv, dim=0)
+        num_local_experts = self.args.num_experts // self.ep_size if is_expert else 1
+        tp_dim = self._get_tp_split_dim(mg_key)
+        is_linear_fc1 = (mg_key is not None and mg_key.split('.', 1)[0] == 'linear_fc1' and tp_dim is not None)
+        if tensor is not None and is_linear_fc1:
+            tensor = tensor.view(num_local_experts * 2, -1, tensor.shape[-1])
+            if mg_scale_inv is not None:
+                mg_scale_inv = mg_scale_inv.view(num_local_experts * 2, -1, mg_scale_inv.shape[-1])
+
+        tensor = self._all_gather_tp(tensor, tp_dim, is_expert)
+        tensor = self._broadcast_ep_pp(tensor, is_expert)
+        if tensor.dtype == torch.uint8:
+            mg_scale_inv = self._all_gather_tp(mg_scale_inv, tp_dim, is_expert)
+            mg_scale_inv = self._broadcast_ep_pp(mg_scale_inv, is_expert)
+            tensor = tensor.view(torch.float8_e4m3fn)
+            mg_scale_inv = mg_scale_inv[..., :tensor.shape[-1] // self.fp8_block_size].contiguous()
         assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
+            assert mg_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
         if self._target_device is not None:
             tensor = tensor.to(device=self._target_device)
+            if mg_scale_inv is not None:
+                mg_scale_inv = mg_scale_inv.to(device=self._target_device)
         if self._only_last_rank and not is_last_rank():
             tensor = None
-        return tensor
+            mg_scale_inv = None
+        if is_expert and tensor is not None:
+            tensor = tensor.view(num_local_experts, -1, tensor.shape[-1])
+            if mg_scale_inv is not None:
+                mg_scale_inv = mg_scale_inv.view(num_local_experts, -1, mg_scale_inv.shape[-1])
+        return tensor, mg_scale_inv
 
     def _set_state_dict(self,
                         mg_module,
@@ -314,8 +403,8 @@ class GPTBridge:
                 lora_B_tensor = deep_getattr(mg_module, f'{lora_B_key}.data')
                 hf_lora_A_key = f'{hf_module_key}.lora_A.{hf_param_key}'
                 hf_lora_B_key = f'{hf_module_key}.lora_B.{hf_param_key}'
-                lora_A = self._get_weight(lora_A_tensor, lora_A_key, offset, is_expert)
-                lora_B = self._get_weight(lora_B_tensor, lora_B_key, offset, is_expert)
+                lora_A, _ = self._get_weight(lora_A_tensor, lora_A_key, offset, is_expert)
+                lora_B, _ = self._get_weight(lora_B_tensor, lora_B_key, offset, is_expert)
                 if lora_A is not None:
                     self._peft_target_modules.add(hf_module_key)
                     hf_state_dict[hf_lora_A_key] = lora_A
@@ -331,13 +420,19 @@ class GPTBridge:
                 if module_key in {'embedding.word_embeddings', 'output_layer'
                                   } and hf_weight.shape[0] < self.args.padded_vocab_size:
                     hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
-                self._set_weight(mg_param, hf_weight, mg_key, offset, is_expert)
+                hf_scale_inv = None
+                if f'{hf_key}_scale_inv' in hf_state_dict:
+                    hf_scale_inv = hf_state_dict[f'{hf_key}_scale_inv'].load()
+                self._set_weight(mg_param, hf_weight, mg_key, offset, is_expert, hf_scale_inv=hf_scale_inv)
             else:
                 if is_modules_to_save:
                     self._peft_modules_to_save.add(hf_module_key)
-                weight = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset, is_expert)
+                weight, scale_inv = self._get_weight(None if mg_param is None else mg_param.data, mg_key, offset,
+                                                     is_expert)
                 if weight is not None:
                     hf_state_dict[hf_key] = weight
+                if scale_inv is not None:
+                    hf_state_dict[f'{hf_key}_scale_inv'] = scale_inv
 
     @staticmethod
     def _remove_prefix(state_dict, prefix: str):
@@ -372,6 +467,7 @@ class GPTBridge:
         hf_attn = self.hf_layers[layer_idx].self_attn
         args = self.args
         num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
+        hidden_size_block = args.hidden_size // self.fp8_block_size
         if to_mcore:
             if isinstance(mg_attn.linear_qkv, LoraParallelLinear):
                 lora_A = hf_state_dict['q_proj.lora_A.weight'].load()
@@ -396,20 +492,34 @@ class GPTBridge:
                     hf_state_dict['v_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
                 ],
                                               dim=1).reshape((-1, args.hidden_size))
-                self._set_weight(mg_attn.linear_qkv.weight, linear_qkv_weight, 'linear_qkv.weight')
+                qkv_scale_inv = None
+                if 'q_proj.weight_scale_inv' in hf_state_dict:
+                    qkv_scale_inv = torch.cat([
+                        hf_state_dict['q_proj.weight_scale_inv'].load().reshape(
+                            (num_query_groups, -1, hidden_size_block)),
+                        hf_state_dict['k_proj.weight_scale_inv'].load().reshape(
+                            (num_query_groups, -1, hidden_size_block)),
+                        hf_state_dict['v_proj.weight_scale_inv'].load().reshape(
+                            (num_query_groups, -1, hidden_size_block)),
+                    ],
+                                              dim=1).reshape((-1, hidden_size_block))
+                self._set_weight(
+                    mg_attn.linear_qkv.weight, linear_qkv_weight, 'linear_qkv.weight', hf_scale_inv=qkv_scale_inv)
         else:
             q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
                 0] // num_query_groups
+            q_block = q_dim // self.fp8_block_size
+            kv_block = kv_dim // self.fp8_block_size
             is_lora = False if mg_attn is None else isinstance(mg_attn.linear_qkv,
                                                                LoraParallelLinear) and self._is_peft_format
             is_lora = torch.tensor([is_lora], dtype=torch.bool, device='cuda')
             if self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                lora_A = self._get_weight(
+                lora_A, _ = self._get_weight(
                     None if mg_attn is None else mg_attn.linear_qkv.lora_A[self._adapter_name].weight.data,
                     f'linear_qkv.lora_A.{self._adapter_name}.weight')
-                lora_B = self._get_weight(
+                lora_B, _ = self._get_weight(
                     None if mg_attn is None else mg_attn.linear_qkv.lora_B[self._adapter_name].weight.data,
                     f'linear_qkv.lora_B.{self._adapter_name}.weight')
                 if lora_A is not None:
@@ -423,8 +533,8 @@ class GPTBridge:
                                                                                              lora_B.shape[-1]).clone()
                     hf_state_dict['v_proj.lora_B.weight'] = lora_B[:, -kv_dim:, :].reshape(-1, lora_B.shape[-1]).clone()
             elif not self._is_peft_format:
-                mg_attn_weight = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.weight.data,
-                                                  'linear_qkv.weight')
+                mg_attn_weight, scale_inv = self._get_weight(
+                    None if mg_attn is None else mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
                 if mg_attn_weight is not None:
                     mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
                     hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size).clone()
@@ -433,6 +543,14 @@ class GPTBridge:
                                                                                               args.hidden_size).clone()
                     hf_state_dict['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1,
                                                                                             args.hidden_size).clone()
+                if scale_inv is not None:
+                    scale_inv = scale_inv.reshape((num_query_groups, -1, hidden_size_block))
+                    hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:, :q_block, :].reshape(
+                        -1, hidden_size_block).clone()
+                    hf_state_dict['k_proj.weight_scale_inv'] = scale_inv[:, q_block:-kv_block, :].reshape(
+                        -1, hidden_size_block).clone()
+                    hf_state_dict['v_proj.weight_scale_inv'] = scale_inv[:, -kv_block:, :].reshape(
+                        -1, hidden_size_block).clone()
                 del mg_attn_weight
         self._set_state_dict(mg_attn, 'linear_proj.weight', hf_state_dict, 'o_proj.weight', to_mcore)
 
@@ -447,8 +565,8 @@ class GPTBridge:
                                             dim=1).reshape(-1)
                 self._set_weight(mg_attn.linear_qkv.bias, linear_qkv_bias, 'linear_qkv.bias')
             else:
-                mg_attn_bias = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
-                                                'linear_qkv.bias')
+                mg_attn_bias, _ = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
+                                                   'linear_qkv.bias')
                 if mg_attn_bias is not None:
                     mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
                     hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1).clone()
@@ -539,10 +657,11 @@ class GPTBridge:
             hf_state_dict = {}
         # linear_fc1
         if to_mcore:
+            has_scale_inv = any('_scale_inv' in k for k in hf_state_dict.keys())
             if isinstance(mg_mlp.linear_fc1, LoraParallelLinear):
-                mg_lora_B = mg_mlp.linear_fc1.lora_B[
-                    self._adapter_name].weight0 if is_expert else mg_mlp.linear_fc1.lora_B[self._adapter_name].weight
-                mg_lora_B = mg_lora_B.new_empty(num_local_experts * 2, mg_lora_B.shape[0] // 2, mg_lora_B.shape[-1])
+                mg_lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name]
+                mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
+                             for i in range(num_local_experts)] if is_expert else mg_lora_B.weight
                 if hasattr(hf_mlp, 'gate_up_proj'):
                     if is_expert:
                         lora_A = torch.stack([
@@ -581,44 +700,52 @@ class GPTBridge:
                         lora_B = torch.stack([gate_lora_B, up_lora_B], dim=0)
                     assert (
                         lora_A == up_lora_A).all(), 'Need to ensure lora_A consistency between gate_proj and up_proj'
-                if is_expert:
-                    mg_lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight0
-                    mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
-                else:
-                    mg_lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight
+                mg_lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name]
+                mg_lora_A = [getattr(mg_lora_A, f'weight{i}')
+                             for i in range(num_local_experts)] if is_expert else mg_lora_A.weight
                 self._set_weight(
                     mg_lora_A, lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
                 self._set_weight(
                     mg_lora_B, lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
-                if is_expert:
-                    mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
-                    mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
-                    for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc1.lora_A[self._adapter_name], f'weight{i}').data.copy_(mg_lora_A[i])
-                        getattr(mg_mlp.linear_fc1.lora_B[self._adapter_name], f'weight{i}').data.copy_(mg_lora_B[i])
-                else:
-                    mg_mlp.linear_fc1.lora_B[self._adapter_name].weight.data.copy_(
-                        mg_lora_B.view(-1, mg_lora_B.shape[-1]))
             else:
-                fc1_weight = mg_mlp.linear_fc1.weight0 if is_expert else mg_mlp.linear_fc1.weight
-                fc1_weight = fc1_weight.new_empty(num_local_experts * 2, fc1_weight.shape[0] // 2, fc1_weight.shape[1])
+                fc1_weight = [getattr(mg_mlp.linear_fc1, f'weight{i}')
+                              for i in range(num_local_experts)] if is_expert else mg_mlp.linear_fc1.weight
+                gate_up_scale_inv = None
                 if hasattr(hf_mlp, 'gate_up_proj'):
                     if is_expert:
                         if hf_grouped:
                             gate_up_proj_weight = hf_state_dict['gate_up_proj'].load().transpose(1, 2)
                             gate_up_proj_weight = gate_up_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
-                            gate_up_proj_weight = gate_up_proj_weight.reshape(num_local_experts * 2, -1,
-                                                                              gate_up_proj_weight.shape[-1])
+                            if has_scale_inv:
+                                gate_up_scale_inv = hf_state_dict['gate_up_proj_scale_inv'].load().transpose(1, 2)
+                                gate_up_scale_inv = gate_up_scale_inv[ep_rank * num_local_experts:(ep_rank + 1)
+                                                                      * num_local_experts]
+
                         else:
                             gate_up_proj_weight = torch.concat([
                                 hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.weight'].load()
                                 for i in range(num_local_experts)
                             ],
                                                                dim=0)
+                            if has_scale_inv:
+                                gate_up_scale_inv = torch.concat([
+                                    hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.weight_scale_inv'].
+                                    load() for i in range(num_local_experts)
+                                ],
+                                                                 dim=0)
+
+                        gate_up_proj_weight = gate_up_proj_weight.reshape(num_local_experts * 2, -1,
+                                                                          gate_up_proj_weight.shape[-1])
+                        if has_scale_inv:
+                            gate_up_scale_inv = gate_up_scale_inv.reshape(num_local_experts * 2, -1,
+                                                                          gate_up_scale_inv.shape[-1])
                     else:
                         gate_up_proj_weight = hf_state_dict['gate_up_proj.weight'].load()
                         gate_up_proj_weight = gate_up_proj_weight.view(2, -1, gate_up_proj_weight.shape[-1])
+                        if has_scale_inv:
+                            gate_up_scale_inv = hf_state_dict['gate_up_proj.weight_scale_inv'].load()
+                            gate_up_scale_inv = gate_up_scale_inv.view(2, -1, gate_up_scale_inv.shape[-1])
                 else:
                     if is_expert:
                         weight_list = []
@@ -628,20 +755,28 @@ class GPTBridge:
                             up_proj_weight = hf_state_dict[f'{start_idx + i}.up_proj.weight'].load()
                             weight_list.append(torch.stack([gate_proj_weight, up_proj_weight], dim=0))
                         gate_up_proj_weight = torch.concat(weight_list, dim=0)
+                        if has_scale_inv:
+                            scale_inv_list = []
+                            for i in range(num_local_experts):
+                                gate_scale_inv = hf_state_dict[f'{start_idx + i}.gate_proj.weight_scale_inv'].load()
+                                up_scale_inv = hf_state_dict[f'{start_idx + i}.up_proj.weight_scale_inv'].load()
+                                scale_inv_list.append(torch.stack([gate_scale_inv, up_scale_inv], dim=0))
+                            gate_up_scale_inv = torch.concat(scale_inv_list, dim=0)
                         del weight_list
                     else:
                         gate_proj_weight = hf_state_dict['gate_proj.weight'].load()
                         up_proj_weight = hf_state_dict['up_proj.weight'].load()
                         gate_up_proj_weight = torch.stack([gate_proj_weight, up_proj_weight], dim=0)
-                self._set_weight(fc1_weight, gate_up_proj_weight, 'linear_fc1.weight', is_expert=is_expert)
-                if is_expert:
-                    fc1_weight = fc1_weight.view(num_local_experts, -1, fc1_weight.shape[-1])
-                    for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc1,
-                                f'weight{i}').data.copy_(fc1_weight[i].view(-1, fc1_weight.shape[-1]))
-                    del fc1_weight
-                else:
-                    mg_mlp.linear_fc1.weight.data.copy_(fc1_weight.view(-1, fc1_weight.shape[-1]))
+                        if has_scale_inv:
+                            gate_scale_inv = hf_state_dict['gate_proj.weight_scale_inv'].load()
+                            up_scale_inv = hf_state_dict['up_proj.weight_scale_inv'].load()
+                            gate_up_scale_inv = torch.stack([gate_scale_inv, up_scale_inv], dim=0)
+                self._set_weight(
+                    fc1_weight,
+                    gate_up_proj_weight,
+                    'linear_fc1.weight',
+                    is_expert=is_expert,
+                    hf_scale_inv=gate_up_scale_inv)
         else:
             is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc1,
                                                               LoraParallelLinear) and self._is_peft_format
@@ -657,28 +792,25 @@ class GPTBridge:
                     lora_B = None
                 else:
                     if is_expert:
-                        lora_A = torch.concat([
+                        lora_A = [
                             getattr(mg_mlp.linear_fc1.lora_A[self._adapter_name], f'weight{i}')
                             for i in range(num_local_experts)
-                        ],
-                                              dim=0)
-                        lora_B = torch.concat([
+                        ]
+                        lora_B = [
                             getattr(mg_mlp.linear_fc1.lora_B[self._adapter_name], f'weight{i}')
                             for i in range(num_local_experts)
-                        ],
-                                              dim=0)
+                        ]
                     else:
                         lora_A = mg_mlp.linear_fc1.lora_A[self._adapter_name].weight
                         lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name].weight
-                    lora_B = lora_B.view(num_local_experts * 2, -1, lora_B.shape[1])
-                lora_A = self._get_weight(lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
-                lora_B = self._get_weight(lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
+                lora_A, _ = self._get_weight(
+                    lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
+                lora_B, _ = self._get_weight(
+                    lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if lora_A is not None:
                     if hasattr(hf_mlp, 'gate_up_proj'):
                         self._peft_target_modules.update({'gate_up_proj'})
                         if is_expert:
-                            lora_A = lora_A.view(num_local_experts, -1, lora_A.shape[-1])
-                            lora_B = lora_B.view(num_local_experts, -1, lora_B.shape[-1])
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
                                 hf_state_dict[f'{hf_i}.gate_up_proj.lora_A.weight'] = lora_A[i].clone()
@@ -690,7 +822,6 @@ class GPTBridge:
                     else:
                         self._peft_target_modules.update({'gate_proj', 'up_proj'})
                         if is_expert:
-                            lora_A = lora_A.view(num_local_experts, -1, lora_A.shape[-1])
                             lora_B = lora_B.view(num_local_experts, 2, -1, lora_B.shape[-1])
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
@@ -699,6 +830,7 @@ class GPTBridge:
                                 hf_state_dict[f'{hf_i}.gate_proj.lora_B.weight'] = lora_B[i][0].clone()
                                 hf_state_dict[f'{hf_i}.up_proj.lora_B.weight'] = lora_B[i][1].clone()
                         else:
+                            lora_B = lora_B.view(2, -1, lora_B.shape[-1])
                             hf_state_dict['gate_proj.lora_A.weight'] = lora_A.clone()
                             hf_state_dict['up_proj.lora_A.weight'] = lora_A.clone()
                             hf_state_dict['gate_proj.lora_B.weight'] = lora_B[0].clone()
@@ -711,52 +843,71 @@ class GPTBridge:
                         linear_fc1 = mg_mlp.linear_fc1
                         if isinstance(linear_fc1, LoraParallelLinear):
                             linear_fc1 = linear_fc1.base_layer
-                        fc1_weight = torch.concat([getattr(linear_fc1, f'weight{i}') for i in range(num_local_experts)],
-                                                  dim=0)
+                        fc1_weight = [getattr(linear_fc1, f'weight{i}') for i in range(num_local_experts)]
                     else:
                         fc1_weight = mg_mlp.linear_fc1.weight
-                    fc1_weight = fc1_weight.view(num_local_experts * 2, -1, fc1_weight.shape[1])
-                gate_up_proj_weight = self._get_weight(fc1_weight, 'linear_fc1.weight', is_expert=is_expert)
+                gate_up_proj_weight, scale_inv = self._get_weight(fc1_weight, 'linear_fc1.weight', is_expert=is_expert)
                 del fc1_weight
                 if gate_up_proj_weight is not None:
                     if hasattr(hf_mlp, 'gate_up_proj'):
                         if is_expert:
-                            gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, -1,
-                                                                           gate_up_proj_weight.shape[-1])
                             if hf_grouped:
                                 gate_up_proj_weight = gate_up_proj_weight.transpose(1, 2)
                                 if 'gate_up_proj' in hf_state_dict:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 hf_state_dict['gate_up_proj'] = gate_up_proj_weight.clone()
+                                if scale_inv is not None:
+                                    scale_inv = scale_inv.transpose(1, 2)
+                                    if 'gate_up_proj_scale_inv' in hf_state_dict:
+                                        scale_inv = torch.concat([hf_state_dict['gate_up_proj_scale_inv'], scale_inv],
+                                                                 dim=0)
+                                    hf_state_dict['gate_up_proj_scale_inv'] = scale_inv.clone()
+
                             else:
                                 for i in range(num_local_experts):
                                     hf_i = i + ep_rank * num_local_experts
                                     hf_state_dict[f'{hf_i}.gate_up_proj.weight'] = gate_up_proj_weight[i].clone()
+                                    if scale_inv is not None:
+                                        hf_state_dict[f'{hf_i}.gate_up_proj.weight_scale_inv'] = scale_inv[i].clone()
                             del gate_up_proj_weight
                         else:
-                            hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.view(
-                                -1, gate_up_proj_weight.shape[-1]).clone()
+                            hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.clone()
+                            if scale_inv is not None:
+                                hf_state_dict['gate_up_proj.weight_scale_inv'] = scale_inv.clone()
                     else:
                         if is_expert:
                             gate_up_proj_weight = gate_up_proj_weight.view(num_local_experts, 2, -1,
                                                                            gate_up_proj_weight.shape[-1])
+                            if scale_inv is not None:
+                                scale_inv = scale_inv.view(num_local_experts, 2, -1, scale_inv.shape[-1])
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
                                 hf_state_dict[f'{hf_i}.gate_proj.weight'] = gate_up_proj_weight[i][0].clone()
                                 hf_state_dict[f'{hf_i}.up_proj.weight'] = gate_up_proj_weight[i][1].clone()
+                                if scale_inv is not None:
+                                    hf_state_dict[f'{hf_i}.gate_proj.weight_scale_inv'] = scale_inv[i][0].clone()
+                                    hf_state_dict[f'{hf_i}.up_proj.weight_scale_inv'] = scale_inv[i][1].clone()
                             del gate_up_proj_weight
                         else:
+                            gate_up_proj_weight = gate_up_proj_weight.view(2, -1, gate_up_proj_weight.shape[-1])
                             hf_state_dict['gate_proj.weight'] = gate_up_proj_weight[0].clone()
                             hf_state_dict['up_proj.weight'] = gate_up_proj_weight[1].clone()
+                            if scale_inv is not None:
+                                scale_inv = scale_inv.view(2, -1, scale_inv.shape[-1])
+                                hf_state_dict['gate_proj.weight_scale_inv'] = scale_inv[0].clone()
+                                hf_state_dict['up_proj.weight_scale_inv'] = scale_inv[1].clone()
+
         # linear_fc2
         if is_expert:
             if to_mcore:
                 if isinstance(mg_mlp.linear_fc2, LoraParallelLinear):
-                    mg_lora_A = mg_mlp.linear_fc2.lora_A[self._adapter_name].weight0
-                    mg_lora_A = mg_lora_A.new_empty(num_local_experts * mg_lora_A.shape[0], mg_lora_A.shape[1])
-                    mg_lora_B = mg_mlp.linear_fc2.lora_B[self._adapter_name].weight0
-                    mg_lora_B = mg_lora_B.new_empty(num_local_experts * mg_lora_B.shape[0], mg_lora_B.shape[1])
+                    mg_lora_A = mg_mlp.linear_fc2.lora_A[self._adapter_name]
+                    mg_lora_A = [getattr(mg_lora_A, f'weight{i}')
+                                 for i in range(num_local_experts)] if is_expert else mg_lora_A.weight
+                    mg_lora_B = mg_mlp.linear_fc2.lora_B[self._adapter_name]
+                    mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
+                                 for i in range(num_local_experts)] if is_expert else mg_lora_B.weight
                     lora_A = torch.concat([
                         hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.lora_A.weight'].load()
                         for i in range(num_local_experts)
@@ -771,29 +922,37 @@ class GPTBridge:
                         mg_lora_A, lora_A, f'linear_fc2.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
                     self._set_weight(
                         mg_lora_B, lora_B, f'linear_fc2.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
-                    mg_lora_A = mg_lora_A.view(num_local_experts, -1, mg_lora_A.shape[-1])
-                    mg_lora_B = mg_lora_B.view(num_local_experts, -1, mg_lora_B.shape[-1])
-                    for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc2.lora_A[self._adapter_name], f'weight{i}').data.copy_(mg_lora_A[i])
-                        getattr(mg_mlp.linear_fc2.lora_B[self._adapter_name], f'weight{i}').data.copy_(mg_lora_B[i])
                 else:
-                    fc2_weight = mg_mlp.linear_fc2.weight0
-                    fc2_weight = fc2_weight.new_empty(num_local_experts * fc2_weight.shape[0], fc2_weight.shape[1])
+                    fc2_weight = [getattr(mg_mlp.linear_fc2, f'weight{i}')
+                                  for i in range(num_local_experts)] if is_expert else mg_mlp.linear_fc2.weight
+                    down_scale_inv = None
                     if hf_grouped:
                         down_proj_weight = hf_state_dict['down_proj'].load().transpose(1, 2)
                         down_proj_weight = down_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                             * num_local_experts].reshape(
                                                                 -1, down_proj_weight.shape[-1])
+                        if has_scale_inv:
+                            down_scale_inv = hf_state_dict['down_proj_scale_inv'].load().transpose(1, 2)
+                            down_scale_inv = down_scale_inv[ep_rank * num_local_experts:(ep_rank + 1)
+                                                            * num_local_experts].reshape(-1, down_scale_inv.shape[-1])
                     else:
                         down_proj_weight = torch.concat([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight'].load()
                             for i in range(num_local_experts)
                         ],
                                                         dim=0)
-                    self._set_weight(fc2_weight, down_proj_weight, 'linear_fc2.weight', is_expert=is_expert)
-                    fc2_weight = fc2_weight.view(num_local_experts, -1, fc2_weight.shape[-1])
-                    for i in range(num_local_experts):
-                        getattr(mg_mlp.linear_fc2, f'weight{i}').data.copy_(fc2_weight[i])
+                        if has_scale_inv:
+                            down_scale_inv = torch.concat([
+                                hf_state_dict[f'{i + ep_rank * num_local_experts}.down_proj.weight_scale_inv'].load()
+                                for i in range(num_local_experts)
+                            ],
+                                                          dim=0)
+                    self._set_weight(
+                        fc2_weight,
+                        down_proj_weight,
+                        'linear_fc2.weight',
+                        is_expert=is_expert,
+                        hf_scale_inv=down_scale_inv)
             else:
                 is_lora = False if mg_mlp is None else isinstance(mg_mlp.linear_fc2,
                                                                   LoraParallelLinear) and self._is_peft_format
@@ -808,24 +967,20 @@ class GPTBridge:
                         lora_A = None
                         lora_B = None
                     else:
-                        lora_A = torch.concat([
+                        lora_A = [
                             getattr(mg_mlp.linear_fc2.lora_A[self._adapter_name], f'weight{i}')
                             for i in range(num_local_experts)
-                        ],
-                                              dim=0)
-                        lora_B = torch.concat([
+                        ]
+                        lora_B = [
                             getattr(mg_mlp.linear_fc2.lora_B[self._adapter_name], f'weight{i}')
                             for i in range(num_local_experts)
-                        ],
-                                              dim=0)
-                    lora_A = self._get_weight(
+                        ]
+                    lora_A, _ = self._get_weight(
                         lora_A, f'linear_fc2.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
-                    lora_B = self._get_weight(
+                    lora_B, _ = self._get_weight(
                         lora_B, f'linear_fc2.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                     if lora_A is not None:
                         self._peft_target_modules.update({'down_proj'})
-                        lora_A = lora_A.view(num_local_experts, -1, lora_A.shape[-1])
-                        lora_B = lora_B.view(num_local_experts, -1, lora_B.shape[-1])
                         for i in range(num_local_experts):
                             hf_i = i + ep_rank * num_local_experts
                             hf_state_dict[f'{hf_i}.down_proj.lora_A.weight'] = lora_A[i].clone()
@@ -837,21 +992,26 @@ class GPTBridge:
                         linear_fc2 = mg_mlp.linear_fc2
                         if isinstance(linear_fc2, LoraParallelLinear):
                             linear_fc2 = linear_fc2.base_layer
-                        fc2_weight = torch.concat([getattr(linear_fc2, f'weight{i}') for i in range(num_local_experts)],
-                                                  dim=0)
-                    down_proj_weight = self._get_weight(fc2_weight, 'linear_fc2.weight', is_expert=is_expert)
+                        fc2_weight = [getattr(linear_fc2, f'weight{i}') for i in range(num_local_experts)]
+                    down_proj_weight, scale_inv = self._get_weight(fc2_weight, 'linear_fc2.weight', is_expert=is_expert)
                     del fc2_weight
                     if down_proj_weight is not None:
-                        down_proj_weight = down_proj_weight.view(num_local_experts, -1, down_proj_weight.shape[-1])
                         if hf_grouped:
                             down_proj_weight = down_proj_weight.transpose(1, 2)
                             if 'down_proj' in hf_state_dict:
                                 down_proj_weight = torch.concat([hf_state_dict['down_proj'], down_proj_weight], dim=0)
                             hf_state_dict['down_proj'] = down_proj_weight.clone()
+                            if scale_inv is not None:
+                                scale_inv = scale_inv.transpose(1, 2)
+                                if 'down_proj_scale_inv' in hf_state_dict:
+                                    scale_inv = torch.concat([hf_state_dict['down_proj_scale_inv'], scale_inv], dim=0)
+                                hf_state_dict['down_proj_scale_inv'] = scale_inv.clone()
                         else:
                             for i in range(num_local_experts):
                                 hf_i = i + ep_rank * num_local_experts
                                 hf_state_dict[f'{hf_i}.down_proj.weight'] = down_proj_weight[i].clone()
+                                if scale_inv is not None:
+                                    hf_state_dict[f'{hf_i}.down_proj.weight_scale_inv'] = scale_inv[i].clone()
         else:
             self._set_state_dict(
                 mg_mlp, 'linear_fc2.weight', hf_state_dict, 'down_proj.weight', to_mcore, is_expert=is_expert)
@@ -1103,7 +1263,7 @@ class GPTBridge:
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
-        with SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
+        with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
             list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
@@ -1121,7 +1281,8 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
-        yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
+        with torch.no_grad():
+            yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
@@ -1153,9 +1314,20 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
+                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
+                    if self.hf_model.config.quantization_config is None:
+                        from transformers.utils.quantization_config import FineGrainedFP8Config
+                        modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
+                        self.hf_model.config.quantization_config = FineGrainedFP8Config(
+                            modules_to_not_convert=modules_to_not_convert)
+                else:
+                    del self.hf_model.config.quantization_config
                 self.hf_model.config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
-                    custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                    try:
+                        custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                    except FileNotFoundError as e:
+                        logger.error(f'custom_object_save Error: {e}')
                 save_checkpoint(
                     None,
                     self.processor,

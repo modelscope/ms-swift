@@ -67,7 +67,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - dataset_shuffle: Whether to shuffle the training dataset. Default is `True`.
   - Note: **Shuffling in CPT/SFT involves two parts**: dataset-level shuffling (controlled by `dataset_shuffle`) and dataloader-level shuffling (controlled by `train_dataloader_shuffle`).
 - val_dataset_shuffle: Whether to shuffle the validation dataset. Default is `False`.
-- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`.
+- streaming: Whether to stream and process the dataset on-the-fly. Default is `False`. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
   - Note: You must set `--max_steps` explicitly, as streaming datasets do not have a defined length. You can achieve behavior equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and a large `max_steps`. Alternatively, set `max_epochs` to ensure training stops after the specified number of epochs, allowing model evaluation and checkpoint saving.
   - Note: Streaming avoids waiting for preprocessing by overlapping it with training. However, preprocessing is only performed on rank 0 and then distributed to other processes. **This is typically less efficient than non-streaming data sharding**. When the training `world_size` is large, preprocessing and data distribution can become a bottleneck.
 - interleave_prob: Default is `None`. By default, multiple datasets are combined using `concatenate_datasets` from the datasets library. If this parameter is set, `interleave_datasets` is used instead. This is typically used for combining streaming datasets and is passed directly to `interleave_datasets`.
@@ -430,6 +430,11 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 - sglang_kv_cache_dtype: Data type for KV cache storage. 'auto' means it will use the model's data type. 'fp8_e5m2' and 'fp8_e4m3' are supported on CUDA 11.8 and above. Default is 'auto'.
 - sglang_enable_dp_attention: Enables data parallelism for attention and tensor parallelism for FFN. The data parallelism size (dp size) should be equal to the tensor parallelism size (tp size). Currently supports DeepSeek-V2/3 and Qwen2/3 MoE models. Default is False.
 - sglang_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is True.
+- sglang_speculative_algorithm: Speculative algorithm. Available options: None, "EAGLE", "EAGLE3", "NEXTN", "STANDALONE", "NGRAM". Default is None.
+- sglang_speculative_num_steps: The number of steps sampled from the draft model in speculative decoding. Default is None.
+- sglang_speculative_eagle_topk: The number of tokens sampled from the draft model at each step in the EAGLE2 algorithm. Default is None.
+- sglang_speculative_num_draft_tokens: The number of tokens sampled from the draft model in speculative decoding. Default is None.
+
 
 ### LMDeploy Arguments
 
@@ -574,7 +579,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
-- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
@@ -605,6 +610,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - num_iterations: The number of updates per data sample, corresponding to the $\mu$ value in the GRPO paper. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
+- tau_pos: Temperature parameter for positive advantages in [SAPO](https://arxiv.org/abs/2511.20347) algorithm, controlling the sharpness of the soft gating function. Larger values make the gate sharper (closer to hard clipping), smaller values make it smoother. Default is 1.0.
+- tau_neg: Temperature parameter for negative advantages in SAPO algorithm, controlling the sharpness of the soft gating function. Typically set `tau_neg > tau_pos` to apply stronger constraints on negative advantages. Default is 1.05.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.

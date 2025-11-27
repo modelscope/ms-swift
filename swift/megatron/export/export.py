@@ -60,16 +60,18 @@ class MegatronExport(SwiftPipeline):
         logger.info('Converting weights and saving the model...')
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         bridge.save_weights([mg_model], args.save, is_peft_format=save_peft_format)
-        if is_last_rank():
-            args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
-            if os.path.exists(args_path):
+        args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
+        if os.path.exists(args_path):
+            if is_last_rank():
                 shutil.copy(args_path, os.path.join(args.save, 'args.json'))
+        else:
+            args.save_args(args.save)
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 if save_peft_format:
                     kwargs = {'adapters': [args.save]}
                 else:
-                    kwargs = {'model': args.save}
+                    kwargs = {'model': args.save, 'torch_dtype': None}
                 hf_model, template = prepare_model_template(
                     args, device_map='cpu', **kwargs) if is_last_rank() else (None, template)
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
