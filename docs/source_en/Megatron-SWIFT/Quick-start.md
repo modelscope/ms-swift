@@ -11,7 +11,7 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | DPO                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | KTO                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | RM                     | ✅              | ✅    | ✅    | ✅          | ✅    |
-| Classification Task    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| Sequence Classification   | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
 
