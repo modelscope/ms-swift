@@ -149,7 +149,6 @@ class GRPOVllmEngine(VllmEngine):
             use_tqdm = len(infer_requests) > 1
         res = await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-        # Convert ChatCompletionResponse to RolloutOutput (same as sync infer method)
         for i, result in enumerate(res):
             if not isinstance(result, RolloutOutput):
                 if not isinstance(result, ChatCompletionResponse):
