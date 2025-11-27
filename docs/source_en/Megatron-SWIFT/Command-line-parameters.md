@@ -212,6 +212,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥expert_tensor_parallel_size: expert tensor-parallel size. Default is 1.
   - In "ms-swift<3.9", its default is `None`, which means it equals the value of `--tensor_model_parallel_size`. This default will be changed in "ms-swift>=3.9".
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
+- moe_enable_deepep: Enable DeepEP for efficient token dispatching and combine in MoE models. Only works with flex token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is True.
   - In "ms-swift>=3.10", the default value of this parameter was changed from False to True.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.

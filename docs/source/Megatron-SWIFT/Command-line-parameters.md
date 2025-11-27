@@ -200,6 +200,7 @@
 - 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
   - 在"ms-swift<3.9"，其默认值为None，即等于`--tensor_model_parallel_size` 的数值，该默认值将在"ms-swift>=3.9"被修改。
 - moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
+- moe_enable_deepep: 启用 DeepEP 以实现 MoE 模型中的高效 token 调度和合并。仅在通过设置 `--moe_token_dispatcher_type flex` 使用弹性 token 调度器时有效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为True。
   - 在"ms-swift>=3.10"，该参数默认值从False修改为True。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。

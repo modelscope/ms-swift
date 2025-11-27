@@ -346,13 +346,13 @@ ms-swift支持使用Megatron并行技术加速训练，包括大规模集群训�
 
 | 方法   | 全参数 | LoRA | MoE | 多模态 | FP8 |
 | ------ | ------ | ---- | ----- | ----- | ----- |
-| 预训练| ✅ | ✅| ✅ | ✅ | ✅ |
-| 指令监督微调 | ✅ | ✅| ✅ | ✅ | ✅ |
-| GRPO | ✅ | ✅| ✅ | ✅ | ✅ |
-| DPO | ✅ | ✅| ✅ | ✅ | ✅ |
-| KTO | ✅ | ✅| ✅ | ✅ | ✅ |
-| RM | ✅ | ✅| ✅ | ✅ | ✅ |
-| 序列分类 | ✅ | ✅| ✅ | ✅ | ✅ |
+| 预训练 | ✅ | ✅| ✅ | ✅ | ✅ |
+| [指令监督微调](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 
 ```shell
