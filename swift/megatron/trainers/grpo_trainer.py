@@ -1334,7 +1334,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
