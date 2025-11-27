@@ -139,7 +139,7 @@ class GRPOVllmEngine(VllmEngine):
                           metrics: Optional[List[Metric]] = None,
                           *,
                           use_tqdm: Optional[bool] = None,
-                          **kwargs) -> List[ChatCompletionResponse]:
+                          **kwargs) -> List[RolloutOutput]:
         if request_config is None:
             request_config = RequestConfig()
         assert request_config.n == 1
@@ -147,7 +147,16 @@ class GRPOVllmEngine(VllmEngine):
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
-        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+        res = await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+
+        # Convert ChatCompletionResponse to RolloutOutput (same as sync infer method)
+        for i, result in enumerate(res):
+            if not isinstance(result, RolloutOutput):
+                if not isinstance(result, ChatCompletionResponse):
+                    raise TypeError('Result must be a ChatCompletionResponse or RolloutOutput instance.')
+                res[i] = RolloutOutput(response=result)
+
+        return res
 
     async def _batch_infer_stream(self,
                                   tasks,
