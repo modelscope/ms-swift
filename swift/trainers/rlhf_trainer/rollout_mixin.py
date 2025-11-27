@@ -1006,60 +1006,61 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if not inputs:
             return []
-        if all(isinstance(data, RolloutInferRequest) for data in inputs):
-            return inputs
 
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_dicts = []
+        requests_list = []
 
         for data in inputs:
             if isinstance(data, RolloutInferRequest):
-                requests_dicts.append(asdict(data))
-                continue
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data['request_id']
-            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {
-                    k: v
-                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                request_obj = data
+            else:
+                request_data = {
+                    key: data[key]
+                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
                 }
-                if extra_fields:
-                    request_data['data_dict'] = extra_fields
-            elif self.multi_turn_scheduler:
-                base_data_dict = {}
-                if 'data_dict' in data:
-                    if isinstance(data['data_dict'], dict):
-                        base_data_dict = data['data_dict']
-                    else:
-                        raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {
-                    k: v
-                    for k, v in data.items()
-                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                }
-                final_data_dict = {**extra_data, **base_data_dict}
-                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+                if 'uuid' not in request_data:
+                    request_data['uuid'] = data['request_id']
+                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                    extra_fields = {
+                        k: v
+                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                    }
+                    if extra_fields:
+                        request_data['data_dict'] = extra_fields
+                elif self.multi_turn_scheduler:
+                    base_data_dict = {}
+                    if 'data_dict' in data:
+                        if isinstance(data['data_dict'], dict):
+                            base_data_dict = data['data_dict']
+                        else:
+                            raise ValueError('data_dict exists but is not a dictionary')
+                    extra_data = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                    }
+                    final_data_dict = {**extra_data, **base_data_dict}
+                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
-            requests_dicts.append(request_data)
+                if 'images' in request_data and request_data['images']:
+                    imgs = request_data['images']
+                    if not isinstance(imgs, list):
+                        imgs = [imgs]
+                    request_data['images'] = [_process_image_data(img) for img in imgs]
 
-        for request in requests_dicts:
-            if 'images' in request and request['images']:
-                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
-                    request['images'], list) else _process_image_data(request['images']))
+                if 'tools' in request_data and isinstance(request_data['tools'], str):
+                    from json import JSONDecodeError
+                    try:
+                        request_data['tools'] = json.loads(request_data['tools'])
+                    except JSONDecodeError:
+                        pass
 
-        # load tools json
-        for request_data in requests_dicts:
-            if 'tools' in request_data and isinstance(request_data['tools'], str):
-                from json import JSONDecodeError
-                try:
-                    request_data['tools'] = json.loads(request_data['tools'])
-                except JSONDecodeError:
-                    pass
+                request_obj = from_dict(RolloutInferRequest, request_data)
+            requests_list.append(request_obj)
 
-        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+        return requests_list
 
     def async_generate_rollout(self, all_inputs):
         """Async generation task for rollout"""
