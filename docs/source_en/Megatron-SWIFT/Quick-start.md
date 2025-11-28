@@ -198,6 +198,6 @@ The training speed comparison for full-parameter MoE models with 8K context leng
 | GPU Memory Usage | 16 * 60GiB  | OOM             | 16 * 80GiB      |
 
 
-## Wechat Group
+## Megatron-SWIFT Wechat Group
 
 <img src="../../resources/wechat/megatron.png" width="200" height="200">

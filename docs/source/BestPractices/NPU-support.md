@@ -305,6 +305,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | 使用sglang作为推理引擎 |
 
 
-## 微信群
+## NPU微信群
 
 <img src="../../resources/wechat/npu.png" width="200" height="200">
