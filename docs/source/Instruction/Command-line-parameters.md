@@ -637,6 +637,7 @@ soft overlong 奖励参数
 推理参数除包含[基本参数](#基本参数)、[合并参数](#合并参数)、[vLLM参数](#vllm参数)、[LMDeploy参数](#LMDeploy参数)外，还包含下面的部分：
 
 - 🔥infer_backend: 推理加速后端，支持'pt'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'pt'。
+  - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
 - 🔥max_batch_size: 指定infer_backend为pt时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
 - 🔥result_path: 推理结果存储路径（jsonl），默认为None，保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印。
   - 注意：若已存在`result_path`文件，则会进行追加写入。

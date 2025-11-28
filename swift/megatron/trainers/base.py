@@ -981,6 +981,7 @@ class BaseMegatronTrainer(ABC):
         if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
+            generator = [f'visual.{generator}' for generator in visual_cls._generator]
             if args.freeze_llm:
                 args.freeze_parameters.append('language_model')
             if args.freeze_vit:
@@ -989,6 +990,7 @@ class BaseMegatronTrainer(ABC):
                 args.freeze_parameters += aligner
             else:
                 args.trainable_parameters += aligner
+            args.freeze_parameters += generator
             if args.freeze_parameters:
                 logger.info(f'freeze_parameters: {args.freeze_parameters}')
             if args.trainable_parameters:

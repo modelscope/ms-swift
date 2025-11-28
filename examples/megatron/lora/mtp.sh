@@ -44,3 +44,18 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --attention_backend flash
+
+# If not using the MTP module, please remove the speculative-related parameters.
+# CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# swift infer \
+#     --model megatron_output/GLM-4.5-Air/vx-xxx/checkpoint-xxx \
+#     --sglang_tp_size 4 \
+#     --infer_backend sglang \
+#     --load_data_args true \
+#     --sglang_context_length 8192 \
+#     --max_new_tokens 2048 \
+#     --sglang_mem_fraction_static 0.7 \
+#     --sglang_speculative_algorithm EAGLE \
+#     --sglang_speculative_eagle_topk 1 \
+#     --sglang_speculative_num_steps 3 \
+#     --sglang_speculative_num_draft_tokens 4

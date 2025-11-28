@@ -209,6 +209,8 @@ class GPTBridge:
 
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
+            if mg_module is None:
+                return {}
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
             if self._is_peft_format:
                 new_state_dict = {}
@@ -251,10 +253,14 @@ class GPTBridge:
                 src_rank = dist.get_global_rank(self.pp_group, src_rank.item())
                 meta_data = [None] if hf_state_dict is None else [list(hf_state_dict.keys())]
                 dist.broadcast_object_list(meta_data, src=src_rank, group=self.pp_group)
+                if meta_data[0] is None:
+                    return {}
                 hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
                 for k, v in hf_state_dict.items():
                     v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
                     hf_state_dict[k] = v
+            elif hf_state_dict is None:
+                return {}
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):

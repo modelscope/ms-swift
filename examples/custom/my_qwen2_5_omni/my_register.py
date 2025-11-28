@@ -23,7 +23,7 @@ register_model_arch(
         # model layers prefixed with `thinker.audio_tower` and `thinker.visual`.
         # LoRA training, if `freeze_vit=False`, it will additionally add LoRA to Linear layers
         # prefixed with `thinker.audio_tower` and `thinker.visual`.
-        language_model='thinker.model',
+        language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # Generator parts will never be trained or remain frozen.
