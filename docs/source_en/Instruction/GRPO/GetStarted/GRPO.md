@@ -392,4 +392,4 @@ Set the parameter `--beta 0` to disable KL loss calculation. The reference model
 
 ## RL WeChat Group
 
-<img src="../../../../resources/wechat/grpo.png" width="200" height="200">
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/grpo.png" width="250">
