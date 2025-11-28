@@ -616,12 +616,22 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
                     # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1 # noqa
                     final_rollout_logprobs = rollout_logprobs[index]
-                    if response_loss_mask[index] and rollout_logprobs[index]:
-                        total_loss_mask_1_count = sum(sum(mask) for mask in response_loss_mask[index])
+                    if rollout_logprobs[index]:
                         total_logprob_count = sum(len(turn_lps) for turn_lps in rollout_logprobs[index])
-                        if total_loss_mask_1_count != total_logprob_count:
-                            # Incomplete logprobs, clear them
-                            final_rollout_logprobs = []
+                        if response_loss_mask[index]:
+                            # Check if the number of logprobs matches the number of loss_mask=1 tokens
+                            total_loss_mask_1_count = sum(sum(mask) for mask in response_loss_mask[index])
+                            if total_loss_mask_1_count != total_logprob_count:
+                                # Incomplete logprobs, clear them
+                                final_rollout_logprobs = []
+                        else:
+                            # No loss_mask, fall back to checking against response_token_ids
+                            if response_token_ids[index]:
+                                total_token_count = sum(len(turn_ids) for turn_ids in response_token_ids[index])
+                                if total_token_count != total_logprob_count:
+                                    final_rollout_logprobs = []
+                            else:
+                                final_rollout_logprobs = []
 
                     rollout_outputs[index] = RolloutOutput(
                         response=output.response,

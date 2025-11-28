@@ -41,6 +41,7 @@ class MultiTurnScheduler(ABC):
                 - infer_request (必需): 下一轮的推理请求对象
                 - response_token_ids (可选): 每个 rollout 轮次的响应 token IDs
                 - response_loss_mask (可选): 每个 rollout 轮次响应的损失掩码
+                - rollout_logprobs (可选): 每个 rollout 轮次的响应对应的 logps
                 - rollout_infos (可选): 额外信息数据
         """
         raise NotImplementedError
@@ -145,6 +146,7 @@ swift rollout \
 
 在 `rollout` 命令中使用参数 `use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
 
+> 注意: async engine 以及下面的自定义多轮交互逻辑 目前仅支持 server mode，对于 colocate mode 下的多轮交互逻辑，请参考 RolloutTrainerMixin 的 _colocate_multi_turn_infer 方法
 
 ## 高级设置
 
@@ -222,3 +224,26 @@ class RewardFunction():
 ### 在 Scheduler 中获取额外的数据集信息
 
 在训练侧设置参数`--vllm_server_pass_dataset`，可将数据集中的其他列传入多轮规划器。在`infer_request.data_dict`中获取。
+
+### 训推一致性兼容
+
+在多轮训练中，如果启用了 `rollout_importance_sampling_mode`，框架会自动收集每轮 rollout 的 log probabilities，用于校正[训推不一致](../AdvancedResearch/training_inference_mismatch.md)带来的 off-policy 问题。
+
+**默认行为**：
+- 使用默认的 `run` 方法时，框架会自动从 `response_choice.logprobs` 中提取 log probabilities
+- 这些 logprobs 会与 `response_token_ids` 和 `response_loss_mask` 一起传递给 trainer
+
+**自定义 Scheduler 的注意事项**：
+
+如果你在 `step` 方法中修改了 response（如截断、添加内容），需要同步返回对应的 `rollout_logprobs`
+
+**关键规则**：
+- `rollout_logprobs` 的长度应该等于 `response_loss_mask` 中值为 1 的数量
+- 对于 `loss_mask=0` 的 token（如用户添加的提示、工具返回结果），不需要提供 logprobs
+- 如果 `step` 方法没有返回 `rollout_logprobs`，框架会自动从 `response_choice.logprobs` 中提取
+
+**重写 `run` 方法的场景**：
+
+如果你完全重写了 `run` 方法，需要手动收集和传递 `rollout_logprobs`
+
+具体的实现请参考[内置实现](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)

@@ -364,7 +364,6 @@ class RolloutOutput(BaseModel):
     @field_validator('response_token_ids', 'response_loss_mask', 'rollout_logprobs', mode='before')
     @classmethod
     def _wrap_flat_list(cls, v):
-        # Wrap flat list (e.g., [1, 2, 3] or [0.1, 0.2, 0.3]) into nested list ([[1, 2, 3]] or [[0.1, 0.2, 0.3]])
         if isinstance(v, list) and v and isinstance(v[0], (int, float)):
             return [v]
         return v

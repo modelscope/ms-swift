@@ -820,6 +820,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Extract rollout logprobs if available for importance sampling
                 # rollout_logprobs is List[List[float]] - nested list where each inner list corresponds to
                 # one assistant response turn. We need to align these with completion_mask positions.
+                batch_encoded_inputs['rollout_per_token_logps'] = None
                 if self.use_fast_infer:
                     rollout_logprobs_list = []
                     for data in batch:
@@ -856,29 +857,29 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 # completion_mask marks which positions are completion tokens (not prompts)
                                 # rollout_logprobs[i] is List[List[float]], each inner list for one response turn
                                 seq_lengths = batch_encoded_inputs['seq_lengths']
-                                rollout_logprobs_aligned = []
+                                total_len = int(seq_lengths.sum().item())
+
+                                # Initialize aligned tensor with zeros (for prompt positions)
+                                rollout_logprobs_aligned = torch.zeros(
+                                    total_len, dtype=torch.float32, device=self.accelerator.device)
+
                                 offset = 0
                                 for i, nested_lp in enumerate(rollout_logprobs_list):
                                     seq_len = seq_lengths[i].item()
                                     seq_mask = completion_mask[0, offset:offset + seq_len]  # [seq_len]
-                                    # Build aligned logprobs for this sequence
-                                    seq_logprobs = []
-                                    lp_iter = iter([lp for turn_lps in nested_lp for lp in turn_lps])
-                                    for is_completion in seq_mask.tolist():
-                                        if is_completion:
-                                            # This is a completion token, use rollout logprob
-                                            seq_logprobs.append(next(lp_iter))
-                                        else:
-                                            # This is a prompt token, use placeholder (won't affect metrics
-                                            # since completion_mask filters these out)
-                                            seq_logprobs.append(0.0)
-                                    rollout_logprobs_aligned.extend(seq_logprobs)
+
+                                    # Flatten logprobs for this sample
+                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                                    if flat_lps:
+                                        # Get indices where completion_mask is True
+                                        completion_indices = seq_mask.nonzero(as_tuple=True)[0] + offset
+                                        # Scatter logprobs to completion positions
+                                        rollout_logprobs_aligned[completion_indices] = torch.tensor(
+                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
                                     offset += seq_len
 
-                                # Convert to tensor and pad to batch format
-                                rollout_logprobs_rmpad = torch.tensor(
-                                    rollout_logprobs_aligned, dtype=torch.float32,
-                                    device=self.accelerator.device).unsqueeze(0)
+                                # Convert to batch format
+                                rollout_logprobs_rmpad = rollout_logprobs_aligned.unsqueeze(0)
 
                                 batch_size = seq_lengths.shape[0]
                                 rollout_logps_padded, _ = pad_logps_back_to_batch(
@@ -891,27 +892,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             else:
                                 # Standard mode: align rollout_logprobs with completion_mask for each sample
                                 batch_size = completion_mask.shape[0]
-                                padded_logprobs = []
+                                seq_len = completion_mask.shape[1]
+
+                                # Initialize with zeros (for prompt positions)
+                                rollout_logps_tensor = torch.zeros(
+                                    batch_size, seq_len, dtype=torch.float32, device=self.accelerator.device)
+
                                 for i, nested_lp in enumerate(rollout_logprobs_list):
-                                    seq_mask = completion_mask[i]  # [logits_to_keep]
-                                    # Build aligned logprobs for this sequence
-                                    seq_logprobs = []
-                                    lp_iter = iter([lp for turn_lps in nested_lp for lp in turn_lps])
-                                    for is_completion in seq_mask.tolist():
-                                        if is_completion:
-                                            seq_logprobs.append(next(lp_iter))
-                                        else:
-                                            # Placeholder for prompt tokens (won't affect metrics)
-                                            seq_logprobs.append(0.0)
-                                    padded_logprobs.append(seq_logprobs)
-                                batch_encoded_inputs['rollout_per_token_logps'] = torch.tensor(
-                                    padded_logprobs, dtype=torch.float32, device=self.accelerator.device)
-                        else:
-                            batch_encoded_inputs['rollout_per_token_logps'] = None
-                    else:
-                        batch_encoded_inputs['rollout_per_token_logps'] = None
-                else:
-                    batch_encoded_inputs['rollout_per_token_logps'] = None
+                                    # Flatten logprobs for this sample
+                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                                    if flat_lps:
+                                        # Get indices where completion_mask is True
+                                        completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+                                        # Scatter logprobs to completion positions
+                                        rollout_logps_tensor[i, completion_indices] = torch.tensor(
+                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
+
+                                batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_tensor
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 

@@ -283,13 +283,21 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
                 # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1
                 final_rollout_logprobs = total_rollout_logprobs
-                if total_response_loss_mask and total_rollout_logprobs:
-                    # Check if the number of logprobs matches the number of loss_mask=1 tokens
-                    total_loss_mask_1_count = sum(sum(mask) for mask in total_response_loss_mask)
+                if total_rollout_logprobs:
                     total_logprob_count = sum(len(turn_lps) for turn_lps in total_rollout_logprobs)
-                    if total_loss_mask_1_count != total_logprob_count:
-                        # Incomplete logprobs, clear them
-                        final_rollout_logprobs = []
+                    if total_response_loss_mask:
+                        # Check if the number of logprobs matches the number of loss_mask=1 tokens
+                        total_loss_mask_1_count = sum(sum(mask) for mask in total_response_loss_mask)
+                        if total_loss_mask_1_count != total_logprob_count:
+                            # Incomplete logprobs, clear them
+                            final_rollout_logprobs = []
+                    else:
+                        if total_response_ids:
+                            total_response_id_count = sum(len(turn_ids) for turn_ids in total_response_ids)
+                            if total_response_id_count != total_logprob_count:
+                                final_rollout_logprobs = []
+                        else:
+                            final_rollout_logprobs = []
 
                 return RolloutOutput(
                     response=response,
