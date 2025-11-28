@@ -19,7 +19,7 @@ For detailed environment setup, please refer to the [Ascend PyTorch installation
 
 ## Environment Preparation
 
-Experiment Environment: 8 * Ascend 910B3 64G (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support of modelscope and swift~)
+Experiment Environment: 8 * Ascend 910B3 64G
 
 ```shell
 # Create a new conda virtual environment (optional)
@@ -284,3 +284,8 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | Quantization/QLoRA       |
 | Megatron-related modules |
 | Using sglang as inference engine |
+
+
+## NPU Wechat Group
+
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/npu.png" width="250">

@@ -21,6 +21,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
+from swift.tuners.lora import LoraConfig
 from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
 from swift.utils.torch_utils import get_torch_device
 
@@ -744,6 +745,16 @@ class FlattenedTensorMetadata(BaseModel):
         raise ValueError('dtype must be a torch.dtype or str')
 
 
+class UpdateFlattenedAdapterRequest(BaseModel):
+    lora_int_id: int
+    peft_config: LoraConfig
+    metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateFlattenedParamsRequest(BaseModel):
+    metadatas: List[FlattenedTensorMetadata]
+
+
 class FlattenedTensorBucket:
     """
     A bucket that flattens multiple tensors into a single tensor for efficient processing
@@ -1124,3 +1135,103 @@ def get_even_process_data(trainer, global_data: List[T]) -> List[T]:
         end = start + base_size
 
     return global_data[start:end]
+
+
+# ============================================================================
+# Padding-free utilities
+# ============================================================================
+
+
+def pad_logps_back_to_batch(logps_rmpad: torch.Tensor,
+                            position_ids: Optional[torch.Tensor] = None,
+                            logits_to_keep: int = None,
+                            batch_size: int = None,
+                            seq_lengths: Optional[torch.Tensor] = None,
+                            dtype: Optional[torch.dtype] = None,
+                            pad_value: float = -1e10) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Restore padding-free logprobs back to [batch_size, seq_len] shape with LEFT PADDING.
+
+    - Input: logps in rmpad format [1, total_nnz]
+    - Output: logps in batch format [batch_size, max_seq_len] with data right-aligned
+
+    Args:
+        logps_rmpad: [1, total_nnz] per-token log probabilities in padding_free format
+        position_ids: [1, total_nnz] position ids to determine sequence boundaries (deprecated, use seq_lengths)
+        logits_to_keep: number of tokens to keep per sequence (= max_seq_len)
+        batch_size: number of sequences in the batch
+        seq_lengths: [batch_size] actual sequence lengths (preferred over position_ids)
+        dtype: optional dtype for output, defaults to logps_rmpad.dtype
+        pad_value: value to use for padding positions (default: -1e10 for logps, use 0.0 for masks)
+
+    Returns:
+        logps_padded: [batch_size, logits_to_keep] padded log probabilities (left-padded, data right-aligned)
+        valid_mask: [batch_size, logits_to_keep] mask indicating valid (non-padding) positions
+    """
+    if dtype is None:
+        dtype = logps_rmpad.dtype
+
+    device = logps_rmpad.device
+
+    # Determine sequence lengths
+    if seq_lengths is not None:
+        # Use provided seq_lengths directly - they should already be adjusted
+        # by the caller (e.g., in _generate_and_score_completions)
+        # DO NOT adjust again here to avoid double adjustment
+        pass
+    else:
+        # Fallback: infer from position_ids
+        from swift.utils.torch_utils import get_cu_seqlens_from_position_ids as get_cu_seqlens
+        cu_seqlens = get_cu_seqlens(position_ids)
+
+        # Adjust cu_seqlens for logits_to_keep if needed
+        total_length = cu_seqlens[-1].item()
+        if total_length > logits_to_keep:
+            # Adjust the first sequence length
+            adjustment = total_length - logits_to_keep
+            cu_seqlens = cu_seqlens - adjustment
+            cu_seqlens[0] = 0  # First element should always be 0
+
+        # Compute actual sequence lengths
+        seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+
+    # Compute cumulative sequence lengths
+    cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=device), seq_lengths]), dim=0)
+    max_seq_len = logits_to_keep  # All sequences will be padded to this length
+
+    # Initialize output tensors with padding value
+    logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
+    valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+
+    # Unflatten: assign each sequence's logps to the corresponding row
+    # Use LEFT PADDING (right-align the data) to match the standard padding convention
+    logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
+
+    for i in range(batch_size):
+        start_idx = cu_seqlens[i].item()
+        end_idx = cu_seqlens[i + 1].item()
+        seq_len = int(seq_lengths[i].item())
+
+        actual_end_idx = min(end_idx, len(logps_flat))
+        actual_len = actual_end_idx - start_idx
+
+        if actual_len <= 0:
+            continue
+
+        # Left padding: place data at the RIGHT side of the row
+        # pad_len is the number of padding tokens at the beginning
+        pad_len = max_seq_len - seq_len
+
+        if actual_len < seq_len:
+            # Input data is shorter than expected seq_len
+            # This happens when logps_flat doesn't have enough data
+            # Place actual data at the rightmost positions
+            data_pad_len = max_seq_len - actual_len
+            logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
+            valid_mask[i, data_pad_len:] = 1.0
+        else:
+            # Normal case: seq_len tokens of data
+            logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
+            valid_mask[i, pad_len:] = 1.0
+
+    return logps_padded, valid_mask

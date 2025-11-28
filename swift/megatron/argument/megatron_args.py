@@ -44,6 +44,11 @@ class RLHFMegatronArgumentsMixin:
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
+    # SAPO https://arxiv.org/abs/2511.20347
+    # Temperature parameters for soft adaptive gate
+    tau_pos: float = 1.0
+    tau_neg: float = 1.05
+
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None

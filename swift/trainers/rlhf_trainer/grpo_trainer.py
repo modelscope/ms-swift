@@ -32,8 +32,8 @@ from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, patch_profiling_context, patch_profiling_decorator,
-                    patch_save_last_checkpoint, replace_assistant_response_with_ids)
+                    load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_profiling_context,
+                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -242,12 +242,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             f'Mismatch: {len(gas_chunks)} chunks vs {len(batch_encoded_inputs)} batches'
 
         for batch, batch_encoded in zip(gas_chunks, batch_encoded_inputs):
-            if self.template.padding_free:
-                lengths = batch_encoded['seq_lengths']
-                advantages_stacked = torch.stack([data['advantages'] for data in batch])
-                all_advantages = torch.repeat_interleave(advantages_stacked, lengths)
-            else:
-                all_advantages = torch.stack([data['advantages'] for data in batch])
+            # Advantages are always [batch_size], will be broadcast to [batch_size, seq_len] in loss computation
+            all_advantages = torch.stack([data['advantages'] for data in batch])
             batch_encoded['advantages'] = all_advantages
 
         with patch_profiling_context(self, 'log_metrics'):
@@ -422,14 +418,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 old_per_token_logps = batch_encoded['old_per_token_logps']
                 ref_per_token_logps = batch_encoded['ref_per_token_logps']
                 completion_mask = batch_encoded['completion_mask']
-                if self.template.padding_free:
-                    lengths = batch_encoded['seq_lengths']
-                    per_token_kl = torch.split(old_per_token_logps - ref_per_token_logps, lengths.tolist(), dim=1)
-                    completion_masks = torch.split(completion_mask, lengths.tolist(), dim=1)
-                    kl = torch.cat([(kl * mask).sum(-1) for kl, mask in zip(per_token_kl, completion_masks)])
-                else:
-                    per_token_kl = old_per_token_logps - ref_per_token_logps
-                    kl = (per_token_kl * completion_mask).sum(-1)
+                per_token_kl = old_per_token_logps - ref_per_token_logps
+                kl = (per_token_kl * completion_mask).sum(-1)
                 kl_list.append(kl)
 
             kl = torch.cat(kl_list, dim=0)
@@ -815,8 +805,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
-                    if self.old_policy() or self.kl_in_reward else None)
+                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -828,15 +817,105 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                 batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
+                # Extract rollout logprobs if available for importance sampling
+                # rollout_logprobs is List[List[float]] - nested list where each inner list corresponds to
+                # one assistant response turn. We need to align these with completion_mask positions.
+                batch_encoded_inputs['rollout_per_token_logps'] = None
+                if self.use_fast_infer:
+                    rollout_logprobs_list = []
+                    for data in batch:
+                        if 'rollout_logprobs' in data and data['rollout_logprobs']:
+                            rollout_logprobs_list.append(data['rollout_logprobs'])
+                        else:
+                            rollout_logprobs_list.append(None)
+
+                    # Convert to tensor if all samples have rollout_logprobs
+                    completion_mask = batch_encoded_inputs['completion_mask']
+                    if all(lp is not None for lp in rollout_logprobs_list):
+                        # Validate that logprobs count matches completion tokens count
+                        valid_logprobs = True
+                        for i, nested_lp in enumerate(rollout_logprobs_list):
+                            total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
+                            if self.template.padding_free:
+                                seq_lengths = batch_encoded_inputs['seq_lengths']
+                                offset = sum(seq_lengths[:i].tolist()) if i > 0 else 0
+                                seq_len = seq_lengths[i].item()
+                                completion_count = int(completion_mask[0, offset:offset + seq_len].sum().item())
+                            else:
+                                completion_count = int(completion_mask[i].sum().item())
+
+                            if total_logprobs != completion_count:
+                                logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
+                                               f'completion tokens count ({completion_count}). '
+                                               f'Skipping rollout importance sampling for this batch.')
+                                valid_logprobs = False
+                                break
+
+                        if valid_logprobs:
+                            if self.template.padding_free:
+                                # In padding_free mode, we need to align rollout_logprobs with completion_mask
+                                # completion_mask marks which positions are completion tokens (not prompts)
+                                # rollout_logprobs[i] is List[List[float]], each inner list for one response turn
+                                seq_lengths = batch_encoded_inputs['seq_lengths']
+                                total_len = int(seq_lengths.sum().item())
+
+                                # Initialize aligned tensor with zeros (for prompt positions)
+                                rollout_logprobs_aligned = torch.zeros(
+                                    total_len, dtype=torch.float32, device=self.accelerator.device)
+
+                                offset = 0
+                                for i, nested_lp in enumerate(rollout_logprobs_list):
+                                    seq_len = seq_lengths[i].item()
+                                    seq_mask = completion_mask[0, offset:offset + seq_len]  # [seq_len]
+
+                                    # Flatten logprobs for this sample
+                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                                    if flat_lps:
+                                        # Get indices where completion_mask is True
+                                        completion_indices = seq_mask.nonzero(as_tuple=True)[0] + offset
+                                        # Scatter logprobs to completion positions
+                                        rollout_logprobs_aligned[completion_indices] = torch.tensor(
+                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
+                                    offset += seq_len
+
+                                # Convert to batch format
+                                rollout_logprobs_rmpad = rollout_logprobs_aligned.unsqueeze(0)
+
+                                batch_size = seq_lengths.shape[0]
+                                rollout_logps_padded, _ = pad_logps_back_to_batch(
+                                    logps_rmpad=rollout_logprobs_rmpad,
+                                    logits_to_keep=logits_to_keep,
+                                    batch_size=batch_size,
+                                    seq_lengths=seq_lengths,
+                                    dtype=torch.float32)
+                                batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_padded
+                            else:
+                                # Standard mode: align rollout_logprobs with completion_mask for each sample
+                                batch_size = completion_mask.shape[0]
+                                seq_len = completion_mask.shape[1]
+
+                                # Initialize with zeros (for prompt positions)
+                                rollout_logps_tensor = torch.zeros(
+                                    batch_size, seq_len, dtype=torch.float32, device=self.accelerator.device)
+
+                                for i, nested_lp in enumerate(rollout_logprobs_list):
+                                    # Flatten logprobs for this sample
+                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                                    if flat_lps:
+                                        # Get indices where completion_mask is True
+                                        completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+                                        # Scatter logprobs to completion positions
+                                        rollout_logps_tensor[i, completion_indices] = torch.tensor(
+                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
+
+                                batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_tensor
+
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         # --- log completion lengths ---
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
-        if self.template.padding_free:
-            local_lengths = [inp['seq_lengths'].tolist() for inp in ga_batch_encoded_inputs]
-        else:
-            local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
+        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
         total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
         # Store num_items_in_batch for DAPO loss (total completion tokens across all processes)
@@ -921,11 +1000,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss_and_metrics(self, model, inputs):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
-
-        completion_mask = inputs['completion_mask']
-        truncated_mask = inputs['truncated_mask']
         if self.template.padding_free:
-            lengths = inputs['seq_lengths']
+            completion_mask = inputs['completion_mask_padded']
+        else:
+            completion_mask = inputs['completion_mask']
+        truncated_mask = inputs['truncated_mask']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
 
@@ -936,11 +1015,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
-                if self.template.padding_free:
-                    entropy_list = torch.split(entropies, lengths.tolist())
-                    per_completion_entropies_mean = torch.stack([torch.nanmean(e) for e in entropy_list])
-                else:
-                    per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
                 entropy_metrics = {
                     'entropy_logs': global_per_completion_entropies_mean.tolist(),
@@ -960,11 +1035,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if all(truncated_mask):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
-            if self.template.padding_free:
-                truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
-                assert truncated_mask.shape == completion_mask.shape
-            else:
-                truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
+            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
 
         # Compute the KL divergence between the model and the reference model
@@ -983,32 +1054,49 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         old_per_token_logps = (
             per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
 
+        # Compute rollout diagnostic metrics and apply IS correction if enabled
+        rollout_correction_metrics = {}
+        if inputs.get('rollout_per_token_logps') is not None and not self.disable_rollout_importance_sampling:
+            rollout_per_token_logps = inputs['rollout_per_token_logps']
+
+            # Always compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
+            # This helps diagnose whether rollout correction is needed
+            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
+                                                                                 rollout_per_token_logps,
+                                                                                 completion_mask)
+
+            # Apply importance sampling correction if mode is enabled
+            if self.rollout_importance_sampling_mode is not None:
+                # Compute the log ratio between policy model and rollout model
+                # log π_θ(y|x) - log π_rollout(y|x)
+                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+
+                # Apply importance sampling correction based on mode
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+
+                # Compute additional IS-specific metrics (ESS, clipped_frac, is_weight_mean)
+                is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
+                rollout_correction_metrics.update(is_metrics)
+
+                # Store IS weights for loss computation
+                inputs['rollout_is_weights'] = rollout_is_weights
+            else:
+                inputs['rollout_is_weights'] = None
+        else:
+            inputs['rollout_is_weights'] = None
+
         log_ratio = per_token_logps - old_per_token_logps
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
-            if self.template.padding_free:
-                # split to batch, compute seq-level normalization
-                log_ratio_list = torch.split(log_ratio.squeeze(0), lengths.tolist())
-                mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
-                seq_weights = [(lr * m).sum() / m.sum().clamp(min=1.0) for lr, m in zip(log_ratio_list, mask_list)]
-                seq_level_log_weights = torch.stack(seq_weights).to(log_ratio.dtype).unsqueeze(-1)
-                if self.importance_sampling_level == 'sequence':
-                    log_importance_weights = seq_level_log_weights
-                else:
-                    seq_level_log_weight = seq_level_log_weights.detach()
-                    seq_level_log_weight = torch.repeat_interleave(seq_level_log_weight, lengths).unsqueeze(0)
-                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
+            seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
+                                     / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
+            if self.importance_sampling_level == 'sequence':
+                log_importance_weights = seq_level_log_weights
             else:
-                seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
-                                         / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
-                if self.importance_sampling_level == 'sequence':
-                    log_importance_weights = seq_level_log_weights
-                else:
-                    # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
-                    seq_level_log_weight = seq_level_log_weights.detach()
-                    log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
-
+                # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+                seq_level_log_weight = seq_level_log_weights.detach()
+                log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
@@ -1018,47 +1106,40 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
-            if self.template.padding_free:
-                advantages = advantages[-coef_1.shape[1]:]
-                per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
-            else:
-                per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+            per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+        elif self.loss_type == 'sapo':
+            advantages_expanded = advantages.unsqueeze(1)
+            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+            is_positive = advantages_expanded > 0
+            soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+
+            per_token_loss = -soft_gate * advantages_expanded
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            if self.template.padding_free:
-                if self.importance_sampling_level == 'sequence':
-                    # Expand sequence-level weights to token-level
-                    coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths).unsqueeze(0)
-                    coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths).unsqueeze(0)
-
-                advantages = advantages[-coef_1.shape[1]:]
-                per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-                per_token_loss2 = coef_2 * advantages.unsqueeze(0)
-            else:
-                per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-                per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        if self.loss_type == 'grpo':
-            if self.template.padding_free:
-                loss_list = torch.split(per_token_loss.squeeze(0), lengths.tolist())
-                mask_list = torch.split(completion_mask.squeeze(0), lengths.tolist())
-                sample_loss = [(loss * mask).sum() / mask.sum().clamp(min=1.0)
-                               for loss, mask in zip(loss_list, mask_list)]
-                loss = torch.stack(sample_loss).mean()
-            else:
-                loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+        # Apply vLLM importance sampling weights if available
+        if inputs.get('rollout_is_weights') is not None and self.rollout_importance_sampling_mode is not None:
+            rollout_is_weights = inputs['rollout_is_weights']
+            per_token_loss = per_token_loss * rollout_is_weights
+
+        if self.loss_type in ['grpo', 'sapo']:
+            # completion_mask is now always [batch_size, seq_len] after pad_back
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
-            batch_size = lengths.shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
+            batch_size = completion_mask.shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
         elif self.loss_type in ['cispo', 'dapo']:
             # CISPO and DAPO: Normalize by total completion tokens across all processes
@@ -1088,23 +1169,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mean_kl = masked_batch_mean(per_token_kl)
             metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
 
+        # Add rollout correction metrics
+        if rollout_correction_metrics:
+            metrics_data['rollout_correction'] = rollout_correction_metrics
+
         # Compute the clipped probability ratios
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
-            if self.template.padding_free:
-                is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(0) > 0)
-            else:
-                is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
             cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
             gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
             metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
+        elif self.loss_type == 'sapo':
+            pass
         else:
-            if self.template.padding_free:
-                is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(0) < 0)
-                is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(0) > 0)
-            else:
-                is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
-                is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+            is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
             is_region_clipped = is_low_clipped | is_high_clipped
 
             low_clip = masked_batch_mean(is_low_clipped.float())
@@ -1145,6 +1225,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Update KL metrics
         if 'kl' in metrics_data:
             self._metrics[mode]['kl'].append(metrics_data['kl'])
+
+        # Update vLLM correction metrics
+        if 'rollout_correction' in metrics_data:
+            rollout_metrics = metrics_data['rollout_correction']
+            for key, value in rollout_metrics.items():
+                self._metrics[mode][f'rollout_correction/{key}'].append(value)
 
         # Update clipping metrics
         if 'clipping' in metrics_data:
@@ -1314,7 +1400,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
             ]
         }
         sequence_parallel.prepare_inputs(inputs)
@@ -1367,8 +1453,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                   compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if self.template.sequence_parallel_size > 1:
             return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
+
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
+        is_padding_free = self.template.padding_free
+
+        # Store metadata for padding_free restoration
+        if is_padding_free:
+            original_seq_lengths = inputs.get('seq_lengths')
+            batch_size = original_seq_lengths.shape[0]
+
         unwrapped_model = self.accelerator.unwrap_model(model)
         if is_peft_model(unwrapped_model):
             parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
@@ -1376,13 +1470,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         use_local_entropy = not hasattr(super(), '_get_per_token_logps_and_entropies') and compute_entropy
 
-        can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy)
-        if 'attention_mask' not in inputs:
-            # when set padding_free true, the attention_mask is not in inputs
-            can_use_super = False
+        can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy
+                         and not is_padding_free)
 
         if can_use_super:
-            # save memory
             if hasattr(super(), '_get_per_token_logps_and_entropies'):
                 logps, entropies = super()._get_per_token_logps_and_entropies(
                     model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
@@ -1390,24 +1481,76 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
                 entropies = None
         else:
-            inputs = {
+            model_inputs = {
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
-                inputs['logits_to_keep'] = logits_to_keep + 1
-            logits = model(**inputs).logits
-            # exclude the last logit: it corresponds to the next token pred
-            logits = logits[:, -(logits_to_keep + 1):-1, :]
-            logits = logits / self.temperature
-            input_ids = input_ids[:, -logits_to_keep:]
-            logps = selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
-            entropies = None
-            if compute_entropy:
-                entropies = entropy_from_logits(logits)
+                model_inputs['logits_to_keep'] = logits_to_keep + 1
+
+            # Forward pass
+            logits = model(**model_inputs).logits
+
+            # Extract relevant portion and apply temperature
+            logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
+            input_ids_for_logps = input_ids[:, -logits_to_keep:]
+
+            # Compute on rmpad, then pad back
+            if is_padding_free:
+                # In padding_free mode, compute logps on flattened tensors
+                logits_rmpad = logits.squeeze(0)  # [total_nnz, vocab_size]
+                input_ids_rmpad = input_ids_for_logps.squeeze(0)  # [total_nnz]
+
+                # Compute logps on rmpad tensors
+                per_token_logps_rmpad = selective_log_softmax(logits_rmpad, input_ids_rmpad)  # [total_nnz]
+
+                # Compute entropy if needed
+                if compute_entropy:
+                    entropy_rmpad = entropy_from_logits(logits_rmpad)  # [total_nnz]
+                else:
+                    entropy_rmpad = None
+
+                # Restore to batch shape using seq_lengths
+                logps, padded_shape_mask = pad_logps_back_to_batch(
+                    logps_rmpad=per_token_logps_rmpad.unsqueeze(0),  # [1, total_nnz]
+                    logits_to_keep=logits_to_keep,
+                    batch_size=batch_size,
+                    seq_lengths=original_seq_lengths)
+
+                # Also restore entropy if computed
+                if compute_entropy:
+                    entropies, _ = pad_logps_back_to_batch(
+                        logps_rmpad=entropy_rmpad.unsqueeze(0),
+                        logits_to_keep=logits_to_keep,
+                        batch_size=batch_size,
+                        seq_lengths=original_seq_lengths)
+                else:
+                    entropies = None
+
+                # In padding_free mode, the original completion_mask is [1, logits_to_keep] (flattened).
+                # We need to convert it to [batch_size, max_seq_len] format.
+                # The original mask correctly identifies completion vs prompt tokens.
+                if 'completion_mask_padded' not in inputs:
+                    original_completion_mask = inputs['completion_mask']  # [1, logits_to_keep]
+                    completion_mask_padded, _ = pad_logps_back_to_batch(
+                        logps_rmpad=original_completion_mask.float(),  # [1, logits_to_keep]
+                        logits_to_keep=logits_to_keep,
+                        batch_size=batch_size,
+                        seq_lengths=original_seq_lengths,
+                        pad_value=0.0)
+                    # Combine with shape mask to ensure padding positions are also masked
+                    inputs['completion_mask_padded'] = completion_mask_padded
+
+            else:
+                logps = selective_log_softmax(logits, input_ids_for_logps)
+
+                if compute_entropy:
+                    entropies = entropy_from_logits(logits)
+                else:
+                    entropies = None
 
         return logps, entropies
 
@@ -1488,7 +1631,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 k: v
                 for k, v in inputs.items() if k not in [
                     'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch'
+                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
                 ]
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
@@ -1908,9 +2051,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # GSPO, https://arxiv.org/abs/2507.18071
         self.importance_sampling_level = args.importance_sampling_level
 
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
+
         # RLOO,
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
+
+        # Rollout Importance Sampling Correction
+        self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
+        self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
@@ -2028,3 +2179,256 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 with single_sample_context():
                     self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+    def _compute_sequence_level_ratios(self, is_ratio: torch.Tensor, completion_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Helper function to compute sequence-level importance sampling ratios.
+
+        Args:
+            is_ratio: Token-level IS ratios, shape [B, T]
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+
+        Returns:
+            Sequence-level ratios as geometric mean of token-level ratios
+        """
+        log_ratio = torch.log(is_ratio.clamp(min=1e-10))
+        seq_log_ratios = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+        seq_ratios = torch.exp(seq_log_ratios)
+
+        return seq_ratios
+
+    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor,
+                                           completion_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Apply vLLM importance sampling correction using one of four modes.
+
+        Args:
+            rollout_log_ratio: log(π_θ / π_rollout) per token, shape [B, T]
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+
+        Returns:
+            IS weights to multiply with loss, same shape as rollout_log_ratio
+        """
+        mode = self.rollout_importance_sampling_mode
+        threshold = self.rollout_importance_sampling_threshold
+
+        # Clamp log_ratio to prevent numerical overflow from padding values (-1e10)
+        # A log_ratio of 20 corresponds to exp(20) ≈ 485 million, which is already extreme
+        SAFETY_BOUND = 20.0
+        rollout_log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+
+        # Compute importance sampling ratios: exp(log_ratio)
+        is_ratio = torch.exp(rollout_log_ratio_safe)
+
+        if mode == 'token_truncate':
+            # Token-level truncated IS: clip ratios from above at threshold
+            is_weights = torch.clamp(is_ratio, max=threshold)
+
+        elif mode == 'token_mask':
+            # Token-level masked IS: mask out tokens with ratio > threshold
+            is_weights = torch.where(is_ratio <= threshold, is_ratio, torch.zeros_like(is_ratio))
+
+        elif mode == 'sequence_truncate':
+            # Sequence-level truncated IS: compute sequence-level ratio and clip
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            clipped_seq_ratios = torch.clamp(seq_ratios, max=threshold)
+
+            is_weights = clipped_seq_ratios.unsqueeze(-1).expand_as(is_ratio)
+
+        elif mode == 'sequence_mask':
+            # Sequence-level masked IS: mask entire sequences with ratio > threshold
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            seq_mask = (seq_ratios <= threshold).float()
+
+            # Apply mask to original token-level ratios
+            is_weights = is_ratio * seq_mask.unsqueeze(-1)
+        else:
+            return is_ratio
+
+        return is_weights
+
+    def _compute_rollout_offpolicy_metrics(
+        self,
+        per_token_logps: torch.Tensor,
+        rollout_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute off-policy diagnostic metrics (always computed for monitoring).
+        reference: verl/verl/trainer/ppo/rollout_corr_helper.py
+
+        These metrics help diagnose the off-policy gap between rollout and training policies,
+        which can arise from policy mismatch (e.g., vLLM BF16 vs FSDP FP32), model staleness,
+        or general distribution shifts.
+
+        Key metrics:
+        - kl: Direct KL divergence estimator KL(π_rollout || π_training)
+        - k3_kl: K3 KL estimator for stability (more stable for small KL)
+        - training_ppl: Perplexity of training policy
+        - rollout_ppl: Perplexity of rollout policy
+        - log_ppl_diff: Difference in log perplexities
+        - ppl_ratio: Ratio of training PPL to rollout PPL
+        - chi2_token: Token-level χ² divergence E[ρ²] - 1
+        - chi2_seq: Sequence-level χ² divergence E[(∏ρ_t)²] - 1
+
+        Args:
+            per_token_logps: Log probs from training policy model, shape [B, T]
+            rollout_per_token_logps: Log probs from rollout policy, shape [B, T]
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+
+        Returns:
+            Dictionary with off-policy diagnostic metrics
+        """
+        SAFETY_BOUND = 20.0
+        metrics = {}
+
+        # Helper function for masked mean
+        def masked_mean(x, mask, axis=None):
+            if axis is None:
+                return (x * mask).sum() / mask.sum().clamp(min=1.0)
+            else:
+                return (x * mask).sum(axis) / mask.sum(axis).clamp(min=1.0)
+
+        # 1. Training policy perplexity (always computed)
+        # Formula: exp(-1/|T| * Σ log π_training(y_t|y_<t))
+        mean_log_prob_training = masked_mean(per_token_logps, completion_mask, axis=-1)  # (batch_size,)
+        training_ppl = torch.exp(-mean_log_prob_training).mean()  # Batch mean of per-sequence PPL
+        metrics['training_ppl'] = self.accelerator.gather_for_metrics(training_ppl).nanmean().item()
+
+        # Also log log-ppl for easier analysis (avoids exponential scale)
+        metrics['training_log_ppl'] = self.accelerator.gather_for_metrics(
+            (-mean_log_prob_training).mean()).nanmean().item()
+
+        # 2. Compute rollout off-policy metrics
+        # All KL metrics estimate KL(π_training || π_rollout), which measures how much
+        # the training policy deviates from the rollout policy. This is directly related
+        # to the importance sampling ratio ρ = π_training / π_rollout.
+
+        # log_ratio = log(π_training / π_rollout), used for both KL estimators
+        log_ratio = per_token_logps - rollout_per_token_logps
+        log_ratio *= completion_mask
+
+        # 2a. kl: Direct estimator for KL(π_training || π_rollout)
+        # Formula: KL(P||Q) = E_Q[log(P/Q)] when sampled from Q (rollout)
+        # However, we use the identity: E_Q[log(P/Q)] = E_Q[log P] - E_Q[log Q]
+        # Since data is from rollout, E_Q[log Q] ≈ E[rollout_logps], E_Q[log P] ≈ E[training_logps]
+        # Positive value means training policy assigns higher probability than rollout
+        kl = masked_mean(log_ratio, completion_mask)
+        metrics['kl'] = self.accelerator.gather_for_metrics(kl).nanmean().item()
+
+        # 2b. k3_kl: K3 estimator for KL(π_training || π_rollout)
+        # More stable for small KL values
+        # Formula: KL(P||Q) ≈ E_Q[P/Q - log(P/Q) - 1] where P=π_training, Q=π_rollout
+        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        k3_kl = masked_mean(k3_kl_matrix, completion_mask)
+        metrics['k3_kl'] = self.accelerator.gather_for_metrics(k3_kl).nanmean().item()
+
+        # 2c. Rollout policy perplexity
+        mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask, axis=-1)  # (batch_size,)
+        rollout_ppl = torch.exp(-mean_log_prob_rollout).mean()  # Batch mean of per-sequence PPL
+        metrics['rollout_ppl'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
+        metrics['rollout_log_ppl'] = self.accelerator.gather_for_metrics(
+            (-mean_log_prob_rollout).mean()).nanmean().item()
+
+        # 2d. Log PPL difference (sequence-level perplexity difference)
+        # log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        # Since ppl = exp(-log_prob), we have:
+        #   log(ppl_ratio) = log(training_ppl/rollout_ppl) = log_ppl_diff
+        # Positive value means training assigns lower probability (higher PPL) than rollout
+        log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.mean()).nanmean().item()
+        metrics['log_ppl_abs_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.abs().mean()).nanmean().item()
+        metrics['log_ppl_diff_max'] = self.accelerator.gather_for_metrics(log_ppl_diff.max()).max().item()
+        metrics['log_ppl_diff_min'] = self.accelerator.gather_for_metrics(log_ppl_diff.min()).min().item()
+
+        # 2e. PPL ratio (how much higher is training PPL vs rollout PPL)
+        # IMPORTANT: Compute per-sequence ratio first, then average
+        # For numerical stability, compute in log space using log_ppl_diff
+        # Note: log_ppl_diff = log(ppl_ratio), so ppl_ratio = exp(log_ppl_diff)
+        ppl_ratio = torch.exp(log_ppl_diff).mean()
+        metrics['ppl_ratio'] = self.accelerator.gather_for_metrics(ppl_ratio).nanmean().item()
+
+        # 2f. Chi-squared divergence: χ²(π_training || π_rollout) = E_μ[ρ²] - 1
+        # where ρ = π_training / π_rollout and μ = π_rollout (rollout distribution)
+        # This measures the variance of importance sampling weights
+        # Token-level: E_token[ρ²] - 1 (averaged over all tokens)
+        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_token = torch.exp(log_ratio_safe)  # ρ = π_training / π_rollout (token-level)
+        rho_squared_token = rho_token.square()
+        chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
+        metrics['chi2_token'] = self.accelerator.gather_for_metrics(chi2_token).nanmean().item()
+
+        # Sequence-level (geometric mean): E_seq[ρ_geo²] - 1
+        # where ρ_geo = exp(mean(log ρ_t)) is the geometric mean of token-level ratios
+        # This is more interpretable than the product-based chi2_seq, as it's normalized by sequence length
+        # and comparable to other per-token metrics like chi2_token
+        log_ratio_mean = masked_mean(log_ratio, completion_mask, axis=-1)  # mean(log ρ_t) per sequence
+        log_ratio_mean_safe = torch.clamp(log_ratio_mean, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_geo = torch.exp(log_ratio_mean_safe)  # geometric mean of ρ_t
+        chi2_seq = (rho_geo.square().mean() - 1.0)
+        metrics['chi2_seq'] = self.accelerator.gather_for_metrics(chi2_seq).nanmean().item()
+
+        return metrics
+
+    def _compute_is_correction_metrics(
+        self,
+        rollout_log_ratio: torch.Tensor,
+        is_weights: torch.Tensor,
+        completion_mask: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute importance sampling correction metrics (ess, clipped_frac, is_weight_mean).
+        Only called when rollout_importance_sampling_mode is enabled.
+
+        Args:
+            rollout_log_ratio: Log ratio log(π_policy / π_rollout), shape [B, T]
+            is_weights: Importance sampling weights after correction, shape [B, T]
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+
+        Returns:
+            Dictionary with IS-specific metrics:
+                - is_weight_mean: Mean of IS weights
+                - ess: Effective Sample Size = 1 / E[(w_i / E[w_i])²]
+                - clipped_frac: Fraction of clipped/masked samples
+        """
+        metrics = {}
+        SAFETY_BOUND = 20.0
+        threshold = self.rollout_importance_sampling_threshold
+        threshold_lower = 1.0 / threshold  # Default lower threshold (reciprocal of upper)
+
+        # Helper function for masked mean
+        def masked_mean(x, mask):
+            return (x * mask).sum() / mask.sum().clamp(min=1.0)
+
+        # Compute IS ratio with safety bounds
+        log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        is_ratio = torch.exp(log_ratio_safe)
+
+        # 1. IS weight statistics
+        mean_is_weight = masked_mean(is_weights, completion_mask)
+        metrics['is_weight_mean'] = self.accelerator.gather_for_metrics(mean_is_weight).nanmean().item()
+
+        # 2. Compute Effective Sample Size (ESS) for IS weights
+        # ESS = 1 / E[(w_i / E[w_i])²] (using clamped weights for stability)
+        # This measures how many "effective" independent samples we have after IS weighting
+        weights_for_ess = is_weights.clamp(min=threshold_lower, max=threshold)
+        mean_for_ess = masked_mean(weights_for_ess, completion_mask)
+        is_weights_normalized = weights_for_ess / (mean_for_ess + 1e-8)  # Avoid division by zero
+        ess = 1.0 / masked_mean(is_weights_normalized.square(), completion_mask).clamp(min=1e-10)
+        metrics['ess'] = self.accelerator.gather_for_metrics(ess).nanmean().item()
+
+        # 3. Fraction of clipped/masked samples
+        if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
+            # Token-level
+            if self.rollout_importance_sampling_mode == 'token_truncate':
+                clipped_frac = masked_mean((is_ratio > threshold).float(), completion_mask)
+            else:  # token_mask
+                clipped_frac = masked_mean((is_weights == 0).float(), completion_mask)
+            metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
+        else:
+            # Sequence-level (both truncate and mask)
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            clipped_frac = (seq_ratios > threshold).float().mean()
+            metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
+
+        return metrics

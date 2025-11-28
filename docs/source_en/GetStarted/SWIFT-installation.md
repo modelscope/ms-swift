@@ -29,14 +29,6 @@ pip install -e .
 # pip install -e '.[all]'
 ```
 
-## Older Versions
-
-SWIFT underwent an incompatible restructuring starting from version 3.0. If you need to use the old version 2.x, please execute the following command to install:
-
-```shell
-pip install ms-swift==2.*
-```
-
 ## Mirror
 
 You can check Docker [here](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py#L345).

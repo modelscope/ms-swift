@@ -70,6 +70,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        logprobs_mode: Optional[str] = None,
         speculative_config: Optional[Union[str, dict]] = None,
         # lora
         enable_lora: bool = False,
@@ -121,6 +122,7 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
+            logprobs_mode=logprobs_mode,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
@@ -174,6 +176,7 @@ class VllmEngine(InferEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        logprobs_mode: Optional[str] = None,
         speculative_config: Optional[Union[str, dict]] = None,
         **engine_kwargs,
     ) -> None:
@@ -205,7 +208,7 @@ class VllmEngine(InferEngine):
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
-                'mm_processor_cache_gb', 'speculative_config'
+                'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode'
         ]:
             if key in parameters:
                 if locals()[key] is not None:
@@ -573,7 +576,7 @@ class VllmEngine(InferEngine):
 
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(content, template)  # Use content instead of response for tool calls
-            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
+            token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(

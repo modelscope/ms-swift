@@ -15,6 +15,7 @@ Megatron GRPO currently supports the following features:
 The following parameters or features will be gradually supported in future versions:
 
 - **Entropy-related Configuration**: e.g., `top_entropy_quantile`, `log_entropy`
+- **Rollout Correction(TIS/MIS)**
 - **Reward Model / Reward Model Plugin**
 - **Multi-turn Rollout Scheduling** (`multi_turn_scheduler`): Multi-turn conversation policy optimization
 - **Advantage Estimator** (`advantage_estimator`): Support for more complex policy gradient estimation methods

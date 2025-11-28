@@ -11,3 +11,5 @@ Advanced Research
    REINFORCEPP.md
    CHORD.md
    CISPO.md
+   training_inference_mismatch.md
+   SAPO.md

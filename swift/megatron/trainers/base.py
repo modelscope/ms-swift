@@ -296,7 +296,10 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-
+        if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
+            aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
+            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
         # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
@@ -919,19 +922,21 @@ class BaseMegatronTrainer(ABC):
 
     def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Merge all active adapters
-                    module.merge(adapter_names=[adapter_name])
+        with torch.no_grad():
+            for model in self.unwrapped_models:
+                for module in model.modules():
+                    if isinstance(module, LoraParallelLinear):
+                        # Merge all active adapters
+                        module.merge(adapter_names=[adapter_name])
 
     def unmerge_lora_adapters(self):
         """Unmerge LoRA adapters to restore training state."""
-        for model in self.unwrapped_models:
-            for module in model.modules():
-                if isinstance(module, LoraParallelLinear):
-                    # Unmerge to restore separate LoRA weights for training
-                    module.unmerge()
+        with torch.no_grad():
+            for model in self.unwrapped_models:
+                for module in model.modules():
+                    if isinstance(module, LoraParallelLinear):
+                        # Unmerge to restore separate LoRA weights for training
+                        module.unmerge()
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
         args = get_args()
@@ -976,6 +981,7 @@ class BaseMegatronTrainer(ABC):
         if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
             aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
+            generator = [f'visual.{generator}' for generator in visual_cls._generator]
             if args.freeze_llm:
                 args.freeze_parameters.append('language_model')
             if args.freeze_vit:
@@ -984,6 +990,7 @@ class BaseMegatronTrainer(ABC):
                 args.freeze_parameters += aligner
             else:
                 args.trainable_parameters += aligner
+            args.freeze_parameters += generator
             if args.freeze_parameters:
                 logger.info(f'freeze_parameters: {args.freeze_parameters}')
             if args.trainable_parameters:
@@ -1035,13 +1042,6 @@ class BaseMegatronTrainer(ABC):
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
-            if args.mtp_num_layers and batch.get('labels') is not None:
-                cu_seqlens = batch['packed_seq_params'].cu_seqlens_q.clone()
-                mtp_labels = batch['labels'].clone()
-                for _ in range(args.mtp_num_layers):
-                    mtp_labels[:, cu_seqlens[cu_seqlens < mtp_labels.shape[1]]] = -100
-                    cu_seqlens = cu_seqlens + 1
-                batch['mtp_labels'] = mtp_labels
         # slice batch along sequence dimension for context parallelism
         batch = get_batch_on_this_cp_rank(batch)
         return batch

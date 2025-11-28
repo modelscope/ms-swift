@@ -46,6 +46,7 @@ class GRPOVllmEngine(VllmEngine):
         disable_cascade_attn: bool = False,
         load_format: str = 'auto',
         mm_processor_cache_gb: Optional[float] = None,
+        logprobs_mode: Optional[str] = None,
         speculative_config: Optional[Union[str, dict]] = None,
         # lora
         enable_lora: bool = False,
@@ -81,6 +82,7 @@ class GRPOVllmEngine(VllmEngine):
             disable_cascade_attn=disable_cascade_attn,
             load_format=load_format,
             mm_processor_cache_gb=mm_processor_cache_gb,
+            logprobs_mode=logprobs_mode,
             speculative_config=speculative_config,
             enable_lora=enable_lora,
             max_loras=max_loras,
@@ -137,7 +139,7 @@ class GRPOVllmEngine(VllmEngine):
                           metrics: Optional[List[Metric]] = None,
                           *,
                           use_tqdm: Optional[bool] = None,
-                          **kwargs) -> List[ChatCompletionResponse]:
+                          **kwargs) -> List[RolloutOutput]:
         if request_config is None:
             request_config = RequestConfig()
         assert request_config.n == 1
@@ -145,7 +147,15 @@ class GRPOVllmEngine(VllmEngine):
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
-        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+        res = await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+
+        for i, result in enumerate(res):
+            if not isinstance(result, RolloutOutput):
+                if not isinstance(result, ChatCompletionResponse):
+                    raise TypeError('Result must be a ChatCompletionResponse or RolloutOutput instance.')
+                res[i] = RolloutOutput(response=result)
+
+        return res
 
     async def _batch_infer_stream(self,
                                   tasks,
@@ -181,7 +191,7 @@ class GRPOVllmEngine(VllmEngine):
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
 
-            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
+            token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),

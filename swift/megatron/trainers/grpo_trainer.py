@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 import pandas as pd
@@ -82,7 +82,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.top_entropy_quantile = args.top_entropy_quantile
         self.importance_sampling_level = args.importance_sampling_level
-        self.enable_offload = False
+
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -104,6 +107,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
+
+        self.enable_offload = False
 
         # sampling params
         self.request_config = RequestConfig(
@@ -500,40 +505,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         def _get_encoded_batch(rollout_batch, advantages):
             template = self.template
             with self._template_context(template):
-                encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
+                encoded_list = [template.encode(data, return_length=True) for data in rollout_batch]
+                lengths_tensor = torch.tensor([item['length'] for item in encoded_list],
+                                              dtype=torch.long,
+                                              device=self.device)
                 encoded_batch = to_device(
-                    template.data_collator(encoded_batch, padding_to=get_padding_to(args)), self.device)
+                    template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
             labels = encoded_batch['labels']
             assert self.template.padding_free
-            position_ids = encoded_batch.get('text_position_ids')
-            if position_ids is None:
-                position_ids = encoded_batch.get('position_ids')
-            squeezed_position_ids = position_ids.squeeze()
-            assert squeezed_position_ids is not None
-            # Remove trailing padding zeros from position_ids to avoid interference
-            # Find the last non-zero position
-            last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
-            if len(last_nonzero_idx) > 0:
-                # Keep only up to the last non-zero position + 1 to include the last valid position
-                squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
-
-            # Calculate lengths based on sequence boundaries (position_ids == 0)
-            lengths = torch.diff(
-                torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
-                           torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
-            advantages = torch.repeat_interleave(advantages, lengths)
+            advantages = torch.repeat_interleave(advantages, lengths_tensor)
             truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
                                           dtype=torch.bool,
                                           device=self.device)
-            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
-            padding_length = labels.shape[1] - truncated_mask.shape[1]
+            truncated_mask = torch.repeat_interleave(truncated_mask, lengths_tensor).unsqueeze(0)
+            actual_tokens = lengths_tensor.sum().item()
+            padding_length = labels.shape[1] - actual_tokens
             if padding_length > 0:
                 padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
                 truncated_mask = torch.cat([truncated_mask, padding], dim=1)
             # Pad advantages to match the original position_ids length
-            original_length = position_ids.shape[1]
-            if advantages.shape[0] < original_length:
-                padding_length = original_length - advantages.shape[0]
+            if advantages.shape[0] < labels.shape[1]:
+                padding_length = labels.shape[1] - advantages.shape[0]
                 padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
                 advantages = torch.cat([advantages, padding])
 
@@ -543,7 +535,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'truncated_mask': truncated_mask,
                 'advantages': advantages,
                 'num_samples': len(rollout_batch),
-                'seq_lengths': lengths,
+                'seq_lengths': lengths_tensor,
             })
 
             return encoded_batch
@@ -1057,9 +1049,37 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
         lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
 
+        target_token_count = completion_mask.shape[-1]
+        lengths_total = lengths_with_padding.sum().item()
+        if lengths_total != target_token_count:
+            lengths_with_padding = lengths_with_padding.clone()
+            diff = target_token_count - lengths_total
+            lengths_with_padding[-1] = lengths_with_padding[-1] + diff
+            if lengths_with_padding[-1] <= 0:
+                raise RuntimeError('Invalid packed sequence metadata: negative padded length after adjustment.')
+
+        def _pad_or_trim_last_dim(tensor: Optional[torch.Tensor], target_len: int) -> Optional[torch.Tensor]:
+            if tensor is None:
+                return None
+            current_len = tensor.shape[-1]
+            if current_len == target_len:
+                return tensor
+            if current_len < target_len:
+                pad_shape = (*tensor.shape[:-1], target_len - current_len)
+                padding = torch.zeros(pad_shape, device=tensor.device, dtype=tensor.dtype)
+                return torch.cat([tensor, padding], dim=-1)
+            return tensor[..., :target_len]
+
         # get_logps with per_token=True now returns full sequences (all_gather in CP mode)
         per_token_logps = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
+        per_token_logps = _pad_or_trim_last_dim(per_token_logps, target_token_count)
+
+        if self.beta != 0.0:
+            data['ref_per_token_logps'] = _pad_or_trim_last_dim(data.get('ref_per_token_logps'), target_token_count)
+
+        if data.get('old_per_token_logps') is not None:
+            data['old_per_token_logps'] = _pad_or_trim_last_dim(data['old_per_token_logps'], target_token_count)
 
         if self.args.overlong_filter and truncated_mask.any():
             completion_mask = completion_mask & (~truncated_mask)
@@ -1114,6 +1134,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 per_token_loss = -clamped_ratios * advantages.unsqueeze(0) * per_token_logps
             else:
                 raise NotImplementedError
+        elif self.loss_type == 'sapo':
+            if self.template.padding_free:
+                advantages = advantages[-coef_1.shape[1]:]
+                gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+                gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+                is_positive = advantages.unsqueeze(0) > 0
+                soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+
+                per_token_loss = -soft_gate * advantages.unsqueeze(0)
+            else:
+                raise NotImplementedError
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1140,7 +1171,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        if self.loss_type == 'grpo':
+        if self.loss_type in ['grpo', 'sapo']:
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
 
@@ -1200,6 +1231,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
+        elif self.loss_type == 'sapo':
+            # SAPO: No hard clipping, skip clipping metrics
+            pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             if self.template.padding_free:
                 # Use coef_1 before clamping for metrics (need to expand if sequence-level)
@@ -1244,7 +1278,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         reporting_metric = {**avg_metric, **custom_metrics}
 
         # log_completions
-        if self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0:
+        if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
+                and self._step != self._last_logged_step):
             table = {
                 'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
@@ -1263,6 +1298,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 #     wandb_writer.define_metric('completions', step_metric='gen_step')
                 #     self.init_custom_metric = True
                 wandb_writer.log({'completions': wandb.Table(dataframe=df)})
+            self._last_logged_step = self._step
 
         return loss, reporting_metric
 
@@ -1300,7 +1336,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
@@ -1313,45 +1349,60 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if not inputs:
             return []
+
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_dicts = []
+        requests_list = []
 
         for data in inputs:
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data['request_id']
-            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {
-                    k: v
-                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+            if isinstance(data, RolloutInferRequest):
+                request_obj = data
+            else:
+                request_data = {
+                    key: data[key]
+                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
                 }
-                if extra_fields:
-                    request_data['data_dict'] = extra_fields
-            elif self.multi_turn_scheduler:
-                base_data_dict = {}
-                if 'data_dict' in data:
-                    if isinstance(data['data_dict'], dict):
-                        base_data_dict = data['data_dict']
-                    else:
-                        raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {
-                    k: v
-                    for k, v in data.items()
-                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                }
-                final_data_dict = {**extra_data, **base_data_dict}
-                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+                if 'uuid' not in request_data:
+                    request_data['uuid'] = data['request_id']
+                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                    extra_fields = {
+                        k: v
+                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                    }
+                    if extra_fields:
+                        request_data['data_dict'] = extra_fields
+                elif self.multi_turn_scheduler:
+                    base_data_dict = {}
+                    if 'data_dict' in data:
+                        if isinstance(data['data_dict'], dict):
+                            base_data_dict = data['data_dict']
+                        else:
+                            raise ValueError('data_dict exists but is not a dictionary')
+                    extra_data = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                    }
+                    final_data_dict = {**extra_data, **base_data_dict}
+                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
-            requests_dicts.append(request_data)
+                if 'images' in request_data and request_data['images']:
+                    imgs = request_data['images']
+                    if not isinstance(imgs, list):
+                        imgs = [imgs]
+                    request_data['images'] = [_process_image_data(img) for img in imgs]
 
-        for request in requests_dicts:
-            if 'images' in request and request['images']:
-                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
-                    request['images'], list) else _process_image_data(request['images']))
+                if 'tools' in request_data and isinstance(request_data['tools'], str):
+                    try:
+                        request_data['tools'] = json.loads(request_data['tools'])
+                    except json.JSONDecodeError:
+                        pass
 
-        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+                request_obj = from_dict(RolloutInferRequest, request_data)
+            requests_list.append(request_obj)
+
+        return requests_list
 
     def _preprocess_inputs(self, inputs: DataType) -> DataType:
         """Preprocess inputs before inference"""
@@ -1437,6 +1488,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
+        self._last_logged_step = -1
         self._logs = {
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),

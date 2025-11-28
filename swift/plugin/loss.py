@@ -319,7 +319,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
 
 
 def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
-    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.01'))  # temperature
+    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.1'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample

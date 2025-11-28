@@ -272,8 +272,6 @@ class GPTModel(McoreGPTModel):
         *,
         inference_params: Optional[BaseInferenceContext] = None,
         loss_mask: Optional[torch.Tensor] = None,
-        # Mask labels to be compatible with thd & MTP
-        mtp_labels: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
@@ -311,8 +309,6 @@ class GPTModel(McoreGPTModel):
             **kwargs,
         )
 
-        args = get_args()
-        labels = labels if args.task_type == 'causal_lm' else None
         # MTP: https://github.com/NVIDIA/Megatron-LM/issues/1661
         return self._postprocess(
             hidden_states=hidden_states,
@@ -332,7 +328,6 @@ class GPTModel(McoreGPTModel):
             runtime_gather_output=runtime_gather_output,
             extra_block_kwargs=extra_block_kwargs,
             inference_context=inference_context,
-            mtp_labels=mtp_labels,
         )
 
     def _postprocess(
@@ -354,13 +349,14 @@ class GPTModel(McoreGPTModel):
         runtime_gather_output=None,
         extra_block_kwargs=None,
         inference_context=None,
-        mtp_labels=None,
     ):
         """Postprocesses decoder hidden states to generate logits or compute loss.
 
         Applies Multi-Token Prediction if enabled, generates output logits through
         the output layer, and computes language model loss when labels are provided.
         """
+        args = get_args()
+        labels = labels if args.task_type == 'causal_lm' else None
         in_inference_mode = inference_context is not None and not self.training
         if in_inference_mode:
             assert runtime_gather_output, 'Inference must always gather TP logits'
@@ -390,11 +386,14 @@ class GPTModel(McoreGPTModel):
             return hidden_states
 
         if self.mtp_process:
+            mtp_labels = labels.clone()
+            from ..trainers.utils import split_cp_inputs
             hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)
             hidden_states = hidden_states_list[0]
             if loss_mask is None:
                 # if loss_mask is not provided, use all ones as loss_mask
-                loss_mask = torch.ones_like(mtp_labels)
+                loss_mask = mtp_labels.new_ones((1, packed_seq_params.cu_seqlens_q[-1]))
+            cu_seqlens = packed_seq_params.cu_seqlens_q
             for mtp_layer_number in range(self.config.mtp_num_layers):
                 # output
                 mtp_logits, _ = self.output_layer(
@@ -404,9 +403,15 @@ class GPTModel(McoreGPTModel):
                 )
                 # Calc loss for the current Multi-Token Prediction (MTP) layers.
                 mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
-                loss_mask, num_tokens = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                loss_mask[:, cu_seqlens[:-1]] = 0
+                loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)
+                if args.context_parallel_size > 1:
+                    loss_mask_ = split_cp_inputs(loss_mask, cu_seqlens, dim=1)
+                else:
+                    loss_mask_ = loss_mask.clone()
                 mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
-                mtp_loss = loss_mask * mtp_loss
+                mtp_loss = loss_mask_ * mtp_loss
+                num_tokens = loss_mask_.sum()
                 if self.training:
                     # TODO(shifangx): remove the use of parallel_state here
                     # after moving loss logging to loss_func in pretrain_gpt.py

@@ -29,13 +29,6 @@ pip install -e .
 # pip install -e '.[all]'
 ```
 
-## 旧版本
-
-SWIFT在3.0版本开始进行了不兼容式重构，如果需要使用2.x旧版本，请执行如下命令进行安装：
-```shell
-pip install ms-swift==2.*
-```
-
 ## 镜像
 
 docker可以查看[这里](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py#L345)。

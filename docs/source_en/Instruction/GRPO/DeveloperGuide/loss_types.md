@@ -1,6 +1,6 @@
 # Loss Types
 
-GRPO training supports five different loss types, with the main difference being the normalization dimension.
+GRPO training supports multiple loss types, with the main differences being the normalization dimension and gradient handling.
 
 ## Loss Function
 
@@ -12,11 +12,18 @@ When setting `loss_type cispo`, the CISPO loss is used:
 
 $$\mathcal{L}_{i,t}^{\text{CISPO}} = -\text{detach}\left(\min(\rho_{i,t}, \epsilon_{\text{high}})\right) \cdot A_{i,t} \cdot \log \pi_\theta(y_{i,t}|y_{i,<t})$$
 
+When setting `loss_type sapo`, soft gating replaces hard clipping, see [SAPO](../AdvancedResearch/SAPO.md)
+
+$$\mathcal{L}_{i,t}^{\text{SAPO}} = -g_{i,t} \cdot A_{i,t}$$
+
+where $g_{i,t} = \sigma(\tau \cdot (\rho_{i,t} - 1))$ is the temperature-controlled soft gate function.
+
 where:
 - $\rho_{i,t} = \frac{\pi_\theta(y_{i,t}|y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}|y_{i,<t})}$ is the importance sampling weight
 - $A_{i,t}$ is the advantage function
 - $\epsilon$ and $\epsilon_{\text{high}}$ are the clipping parameters
 - $\text{detach}(\cdot)$ indicates that this term does not participate in gradient computation
+- $\sigma(\cdot)$ is the sigmoid function, $\tau$ is the temperature parameter
 
 ## GRPO
 
@@ -100,3 +107,11 @@ where:
 - $N_p$ is the number of samples for the $p$-th process
 
 **Normalization Dimension:** Global token dimension (total completion tokens across all processes)
+
+## SAPO
+
+`--loss_type sapo`
+
+SAPO uses temperature-controlled soft gating instead of hard clipping to achieve smooth gradient attenuation. The normalization method is the same as GRPO.
+
+For details, please refer to [SAPO](../AdvancedResearch/SAPO.md)

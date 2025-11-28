@@ -332,6 +332,11 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
+    # SAPO https://arxiv.org/abs/2511.20347
+    # Temperature parameters for soft adaptive gate
+    tau_pos: float = 1.0
+    tau_neg: float = 1.05
+
     # RLOO, REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward
@@ -342,6 +347,12 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
 
     # dataset
     dataset_shuffle: Optional[bool] = True
+
+    # Rollout Importance Sampling Correction (off-policy correction)
+    # Set to None to disable, or choose from: 'token_truncate', 'token_mask', 'sequence_truncate', 'sequence_mask'
+    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+                                                       'sequence_mask']] = None
+    rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
 
 
 @dataclass

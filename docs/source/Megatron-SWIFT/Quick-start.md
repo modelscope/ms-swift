@@ -4,15 +4,15 @@
 ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
 
 
-| 方法   | 全参数 | LoRA | MoE | 多模态 |
-| ------ | ------ | ---- | ----- | ----- |
-| 预训练| ✅ | ✅| ✅ | ✅ |
-| 指令监督微调 | ✅ | ✅| ✅ | ✅ |
-| GRPO | ✅ | ✅| ✅ | ✅ |
-| DPO | ✅ | ✅| ✅ | ✅ |
-| KTO | ✅ | ✅| ✅ | ✅ |
-| RM | ✅ | ✅| ✅ | ✅ |
-| 分类任务 | ✅ | ✅| ✅ | ✅ |
+| 方法   | 全参数 | LoRA | MoE | 多模态 | FP8 |
+| ------ | ------ | ---- | ----- | ----- | ----- |
+| 预训练 | ✅ | ✅| ✅ | ✅ | ✅ |
+| [指令监督微调](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 
 ## 环境准备
@@ -49,7 +49,7 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
 # 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
+MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
 ```
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
@@ -191,3 +191,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 | -------- | ----------- | --------------- | --------------- |
 | 训练速度 | 9.6s/it     | -               | 91.2s/it        |
 | 显存使用 | 16 * 60GiB  | OOM             | 16 * 80GiB      |
+
+
+## Megatron-SWIFT微信群
+
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">

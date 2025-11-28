@@ -3,15 +3,15 @@
 ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
 
 
-| Method                             | Full-parameter | LoRA | MoE  | Multimodal |
-| ---------------------------------- | -------------- | ---- | ---- | ---------- |
-| Pretraining                        | ✅              | ✅    | ✅    | ✅          |
-| Instruction-supervised fine-tuning | ✅              | ✅    | ✅    | ✅          |
-| GRPO                               | ✅              | ✅    | ✅    | ✅          |
-| DPO                                | ✅              | ✅    | ✅    | ✅          |
-| KTO                                | ✅              | ✅    | ✅    | ✅          |
-| RM                                 | ✅              | ✅    | ✅    | ✅          |
-| Classification tasks               | ✅              | ✅    | ✅    | ✅          |
+| Method                 | Full-Parameter | LoRA | MoE  | Multimodal | FP8  |
+| ---------------------- | -------------- | ---- | ---- | ---------- | ---- |
+| Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
 
@@ -48,7 +48,7 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 # flash_attn
 # Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
 # Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
+MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
 ```
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
@@ -196,3 +196,8 @@ The training speed comparison for full-parameter MoE models with 8K context leng
 | ---------------- | ----------- | --------------- | --------------- |
 | Training Speed   | 9.6s/it    | -        | 91.2s/it       |
 | GPU Memory Usage | 16 * 60GiB  | OOM             | 16 * 80GiB      |
+
+
+## Megatron-SWIFT Wechat Group
+
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">

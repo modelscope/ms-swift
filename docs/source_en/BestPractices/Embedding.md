@@ -87,7 +87,7 @@ The eval metrics are the Pearson and Spearman's Rank Correlation Coefficient of 
 ```
 
 InfoNCE loss supports the following environment variables:
-1. `INFONCE_TEMPERATURE`: The temperature parameter. If not set, the default value is 0.01.
+1. `INFONCE_TEMPERATURE`: The temperature parameter. If not set, the default value is 0.1.
 2. `INFONCE_USE_BATCH`: Use `negative_messages` within the sample (hard negatives) or use other samples in the batch as in-batch negatives. The default is `True`, which means using in-batch negatives.
 3. `INFONCE_HARD_NEGATIVES`: The number of hard negatives. If not set, all provided `negative_messages` will be used. Since the lengths may vary, a for loop will be used to compute the loss (slower). If set to a specific number, missing items will be randomly sampled, and excess items will be truncated to the first `INFONCE_HARD_NEGATIVES`.
 4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is `False`. When enabled, it checks `positive_similarity + INFONCE_FAKE_NEG_MARGIN`; any sample with similarity larger than this threshold will have its similarity set to `-inf` to prevent positive leakage.
