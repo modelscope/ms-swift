@@ -1009,12 +1009,15 @@ class SwiftMixin:
         from evalscope import TaskConfig, run_task
 
         self.model.eval()
+        template = copy(self.template)
+        template.packing = False
+        template.padding_free = False
         # prepare task config
         task_config_kwargs = dict(
             model=EvalModel(
                 model_name=f'model-step{self.state.global_step}',
                 model=self.model,
-                template=self.template,
+                template=template,
                 max_batch_size=self.args.per_device_eval_batch_size,
             ),
             eval_type='swift_custom',
