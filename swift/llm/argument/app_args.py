@@ -13,10 +13,10 @@ logger = get_logger()
 
 @dataclass
 class AppArguments(WebUIArguments, DeployArguments):
-    """Arguments for configuring the Web UI application.
+    """Arguments for configuring the Web UI inference.
 
-    This dataclass inherits from WebUIArguments and DeployArguments, combining their
-    settings to configure the user interface for model inference.
+    This dataclass inherits from WebUIArguments and DeployArguments, combining their settings to configure the user
+    interface for model inference.
 
     Args:
         base_url (Optional[str]): The base URL for the model deployment API, e.g., `http://localhost:8000/v1`. If set
@@ -26,7 +26,7 @@ class AppArguments(WebUIArguments, DeployArguments):
         is_multimodal (Optional[bool]): Whether to launch the multimodal version of the application. If `None`, the
             app will attempt to auto-detect this setting based on the model. If auto-detection is not possible, it
             defaults to `False`. Defaults to None.
-        lang (str): Overrides the language setting for the Web UI.Defaults to 'en'.
+        lang (str): Overrides the language setting for the Web UI. Defaults to 'en'.
         verbose (bool): Whether to log detailed request information. Defaults to False.
         stream (bool): Whether to enable streaming output for model responses. Defaults to True.
     """

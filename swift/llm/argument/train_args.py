@@ -137,8 +137,8 @@ class SwanlabArguments:
 class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """Arguments pertaining to the training process.
 
-    TrainArguments is a dataclass that inherits from multiple argument classes: TunerArguments,
-    Seq2SeqTrainingOverrideArguments, and BaseArguments.
+    TrainArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
+    BaseArguments, Seq2SeqTrainingOverrideArguments.
 
     Attributes:
         add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
@@ -146,14 +146,14 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         create_checkpoint_symlink (bool): Whether to create additional symbolic links for checkpoints, which can be
             useful for automated training scripts. The symlinks for the best and last models will be created at
             `f'{output_dir}/best'` and `f'{output_dir}/last'`, respectively. Defaults to False.
-        load_args (bool): Whether to load `args.json` from a saved directory when `--resume_from_checkpoint`,
-            `--model`, or `--adapters` is specified. For details on which keys are loaded, refer to `base_args.py`.
-            Defaults to `True` for inference and exporting, and `False` for training. This argument typically does not
-            need to be modified.
         max_new_tokens (int): Overrides generation parameters. The maximum number of new tokens to generate when
             `predict_with_generate` is True. Defaults to 64.
         temperature (float): Overrides generation parameters. The temperature for sampling when `predict_with_generate`
             is True. Defaults to 0.0.
+        load_args (bool): Whether to load `args.json` from a saved directory when `--resume_from_checkpoint`,
+            `--model`, or `--adapters` is specified. For details on which keys are loaded, refer to `base_args.py`.
+            Defaults to `True` for inference and exporting, and `False` for training. This argument typically does not
+            need to be modified.
         zero_hpz_partition_size (Optional[int]): A feature of ZeRO++. Enables model sharding within a node and data
             sharding between nodes. If you encounter `grad_norm` NaN issues, consider trying `--torch_dtype float16`.
             Defaults to None.

@@ -25,11 +25,10 @@ class TemplateArguments:
             1. System prompt from the dataset.
             2. The `--system` command-line argument.
             3. The `default_system` set when the template was registered.
-        max_length (Optional[int]):
-            The maximum number of tokens for a single sample after tokenization. Samples exceeding this length are
-            handled according to `truncation_strategy` to prevent OOM errors. Defaults to None, which uses the model's
-            maximum supported length (`max_model_len`). In PPO, GRPO, and inference scenarios, this argument specifies
-            the `max_prompt_length`.
+        max_length (Optional[int]): The maximum number of tokens for a single sample after tokenization. Samples
+            exceeding this length are handled according to `truncation_strategy` to prevent OOM errors. Defaults to
+            None, which uses the model's maximum supported length (`max_model_len`). In PPO, GRPO, and inference
+            scenarios, this argument specifies the `max_prompt_length`.
         truncation_strategy (Literal['delete', 'left', 'right', 'split']): Strategy for handling samples exceeding
             `max_length`. Options are 'delete', 'left' (truncate from the left), 'right' (truncate from the right),
             and 'split' (split into multiple samples). Defaults to 'delete'.

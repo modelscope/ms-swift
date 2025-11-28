@@ -17,14 +17,14 @@ class RewardModelArguments:
     """Arguments pertaining to the reward model.
 
     Args:
-        reward_model (Optional[str]): The model ID or a local path to the reward model. Same as the `model` argument.
-            Defaults to None.
+        reward_model (Optional[List[str]]): The model ID or a local path to the reward model. Same as the `model`
+            argument. Defaults to None.
         reward_adapters (List[str]): The path(s) to LoRA adapter weights to be loaded for the reward model. Useful for
             using LoRA weights from SFT as the reward model. Defaults to an empty list (`[]`).
-        reward_model_type (Optional[str]): The model type of the reward model. Same as the `model_type` argument.
+        reward_model_type (Optional[List[str]]): The model type of the reward model. Same as the `model_type` argument.
             If not specified, it's often inferred. Defaults to None.
-        reward_model_revision (Optional[str]): The specific model version to use for the reward model. Same as the
-            `model_revision` argument. Defaults to None.
+        reward_model_revision (Optional[List[str]]): The specific model version to use for the reward model. Same as
+            the `model_revision` argument. Defaults to None.
     """
     reward_model: Optional[List[str]] = None
     reward_adapters: List[str] = field(default_factory=list)
@@ -70,17 +70,17 @@ class PPOArguments:
     """Arguments for configuring the PPO training.
 
     Args:
-        num_ppo_epochs (int): Defaults to 4.
-        whiten_rewards (bool): Defaults to False.
-        kl_coef (float): Defaults to 0.05.
-        cliprange (float): Defaults to 0.2.
-        vf_coef (float): Defaults to 0.1.
-        cliprange_value (float): Defaults to 0.2.
-        gamma (float): Defaults to 1.0.
-        lam (float): Defaults to 0.95.
+        num_ppo_epochs (int): Number of epochs to train. Defaults to 4.
+        whiten_rewards (bool): Whether to whiten the rewards. Defaults to False.
+        kl_coef (float): KL coefficient. Defaults to 0.05.
+        cliprange (float): Clip range. Defaults to 0.2.
+        vf_coef (float): Value function coefficient. Defaults to 0.1.
+        cliprange_value (float): Clip range for the value function. Defaults to 0.2.
+        gamma (float): Discount factor. Defaults to 1.0.
+        lam (float): Lambda value for GAE. Defaults to 0.95.
         num_mini_batches (int): Defaults to 1.
         local_rollout_forward_batch_size (int): Defaults to 64.
-        num_sample_generations (int): Defaults to 10.
+        num_sample_generations (int): Number of generations. Defaults to 10.
         response_length (Optional[int]): (Deprecated) Compatibility parameter. Use `max_completion_length` instead.
             Defaults to None.
         missing_eos_penalty (Optional[float]): Defaults to None.
@@ -108,24 +108,26 @@ class GRPOArguments(GRPOArgumentsMixin):
     These arguments control the hyperparameters specific to the GRPO algorithm.
 
     Args:
-        num_generations: The number of completions to generate for each prompt. This corresponds to the G value in the
-            GRPO paper. The total generation batch size (e.g., `generation_batch_size` or `steps_per_generation *
-            per_device_batch_size * num_processes`) must be divisible by this number. Defaults to 8.
-        reward_funcs: A list of reward function names to use for the GRPO algorithm. Available built-in options include
-            'accuracy', 'format', 'cosine', 'repetition', and 'soft_overlong' (see swift/plugin/orm.py). Custom reward
-            functions can also be defined. Defaults to an empty list.
-        reward_weights: A list of weights for each reward source. The length must match the total number of reward
-            functions (from `reward_funcs`) plus any external reward models. If `None`, all rewards are weighted
-            equally with a value of 1.0. Note: If an external `--reward_model` is used, it is treated as the last
-            reward source in the sequence. Defaults to None.
-        log_completions: Whether to log the model's generated completions during training. This is designed to be
-            used with an experiment tracker like WandB or SwanLab (`--report_to wandb`/`swanlab`). If enabled without
-            a tracker, completions are saved to `completions.jsonl` in the checkpoint directory. Defaults to False.
-        num_iterations: The number of update steps to perform for each data sample. This corresponds to the K value
-            in the GRPO paper. Defaults to 1.
-        truncation_strategy: The strategy for handling input sequences that exceed `max_length`. Supported options:
-            'delete' to discard the sample, 'left' to truncate from the beginning, 'right' to truncate from the end.
-            Defaults to None, and then sets to 'left' in the `_init_grpo` function.
+        num_generations  (int): The number of completions to generate for each prompt. This corresponds to the G value
+            in the GRPO paper. The total generation batch size (e.g., `generation_batch_size` or `steps_per_generation
+            * per_device_batch_size * num_processes`) must be divisible by this number. Defaults to 8.
+        reward_funcs (List[str]): A list of reward function names to use for the GRPO algorithm. Available built-in
+            options include 'accuracy', 'format', 'cosine', 'repetition', and 'soft_overlong'
+            (see swift/plugin/orm.py). Custom reward functions can also be defined. Defaults to an empty list.
+        reward_weights (List[float]): A list of weights for each reward source. The length must match the total number
+            of reward functions (from `reward_funcs`) plus any external reward models. If `None`, all rewards are
+            weighted equally with a value of 1.0. Note: If an external `--reward_model` is used, it is treated as the
+            last reward source in the sequence. Defaults to None.
+        log_completions (bool): Whether to log the model's generated completions during training. This is designed to
+            be used with an experiment tracker like WandB or SwanLab (`--report_to wandb`/`swanlab`). If enabled
+            without a tracker, completions are saved to `completions.jsonl` in the checkpoint directory. Defaults to
+            False.
+        num_iterations (int): The number of update steps to perform for each data sample. This corresponds to the K
+            value in the GRPO paper. Defaults to 1.
+        truncation_strategy (Literal['delete', 'left', 'right', 'split', None]): The strategy for handling input
+            sequences that exceed `max_length`. Supported options: 'delete' to discard the sample, 'left' to truncate
+            from the beginning, 'right' to truncate from the end. Defaults to None, and then sets to 'left' in the
+            `_init_grpo` function.
             Note that for multimodal models, left pruning may prune multimodal tokens, causing shape mismatch errors
             in the forward feed. Using the `delete` method will resample other data from the original dataset to
             supplement excessively long data and examples with encoding failures.

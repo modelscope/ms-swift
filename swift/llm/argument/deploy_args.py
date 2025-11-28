@@ -29,7 +29,10 @@ class DeployArguments(InferArguments):
             Note: This defaults to False when used in 'swift app' or 'swift eval'.
         log_interval (int): The interval in seconds for printing tokens/s statistics. Set to -1 to disable. Defaults
             to 20.
+        log_level (Literal['critical', 'error', 'warning', 'info', 'debug', 'trace']): Log level. Defaults to 'info'.
         max_logprobs (int): The maximum number of logprobs to return to the client. Defaults to 20.
+        vllm_use_async_engine (bool): Whether to use an async engine under the vLLM backend. It defaults to True in
+            deployment scenarios (Swift deploy), and False in other scenarios.
     """
     host: str = '0.0.0.0'
     port: int = 8000

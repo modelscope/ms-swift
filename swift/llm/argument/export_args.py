@@ -24,7 +24,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', or 'gptq_v2'.
             Defaults to None. See examples for more details.
         quant_n_samples (int): Number of samples for GPTQ/AWQ calibration. Defaults to 256.
-        max_length (int): The sequence length for quantization. Defaults to 2048.
         quant_batch_size (int): The batch size for quantization. Defaults to 1.
         group_size (int): The group size for quantization. Defaults to 128.
         to_cached_dataset (bool): Whether to tokenize and export the dataset in advance as a cached dataset. Defaults

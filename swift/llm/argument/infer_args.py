@@ -53,33 +53,34 @@ class SglangArguments:
     """Arguments for configuring the SGLang backend.
 
     Args:
-        sglang_tp_size: The number of tensor parallel workers. Defaults to 1.
-        sglang_pp_size: The number of pipeline parallel workers. Defaults to 1.
-        sglang_dp_size: The number of data parallel workers. Defaults to 1.
-        sglang_ep_size: The number of expert parallel workers. Defaults to 1.
-        sglang_enable_ep_moe: Whether to enable expert parallelism for MoE.
+        sglang_tp_size (int): The number of tensor parallel workers. Defaults to 1.
+        sglang_pp_size (int): The number of pipeline parallel workers. Defaults to 1.
+        sglang_dp_size (int): The number of data parallel workers. Defaults to 1.
+        sglang_ep_size (int): The number of expert parallel workers. Defaults to 1.
+        sglang_enable_ep_moe (bool): Whether to enable expert parallelism for MoE.
             Note: This argument has been removed in recent versions of SGLang. Defaults to False.
-        sglang_mem_fraction_static: The fraction of GPU memory for the static allocation of model weights and the KV
-            cache memory pool. Try lowering this value if you encounter GPU out-of-memory errors. Defaults to None.
-        sglang_context_length: The maximum context length for the model. If None, the value from the model's
-            `config.json` will be used. Defaults to None.
-        sglang_disable_cuda_graph: Disable CUDA graph for inference. Defaults to False.
-        sglang_quantization: The quantization method to use. Defaults to None.
-        sglang_kv_cache_dtype: The data type for K/V cache storage. 'auto' will use the model's data type. 'fp8_e5m2'
-            and 'fp8_e4m3' are available for CUDA 11.8 and later. Defaults to 'auto'.
-        sglang_enable_dp_attention: Enables data parallelism for the attention mechanism and tensor parallelism for
-            the feed-forward network (FFN). The data parallel size (dp_size) must equal the tensor parallel size
-            (tp_size). Currently supported for DeepSeek-V2/3 and Qwen2/3 MoE models. Defaults to False.
-        sglang_disable_custom_all_reduce: Disable the custom all-reduce kernel and fall back to NCCL. Enabled by
-            default (True) for stability. Defaults to True.
-        sglang_speculative_algorithm: The speculative decoding algorithm. Options include "EAGLE", "EAGLE3", "NEXTN",
-            "STANDALONE", "NGRAM". Defaults to None.
-        sglang_speculative_num_steps: The number of steps to sample from the draft model during speculative decoding.
+        sglang_mem_fraction_static (Optional[float]): The fraction of GPU memory for the static allocation of model
+            weights and the KV cache memory pool. Try lowering this value if you encounter GPU out-of-memory errors.
             Defaults to None.
-        sglang_speculative_eagle_topk: The number of tokens to sample from the draft model at each step for the EAGLE2
-            algorithm. Defaults to None.
-        sglang_speculative_num_draft_tokens: The number of tokens to sample from the draft model during speculative
-            decoding. Defaults to None.
+        sglang_context_length (Optional[int]): The maximum context length for the model. If None, the value from the
+            model's `config.json` will be used. Defaults to None.
+        sglang_disable_cuda_graph (bool): Disable CUDA graph for inference. Defaults to False.
+        sglang_quantization (Optional[str]): The quantization method to use. Defaults to None.
+        sglang_kv_cache_dtype (str): The data type for K/V cache storage. 'auto' will use the model's data type.
+            'fp8_e5m2' and 'fp8_e4m3' are available for CUDA 11.8 and later. Defaults to 'auto'.
+        sglang_enable_dp_attention (bool): Enables data parallelism for the attention mechanism and tensor parallelism
+            for the feed-forward network (FFN). The data parallel size (dp_size) must equal the tensor parallel size
+            (tp_size). Currently supported for DeepSeek-V2/3 and Qwen2/3 MoE models. Defaults to False.
+        sglang_disable_custom_all_reduce (bool): Disable the custom all-reduce kernel and fall back to NCCL. Enabled by
+            default (True) for stability. Defaults to True.
+        sglang_speculative_algorithm (Optional[str]): The speculative decoding algorithm. Options include "EAGLE",
+            "EAGLE3", "NEXTN", "STANDALONE", "NGRAM". Defaults to None.
+        sglang_speculative_num_steps (Optional[int]): The number of steps to sample from the draft model during
+            speculative decoding. Defaults to None.
+        sglang_speculative_eagle_topk (Optional[int]): The number of tokens to sample from the draft model at each step
+            for the EAGLE2 algorithm. Defaults to None.
+        sglang_speculative_num_draft_tokens (Optional[int]): The number of tokens to sample from the draft model during
+            speculative decoding. Defaults to None.
     """
     sglang_tp_size: int = 1
     sglang_pp_size: int = 1
@@ -132,18 +133,17 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
     arguments required for model inference.
 
     Args:
-        ckpt_dir (Optional[str]): The directory to the checkpoint. Defaults to None.
         infer_backend (Literal['pt', 'vllm', 'sglang', 'lmdeploy']): The inference acceleration backend to use.
             Defaults to 'pt'.
         result_path (Optional[str]): The path to store inference results in JSONL format. If the file already exists,
             new results will be appended. If None, results are saved in the checkpoint directory (if available) or
             './result'. The final path will be printed to the console. Defaults to None.
-        max_batch_size (int): The maximum batch size for inference, effective only when `infer_backend` is 'pt'. A
-            value of -1 means no limit. Defaults to 1.
         write_batch_size (int): The batch size for writing results to `result_path`. A value of -1 means no limit.
             Defaults to 1000.
         metric (Optional[str]): The metric to use for evaluating inference results. Supported values are 'acc' and
             'rouge'. If None, no evaluation is performed. Defaults to None.
+        max_batch_size (int): The maximum batch size for inference, effective only when `infer_backend` is 'pt'. A
+            value of -1 means no limit. Defaults to 1.
         val_dataset_sample (Optional[int]): The number of samples to use from the inference dataset. If None, the
             entire dataset is used. Defaults to None.
         reranker_use_activation (bool): Whether to apply a sigmoid activation to the scores during reranker inference.

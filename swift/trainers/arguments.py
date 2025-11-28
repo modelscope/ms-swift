@@ -296,9 +296,11 @@ class VllmArguments:
         vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
         vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
         vllm_mm_processor_cache_gb (Optional[float]): MM processor cache size in GB. Default is None.
-        vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
+        vllm_speculative_config (Optional[Union[dict, str]]): Speculative decoding configuration, passed in as a JSON
+            string. Defaults to None.
         vllm_engine_kwargs (Optional[Union[dict, str]]): Additional parameters for vllm, formatted as a JSON string.
             Defaults to None.
+        vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
     """
     # vllm
     vllm_gpu_memory_utilization: float = 0.9
@@ -446,78 +448,90 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     """A dataclass for configuring parameters for algorithms like DAPO, Dr.GRPO, GSPO, RLOO, and REINFORCE++.
 
     Args:
-        epsilon (float, optional): The clipping coefficient. Defaults to 0.2.
-        epsilon_high (Optional[float], optional): The upper clipping coefficient. If set, it forms a clipping range of
+        epsilon (float): The clipping coefficient. Defaults to 0.2.
+        epsilon_high (Optional[float]): The upper clipping coefficient. If set, it forms a clipping range of
             `[epsilon, epsilon_high]` with epsilon. Defaults to None.
-        delta (Optional[float], optional): The upper clipping value for two-sided GRPO from the INTELLECT-2 tech
+        delta (Optional[float]): The upper clipping value for two-sided GRPO from the INTELLECT-2 tech
             report. If set, it is recommended to be greater than `1 + epsilon`. Defaults to None.
-        cosine_min_len_value_wrong (float, optional): The reward for wrong answers with zero completion length
+        cosine_min_len_value_wrong (float): The reward for wrong answers with zero completion length
             (r^w_0 in the paper). Defaults to -0.5.
-        cosine_max_len_value_wrong (float, optional): The reward for wrong answers with maximum completion length
+        cosine_max_len_value_wrong (float): The reward for wrong answers with maximum completion length
             (r^w_L in the paper). Defaults to 0.0.
-        cosine_min_len_value_correct (float, optional): The reward for correct answers with zero completion length
+        cosine_min_len_value_correct (float): The reward for correct answers with zero completion length
             (r^c_0 in the paper). Defaults to 1.0.
-        cosine_max_len_value_correct (float, optional): The reward for correct answers with maximum completion length
+        cosine_max_len_value_correct (float): The reward for correct answers with maximum completion length
             (r^c_L in the paper). Defaults to 0.5.
-        cosine_max_len (Optional[int], optional): The maximum length for generated text (Lmax in the paper). Defaults
+        cosine_max_len (Optional[int]): The maximum length for generated text (Lmax in the paper). Defaults
             to `max_completion_length`.
-        repetition_n_grams (int, optional): The n-gram size for repetition detection. Defaults to 3.
-        repetition_max_penalty (float, optional): The maximum penalty value, used to control the strength of the
+        repetition_n_grams (int): The n-gram size for repetition detection. Defaults to 3.
+        repetition_max_penalty (float): The maximum penalty value, used to control the strength of the
             penalty. Defaults to -1.0.
-        reward_model (Optional[List[str]], optional): The reward model(s) to use. Defaults to None.
-        reward_model_plugin (Optional[List[str]], optional): The plugin logic for the reward model. Defaults to 'orm'
+        reward_model (Optional[List[str]]): The reward model(s) to use. Defaults to None.
+        reward_model_plugin (Optional[List[str]]): The plugin logic for the reward model. Defaults to 'orm'
             logic. See custom reward models for details. Defaults to None.
-        sync_ref_model (bool, optional): Whether to periodically synchronize the `ref_model`. Defaults to False.
-        ref_model_mixup_alpha (float, optional): Controls the mixup between the current model and the previous
+        sync_ref_model (bool): Whether to periodically synchronize the `ref_model`. Defaults to False.
+        ref_model_sync_steps (int): The synchronization frequency. Defaults to 512.
+        ref_model_mixup_alpha (float): Controls the mixup between the current model and the previous
             `ref_model` during updates. Defaults to 0.6.
-        ref_model_sync_steps (int, optional): The synchronization frequency. Defaults to 512.
-        multi_turn_scheduler (Optional[str], optional): Parameter for multi-turn GRPO. Pass the corresponding plugin
+        multi_turn_scheduler (Optional[str]): Parameter for multi-turn GRPO. Pass the corresponding plugin
             name. The implementation should be added in `plugin/multi_turn.py`. Defaults to None.
-        max_turns (Optional[int], optional): The maximum number of turns for multi-turn GRPO. If None, there is no
+        max_turns (Optional[int]): The maximum number of turns for multi-turn GRPO. If None, there is no
             limit. Defaults to None.
-        completion_length_limit_scope (Literal['total', 'per_round'], optional): The scope of the
+        completion_length_limit_scope (Literal['total', 'per_round']): The scope of the
             `max_completion_length` limit in multi-turn dialogue. 'total' limits the total output length across all
             turns, while 'per_round' limits the output length for each turn. Defaults to 'per_round'.
-        vllm_server_pass_dataset (bool, optional): Pass extra dataset information to the vLLM server, used for
+        vllm_server_pass_dataset (bool): Pass extra dataset information to the vLLM server, used for
             multi-turn training. Defaults to False.
-        dynamic_sample (bool, optional): If True, filters out data with a reward standard deviation of 0 within a group
+        dynamic_sample (bool): If True, filters out data with a reward standard deviation of 0 within a group
             and samples new data. Defaults to False.
-        max_resample_times (int, optional): When `dynamic_sample` is enabled, this limits the number of resampling
+        max_resample_times (int): When `dynamic_sample` is enabled, this limits the number of resampling
             attempts. Defaults to 3.
-        overlong_filter (bool, optional): If True, skips samples that are truncated due to being too long, so they are
+        overlong_filter (bool): If True, skips samples that are truncated due to being too long, so they are
             not included in the loss calculation. Defaults to False.
-        soft_max_length (Optional[int], optional): The maximum generation length of the model (L_max in the paper).
+        soft_max_length (Optional[int]): The maximum generation length of the model (L_max in the paper).
             Defaults to `max_completion_length`.
-        soft_cache_length (Optional[int], optional): Controls the length penalty interval (L_cache in the paper).
+        soft_cache_length (Optional[int]): Controls the length penalty interval (L_cache in the paper).
             The interval is `[soft_max_length - soft_cache_length, soft_max_length]`. Defaults to None.
-        scale_rewards (Optional[Literal['group', 'batch', 'none']], optional): Specifies the reward scaling strategy.
+        scale_rewards (Optional[Literal['group', 'batch', 'none']]): Specifies the reward scaling strategy.
             Options are 'group' (scale by intra-group standard deviation), 'batch' (scale by the entire batch's
             standard deviation), or 'none' (no scaling). The default value is tied to `advantage_estimator`: 'group'
             for 'grpo', 'none' for 'rloo', and 'batch' for 'reinforce_plus_plus'. In ms-swift < 3.10, this was a
             boolean where `True` corresponded to 'group' and `False` to 'none'.
-        log_entropy (bool, optional): Log the dynamics of entropy values during training. See documentation for
+        log_entropy (bool): Log the dynamics of entropy values during training. See documentation for
             details. Defaults to False.
-        top_entropy_quantile (float, optional): Only tokens with entropy in the top specified quantile participate in
+        top_entropy_quantile (float): Only tokens with entropy in the top specified quantile participate in
             the loss calculation. A value of 1.0 means no tokens are filtered. See documentation for details.
             Defaults to 1.0.
-        importance_sampling_level (Literal['token', 'sequence', 'sequence_token'], optional): Controls the importance
+        importance_sampling_level (Literal['token', 'sequence', 'sequence_token']): Controls the importance
             sampling ratio calculation. 'token' mode retains the original log probability ratio for each token.
             'sequence' mode averages the log probability ratios of all valid tokens in the sequence. The GSPO paper
             uses 'sequence' level for stable training. Defaults to 'token'.
-        advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus'], optional): The advantage estimation
+        tau_pos (float): The temperature parameter for positive dominance in the SAPO algorithm, controlling the
+            sharpness of the soft gating function. Larger values ​​result in sharper gating (approaching hard
+            clipping), while smaller values ​​result in smoother gating. The default value is 1.0.
+        tau_neg (float): The temperature parameter for negative dominance in the SAPO algorithm, controlling the
+            sharpness of the soft gating function. Typically, `tau_neg` is set > `tau_pos` to impose stronger
+            constraints on negative dominance. The default value is 1.05.
+        advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
-        kl_in_reward (Optional[bool], optional): Controls how the KL divergence regularization term is handled. If
+        kl_in_reward (Optional[bool]): Controls how the KL divergence regularization term is handled. If
             `False`, it's an independent term in the loss function. If `True`, KL is directly incorporated into the
             reward (subtracted from it). The default is tied to `advantage_estimator`: `False` for 'grpo', `True` for
             'rloo' and 'reinforce_plus_plus'.
-        generation_batch_size (Optional[int], optional): The batch size for sampling completions. It should be a
+        generation_batch_size (Optional[int]): The batch size for sampling completions. It should be a
             multiple of `num_processes * per_device_train_batch_size`. Defaults to `per_device_batch_size *
             gradient_accumulation_steps * num_processes`.
-        steps_per_generation (Optional[int], optional): The number of optimization steps per generation round. Only
+        steps_per_generation (Optional[int]): The number of optimization steps per generation round. Only
             one of `steps_per_generation` and `generation_batch_size` can be set. Defaults to
             `gradient_accumulation_steps`.
-        dataset_shuffle (Optional[bool], optional): Whether to shuffle the dataset. Defaults to True.
+        dataset_shuffle (Optional[bool]): Whether to shuffle the dataset. Defaults to True.
+        rollout_importance_sampling_mode (Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+            'sequence_mask']]): The training-pull inconsistency correction mode. Options are `token_truncate`,
+            `token_mask`, `sequence_truncate`, and `sequence_mask`. Defaults to None, disabling correction.
+            See the documentation for details.
+        rollout_importance_sampling_threshold (float): The threshold for importance sampling weights, used to truncate
+            or mask extreme weights. Defaults to 2.0.
     """
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None

@@ -13,8 +13,8 @@ class GenerationArguments:
 
     Args:
         max_new_tokens (int): The maximum number of new tokens to generate. Defaults to None (unlimited).
-            temperature (float): The sampling temperature. A higher temperature makes the output more random.
-            To disable randomness, you can set this to 0 or `top_k` to 1. Defaults to None, which means loading from
+        temperature (float): The sampling temperature. A higher temperature makes the output more random. To disable
+            randomness, you can set this to 0 or `top_k` to 1. Defaults to None, which means loading from
             'generation_config.json'.
         top_k (int): The number of highest probability vocabulary tokens to keep for top-k-filtering. Defaults to None
             (reads from 'generation_config.json').
