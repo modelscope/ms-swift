@@ -191,3 +191,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 | -------- | ----------- | --------------- | --------------- |
 | 训练速度 | 9.6s/it     | -               | 91.2s/it        |
 | 显存使用 | 16 * 60GiB  | OOM             | 16 * 80GiB      |
+
+
+## Megatron-SWIFT微信群
+
+<img src="../../resources/wechat/megatron.png" width="200" height="200">
