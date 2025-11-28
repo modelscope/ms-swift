@@ -259,6 +259,8 @@ class GPTBridge:
                 for k, v in hf_state_dict.items():
                     v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
                     hf_state_dict[k] = v
+            elif hf_state_dict is None:
+                return {}
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):
