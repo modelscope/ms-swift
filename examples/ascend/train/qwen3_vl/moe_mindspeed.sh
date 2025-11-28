@@ -1,14 +1,15 @@
-# 8 * 80GiB
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-MULTI_STREAM_MEMORY_REUSE=2
+# 8 * 64GiB
+PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 OMP_NUM_THREADS=14 \
 NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
-    --load Qwen3-VL-30B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'swift/VideoChatGPT:Generic#2000' \
