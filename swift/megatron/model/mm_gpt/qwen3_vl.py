@@ -42,11 +42,8 @@ class Qwen3Omni_Vit(HuggingFaceModule):
     _generator = ['talker', 'code2wav']
 
     def __init__(self, config):
-        from transformers.models.qwen3_omni_moe import (Qwen3OmniMoeThinkerTextModel,
-                                                        Qwen3OmniMoeTalkerForConditionalGeneration,
-                                                        Qwen3OmniMoeCode2Wav)
-        super().__init__(
-            config, [Qwen3OmniMoeThinkerTextModel, Qwen3OmniMoeTalkerForConditionalGeneration, Qwen3OmniMoeCode2Wav])
+        from transformers.models.qwen3_omni_moe import Qwen3OmniMoeThinkerTextModel
+        super().__init__(config, [Qwen3OmniMoeThinkerTextModel])
 
     def prepare_model(self, hf_model):
         del self.thinker.model

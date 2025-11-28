@@ -1,6 +1,7 @@
 # 2 * 75GiB; 7s/it
 # Supports mixed modalities
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+ENABLE_AUDIO_OUTPUT=0 \
 NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \

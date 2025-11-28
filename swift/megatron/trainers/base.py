@@ -990,7 +990,7 @@ class BaseMegatronTrainer(ABC):
                 args.freeze_parameters += aligner
             else:
                 args.trainable_parameters += aligner
-            args.freeze_parameters += model_arch.generator
+            args.freeze_parameters += generator
             if args.freeze_parameters:
                 logger.info(f'freeze_parameters: {args.freeze_parameters}')
             if args.trainable_parameters:
