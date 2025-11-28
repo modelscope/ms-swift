@@ -267,12 +267,8 @@ class StepAudio2MiniTemplate(Template):
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        # batch_wavs, batch_wav_lens = self.padding_mels(list(itertools.chain.from_iterable([e['mels'] for e in batch])))
         combined_mels = list(itertools.chain.from_iterable([e.get('mels', []) for e in batch]))
-        if combined_mels:
-            batch_wavs, batch_wav_lens = self.padding_mels(combined_mels)
-        else:
-            batch_wavs, batch_wav_lens = None, None
+        batch_wavs, batch_wav_lens = self.padding_mels(combined_mels) if combined_mels else (None, None)
         res = super()._data_collator(batch, padding_to=padding_to)
         res['wav_lens'] = batch_wav_lens
         res['wavs'] = batch_wavs
