@@ -12,21 +12,24 @@ logger = get_logger()
 
 @dataclass
 class DeployArguments(InferArguments):
-    """
-    DeployArguments is a dataclass that extends InferArguments and is used to define
-    the arguments required for deploying a model.
+    """Arguments for model deployment.
+
+    This dataclass, which extends InferArguments, is used to define the arguments required for deploying a model.
 
     Args:
-        host (str): The host address to bind the server to. Default is '0.0.0.0'.
-        port (int): The port number to bind the server to. Default is 8000.
-        api_key (Optional[str]): The API key for authentication. Default is None.
-        ssl_keyfile (Optional[str]): The path to the SSL key file. Default is None.
-        ssl_certfile (Optional[str]): The path to the SSL certificate file. Default is None.
-        owned_by (str): The owner of the deployment. Default is 'swift'.
-        served_model_name (Optional[str]): The name of the model being served. Default is None.
-        verbose (bool): Whether to log request information. Default is True.
-        log_interval (int): The interval for printing global statistics. Default is 20.
-        max_logprobs(int): Max number of logprobs to return
+        host (str): The host address to bind the server to. Defaults to '0.0.0.0'.
+        port (int): The port number to bind the server to. Defaults to 8000.
+        api_key (Optional[str]): The API key for authentication. Defaults to None.
+        ssl_keyfile (Optional[str]): The path to the SSL key file. Defaults to None.
+        ssl_certfile (Optional[str]): The path to the SSL certificate file. Defaults to None.
+        owned_by (str): The owner of the deployment. Defaults to 'swift'.
+        served_model_name (Optional[str]): The name of the model being served. If None, the model's suffix is used by
+            default.
+        verbose (bool): Whether to log detailed request information. Defaults to True.
+            Note: This defaults to False when used in 'swift app' or 'swift eval'.
+        log_interval (int): The interval in seconds for printing tokens/s statistics. Set to -1 to disable. Defaults
+            to 20.
+        max_logprobs (int): The maximum number of logprobs to return to the client. Defaults to 20.
     """
     host: str = '0.0.0.0'
     port: int = 8000
@@ -81,6 +84,22 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class RolloutArguments(DeployArguments):
+    """Arguments for the Rollout phase in online/reinforcement learning.
+
+    This dataclass inherits from DeployArguments and adds specific parameters for the Rollout process in online
+    learning, such as GRPO.
+
+    Args:
+        multi_turn_scheduler (Optional[str]): The scheduler for multi-turn GRPO training. Pass the name of the
+            corresponding plugin implemented in `swift/plugin/multi_turn.py`. Defaults to None. Refer to the
+            documentation for details.
+        max_turns (Optional[int]): The maximum number of turns in multi-turn GRPO training. If None, no limit is
+            imposed. Defaults to None.
+        vllm_enable_lora (bool): Whether to enable the vLLM Engine to load LoRA adapters. Enabling this can accelerate
+            weight synchronization during LoRA training. Defaults to False. Refer to the documentation for details.
+        vllm_max_lora_rank (int): The LoRA rank parameter for the vLLM Engine. This value must be greater than or
+            equal to the `lora_rank` used for training; setting them as equal is recommended. Defaults to 16.
+    """
     vllm_use_async_engine: Optional[bool] = None
     use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
