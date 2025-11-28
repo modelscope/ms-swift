@@ -10,11 +10,6 @@ from functools import partial
 from typing import List, Optional, Tuple
 
 import peft
-try:
-    # Enable Megatron on Ascend NPU
-    import mindspeed.megatron_adaptor  # F401
-except ImportError:
-    pass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

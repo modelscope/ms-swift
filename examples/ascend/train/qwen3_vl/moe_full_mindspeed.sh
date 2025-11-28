@@ -1,5 +1,7 @@
-# 8 * 64GiB
+# 16 * 64GiB Ascend A3
+# Modified from https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_vl/mcore_full.sh
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
+MULTI_STREAM_MEMORY_REUSE=2 \
 OMP_NUM_THREADS=14 \
 NPROC_PER_NODE=8 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -15,7 +17,6 @@ megatron sft \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --moe_permute_fusion true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
@@ -43,7 +44,8 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --moe_expert_capacity_factor 2 \
-    --optimizer_cpu_offload true \
-    --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.2 \
     --attention_backend flash
+    # --moe_permute_fusion true
+    # --optimizer_cpu_offload true
+    # --use_precision_aware_optimizer true
+    # --optimizer_offload_fraction 0.2

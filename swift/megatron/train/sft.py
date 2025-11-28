@@ -6,11 +6,6 @@ from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
-try:
-    # Enable Megatron on Ascend NPU
-    from mindspeed.megatron_adaptor import repatch
-except ImportError:
-    repatch = None
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
@@ -19,6 +14,12 @@ from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
 from ..utils import get_padding_to
 from .utils import build_streaming_dataloader
+
+try:
+    # Enable Megatron on Ascend NPU
+    from mindspeed.megatron_adaptor import repatch
+except ImportError:
+    repatch = None
 
 logger = get_logger()
 
@@ -36,8 +37,8 @@ class MegatronSft(SwiftSft):
         args = self.args
         if repatch is not None:
             megatron_args = asdict(args)
-            if megatron_args["attention_backend"] != "local":
-                megatron_args["use_flash_attn"] = True
+            if megatron_args['attention_backend'] != 'local':
+                megatron_args['use_flash_attn'] = True
                 # MindSpeed requires passing `use_flash_attn` to Megatron
                 # to enable flash attention on Ascend NPU.
                 self.args.use_flash_attn = True

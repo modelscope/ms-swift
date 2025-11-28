@@ -1,6 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 try:
+    try:
+        # Enable Megatron on Ascend NPU
+        import mindspeed.megatron_adaptor  # F401
+    except ImportError:
+        pass
     from .init import init_megatron_env
     init_megatron_env()
 except Exception:
