@@ -54,7 +54,7 @@ cd ..
 
 # 3. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-exoprt MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
 
 Check if the test environment is installed correctly and whether the NPU can be loaded properly.

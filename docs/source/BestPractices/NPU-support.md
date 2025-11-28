@@ -56,7 +56,7 @@ cd ..
 
 # 3. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-exoprt MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
 
 测试环境是否安装正确，NPU能否被正常加载：

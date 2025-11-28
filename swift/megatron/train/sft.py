@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
@@ -15,10 +16,10 @@ from ..trainers import MegatronTrainer
 from ..utils import get_padding_to
 from .utils import build_streaming_dataloader
 
-try:
+if is_torch_npu_available():
     # Enable Megatron on Ascend NPU
     from mindspeed.megatron_adaptor import repatch
-except ImportError:
+else:
     repatch = None
 
 logger = get_logger()
@@ -36,12 +37,11 @@ class MegatronSft(SwiftSft):
         super(SwiftSft, self).__init__(args)
         args = self.args
         if repatch is not None:
-            megatron_args = asdict(args)
-            if megatron_args['attention_backend'] != 'local':
-                megatron_args['use_flash_attn'] = True
+            if args.attention_backend != 'local':
                 # MindSpeed requires passing `use_flash_attn` to Megatron
                 # to enable flash attention on Ascend NPU.
                 self.args.use_flash_attn = True
+            megatron_args = asdict(self.args)
             repatch(megatron_args)
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
