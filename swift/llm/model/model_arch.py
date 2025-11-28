@@ -561,7 +561,7 @@ register_model_arch(
             'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
             'thinker.visual.merger_list'
         ],
-        generator=['talker', 'token2wav'],
+        generator=['talker', 'code2wav'],
     ))
 
 register_model_arch(

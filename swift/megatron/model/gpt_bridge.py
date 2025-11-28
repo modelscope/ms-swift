@@ -1074,7 +1074,10 @@ class GPTBridge:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
                 self.hf_model.config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
-                    custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                    try:
+                        custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                    except FileNotFoundError as e:
+                        logger.error(f'custom_object_save Error: {e}')
                 save_checkpoint(
                     None,
                     self.processor,
