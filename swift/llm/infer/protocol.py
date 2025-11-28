@@ -358,11 +358,13 @@ class RolloutOutput(BaseModel):
     response_token_ids: List[List[int]] = Field(default_factory=list)
     response_loss_mask: List[List[int]] = Field(default_factory=list)
     rollout_infos: Dict[str, Any] = Field(default_factory=dict)
+    # rollout logprobs for each turn (used for rollout importance sampling correction in multi-turn scenarios)
+    rollout_logprobs: List[List[float]] = Field(default_factory=list)
 
-    @field_validator('response_token_ids', 'response_loss_mask', mode='before')
+    @field_validator('response_token_ids', 'response_loss_mask', 'rollout_logprobs', mode='before')
     @classmethod
     def _wrap_flat_list(cls, v):
-        if isinstance(v, list) and v and isinstance(v[0], int):
+        if isinstance(v, list) and v and isinstance(v[0], (int, float)):
             return [v]
         return v
 
