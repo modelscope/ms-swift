@@ -831,7 +831,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # Convert to tensor if all samples have rollout_logprobs
                     completion_mask = batch_encoded_inputs['completion_mask']
                     if all(lp is not None for lp in rollout_logprobs_list):
-                        # First, validate that logprobs count matches completion tokens count
+                        # Validate that logprobs count matches completion tokens count
                         valid_logprobs = True
                         for i, nested_lp in enumerate(rollout_logprobs_list):
                             total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
@@ -839,9 +839,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 seq_lengths = batch_encoded_inputs['seq_lengths']
                                 offset = sum(seq_lengths[:i].tolist()) if i > 0 else 0
                                 seq_len = seq_lengths[i].item()
-                                completion_count = completion_mask[0, offset:offset + seq_len].sum().item()
+                                completion_count = int(completion_mask[0, offset:offset + seq_len].sum().item())
                             else:
-                                completion_count = completion_mask[i].sum().item()
+                                completion_count = int(completion_mask[i].sum().item())
+
                             if total_logprobs != completion_count:
                                 logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
                                                f'completion tokens count ({completion_count}). '

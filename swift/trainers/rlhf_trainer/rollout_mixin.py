@@ -583,22 +583,43 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 if args.max_turns:
                     stop = stop or (current_turn >= args.max_turns)
                 if stop:
-                    # For stopped dialogues, also collect final turn's logprobs
+                    # For stopped dialogues, collect final turn's data
                     is_continuation = is_continuations[index]
-                    current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
-                    if current_logprobs:
-                        if is_continuation and rollout_logprobs[index]:
+                    response_choice = output.response.choices[0]
+                    current_logprobs = self._extract_logprobs_from_choice(response_choice)
+                    final_token_ids = response_choice.token_ids
+
+                    if is_continuation and response_token_ids[index]:
+                        # For continuation, extend the last turn's data
+                        response_token_ids[index][-1].extend(final_token_ids)
+                        if response_loss_mask[index]:
+                            response_loss_mask[index][-1].extend([1] * len(final_token_ids))
+                        if rollout_logprobs[index] and current_logprobs:
                             rollout_logprobs[index][-1].extend(current_logprobs)
-                        else:
+                    elif not response_token_ids[index]:
+                        # First turn stopped immediately - need to initialize with final response data
+                        if final_token_ids:
+                            response_token_ids[index] = [list(final_token_ids)]
+                            response_loss_mask[index] = [[1] * len(final_token_ids)]
+                        if current_logprobs:
+                            rollout_logprobs[index] = [current_logprobs]
+                    else:
+                        # Not continuation but has previous data - append as new turn
+                        if final_token_ids:
+                            response_token_ids[index].append(list(final_token_ids))
+                            response_loss_mask[index].append([1] * len(final_token_ids))
+                        if current_logprobs:
                             rollout_logprobs[index].append(current_logprobs)
 
                     # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
                     # clear them to disable rollout importance sampling correction (which requires complete logprobs)
+                    # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
+                    # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1 # noqa
                     final_rollout_logprobs = rollout_logprobs[index]
-                    if response_token_ids[index] and rollout_logprobs[index]:
-                        total_token_count = sum(len(turn_ids) for turn_ids in response_token_ids[index])
+                    if response_loss_mask[index] and rollout_logprobs[index]:
+                        total_loss_mask_1_count = sum(sum(mask) for mask in response_loss_mask[index])
                         total_logprob_count = sum(len(turn_lps) for turn_lps in rollout_logprobs[index])
-                        if total_token_count != total_logprob_count:
+                        if total_loss_mask_1_count != total_logprob_count:
                             # Incomplete logprobs, clear them
                             final_rollout_logprobs = []
 
@@ -638,7 +659,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     rollout_infos[index].update(step_result['rollout_infos'])
 
                 # Track rollout_logprobs for rollout importance sampling correction
-                current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
+                # Prefer step's returned logprobs (which may be modified/truncated) over raw response_choice logprobs
+                if 'rollout_logprobs' in step_result and step_result['rollout_logprobs']:
+                    current_logprobs = step_result['rollout_logprobs']
+                else:
+                    current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
                 if current_logprobs:
                     if is_continuation and rollout_logprobs[index]:
                         rollout_logprobs[index][-1].extend(current_logprobs)

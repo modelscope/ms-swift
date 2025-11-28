@@ -259,25 +259,35 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 should_stop = should_stop or (current_turn >= self.max_turns)
 
             if should_stop:
+                # Collect final turn's data
+                current_logprobs = self._extract_logprobs_from_choice(response_choice)
+                final_token_ids = response_choice.token_ids
+
                 if is_continuation and total_response_ids:
-                    # for continuation and total_response_ids is not empty
-                    # we need to extend the last turn's response_token_ids and response_loss_mask
-                    total_response_ids[-1].extend(response_choice.token_ids)
+                    # For continuation, extend the last turn's data
+                    total_response_ids[-1].extend(final_token_ids)
                     if total_response_loss_mask:
-                        total_response_loss_mask[-1].extend([1] * len(response_choice.token_ids))
-                    # Also extend rollout_logprobs for continuation
-                    current_logprobs = self._extract_logprobs_from_choice(response_choice)
+                        total_response_loss_mask[-1].extend([1] * len(final_token_ids))
                     if total_rollout_logprobs and current_logprobs:
                         total_rollout_logprobs[-1].extend(current_logprobs)
+                elif not total_response_ids:
+                    # First turn stopped immediately - need to initialize with final response data
+                    if final_token_ids:
+                        total_response_ids = [list(final_token_ids)]
+                        total_response_loss_mask = [[1] * len(final_token_ids)]
+                    if current_logprobs:
+                        total_rollout_logprobs = [current_logprobs]
 
                 # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
                 # clear them to disable rollout importance sampling correction (which requires complete logprobs)
+                # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
+                # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1
                 final_rollout_logprobs = total_rollout_logprobs
-                if total_response_ids and total_rollout_logprobs:
-                    # Check if the number of logprobs matches the number of response tokens
-                    total_token_count = sum(len(turn_ids) for turn_ids in total_response_ids)
+                if total_response_loss_mask and total_rollout_logprobs:
+                    # Check if the number of logprobs matches the number of loss_mask=1 tokens
+                    total_loss_mask_1_count = sum(sum(mask) for mask in total_response_loss_mask)
                     total_logprob_count = sum(len(turn_lps) for turn_lps in total_rollout_logprobs)
-                    if total_token_count != total_logprob_count:
+                    if total_loss_mask_1_count != total_logprob_count:
                         # Incomplete logprobs, clear them
                         final_rollout_logprobs = []
 
@@ -320,7 +330,11 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 rollout_infos.update(ret['rollout_infos'])
 
             # Track rollout_logprobs for rollout importance sampling correction
-            current_logprobs = self._extract_logprobs_from_choice(response_choice)
+            # Prefer step's returned logprobs (which may be modified/truncated) over raw response_choice logprobs
+            if 'rollout_logprobs' in ret and ret['rollout_logprobs']:
+                current_logprobs = ret['rollout_logprobs']
+            else:
+                current_logprobs = self._extract_logprobs_from_choice(response_choice)
             if current_logprobs:
                 if is_continuation and total_rollout_logprobs:
                     total_rollout_logprobs[-1].extend(current_logprobs)
@@ -611,27 +625,35 @@ class MathTipsScheduler(MultiTurnScheduler):
             # Need to truncate token_ids and logprobs as well
             truncated_completion = completion[:truncate_idx]
             if response_token_ids and self.tokenizer is not None:
-                # Re-encode the truncated completion to get correct token_ids
-                response_token_ids = self.tokenizer.encode(truncated_completion, add_special_tokens=False)
-                # Truncate logprobs to match the new token count
+                # Find the token index corresponding to the truncation point
+                # by decoding progressively until we reach or exceed the truncation point
+                token_truncate_idx = len(response_token_ids)
+                for i in range(1, len(response_token_ids) + 1):
+                    decoded = self.tokenizer.decode(response_token_ids[:i], skip_special_tokens=False)
+                    if len(decoded) >= truncate_idx:
+                        token_truncate_idx = i
+                        break
+                response_token_ids = response_token_ids[:token_truncate_idx]
+                # Truncate logprobs to match
                 if rollout_logprobs:
-                    rollout_logprobs = rollout_logprobs[:len(response_token_ids)]
+                    rollout_logprobs = rollout_logprobs[:token_truncate_idx]
             completion = truncated_completion
 
         # Add tips_prompt
         completion += self.tips_prompt
 
-        # Compute loss_mask and extend logprobs for tips tokens
+        # Compute loss_mask for tips tokens
+        # Note: rollout_logprobs should NOT include tips tokens because:
+        # 1. Tips tokens have loss_mask=0, so their labels will be -100
+        # 2. completion_mask = (labels != -100), so tips tokens won't be in completion_mask
+        # 3. rollout_logprobs must align with completion_mask, not response_token_ids
         if response_token_ids and self.tokenizer is not None:
             tips_token_ids = self._get_tips_token_ids(self.tokenizer)
             # Loss mask: original tokens = 1, tips tokens = 0
             response_loss_mask = [1] * len(response_token_ids) + [0] * len(tips_token_ids)
             # Append tips token ids to response
             response_token_ids = response_token_ids + tips_token_ids
-            # Extend logprobs with placeholder values (0.0) for tips tokens
-            # These will be masked out in loss computation anyway
-            if rollout_logprobs:
-                rollout_logprobs = rollout_logprobs + [0.0] * len(tips_token_ids)
+            # Do NOT extend rollout_logprobs for tips tokens - they are masked out in completion_mask
         else:
             response_loss_mask = []
 
