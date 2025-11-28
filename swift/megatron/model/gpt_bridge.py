@@ -251,6 +251,8 @@ class GPTBridge:
                 src_rank = dist.get_global_rank(self.pp_group, src_rank.item())
                 meta_data = [None] if hf_state_dict is None else [list(hf_state_dict.keys())]
                 dist.broadcast_object_list(meta_data, src=src_rank, group=self.pp_group)
+                if meta_data[0] is None:
+                    return {}
                 hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
                 for k, v in hf_state_dict.items():
                     v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
