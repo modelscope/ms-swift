@@ -388,3 +388,8 @@ In GRPO training, we can configure mini-batch updates in the following two ways:
 **9. How to disable the KL loss term**
 
 Set the parameter `--beta 0` to disable KL loss calculation. The reference model (ref model) will not be loaded in this case.
+
+
+## WeChat Group
+
+<img src="../../../../resources/wechat/grpo.png" width="500" height="500">

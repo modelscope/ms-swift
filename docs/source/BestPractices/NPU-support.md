@@ -303,3 +303,8 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | 量化/QLoRA相关         |
 | Megatron相关           |
 | 使用sglang作为推理引擎 |
+
+
+## 微信群
+
+<img src="../../resources/wechat/npu.png" width="500" height="500">

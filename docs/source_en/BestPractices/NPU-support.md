@@ -284,3 +284,8 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | Quantization/QLoRA       |
 | Megatron-related modules |
 | Using sglang as inference engine |
+
+
+## Wechat Group
+
+<img src="../../resources/wechat/npu.png" width="500" height="500">

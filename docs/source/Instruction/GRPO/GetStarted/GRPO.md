@@ -388,3 +388,8 @@ gradient_accumulation_steps = 8
 **9. 如何取消 KL 项损失**
 
 将参数设置为 `--beta 0`，即可关闭 KL 损失的计算，并且不会加载参考模型（ref model）。
+
+
+## 微信群
+
+<img src="../../../../resources/wechat/grpo.png" width="500" height="500">
