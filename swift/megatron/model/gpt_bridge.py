@@ -1103,6 +1103,8 @@ class GPTBridge:
         if self.args.is_multimodal:
             for prefix, mg_prefix in self.module_mapping.items():
                 mg_module = deep_getattr(mg_model, f'visual.{mg_prefix}')
+                if mg_module is None:
+                    continue
                 hf_state_dict.update(self._set_module(mg_module, hf_state_dict, f'{hf_prefix}{prefix}.', to_mcore))
         if to_mcore:
             hf_state_dict = {}
