@@ -3,8 +3,7 @@
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 MULTI_STREAM_MEMORY_REUSE=2 \
 OMP_NUM_THREADS=14 \
-NPROC_PER_NODE=8 \
-ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=16 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
@@ -18,6 +17,7 @@ megatron sft \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \

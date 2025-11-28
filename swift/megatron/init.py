@@ -807,7 +807,6 @@ def _patch_megatron():
 
 
 def init_megatron_env() -> None:
-
     if 'MEGATRON_LM_PATH' not in os.environ:
         # TODO: Synchronization issues may occur in DDP scenarios
         # if the distributed environment has not been initialized.
