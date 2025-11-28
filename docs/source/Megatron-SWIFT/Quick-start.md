@@ -195,4 +195,4 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ## 微信群
 
-<img src="../../resources/wechat/megatron.png" width="500" height="500">
+<img src="../../resources/wechat/megatron.png" width="200" height="200">

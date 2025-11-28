@@ -392,4 +392,4 @@ Set the parameter `--beta 0` to disable KL loss calculation. The reference model
 
 ## WeChat Group
 
-<img src="../../../../resources/wechat/grpo.png" width="500" height="500">
+<img src="../../../../resources/wechat/grpo.png" width="200" height="200">

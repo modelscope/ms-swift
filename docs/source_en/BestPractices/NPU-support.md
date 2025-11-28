@@ -288,4 +288,4 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 
 ## Wechat Group
 
-<img src="../../resources/wechat/npu.png" width="500" height="500">
+<img src="../../resources/wechat/npu.png" width="200" height="200">

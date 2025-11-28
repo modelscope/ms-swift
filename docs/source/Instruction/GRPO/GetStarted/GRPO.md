@@ -392,4 +392,4 @@ gradient_accumulation_steps = 8
 
 ## 微信群
 
-<img src="../../../../resources/wechat/grpo.png" width="500" height="500">
+<img src="../../../../resources/wechat/grpo.png" width="200" height="200">

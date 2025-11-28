@@ -200,4 +200,4 @@ The training speed comparison for full-parameter MoE models with 8K context leng
 
 ## Wechat Group
 
-<img src="../../resources/wechat/megatron.png" width="500" height="500">
+<img src="../../resources/wechat/megatron.png" width="200" height="200">
