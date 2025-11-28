@@ -241,7 +241,9 @@ class RewardFunction():
 Set `--vllm_server_pass_dataset` on the training side to pass other dataset columns to the scheduler.
 They can be read from `infer_request.data_dict`.
 
-### Rollout Log Probabilities (for Importance Sampling Correction)
+### Training-Inference-Mismatch
+
+Swift >= 3.11 supports returning rollout logprobs from the vLLM side to address training-inference mismatch issues. For details, please refer to this [document](../AdvancedResearch/training_inference_mismatch.md).
 
 In multi-turn training, if `rollout_importance_sampling_mode` is enabled, the framework automatically collects log probabilities from each rollout turn to correct off-policy issues.
 
