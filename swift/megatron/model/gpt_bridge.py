@@ -209,6 +209,8 @@ class GPTBridge:
 
     def _set_module(self, mg_module, hf_state_dict, hf_prefix: str, to_mcore: bool):
         if to_mcore:
+            if mg_module is None:
+                return {}
             hf_state_dict = {k: v.load() for k, v in self._remove_prefix(hf_state_dict, hf_prefix).items()}
             if self._is_peft_format:
                 new_state_dict = {}
