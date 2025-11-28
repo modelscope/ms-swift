@@ -200,4 +200,4 @@ The training speed comparison for full-parameter MoE models with 8K context leng
 
 ## Megatron-SWIFT Wechat Group
 
-<img src="../../resources/wechat/megatron.png" width="200" height="200">
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">

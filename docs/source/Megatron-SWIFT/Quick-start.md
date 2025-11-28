@@ -195,4 +195,4 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ## Megatron-SWIFT微信群
 
-<img src="../../resources/wechat/megatron.png" width="200" height="200">
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">
