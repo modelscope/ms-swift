@@ -318,7 +318,6 @@ class GPTModel(McoreGPTModel):
             rotary_pos_emb=rotary_pos_emb,
             rotary_pos_cos=rotary_pos_cos,
             rotary_pos_sin=rotary_pos_sin,
-            mtp_in_postprocess=self.mtp_process,
             loss_mask=loss_mask,
             decoder_input=decoder_input,
             attention_mask=attention_mask,
@@ -339,7 +338,6 @@ class GPTModel(McoreGPTModel):
         rotary_pos_emb,
         rotary_pos_cos,
         rotary_pos_sin,
-        mtp_in_postprocess=None,
         loss_mask=None,
         decoder_input=None,
         attention_mask=None,
@@ -366,7 +364,7 @@ class GPTModel(McoreGPTModel):
         if self.share_embeddings_and_output_weights:
             output_weight = self.shared_embedding_or_output_weight()
 
-        if mtp_in_postprocess:
+        if self.mtp_process:
             hidden_states = self.mtp(
                 input_ids=input_ids,
                 position_ids=position_ids,
@@ -385,7 +383,7 @@ class GPTModel(McoreGPTModel):
         if not self.post_process:
             return hidden_states
 
-        if self.mtp_process:
+        if self.mtp_process and labels is not None:
             mtp_labels = labels.clone()
             from ..trainers.utils import split_cp_inputs
             hidden_states_list = torch.chunk(hidden_states, 1 + self.config.mtp_num_layers, dim=0)

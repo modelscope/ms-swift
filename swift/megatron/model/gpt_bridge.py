@@ -1205,6 +1205,9 @@ class GPTBridge:
                 hf_state_dict = {}
 
         if (not to_mcore or is_pp_last_stage) and self.args.mtp_num_layers:
+            if to_mcore and self.pp_size > 1:
+                self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, self.hf_embed_key,
+                                     to_mcore)
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             layer_idx = 0
             while layer_idx < self.args.mtp_num_layers:
