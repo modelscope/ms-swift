@@ -39,6 +39,24 @@ pip install deepspeed
 
 # 如果需要使用 evaluation 功能，请安装以下包
 pip install evalscope[opencompass]
+
+# 如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖
+# 1. 获取并切换 Megatron-LM 至 core_v0.12.1 版本
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_v0.12.1
+cd ..
+
+# 2. 获取并安装 MindSpeed
+git clone https://gitcode.com/Ascend/MindSpeed.git
+cd MindSpeed
+git checkout 0016137f0dcfeab3308e0d16994046740c0e4ad9
+pip install -e .
+cd ..
+
+# 3. 设置环境变量
+export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
+export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
 
 测试环境是否安装正确，NPU能否被正常加载：
