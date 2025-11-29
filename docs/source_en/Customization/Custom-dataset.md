@@ -9,7 +9,7 @@ There are three methods for accessing custom datasets, each offering progressive
 
 The following is an introduction to the dataset formats that `AutoPreprocessor` can handle:
 
-The standard dataset format for ms-swift accepts keys such as: 'messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', and 'objects'. Among these, 'messages' is a required key. 'rejected_response' is used for DPO and other RLHF training, 'label' is used for KTO training and classification model training. The keys 'images', 'videos', and 'audios' are used to store paths or URLs for multimodal data, 'tools' is used for Agent tasks, and 'objects' is used for grounding tasks.
+The standard dataset format for ms-swift accepts keys such as: 'messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tensors', 'tools', and 'objects'. Among these, 'messages' is a required key. 'rejected_response' is used for DPO and other RLHF training, 'label' is used for KTO training and classification model training. The keys 'images', 'videos', 'audios', and 'tensors' are used to store paths or URLs for multimodal data, 'tools' is used for Agent tasks, and 'objects' is used for grounding tasks.
 
 There are three core preprocessors in ms-swift: `MessagesPreprocessor`, `AlpacaPreprocessor`, and `ResponsePreprocessor`. `MessagesPreprocessor` is used to convert datasets in the messages and sharegpt format into the standard format. `AlpacaPreprocessor` converts datasets in the alpaca format, while `ResponsePreprocessor` converts datasets in the query/response format. `AutoPreprocessor` automatically selects the appropriate preprocessor for the task.
 
@@ -173,7 +173,9 @@ Please refer to [Reranker training document](../BestPractices/Reranker.md#datase
 
 ### Multimodal
 
-For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
+For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, `audios`, and `tensors`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, `<audio>`, and `<tensor>` indicate where to insert images, videos, audio, or tensor data. MS-Swift supports multiple images, videos, audio files, and tensors. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The examples below demonstrate the data format for plain text, as well as formats containing image, video, audio, and tensor data.
+
+> **Note**: For detailed information about tensor support, including supported formats, use cases, and examples, see the [Tensor Support Documentation](Tensor-support.md).
 
 
 Pre-training:
@@ -182,6 +184,7 @@ Pre-training:
 {"messages": [{"role": "assistant", "content": "<image>is a puppy, <image>is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
 {"messages": [{"role": "assistant", "content": "<audio>describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
 {"messages": [{"role": "assistant", "content": "<image>is an elephant, <video>is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+{"messages": [{"role": "assistant", "content": "<tensor>represents a normal medical scan"}], "tensors": ["/xxx/scan.pt"]}
 ```
 
 Supervised Fine-tuning:
@@ -191,6 +194,7 @@ Supervised Fine-tuning:
 {"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+{"messages": [{"role": "user", "content": "<tensor>Generate a report for this medical scan"}, {"role": "assistant", "content": "The scan shows normal cardiac function with no abnormalities detected."}], "tensors": ["/xxx/cardiac_scan.pt"]}
 ```
 - Note: The following fields will be automatically converted to the corresponding images, videos, and audios fields.
   - images: image, images.
@@ -199,7 +203,7 @@ Supervised Fine-tuning:
 - If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
 - If you wish to directly pass in video frames instead of a video file, you can use the following format (requires `ms-swift>=3.8.3`): `"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`. This format is supported only by certain models, including Qwen2/2.5/3-VL, Qwen2.5/3-Omni, and their derivative models.
 
-The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
+The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` and `tensors` added on top of that.
 
 #### Grounding
 
