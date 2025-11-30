@@ -51,9 +51,12 @@ jobs:
           source ~/.bashrc
           sudo chown -R $USER:$USER  $ACTION_RUNNER_DIR
 
-      - name: Clean hooks
+      - name: Clean
+        shell: bash
         run: |
-          rm -rf .git/hooks || true
+          cd $ACTION_RUNNER_DIR/worker
+          sudo rm -rf ms-swift
+          sudo chown -R $USER:$USER ms-swift
 
       - name: Checkout
         uses: actions/checkout@v3
