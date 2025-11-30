@@ -36,7 +36,7 @@ class EvalArguments(DeployArguments):
             Note: By default, evaluation uses datasets from `~/.cache/opencompass`. When this is set to True, the
             `data` folder in the current directory is used instead.
         temperature (float): The temperature for sampling, which overrides the default generation config. Defaults
-            to: 0.0.
+            to 0.0.
         verbose (bool): Whether to output verbose information during the evaluation process. Defaults to False.
         eval_num_proc (int): The maximum number of concurrent clients for evaluation. Defaults to 16.
         extra_eval_args (Optional[Union[Dict, str]]): Additional evaluation arguments, provided as a JSON string.
@@ -44,7 +44,7 @@ class EvalArguments(DeployArguments):
             available arguments. Defaults to {}.
         eval_url (Optional[str]): The URL for the evaluation service (e.g., 'http://localhost:8000/v1'). If not
             specified, evaluation runs on the locally deployed model. See documentation for more examples. Defaults
-            to: None.
+            to None.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None

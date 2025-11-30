@@ -71,7 +71,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         seed (int): The global random seed for reproducibility. Note that this does not affect `data_seed`,
             which controls dataset randomization. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for specific models, passed as a JSON string
-            (e.g., `'{\"key\": \"value\"}'`). It's recommended to use the same arguments forinference as for
+            (e.g., `'{\"key\": \"value\"}'`). It's recommended to use the same arguments for inference as for
             training. Default is None.
         load_args (bool): Whether to load `args.json` from a checkpoint when using `--resume_from_checkpoint`,
             `--model`, or `--adapters`. Defaults to True for inference/export and False for training. Usually,

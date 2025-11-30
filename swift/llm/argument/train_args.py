@@ -140,7 +140,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     TrainArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
     BaseArguments, Seq2SeqTrainingOverrideArguments.
 
-    Attributes:
+    Args:
         add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
             prevent overwriting existing checkpoints. Defaults to True.
         create_checkpoint_symlink (bool): Whether to create additional symbolic links for checkpoints, which can be

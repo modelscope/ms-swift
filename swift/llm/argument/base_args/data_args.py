@@ -15,7 +15,7 @@ class DataArguments:
 
     Args:
         dataset (List[str]): A list of dataset IDs or paths. Defaults to [].
-            Format for each dataset: 'dataset_id_or_path:subset#count'.Both subset and count are optional.
+            Format for each dataset: 'dataset_id_or_path:subset#count'. Both subset and count are optional.
             - Subsets: Only effective for dataset IDs or folders. Use '/' to select multiple subsets (e.g.,
             'dataset_id:subset1/subset2') or 'all' to select all registered subsets. If only one subset is
             registered, it will be used by default; otherwise, 'default' is the default.
@@ -41,7 +41,7 @@ class DataArguments:
             Note: For CPT/SFT, shuffling occurs at both the dataset level (controlled by this flag) and the dataloader
             level.
         val_dataset_shuffle (bool): Whether to shuffle the validation dataset. Defaults to False.
-        streaming (bool):Enables streaming to read and process the dataset on-the-fly. `--max_steps` must be set as the
+        streaming (bool): Enables streaming to read and process the dataset on-the-fly. `--max_steps` must be set as the
             dataset length is unknown. This allows preprocessing to overlap with training but can become a bottleneck
             with a large `world_size` as preprocessing only runs on rank 0. Defaults to False.
         interleave_prob (Optional[List[float]]): If set, combines datasets using `interleave_datasets` with the

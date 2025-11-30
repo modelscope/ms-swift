@@ -10,7 +10,7 @@ import json
 class RayArguments:
     """A dataclass that holds the configuration and usage for Ray.
 
-    Attributes:
+    Args:
         use_ray (bool): Whether to use Ray for distributed operations. Defaults to False.
         ray_exp_name (str): The name of the Ray experiment. This is used as a prefix for cluster and worker names.
             This argument is optional. Defaults to None.
