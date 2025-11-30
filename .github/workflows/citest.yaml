@@ -54,6 +54,7 @@ jobs:
       - name: Clean
         shell: bash
         run: |
+          echo "ACTION_RUNNER_DIR: ${ACTION_RUNNER_DIR:-not set}"
           cd $ACTION_RUNNER_DIR/worker
           sudo rm -rf ms-swift
           sudo chown -R $USER:$USER ms-swift
