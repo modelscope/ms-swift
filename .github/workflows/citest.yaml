@@ -51,8 +51,14 @@ jobs:
           source ~/.bashrc
           sudo chown -R $USER:$USER  $ACTION_RUNNER_DIR
 
+      - name: Clean hooks
+        run: |
+          rm -rf .git/hooks || true
+
       - name: Checkout
         uses: actions/checkout@v3
+        env:
+          GIT_LFS_SKIP_SMUDGE: 1
         with:
             lfs: 'false'
             submodules: 'false'
