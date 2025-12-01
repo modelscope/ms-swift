@@ -761,7 +761,7 @@ class GPTBridge:
                                 gate_up_proj_bias = hf_state_dict['gate_up_proj_bias'].load()
                                 gate_up_proj_bias = gate_up_proj_bias[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
-                            if args.model_type == 'gpt_oss':
+                            if args.hf_model_type == 'gpt_oss':
                                 gate_proj_weight = gate_up_proj_weight[:, ::2]
                                 up_proj_weight = gate_up_proj_weight[:, 1::2]
                                 gate_proj_bias, up_proj_bias = gate_up_proj_bias[:, ::2], gate_up_proj_bias[:, 1::2]
@@ -912,7 +912,7 @@ class GPTBridge:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
-                                if args.model_type == 'gpt_oss' and is_last_ckpt:
+                                if args.hf_model_type == 'gpt_oss' and is_last_ckpt:
                                     gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
                                     new_gate_up_proj_weight[..., ::2] = gate_proj_weight
@@ -931,7 +931,7 @@ class GPTBridge:
                                     if 'gate_up_proj_bias' in hf_state_dict:
                                         gate_up_proj_bias = torch.concat(
                                             [hf_state_dict['gate_up_proj_bias'], gate_up_proj_bias], dim=0)
-                                    if args.model_type == 'gpt_oss' and is_last_ckpt:
+                                    if args.hf_model_type == 'gpt_oss' and is_last_ckpt:
                                         gate_proj_bias, up_proj_bias = gate_up_proj_bias.chunk(2, dim=1)
                                         new_gate_up_proj_bias = torch.empty_like(gate_up_proj_bias)
                                         new_gate_up_proj_bias[:, ::2] = gate_proj_bias
@@ -1352,7 +1352,7 @@ class GPTBridge:
         transformer_layer = None if mtp_layer is None else mtp_layer.transformer_layer
         if not to_mcore:
             self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
-                                to_mcore)
+                                 to_mcore)
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
         hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
         hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore))

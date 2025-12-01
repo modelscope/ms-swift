@@ -336,8 +336,8 @@
 |[01ai/Yi-Coder-1.5B-Chat](https://modelscope.cn/models/01ai/Yi-Coder-1.5B-Chat)|yi_coder|yi_coder|-|&#x2714;|coding|[01-ai/Yi-Coder-1.5B-Chat](https://huggingface.co/01-ai/Yi-Coder-1.5B-Chat)|
 |[01ai/Yi-Coder-9B-Chat](https://modelscope.cn/models/01ai/Yi-Coder-9B-Chat)|yi_coder|yi_coder|-|&#x2714;|coding|[01-ai/Yi-Coder-9B-Chat](https://huggingface.co/01-ai/Yi-Coder-9B-Chat)|
 |[SUSTC/SUS-Chat-34B](https://modelscope.cn/models/SUSTC/SUS-Chat-34B)|sus|sus|-|&#x2714;|-|[SUSTech/SUS-Chat-34B](https://huggingface.co/SUSTech/SUS-Chat-34B)|
-|[openai-mirror/gpt-oss-20b](https://modelscope.cn/models/openai-mirror/gpt-oss-20b)|gpt_oss|gpt_oss|transformers>=4.55|&#x2718;|-|[openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b)|
-|[openai-mirror/gpt-oss-120b](https://modelscope.cn/models/openai-mirror/gpt-oss-120b)|gpt_oss|gpt_oss|transformers>=4.55|&#x2718;|-|[openai/gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b)|
+|[openai-mirror/gpt-oss-20b](https://modelscope.cn/models/openai-mirror/gpt-oss-20b)|gpt_oss|gpt_oss|transformers>=4.55|&#x2714;|-|[openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b)|
+|[openai-mirror/gpt-oss-120b](https://modelscope.cn/models/openai-mirror/gpt-oss-120b)|gpt_oss|gpt_oss|transformers>=4.55|&#x2714;|-|[openai/gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b)|
 |[ByteDance-Seed/Seed-OSS-36B-Instruct](https://modelscope.cn/models/ByteDance-Seed/Seed-OSS-36B-Instruct)|seed_oss|seed_oss|transformers>=4.56|&#x2718;|-|[ByteDance-Seed/Seed-OSS-36B-Instruct](https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Instruct)|
 |[ByteDance-Seed/Seed-OSS-36B-Base](https://modelscope.cn/models/ByteDance-Seed/Seed-OSS-36B-Base)|seed_oss|seed_oss|transformers>=4.56|&#x2718;|-|[ByteDance-Seed/Seed-OSS-36B-Base](https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Base)|
 |[ByteDance-Seed/Seed-OSS-36B-Base-woSyn](https://modelscope.cn/models/ByteDance-Seed/Seed-OSS-36B-Base-woSyn)|seed_oss|seed_oss|transformers>=4.56|&#x2718;|-|[ByteDance-Seed/Seed-OSS-36B-Base-woSyn](https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Base-woSyn)|

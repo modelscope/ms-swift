@@ -525,6 +525,10 @@ def _patch_TransformerLayer():
     import megatron.core
     from megatron.training import get_args
     from megatron.core.transformer import TransformerLayer
+    from megatron.core.tensor_parallel.mappings import (
+        gather_from_sequence_parallel_region,
+        scatter_to_sequence_parallel_region,
+    )
     _origin_forward = TransformerLayer.forward
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -540,14 +544,23 @@ def _patch_TransformerLayer():
         hidden_states, context = self._forward_attention(*_args, **kwargs)
         args = get_args()
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
-        if mlp_padding_free:
-            mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+        mask = None
+        if mlp_padding_free and hidden_states.shape[1] > 1:
+            from .utils import get_padding_to
+            mask = ((~kwargs['attention_mask']).sum(dim=(1, 3)) > 0).t()
+            padding_to = get_padding_to(args)
+            hidden_states = gather_from_sequence_parallel_region(hidden_states)
             hidden_states = hidden_states[mask][:, None]
+            n_pad = padding_to - (hidden_states.shape[0] % padding_to)
+            hidden_states = torch.concat([hidden_states, hidden_states.new_zeros((n_pad, *hidden_states.shape[1:]))])
+            hidden_states = scatter_to_sequence_parallel_region(hidden_states)
         output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
-        if mlp_padding_free:
+        if mask is not None:
+            output = gather_from_sequence_parallel_region(output)
+            output = output[:-n_pad]
             new_output = hidden_states.new_zeros((*mask.shape, output.shape[-1]))
             new_output[mask] = output.squeeze(1)
-            output = new_output
+            output = scatter_to_sequence_parallel_region(new_output)
         return output, context
 
     TransformerLayer.forward = forward
