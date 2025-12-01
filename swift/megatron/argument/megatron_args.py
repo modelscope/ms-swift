@@ -447,6 +447,8 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     softmax_type: Optional[Literal['vanilla', 'off-by-one', 'learnable']] = None
+    window_size: Optional[str] = None
+    window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
     mrope_section: Optional[List[int]] = None

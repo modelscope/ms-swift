@@ -50,6 +50,7 @@ config_mapping = {
     'partial_rotary_factor': ['partial_rotary_factor'],
     'first_k_dense_replace': ['first_k_dense_replace', 'moe_layer_start_index'],
     'n_shared_experts': ['n_shared_experts', 'num_shared_expert', 'moe_num_shared_experts'],
+    'window_size': ['sliding_window'],
 }
 
 
@@ -143,6 +144,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['quick_geglu'] = True
         res['activation_func_clamp_value'] = 7
         res['glu_linear_offset'] = 1
+        res['window_size'] = f'{res["window_size"]},0'
+        res['window_attn_skip_freq'] = '2'
     elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
     elif llm_architectures == 'Qwen3NextForCausalLM':
