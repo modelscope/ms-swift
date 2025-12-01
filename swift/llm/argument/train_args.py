@@ -18,7 +18,20 @@ logger = get_logger()
 
 @dataclass
 class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArguments):
-    """Override the default value in `Seq2SeqTrainingArguments`"""
+    """Overrides default values in `Seq2SeqTrainingArguments`.
+
+    Args:
+        output_dir (Optional[str]): The directory to save model outputs. Defaults to 'output/<model_name>'.
+        learning_rate (Optional[float]): The learning rate. Defaults to 1e-5 for full-parameter training and 1e-4 for
+            tuners like LoRA.
+            Note: To set a minimum learning rate (min_lr), you can pass the arguments
+            --lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'.
+        eval_strategy (Optional[str]): The evaluation strategy. By default, it aligns with `save_strategy`. It will
+            default to 'no' if no validation dataset is provided (i.e., `val_dataset` and `eval_dataset` are not used,
+            and `split_dataset_ratio` is 0).
+        fp16 (Optional[bool]): Defaults to None.
+        bf16 (Optional[bool]): Defaults to None.
+    """
     output_dir: Optional[str] = None
     learning_rate: Optional[float] = None
     eval_strategy: Optional[str] = None  # steps, epoch
@@ -64,7 +77,26 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
 
 @dataclass
 class SwanlabArguments:
+    """Arguments for configuring Swanlab for experiment result logging.
 
+    This dataclass stores all the configuration parameters required for initializing and using Swanlab to track
+    experiments.
+
+    Args:
+        swanlab_token (Optional[str]): The API key for SwanLab.
+        swanlab_project (Optional[str]): The SwanLab project name. This project must be created in advance on the
+            SwanLab website.
+        swanlab_workspace (Optional[str]): The SwanLab workspace. Defaults to `None`, in which case the username
+            associated with the API key will be used.
+        swanlab_exp_name (Optional[str]): The name of the experiment. If `None`, it will default to the value of the
+            `output_dir` argument.
+        swanlab_lark_webhook_url (Optional[str]): The Lark (Feishu) webhook URL for SwanLab, used for sending
+            experiment result notifications. Defaults to `None`.
+        swanlab_lark_secret (Optional[str]): The secret for the Lark webhook, used for authentication. Defaults to
+            `None`.
+        swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
+            for local-only logging.
+    """
     swanlab_token: Optional[str] = None
     swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
@@ -103,14 +135,36 @@ class SwanlabArguments:
 
 @dataclass
 class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
-    """
-    TrainArguments class is a dataclass that inherits from multiple argument classes:
-    TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
+    """Arguments pertaining to the training process.
+
+    TrainArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
+    BaseArguments, Seq2SeqTrainingOverrideArguments.
 
     Args:
-        add_version (bool): Flag to add version information to output_dir. Default is True.
-        max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
-        temperature (float): Temperature for sampling. Default is 0.
+        add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
+            prevent overwriting existing checkpoints. Defaults to True.
+        create_checkpoint_symlink (bool): Whether to create additional symbolic links for checkpoints, which can be
+            useful for automated training scripts. The symlinks for the best and last models will be created at
+            `f'{output_dir}/best'` and `f'{output_dir}/last'`, respectively. Defaults to False.
+        max_new_tokens (int): Overrides generation parameters. The maximum number of new tokens to generate when
+            `predict_with_generate` is True. Defaults to 64.
+        temperature (float): Overrides generation parameters. The temperature for sampling when `predict_with_generate`
+            is True. Defaults to 0.0.
+        load_args (bool): Whether to load `args.json` from a saved directory when `--resume_from_checkpoint`,
+            `--model`, or `--adapters` is specified. For details on which keys are loaded, refer to `base_args.py`.
+            Defaults to `True` for inference and exporting, and `False` for training. This argument typically does not
+            need to be modified.
+        zero_hpz_partition_size (Optional[int]): A feature of ZeRO++. Enables model sharding within a node and data
+            sharding between nodes. If you encounter `grad_norm` NaN issues, consider trying `--torch_dtype float16`.
+            Defaults to None.
+        deepspeed_autotp_size (Optional[int]): The tensor parallelism size for DeepSpeed AutoTP. To use this, the
+            `--deepspeed` argument must be set to 'zero0', 'zero1', or 'zero2'. Note: This feature only supports
+            full-parameter fine-tuning. Defaults to None.
+        early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
+            `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
+            recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the
+            callback plugin. For more complex requirements, you can directly override the implementation in
+            `callback.py`. Defaults to None.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False

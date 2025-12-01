@@ -17,20 +17,52 @@ logger = get_logger()
 
 @dataclass
 class ModelArguments:
-    """
-    ModelArguments class is a dataclass that holds various arguments related to model configuration and usage.
+    """A dataclass that holds various arguments related to model configuration and usage.
 
     Args:
-        model (Optional[str]): model_id or model_path. Default is None.
-        model_type (Optional[str]): Type of the model group. Default is None.
-        model_revision (Optional[str]): Revision of the model. Default is None.
-        torch_dtype (Literal): Model parameter dtype. Default is None.
-        attn_impl (Literal): Attention implementation to use. Default is None.
-        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
-        rope_scaling (Literal): Type of rope scaling to use. Default is None.
-        device_map (Optional[str]): Configuration for device mapping. Default is None.
-        local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
-        init_strategy (Literal): Strategy to initialize all uninitialized parameters. Default is None.
+        model (Optional[str]): The model ID from the Hub or a local path to the model. Defaults to None.
+        model_type (Optional[str]): The model type. In ms-swift, a 'model_type' groups models with the same
+            architecture, loading process, and template. Defaults to None, which enables auto-selection based on
+            the suffix of `--model` and the 'architectures' attribute in `config.json`. The `model_type` for a
+            corresponding model can be found in the list of supported models. Note: The concept of `model_type`
+            in ms-swift differs from the `model_type` in `config.json`. Custom models usually require registering
+            their own `model_type` and `template`.
+        model_revision (Optional[str]): The revision of the model. Defaults to None.
+        task_type (str): The task type. Can be 'causal_lm', 'seq_cls', 'embedding', 'reranker', or
+            'generative_reranker'. If set to 'seq_cls', you usually need to specify `--num_labels` and
+            `--problem_type`. Defaults to 'causal_lm'.
+        torch_dtype (Optional[str]): The data type of the model weights. Supports 'float16', 'bfloat16', 'float32'.
+            Defaults to None, in which case it's read from the 'config.json' file.
+        attn_impl (Optional[str]): The attention implementation to use. Options include 'sdpa', 'eager', 'flash_attn',
+            'flash_attention_2', 'flash_attention_3', etc. Defaults to None, which means it will be read from
+            'config.json'. Note: Support for these implementations depends on the model's transformers implementation.
+            If set to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
+        new_special_tokens (List[str]): Additional special tokens to be added to the tokenizer. Can also be a path to
+            a `.txt` file, where each line is a special token. Defaults to an empty list `[]`.
+        num_labels (Optional[int]): The number of labels for classification tasks (when `--task_type` is 'seq_cls').
+            Required for such tasks. Defaults to None.
+        problem_type (Optional[str]): The problem type for classification tasks (`--task_type` 'seq_cls'). Options are
+            'regression', 'single_label_classification', 'multi_label_classification'. Defaults to None, but is
+            automatically set to 'regression' if the model is a reward_model or `num_labels` is 1, and
+            'single_label_classification' otherwise.
+        rope_scaling (Optional[str]): The RoPE scaling type. You can pass a string like 'linear', 'dynamic', or
+            'yarn', and ms-swift will automatically set the corresponding `rope_scaling` and override the
+            'config.json' value. Alternatively, you can pass a JSON string (e.g., '{"factor":2.0, "type":"yarn"}'),
+            which will directly override the `rope_scaling` in 'config.json'. Defaults to None.
+        device_map (Optional[str]): The device map configuration for the model, e.g., 'auto', 'cpu', a JSON string,
+            or a path to a JSON file. This argument is passed directly to the `from_pretrained` method of transformers.
+            Defaults to None, and will be set automatically based on the device and distributed training settings.
+        max_memory (Optional[str]): The maximum memory allocation for each device when `device_map` is 'auto' or
+            'sequential'. Example: '{0: "20GB", 1: "20GB"}'. This argument is passed directly to the `from_pretrained`
+            method of transformers. Defaults to None.
+        max_model_len (Optional[int]): The maximum model length. This is used to calculate the RoPE scaling factor
+            when `rope_scaling` is specified as a string. If not None, it overrides the `max_position_embeddings`
+            value in 'config.json'. Defaults to None.
+        local_repo_path (Optional[str]): Path to a local repository for models that require a GitHub repo during
+            loading (e.g., deepseek-vl2). This avoids network issues during `git clone`. Defaults to None.
+        init_strategy (Optional[str]): The strategy to initialize all uninitialized parameters when loading a model
+            (especially for custom architectures). Options include 'zero', 'uniform', 'normal', 'xavier_uniform',
+            'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'orthogonal'. Defaults to None.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(

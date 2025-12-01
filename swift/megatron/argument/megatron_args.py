@@ -271,7 +271,7 @@ class MegatronTunerMixin:
     use_rslora: bool = False
 
     def __post_init__(self):
-        if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
+        if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
             self.target_modules = self.target_regex

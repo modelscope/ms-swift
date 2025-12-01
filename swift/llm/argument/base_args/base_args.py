@@ -54,23 +54,45 @@ class CompatArguments:
 @dataclass
 class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
                     ModelArguments, RayArguments):
-    """
-    BaseArguments class is a dataclass that inherits from multiple argument classes:
-    GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
+    """BaseArguments class is a dataclass that inherits from multiple argument classes.
+
+    This class consolidates arguments from CompatArguments, GenerationArguments, QuantizeArguments, DataArguments,
+    TemplateArguments, ModelArguments, RayArguments.
 
     Args:
-        tuner_backend(str): Support peft or unsloth.
-        train_type(str): The training type, support all supported tuners and `full`.
-        seed (int): Random seed for reproducibility. Default is 42.
-        model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
-        load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
-        packing (bool): Flag to enable packing of datasets. Default is False.
-        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
-        use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
-        hub_token (Optional[str]): SDK token for authentication. Default is None.
-        custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
-        ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
-        use_swift_lora (bool): Use swift lora, a compatible argument
+        tuner_backend (str): The tuner backend to use. Choices are 'peft' or 'unsloth'. Default is 'peft'.
+        train_type (str): The training type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
+            'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
+        adapters (List[str]): A list of adapter IDs or paths. This is typically used for inference or deployment.
+            It can also resume training by only loading adapter weights, differing from `resume_from_checkpoint`
+            which also loads optimizer states. Default is [].
+        external_plugins (List[str]): A list of external 'plugin.py' files to be registered and imported into
+            the plugin module. Default is [].
+        seed (int): The global random seed for reproducibility. Note that this does not affect `data_seed`,
+            which controls dataset randomization. Default is 42.
+        model_kwargs (Optional[str]): Additional keyword arguments for specific models, passed as a JSON string
+            (e.g., '{"key": "value"}'). It's recommended to use the same arguments for inference as for training.
+            Default is None.
+        load_args (bool): Whether to load `args.json` from a checkpoint when using `--resume_from_checkpoint`,
+            `--model`, or `--adapters`. Defaults to True for inference/export and False for training. Usually,
+            this does not need to be modified. Default is True.
+        load_data_args (bool): If True, will also load data-related arguments from `args.json`. This is useful
+            for running inference on the same validation split used during training. Default is False.
+        packing (bool): Whether to enable packing of datasets. Default is False.
+        packing_length (Optional[int]): Length of packing. Default is None.
+        packing_num_proc (int): Number of processes used for packing, Default is 1.
+        lazy_tokenize (Optional[bool]): Whether to enable lazy tokenization. Default is None.
+        custom_register_path (List[str]): A list of paths to custom `.py` files for registering custom models,
+            dialogue templates, and datasets. These files will be imported. Default is [].
+        use_hf (bool): Whether to use Hugging Face for downloading/uploading models and datasets. If False,
+            ModelScope is used. Default is False.
+        hub_token (Optional[str]): The authentication token for ModelScope or Hugging Face Hub. Default is None.
+        ddp_timeout (int): Timeout for DDP (Distributed Data Parallel) operations, in seconds. Default is 18000000.
+        ddp_backend (Optional[str]): The backend for DDP. Choices include "nccl", "gloo", "mpi", "ccl", "hccl",
+            "cncl", "mccl". If None, it will be automatically selected. Default is None.
+        ignore_args_error (bool): Whether to ignore argument errors. This is useful for compatibility with Jupyter
+            notebooks. Default is False.
+        use_swift_lora (bool): Whether to use swift lora. This is a compatible argument. Default is False.
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
