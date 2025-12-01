@@ -161,6 +161,7 @@
 - num_attention_heads: transformer attention heads的个数，默认为None。
 - group_query_attention: 默认为None。若`num_query_groups>1`，group_query_attention设置为True，否则为False。
 - num_query_groups: 默认为1。
+- softmax_type: 用于注意力机制的 softmax 类型。支持固定偏移和可学习偏移两种方式。可选项为'vanilla'、'off-by-one'和'learnable'，默认为'vanilla'。
 - max_position_embeddings: 位置编码的最大长度，默认为None。
 - position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'mrope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
@@ -168,6 +169,9 @@
 - normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。
 - norm_epsilon: 默认为1e-5。
 - swiglu: 使用swiglu替代默认的gelu。默认为True。
+- quick_geglu: 使用快速 geglu 激活函数而不是默认的 gelu。默认为False。
+- activation_func_clamp_value: 限制激活函数中 linear_fc1 的输出值范围。仅在 `activation_func` 为 `quick_gelu` 时使用。默认为None。
+- glu_linear_offset: GLU 激活函数中的偏移项：`activation_func(x[0]) * (x[1] + offset)`。仅在 gated_linear_unit 为 True 时使用。默认为0.。
 - untie_embeddings_and_output_weights: 解开embedding和输出权重的绑定，默认为True。
 - disable_bias_linear: 禁用linear层的bias。默认为True。
 - add_qkv_bias: 仅在QKV的linear中增加bias，默认为True。
