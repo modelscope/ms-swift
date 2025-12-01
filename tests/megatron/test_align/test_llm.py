@@ -98,7 +98,7 @@ def test_moonlight():
 
 
 def test_gpt_oss():
-    _test_model('unsloth/gpt-oss-20b-BF16')
+    _test_model('openai-mirror/gpt-oss-20b')
 
 
 def test_deepseek_v2():
