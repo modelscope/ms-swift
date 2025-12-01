@@ -913,10 +913,10 @@ class GPTBridge:
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
                                 if args.model_type == 'gpt_oss' and is_last_ckpt:
-                                    gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=1)
+                                    gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
-                                    new_gate_up_proj_weight[:, ::2] = gate_proj_weight
-                                    new_gate_up_proj_weight[:, 1::2] = up_proj_weight
+                                    new_gate_up_proj_weight[..., ::2] = gate_proj_weight
+                                    new_gate_up_proj_weight[..., 1::2] = up_proj_weight
                                     gate_up_proj_weight = new_gate_up_proj_weight
                                     del new_gate_up_proj_weight, gate_proj_weight, up_proj_weight
                                 hf_state_dict['gate_up_proj'] = gate_up_proj_weight.clone()
