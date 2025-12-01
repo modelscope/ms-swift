@@ -17,7 +17,7 @@ from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download,
 from swift.llm.argument.base_args.quant_args import QuantizeArguments
 from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import Fp8Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import Fp8Dequantizer, MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -67,6 +67,9 @@ class GPTBridge:
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
+        self.fp8_quantizer = Fp8Dequantizer()
+        self.mxfp4_quantizer = MxFp4Dequantizer()
+
         dp_size = dist.get_world_size() // self.etp_size // self.ep_size // self.pp_size
         expert_decoder_rank_generator = mpu.RankGenerator(
             tp=self.etp_size,
@@ -87,13 +90,6 @@ class GPTBridge:
                 self.ep_pp_size = self.ep_size * self.pp_size
                 self.ep_pp_group = group
                 self.ep_pp_rank = dist.get_rank(group)
-                self._fp8_quantizer = None
-
-    @property
-    def fp8_quantizer(self):
-        if self._fp8_quantizer is None:
-            self._fp8_quantizer = Fp8Dequantizer()
-        return self._fp8_quantizer
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
@@ -748,7 +744,13 @@ class GPTBridge:
                 if hasattr(hf_mlp, 'gate_up_proj'):
                     if is_expert:
                         if hf_grouped:
-                            gate_up_proj_weight = hf_state_dict['gate_up_proj'].load().transpose(1, 2)
+                            if 'gate_up_proj_blocks' in hf_state_dict:
+                                blocks = hf_state_dict['gate_up_proj_blocks'].load()
+                                scales = hf_state_dict['gate_up_proj_scales'].load()
+                                gate_up_proj_weight = self.mxfp4_quantizer.convert(blocks, scales)
+                            else:
+                                gate_up_proj_weight = hf_state_dict['gate_up_proj'].load()
+                            gate_up_proj_weight = gate_up_proj_weight.transpose(1, 2)
                             gate_up_proj_weight = gate_up_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
                             if has_scale_inv:
@@ -1003,7 +1005,13 @@ class GPTBridge:
                         fc2_bias = [getattr(mg_mlp.linear_fc2, f'bias{i}') for i in range(num_local_experts)]
                     down_scale_inv = None
                     if hf_grouped:
-                        down_proj_weight = hf_state_dict['down_proj'].load().transpose(1, 2)
+                        if 'down_proj_blocks' in hf_state_dict:
+                            blocks = hf_state_dict['down_proj_blocks'].load()
+                            scales = hf_state_dict['down_proj_scales'].load()
+                            down_proj_weight = self.mxfp4_quantizer.convert(blocks, scales)
+                        else:
+                            down_proj_weight = hf_state_dict['down_proj'].load()
+                        down_proj_weight = down_proj_weight.transpose(1, 2)
                         down_proj_weight = down_proj_weight[ep_rank * num_local_experts:(ep_rank + 1)
                                                             * num_local_experts].reshape(
                                                                 -1, down_proj_weight.shape[-1])

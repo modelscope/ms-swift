@@ -23,6 +23,7 @@ class MegatronExport(SwiftPipeline):
     args: args_class
 
     def run(self):
+        os.environ['DISABLE_MP_DDP'] = 'true'
         args = self.args
         if args.to_hf:
             self.convert_mcore2hf()
@@ -72,8 +73,9 @@ class MegatronExport(SwiftPipeline):
                     kwargs = {'adapters': [args.save]}
                 else:
                     kwargs = {'model': args.save, 'torch_dtype': None}
+                device_map = args.device_map or 'cpu'
                 hf_model, template = prepare_model_template(
-                    args, device_map='cpu', **kwargs) if is_last_rank() else (None, template)
+                    args, device_map=device_map, **kwargs) if is_last_rank() else (None, template)
             test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
             dist.barrier()
 

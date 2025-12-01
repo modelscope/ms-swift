@@ -77,7 +77,8 @@ def is_mp() -> bool:
 
 def is_mp_ddp() -> bool:
     _, _, world_size, _ = get_dist_setting()
-    if is_dist() and is_mp() and world_size > 1:
+    disable_mp_ddp = strtobool(os.environ.get('DISABLE_MP_DDP', '0'))
+    if not disable_mp_ddp and is_dist() and is_mp() and world_size > 1:
         logger.info_once('Using MP(device_map) + DDP')
         return True
     return False
