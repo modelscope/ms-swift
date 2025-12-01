@@ -1436,13 +1436,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.sequence_parallel.utils import GatherLoss
         from swift.trainers.sequence_parallel import sequence_parallel
 
-        model_inputs = {
-            k: v
-            for k, v in inputs.items() if k not in [
-                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-            ]
-        }
+        model_inputs = self._prepare_model_inputs(inputs)
         sequence_parallel.prepare_inputs(model_inputs)
         with self._template_context(self.template):
             output = model(**model_inputs)
@@ -1473,13 +1467,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                      input_ids: torch.Tensor,
                                      compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via local forward pass, returns rmpad format [1, total_nnz] for padding_free mode"""
-        model_inputs = {
-            k: v
-            for k, v in inputs.items() if k not in [
-                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-            ]
-        }
+        model_inputs = self._prepare_model_inputs(inputs)
         if 'logits_to_keep' in self.model_kwarg_keys:
             model_inputs['logits_to_keep'] = logits_to_keep + 1
 
@@ -1558,7 +1546,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # can_use_super only when not padding_free and not using SP
         can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy
-                         and not is_padding_free and not use_sp)
+                         and not use_sp)
 
         if can_use_super:
             # Path 1: Use super() method (non-padding_free, non-SP)
@@ -1659,17 +1647,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             last_hidden_state = unwrapped_model.model(
                 input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
         else:
-            inputs = {
-                k: v
-                for k, v in inputs.items() if k not in [
-                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-                ]
-            }
+            model_inputs = self._prepare_model_inputs(inputs)
             if 'logits_to_keep' in self.model_kwarg_keys:
-                inputs['logits_to_keep'] = logits_to_keep + 1
+                model_inputs['logits_to_keep'] = logits_to_keep + 1
 
-            last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
+            last_hidden_state = unwrapped_model.model(**model_inputs).last_hidden_state
 
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
@@ -2464,3 +2446,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
 
         return metrics
+
+    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
+        """Filters inputs to create model_inputs, removing GRPO-specific keys."""
+        return {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+            ]
+        }
