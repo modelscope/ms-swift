@@ -16,7 +16,8 @@ class QuantizeArguments:
         quant_method (Optional[str]): The quantization method to use when loading the model. Can be one of {'bnb',
             'hqq', 'eetq', 'quanto', 'fp8'}. Note: This is not required for QLoRA training on pre-quantized AWQ/GPTQ
             models. Defaults to None.
-        quant_bits (Optional[int]): The number of bits for quantization, e.g., {1, 2, 3, 4, 8}. Defaults to None.
+        quant_bits (Optional[Union[int, str]]): The number of bits for quantization, e.g., {1, 2, 3, 4, 8, 'float8'}.
+            Defaults to None.
         hqq_axis (Optional[int]): The quantization axis for HQQ quantization. Defaults to None.
         bnb_4bit_compute_dtype (Optional[str]): The compute data type for 4-bit BNB quantization. Can be one of {
             'float16', 'bfloat16', 'float32'}. Defaults to None, which will use the model's `torch_dtype`.

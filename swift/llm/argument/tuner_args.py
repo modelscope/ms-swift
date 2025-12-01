@@ -55,7 +55,6 @@ class TunerArguments:
         lora_rank (int): Rank for LoRA. Default is 8.
         lora_alpha (int): Alpha value for LoRA. Default is 32.
         lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
-            Allowed values are 'none', 'all'.
         lora_bias (Literal['none', 'all']): The possible values are 'none' and 'all'. If set to 'all', all biases
             will be trainable. Default is 'none'.
         lora_dtype (Literal): Data type for LoRA. Default is 'AUTO'. Allowed values are 'fp16', 'bf16', 'fp32', 'AUTO'.

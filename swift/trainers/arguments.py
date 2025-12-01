@@ -84,7 +84,7 @@ class TrainArgumentsMixin:
             string or a dictionary.
         eval_limit (Optional[int]): The maximum number of samples to use from the evaluation dataset. Defaults to None.
         eval_generation_config (Optional[Union[str, dict]]): Model inference configuration for evaluation, provided as
-            a JSON string or a dictionary. Defaults to `{'max_tokens': 512}`.
+            a JSON string or a dictionary, e.g., `{'max_tokens': 512}`. Defaults to None.
         extra_eval_args (Optional[Union[str, dict]]): Extra arguments for evaluation, provided as a JSON string or a
             dictionary.
         use_flash_ckpt (bool): Whether to enable DLRover Flash Checkpoint. When enabled, weights are first saved to

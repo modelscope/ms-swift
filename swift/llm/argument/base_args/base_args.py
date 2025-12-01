@@ -75,7 +75,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             Default is None.
         load_args (bool): Whether to load `args.json` from a checkpoint when using `--resume_from_checkpoint`,
             `--model`, or `--adapters`. Defaults to True for inference/export and False for training. Usually,
-            this does not need to be modified. Default is False.
+            this does not need to be modified. Default is True.
         load_data_args (bool): If True, will also load data-related arguments from `args.json`. This is useful
             for running inference on the same validation split used during training. Default is False.
         packing (bool): Whether to enable packing of datasets. Default is False.

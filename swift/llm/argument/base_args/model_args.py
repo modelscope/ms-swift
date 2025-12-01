@@ -37,8 +37,8 @@ class ModelArguments:
             'flash_attention_2', 'flash_attention_3', etc. Defaults to None, which means it will be read from
             'config.json'. Note: Support for these implementations depends on the model's transformers implementation.
             If set to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
-        new_special_tokens (Optional[List[str]]): Additional special tokens to be added to the tokenizer. Can also be
-            a path to a `.txt` file, where each line is a special token. Defaults to an empty list `[]`.
+        new_special_tokens (List[str]): Additional special tokens to be added to the tokenizer. Can also be a path to
+            a `.txt` file, where each line is a special token. Defaults to an empty list `[]`.
         num_labels (Optional[int]): The number of labels for classification tasks (when `--task_type` is 'seq_cls').
             Required for such tasks. Defaults to None.
         problem_type (Optional[str]): The problem type for classification tasks (`--task_type` 'seq_cls'). Options are

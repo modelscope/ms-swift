@@ -20,7 +20,7 @@ class TemplateArguments:
         template (Optional[str]): The dialogue template type. Defaults to None, which automatically selects the
             template corresponding to the model type. Refer to the list of supported models for mappings.
         system (Optional[str]): Custom system prompt. Can be a string or a path to a .txt file. Defaults to None,
-            which uses the default system from the registeredtemplate.
+            which uses the default system from the registered template.
             Note: The priority for the system prompt is as follows:
             1. System prompt from the dataset.
             2. The `--system` command-line argument.
@@ -59,9 +59,9 @@ class TemplateArguments:
             CPT/SFT/DPO/GRPO/KTO/GKD.
             Note: This requires `--attn_impl flash_attn` and `transformers>=4.44`. Compared to packing, padding_free
             has no preprocessing overhead, but packing offers faster training speeds and more stable memory usage.
-        padding_side (Literal['left', 'right']): The side to pad on when `batch_size >= 2` during training. Options
-            are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always on the
-            left.
+        padding_side (Literal['left', 'right', None]): The side to pad on when `batch_size >= 2` during training.
+            Options are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always
+            on the left.
             Note: Defaults to 'left' for PPO and GKD.
         loss_scale (str): Specifies the weight for loss calculation on tokens. Defaults to 'default'.
             - 'default': Calculates loss on all assistant responses (including history), but excludes system prompts,
