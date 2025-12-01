@@ -1,3 +1,4 @@
+# 8 * 80GiB 4s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 OMP_NUM_THREADS=14 \
 NPROC_PER_NODE=8 \
@@ -17,7 +18,7 @@ megatron sft \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-6 \
-    --micro_batch_size 4 \
+    --micro_batch_size 2 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
