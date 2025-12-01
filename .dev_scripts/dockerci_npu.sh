@@ -34,7 +34,7 @@ do
   export MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN
   export PR_CHANGED_FILES=$PR_CHANGED_FILES
   export CUDA_VISIBLE_DEVICES=$gpu
-  
+
   if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     export MODELSCOPE_SDK_DEBUG=True
     echo 'debugging'
@@ -43,7 +43,7 @@ do
   # 切换到代码目录并执行命令
   cd $CODE_DIR
   eval $CI_COMMAND
-  
+
   if [ $? -ne 0 ]; then
     echo "Running test case failed, please check the log!"
     exit -1
