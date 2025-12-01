@@ -270,7 +270,7 @@ megatron sft \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 4 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -297,9 +297,6 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --moe_expert_capacity_factor 2 \
-    --optimizer_cpu_offload true \
-    --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.25 \
     --attention_backend flash
 ```
 
