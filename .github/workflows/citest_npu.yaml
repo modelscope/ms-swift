@@ -54,8 +54,6 @@ jobs:
             else
                 echo "PR_CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | xargs)" >> $GITHUB_ENV
             fi
-      - name: Checkout LFS objects
-        run: git lfs checkout
       - name: Run unittest
         shell: bash
         run: |
