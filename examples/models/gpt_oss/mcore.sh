@@ -39,6 +39,12 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash \
+    --padding_free false \
+    --attention_backend unfused \
     --model_author swift \
     --model_name swift-robot
+
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#     --model megatron_output/gpt-oss-20b/vx-xxx/checkpoint-xxx \
+#     --stream true
