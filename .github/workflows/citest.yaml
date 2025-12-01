@@ -51,14 +51,8 @@ jobs:
           set -e
           source ~/.bashrc
           sudo chown -R $USER:$USER  $ACTION_RUNNER_DIR
-
-      - name: Clean
-        shell: bash
-        run: |
-          cd $ACTION_RUNNER_DIR/..
-          sudo rm -rf ms-swift
-          makedir ms-swift
-          sudo chown -R $USER:$USER ms-swift
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "Current directory: $(pwd)"
 
       - name: Checkout
         uses: actions/checkout@v3
