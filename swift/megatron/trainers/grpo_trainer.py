@@ -741,6 +741,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step 4: Store finish reason (used for truncation filters etc.)
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
+            input_data['add_eos'] = False
 
             # Step 5: Store rollout logprobs for importance sampling correction
             if output.rollout_logprobs:
