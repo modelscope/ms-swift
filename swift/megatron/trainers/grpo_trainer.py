@@ -101,6 +101,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
+        # Rollout Importance Sampling Correction
+        self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
+        self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
         self.steps_per_generation = args.steps_per_generation
@@ -119,7 +123,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True)
+            return_details=True,
+            logprobs=True)  # Enable logprobs for rollout importance sampling
 
         self._step = 0
         self._last_loaded_step = -1
@@ -538,6 +543,57 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'seq_lengths': lengths_tensor,
             })
 
+            # Process rollout_logprobs for importance sampling correction
+            rollout_per_token_logps = None
+            rollout_logprobs_list = [data.get('rollout_logprobs') for data in rollout_batch]
+            if all(lp is not None and lp for lp in rollout_logprobs_list):
+                # Validate that logprobs count matches completion tokens count
+                valid_logprobs = True
+                for i, nested_lp in enumerate(rollout_logprobs_list):
+                    total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
+                    # In padding_free mode, completion tokens are per-sample
+                    seq_len = lengths_tensor[i].item()
+                    # Get completion mask for this sample
+                    offset = sum(lengths_tensor[:i].tolist()) if i > 0 else 0
+                    completion_count = int(completion_mask[0, offset:offset + seq_len].sum().item())
+
+                    if total_logprobs != completion_count:
+                        logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
+                                       f'completion tokens count ({completion_count}). '
+                                       f'Skipping rollout importance sampling for this batch.')
+                        valid_logprobs = False
+                        break
+
+                if valid_logprobs:
+                    # In padding_free mode, align rollout_logprobs with completion_mask
+                    total_len = int(lengths_tensor.sum().item())
+                    rollout_logprobs_aligned = torch.zeros(total_len, dtype=torch.float32, device=self.device)
+
+                    offset = 0
+                    for i, nested_lp in enumerate(rollout_logprobs_list):
+                        seq_len = lengths_tensor[i].item()
+                        seq_mask = completion_mask[0, offset:offset + seq_len]
+
+                        # Flatten logprobs for this sample
+                        flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                        if flat_lps:
+                            # Get indices where completion_mask is True
+                            completion_indices = seq_mask.nonzero(as_tuple=True)[0] + offset
+                            # Scatter logprobs to completion positions
+                            rollout_logprobs_aligned[completion_indices] = torch.tensor(
+                                flat_lps, dtype=torch.float32, device=self.device)
+                        offset += seq_len
+
+                    # Pad to match labels length
+                    if rollout_logprobs_aligned.shape[0] < labels.shape[1]:
+                        pad_len = labels.shape[1] - rollout_logprobs_aligned.shape[0]
+                        rollout_logprobs_aligned = torch.cat(
+                            [rollout_logprobs_aligned,
+                             torch.zeros(pad_len, dtype=torch.float32, device=self.device)])
+                    rollout_per_token_logps = rollout_logprobs_aligned.unsqueeze(0)
+
+            encoded_batch['rollout_per_token_logps'] = rollout_per_token_logps
+
             return encoded_batch
 
         # Step2: ref/old logps
@@ -685,6 +741,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step 4: Store finish reason (used for truncation filters etc.)
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
+
+            # Step 5: Store rollout logprobs for importance sampling correction
+            if output.rollout_logprobs:
+                input_data['rollout_logprobs'] = output.rollout_logprobs
 
             return input_data
 
@@ -952,7 +1012,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: entropy
         inputs = {
             k: v
-            for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask', 'seq_lengths']
+            for k, v in batch.items()
+            if k not in ['completion_mask', 'advantages', 'truncated_mask', 'seq_lengths', 'rollout_per_token_logps']
         }
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
@@ -1028,7 +1089,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             k: v
             for k, v in data.items() if k not in [
                 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask',
-                'seq_lengths'
+                'seq_lengths', 'rollout_per_token_logps'
             ]
         }
 
@@ -1171,6 +1232,30 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
+        # Rollout importance sampling correction
+        rollout_correction_metrics = {}
+        rollout_per_token_logps = data.get('rollout_per_token_logps')
+        if rollout_per_token_logps is not None:
+            rollout_per_token_logps = _pad_or_trim_last_dim(rollout_per_token_logps, target_token_count)
+            # Compute off-policy diagnostic metrics
+            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
+                                                                                 rollout_per_token_logps,
+                                                                                 completion_mask, lengths_with_padding)
+
+            # Apply importance sampling correction if mode is enabled
+            if self.rollout_importance_sampling_mode is not None:
+                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask,
+                                                                             lengths_with_padding)
+
+                # Compute IS-specific metrics
+                is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask,
+                                                                 lengths_with_padding)
+                rollout_correction_metrics.update(is_metrics)
+
+                # Apply IS weights to loss
+                per_token_loss = per_token_loss * rollout_is_weights
+
         if self.loss_type in ['grpo', 'sapo']:
             loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
             mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
@@ -1266,6 +1351,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
             custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
             custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
+
+        # Add rollout correction metrics
+        if rollout_correction_metrics:
+            for key, value in rollout_correction_metrics.items():
+                if isinstance(value, torch.Tensor):
+                    custom_metrics[f'rollout_correction/{key}'] = value.clone().detach()
+                else:
+                    custom_metrics[f'rollout_correction/{key}'] = torch.tensor(value, device=loss.device)
+
         if self._metrics[mode]:
             addition_metrics = {
                 key: torch.tensor(sum(val) / len(val), device=loss.device)
@@ -1555,3 +1649,230 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
         return batch
+
+    def _compute_sequence_level_ratios(self, is_ratio: torch.Tensor, completion_mask: torch.Tensor,
+                                       lengths_with_padding: torch.Tensor) -> torch.Tensor:
+        """
+        Helper function to compute sequence-level importance sampling ratios.
+
+        Args:
+            is_ratio: Token-level IS ratios, shape [1, T]
+            completion_mask: Boolean mask for completion tokens, shape [1, T]
+            lengths_with_padding: Sequence lengths for splitting
+
+        Returns:
+            Sequence-level ratios as geometric mean of token-level ratios
+        """
+        log_ratio = torch.log(is_ratio.clamp(min=1e-10))
+        log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
+        mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
+
+        seq_log_ratios = torch.stack([(lr * m).sum() / m.sum().clamp(min=1.0)
+                                      for lr, m in zip(log_ratio_list, mask_list)])
+        seq_ratios = torch.exp(seq_log_ratios)
+        return seq_ratios
+
+    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor, completion_mask: torch.Tensor,
+                                           lengths_with_padding: torch.Tensor) -> torch.Tensor:
+        """
+        Apply rollout importance sampling correction using one of four modes.
+
+        Args:
+            rollout_log_ratio: log(π_θ / π_rollout) per token, shape [1, T]
+            completion_mask: Boolean mask for completion tokens, shape [1, T]
+            lengths_with_padding: Sequence lengths for splitting
+
+        Returns:
+            IS weights to multiply with loss, same shape as rollout_log_ratio
+        """
+        mode = self.rollout_importance_sampling_mode
+        threshold = self.rollout_importance_sampling_threshold
+
+        # Clamp log_ratio to prevent numerical overflow from padding values
+        SAFETY_BOUND = 20.0
+        rollout_log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+
+        # Compute importance sampling ratios: exp(log_ratio)
+        is_ratio = torch.exp(rollout_log_ratio_safe)
+
+        if mode == 'token_truncate':
+            # Token-level truncated IS: clip ratios from above at threshold
+            is_weights = torch.clamp(is_ratio, max=threshold)
+
+        elif mode == 'token_mask':
+            # Token-level masked IS: mask out tokens with ratio > threshold
+            is_weights = torch.where(is_ratio <= threshold, is_ratio, torch.zeros_like(is_ratio))
+
+        elif mode == 'sequence_truncate':
+            # Sequence-level truncated IS: compute sequence-level ratio and clip
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask, lengths_with_padding)
+            clipped_seq_ratios = torch.clamp(seq_ratios, max=threshold)
+
+            # Expand back to token-level
+            is_weights = torch.repeat_interleave(clipped_seq_ratios, lengths_with_padding, dim=0).unsqueeze(0)
+
+        elif mode == 'sequence_mask':
+            # Sequence-level masked IS: mask entire sequences with ratio > threshold
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask, lengths_with_padding)
+            seq_mask = (seq_ratios <= threshold).float()
+
+            # Expand mask to token-level and apply to original token-level ratios
+            seq_mask_expanded = torch.repeat_interleave(seq_mask, lengths_with_padding, dim=0).unsqueeze(0)
+            is_weights = is_ratio * seq_mask_expanded
+        else:
+            return is_ratio
+
+        return is_weights
+
+    def _compute_rollout_offpolicy_metrics(
+        self,
+        per_token_logps: torch.Tensor,
+        rollout_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+        lengths_with_padding: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute off-policy diagnostic metrics (always computed for monitoring).
+
+        These metrics help diagnose the off-policy gap between rollout and training policies.
+
+        Args:
+            per_token_logps: Log probs from training policy model, shape [1, T]
+            rollout_per_token_logps: Log probs from rollout policy, shape [1, T]
+            completion_mask: Boolean mask for completion tokens, shape [1, T]
+            lengths_with_padding: Sequence lengths for splitting
+
+        Returns:
+            Dictionary with off-policy diagnostic metrics
+        """
+        SAFETY_BOUND = 20.0
+        metrics = {}
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+
+        # Helper function for masked mean
+        def masked_mean(x, mask, axis=None):
+            if axis is None:
+                return (x * mask).sum() / mask.sum().clamp(min=1.0)
+            else:
+                return (x * mask).sum(axis) / mask.sum(axis).clamp(min=1.0)
+
+        # 1. Training policy perplexity
+        log_ratio_list = torch.split(per_token_logps.squeeze(0), lengths_with_padding.tolist())
+        mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
+        mean_log_prob_training = torch.stack([(lp * m).sum() / m.sum().clamp(min=1.0)
+                                              for lp, m in zip(log_ratio_list, mask_list)])
+        training_ppl = torch.exp(-mean_log_prob_training).mean()
+        gathered_training_ppl = gather(training_ppl.unsqueeze(0), group=dp_group)
+        metrics['training_ppl'] = gathered_training_ppl.nanmean()
+        metrics['training_log_ppl'] = gather((-mean_log_prob_training).mean().unsqueeze(0), group=dp_group).nanmean()
+
+        # 2. Compute rollout off-policy metrics
+        log_ratio = per_token_logps - rollout_per_token_logps
+        log_ratio = log_ratio * completion_mask
+
+        # 2a. kl: Direct estimator for KL(π_training || π_rollout)
+        kl = masked_mean(log_ratio, completion_mask)
+        metrics['kl'] = gather(kl.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2b. k3_kl: K3 estimator for KL
+        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        k3_kl = masked_mean(k3_kl_matrix, completion_mask)
+        metrics['k3_kl'] = gather(k3_kl.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2c. Rollout policy perplexity
+        rollout_log_ratio_list = torch.split(rollout_per_token_logps.squeeze(0), lengths_with_padding.tolist())
+        mean_log_prob_rollout = torch.stack([(lp * m).sum() / m.sum().clamp(min=1.0)
+                                             for lp, m in zip(rollout_log_ratio_list, mask_list)])
+        rollout_ppl = torch.exp(-mean_log_prob_rollout).mean()
+        metrics['rollout_ppl'] = gather(rollout_ppl.unsqueeze(0), group=dp_group).nanmean()
+        metrics['rollout_log_ppl'] = gather((-mean_log_prob_rollout).mean().unsqueeze(0), group=dp_group).nanmean()
+
+        # 2d. Log PPL difference
+        log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        metrics['log_ppl_diff'] = gather(log_ppl_diff.mean().unsqueeze(0), group=dp_group).nanmean()
+        metrics['log_ppl_abs_diff'] = gather(log_ppl_diff.abs().mean().unsqueeze(0), group=dp_group).nanmean()
+        metrics['log_ppl_diff_max'] = gather(log_ppl_diff.max().unsqueeze(0), group=dp_group).max()
+        metrics['log_ppl_diff_min'] = gather(log_ppl_diff.min().unsqueeze(0), group=dp_group).min()
+
+        # 2e. PPL ratio
+        ppl_ratio = torch.exp(log_ppl_diff).mean()
+        metrics['ppl_ratio'] = gather(ppl_ratio.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2f. Chi-squared divergence
+        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_token = torch.exp(log_ratio_safe)
+        rho_squared_token = rho_token.square()
+        chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
+        metrics['chi2_token'] = gather(chi2_token.unsqueeze(0), group=dp_group).nanmean()
+
+        # Sequence-level chi2
+        log_ratio_seq_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
+        log_ratio_mean = torch.stack([(lr * m).sum() / m.sum().clamp(min=1.0)
+                                      for lr, m in zip(log_ratio_seq_list, mask_list)])
+        log_ratio_mean_safe = torch.clamp(log_ratio_mean, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_geo = torch.exp(log_ratio_mean_safe)
+        chi2_seq = (rho_geo.square().mean() - 1.0)
+        metrics['chi2_seq'] = gather(chi2_seq.unsqueeze(0), group=dp_group).nanmean()
+
+        return metrics
+
+    def _compute_is_correction_metrics(
+        self,
+        rollout_log_ratio: torch.Tensor,
+        is_weights: torch.Tensor,
+        completion_mask: torch.Tensor,
+        lengths_with_padding: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute importance sampling correction metrics (ess, clipped_frac, is_weight_mean).
+        Only called when rollout_importance_sampling_mode is enabled.
+
+        Args:
+            rollout_log_ratio: Log ratio log(π_policy / π_rollout), shape [1, T]
+            is_weights: Importance sampling weights after correction, shape [1, T]
+            completion_mask: Boolean mask for completion tokens, shape [1, T]
+            lengths_with_padding: Sequence lengths for splitting
+
+        Returns:
+            Dictionary with IS-specific metrics
+        """
+        metrics = {}
+        SAFETY_BOUND = 20.0
+        threshold = self.rollout_importance_sampling_threshold
+        threshold_lower = 1.0 / threshold
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+
+        # Helper function for masked mean
+        def masked_mean(x, mask):
+            return (x * mask).sum() / mask.sum().clamp(min=1.0)
+
+        # Compute IS ratio with safety bounds
+        log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        is_ratio = torch.exp(log_ratio_safe)
+
+        # 1. IS weight statistics
+        mean_is_weight = masked_mean(is_weights, completion_mask)
+        metrics['is_weight_mean'] = gather(mean_is_weight.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2. Compute Effective Sample Size (ESS) for IS weights
+        weights_for_ess = is_weights.clamp(min=threshold_lower, max=threshold)
+        mean_for_ess = masked_mean(weights_for_ess, completion_mask)
+        is_weights_normalized = weights_for_ess / (mean_for_ess + 1e-8)
+        ess = 1.0 / masked_mean(is_weights_normalized.square(), completion_mask).clamp(min=1e-10)
+        metrics['ess'] = gather(ess.unsqueeze(0), group=dp_group).nanmean()
+
+        # 3. Fraction of clipped/masked samples
+        if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
+            # Token-level
+            if self.rollout_importance_sampling_mode == 'token_truncate':
+                clipped_frac = masked_mean((is_ratio > threshold).float(), completion_mask)
+            else:  # token_mask
+                clipped_frac = masked_mean((is_weights == 0).float(), completion_mask)
+            metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
+        else:
+            # Sequence-level (both truncate and mask)
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask, lengths_with_padding)
+            clipped_frac = (seq_ratios > threshold).float().mean()
+            metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
+
+        return metrics

@@ -101,6 +101,10 @@ class RLHFMegatronArgumentsMixin:
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
 
+    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+                                                       'sequence_mask']] = None
+    rollout_importance_sampling_threshold: float = 2.0
+
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
