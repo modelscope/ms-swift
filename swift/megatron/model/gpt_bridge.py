@@ -755,7 +755,8 @@ class GPTBridge:
                                 gate_up_proj_bias = gate_up_proj_bias[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
                             if args.model_type == 'gpt_oss':
-                                gate_proj_weight, up_proj_weight = gate_up_proj_weight[..., ::2, :], gate_up_proj_weight[..., 1::2, :]
+                                gate_proj_weight = gate_up_proj_weight[..., ::2, :]
+                                up_proj_weight = gate_up_proj_weight[..., 1::2, :]
                                 gate_proj_bias, up_proj_bias = gate_up_proj_bias[..., ::2], gate_up_proj_bias[..., 1::2]
                                 gate_up_proj_weight = torch.concat([gate_proj_weight, up_proj_weight], dim=-2)
                                 gate_up_proj_bias = torch.concat([gate_proj_bias, up_proj_bias], dim=-1)
