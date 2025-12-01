@@ -189,7 +189,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             load_format='dummy',
             template=vllm_template,
             distributed_executor_backend='external_launcher',
-        )
+            logprobs_mode='processed_logprobs')
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         self._buffered_inputs = None
@@ -745,7 +745,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step 5: Store rollout logprobs for importance sampling correction
             if output.rollout_logprobs:
                 input_data['rollout_logprobs'] = output.rollout_logprobs
-
+            elif choice.logprobs is not None:
+                if 'content' in choice.logprobs:
+                    rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['rollout_logprobs'] = [rollout_logprobs]
             return input_data
 
         assert len(batch) == len(outputs)
