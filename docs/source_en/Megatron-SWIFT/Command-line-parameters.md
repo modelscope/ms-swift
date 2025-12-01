@@ -173,6 +173,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - group_query_attention: Default is None. If `num_query_groups > 1`, group_query_attention is set to True, otherwise False.
 - num_query_groups: Default is 1.
 - softmax_type: The softmax type used for attention mechanism. Supports both fixed offset and learnable offset approaches. Options are 'vanilla', 'off-by-one', and 'learnable', default is 'vanilla'.
+- window_size: The window size for window attention, e.g. `'128,0'`. If not provided, window attention is disabled. Defaults to `None`.
+- window_attn_skip_freq: The frequency for skipping window attention layers. Defaults to `None`.
 - max_position_embeddings: Maximum length of positional embeddings, default is None.
 - position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'mrope', 'relative', and 'none'. Default is 'rope'.
 - rotary_base: Default is 10000.
