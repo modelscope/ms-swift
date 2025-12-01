@@ -55,6 +55,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v3
+        env:
+          GIT_CONFIG_PARAMETERS: "'core.hooksPath='"
         with:
             lfs: 'true'
             submodules: 'false'
