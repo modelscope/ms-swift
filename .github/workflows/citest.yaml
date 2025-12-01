@@ -55,8 +55,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v3
-        env:
-          GIT_LFS_SKIP_SMUDGE: 1
         with:
             lfs: 'true'
             submodules: 'false'
