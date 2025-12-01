@@ -1546,7 +1546,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # can_use_super only when not padding_free and not using SP
         can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy
-                         and not use_sp)
+                         and not is_padding_free and not use_sp)
 
         if can_use_super:
             # Path 1: Use super() method (non-padding_free, non-SP)
