@@ -14,6 +14,18 @@ rlhf_support_vllm_types = ['grpo', 'gkd']
 
 @dataclass
 class RewardModelArguments:
+    """Arguments pertaining to the reward model.
+
+    Args:
+        reward_model (Optional[List[str]]): The model ID or a local path to the reward model. Same as the `model`
+            argument. Defaults to None.
+        reward_adapters (List[str]): The path(s) to LoRA adapter weights to be loaded for the reward model. Useful for
+            using LoRA weights from SFT as the reward model. Defaults to an empty list (`[]`).
+        reward_model_type (Optional[List[str]]): The model type of the reward model. Same as the `model_type` argument.
+            If not specified, it's often inferred. Defaults to None.
+        reward_model_revision (Optional[List[str]]): The specific model version to use for the reward model. Same as
+            the `model_revision` argument. Defaults to None.
+    """
     reward_model: Optional[List[str]] = None
     reward_adapters: List[str] = field(default_factory=list)
     reward_model_type: Optional[List[str]] = field(
@@ -23,6 +35,22 @@ class RewardModelArguments:
 
 @dataclass
 class TeacherModelArguments:
+    """Arguments for configuring the teacher model.
+
+    Args:
+        teacher_model (Optional[str]): The model ID or a local path to the teacher model. This is required when
+            `rlhf_type` is 'gkd'. Analogous to the main `model` argument. Defaults to None.
+        teacher_adapters (List[str]): A list of paths to LoRA weights. These weights, often produced by SFT, are loaded
+            to form the teacher model. Defaults to an empty list (`[]`).
+        teacher_model_type (Optional[str]): The model type of the teacher model. If not specified, it's often inferred.
+            Analogous to the main `model_type` argument. Defaults to None.
+        teacher_model_revision (Optional[str]): The specific model version of the teacher model to use. Analogous to
+            the main `model_revision` argument. Defaults to None.
+        teacher_deepspeed (Optional[str]): The teacher model's deepspeed configuration. This can be a JSON file path or
+            one of the following values: 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'. If not
+            provided, it defaults to using the same DeepSpeed configuration as the main training model. Analogous to
+            the main `deepspeed` argument.
+    """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = field(
@@ -39,6 +67,24 @@ class TeacherModelArguments:
 
 @dataclass
 class PPOArguments:
+    """Arguments for configuring the PPO training.
+
+    Args:
+        num_ppo_epochs (int): Number of epochs to train. Defaults to 4.
+        whiten_rewards (bool): Whether to whiten the rewards. Defaults to False.
+        kl_coef (float): KL coefficient. Defaults to 0.05.
+        cliprange (float): Clip range. Defaults to 0.2.
+        vf_coef (float): Value function coefficient. Defaults to 0.1.
+        cliprange_value (float): Clip range for the value function. Defaults to 0.2.
+        gamma (float): Discount factor. Defaults to 1.0.
+        lam (float): Lambda value for GAE. Defaults to 0.95.
+        num_mini_batches (int): Defaults to 1.
+        local_rollout_forward_batch_size (int): Defaults to 64.
+        num_sample_generations (int): Number of generations. Defaults to 10.
+        response_length (Optional[int]): (Deprecated) Compatibility parameter. Use `max_completion_length` instead.
+            Defaults to None.
+        missing_eos_penalty (Optional[float]): Defaults to None.
+    """
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False
     kl_coef: float = 0.05
@@ -57,6 +103,35 @@ class PPOArguments:
 
 @dataclass
 class GRPOArguments(GRPOArgumentsMixin):
+    """A dataclass for configuring GRPO training.
+
+    These arguments control the hyperparameters specific to the GRPO algorithm.
+
+    Args:
+        num_generations  (int): The number of completions to generate for each prompt. This corresponds to the G value
+            in the GRPO paper. The total generation batch size (e.g., `generation_batch_size` or `steps_per_generation
+            * per_device_batch_size * num_processes`) must be divisible by this number. Defaults to 8.
+        reward_funcs (List[str]): A list of reward function names to use for the GRPO algorithm. Available built-in
+            options include 'accuracy', 'format', 'cosine', 'repetition', and 'soft_overlong'
+            (see swift/plugin/orm.py). Custom reward functions can also be defined. Defaults to an empty list.
+        reward_weights (List[float]): A list of weights for each reward source. The length must match the total number
+            of reward functions (from `reward_funcs`) plus any external reward models. If `None`, all rewards are
+            weighted equally with a value of 1.0. Note: If an external `--reward_model` is used, it is treated as the
+            last reward source in the sequence. Defaults to None.
+        log_completions (bool): Whether to log the model's generated completions during training. This is designed to
+            be used with an experiment tracker like WandB or SwanLab (`--report_to wandb`/`swanlab`). If enabled
+            without a tracker, completions are saved to `completions.jsonl` in the checkpoint directory. Defaults to
+            False.
+        num_iterations (int): The number of update steps to perform for each data sample. This corresponds to the K
+            value in the GRPO paper. Defaults to 1.
+        truncation_strategy (Literal['delete', 'left', 'right', 'split', None]): The strategy for handling input
+            sequences that exceed `max_length`. Supported options: 'delete' to discard the sample, 'left' to truncate
+            from the beginning, 'right' to truncate from the end. Defaults to None, and then sets to 'left' in the
+            `_init_grpo` function.
+            Note that for multimodal models, left pruning may prune multimodal tokens, causing shape mismatch errors
+            in the forward feed. Using the `delete` method will resample other data from the original dataset to
+            supplement excessively long data and examples with encoding failures.
+    """
     num_generations: int = 8  # G in the GRPO paper
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
@@ -71,22 +146,57 @@ class GRPOArguments(GRPOArgumentsMixin):
 @dataclass
 class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, RLHFArgumentsMixin,
                     TrainArguments):
-    """
-    RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
-        Learning with Human Feedback (RLHF) training backend.
+    """A dataclass holding arguments for Reinforcement Learning from Human Feedback.
 
     Args:
-        rlhf_type (Literal): Specifies the type of RLHF to use. Default is 'dpo'.
-            Allowed values are 'dpo', 'orpo', 'simpo', 'kto', 'cpo'.
-        ref_model_type (Optional[str]): Type of reference model. Default is None.
-        ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
-        beta (Optional[float]): Beta parameter for RLHF. Default is None.
-        label_smoothing (float): Label smoothing value. Default is 0.
-        rpo_alpha (Optional[float]): Alpha parameter for RPO. Default is None.
-        cpo_alpha (float): Alpha parameter for CPO. Default is 1.
-        simpo_gamma (float): Gamma parameter for SimPO. Default is 1.
-        desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
-        undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
+        rlhf_type (str): The type of human alignment algorithm to use. Supports 'dpo', 'orpo', 'simpo', 'kto', 'cpo',
+            'rm', 'ppo', 'grpo', and 'gkd'. Defaults to 'dpo'.
+        ref_model (Optional[str]): The model path for the reference model. Required when using 'dpo', 'kto', 'ppo',
+            or 'grpo' with full-parameter training. Defaults to None, which will set it to the value of the `--model`
+            argument.
+        ref_adapters (List[str]): LoRA adapters for the reference model. If you are using LoRA weights from SFT for
+            DPO/KTO/GRPO, set both `--adapters` and `--ref_adapters` to the SFT checkpoint path. When resuming from an
+            RLHF checkpoint, set `--resume_from_checkpoint` to the RLHF checkpoint and `--ref_adapters` to the SFT
+            checkpoint. Defaults to an empty list.
+        ref_model_type (Optional[str]): The model type of the reference model. Same as `model_type`. Defaults to None.
+        ref_model_revision (Optional[str]): The model revision of the reference model. Same as `model_revision`.
+            Defaults to None.
+        beta (Optional[float]): The beta parameter for RLHF, controlling the deviation from the reference model.
+            A higher value implies less deviation. If None, uses algorithm-specific defaults: 2.0 for 'simpo', 0.04
+            for 'grpo', 0.5 for 'gkd', and 0.1 for others. Defaults to None.
+        label_smoothing (float): The label smoothing value for DPO. A value of 0 disables it. Defaults to 0.
+        max_completion_length (int): The maximum generation length for GRPO/PPO/GKD algorithms. Defaults to 512.
+        loss_scale (Optional[str]): Overrides the template parameter. During RLHF training, this defaults to
+            'last_round'.
+        rpo_alpha (Optional[float]): The alpha parameter from the RPO paper, controlling the weight of the SFT loss
+            (NLL term). The loss is calculated as `dpo_loss + rpo_alpha * sft_loss`. If None, the SFT loss is not
+            included. Note: The default was 1.0 in `ms-swift<3.8` and changed to None in `ms-swift>=3.8`. Defaults to
+            None.
+        ld_alpha (Optional[float]): The alpha parameter from the LD-DPO paper, which weights the log probabilities of
+            the sequence part beyond the common prefix to mitigate length preference. Defaults to None.
+        discopop_tau (float): The temperature parameter from the DiscoPOP paper, used to scale the log-ratio. Effective
+            when `loss_type` is 'discopop'. Defaults to 0.05.
+        loss_type (Optional[List[str]]): The type of loss function. Defaults to algorithm-specific values (e.g.,
+            'sigmoid' for DPO). Multiple values can be passed for mixed training (MPO), which requires `loss_weights`
+            to be set.
+        loss_weights (Optional[List[float]]): When multiple `loss_type` values are set for DPO, this specifies the
+            weights for each loss term. Defaults to None.
+        cpo_alpha (float): The coefficient for the NLL loss in the CPO/SimPO loss function. Defaults to 1.0.
+        simpo_gamma (float): The reward margin term in the SimPO algorithm. The paper suggests a value between 0.5 and
+            1.5. Defaults to 1.0.
+        desirable_weight (float): In KTO, the weight applied to the desirable loss to counteract data imbalance.
+            Defaults to 1.0.
+        undesirable_weight (float): In KTO, the weight applied to the undesirable loss to counteract data imbalance.
+            Defaults to 1.0.
+        temperature (float): The temperature for sampling, used in PPO, GRPO, and GKD algorithms. Defaults to 0.9.
+        center_rewards_coefficient (Optional[float]): Used for Reward Model (RM) training. A coefficient to encourage
+            the reward model to output rewards with a mean of zero. A value of 0.01 is recommended. Defaults to None.
+        lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
+        seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
+        offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
+            training. Defaults to False.
+        max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
+            Defaults to None.
     """
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd'] = 'dpo'
     ref_model: Optional[str] = None
