@@ -61,5 +61,7 @@ jobs:
           export IMAGE_NAME=ascendai/cann
           export IMAGE_VERSION=8.3.rc2-910b-ubuntu22.04-py3.11
           export TEST_LEVEL=0
+          mkdir ~/.cache
+          export MODELSCOPE_CACHE=~/.cache
           export CI_COMMAND='bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --subprocess --run_config tests/run_config.yaml'
           bash .dev_scripts/dockerci.sh
