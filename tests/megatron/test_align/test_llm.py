@@ -97,6 +97,10 @@ def test_moonlight():
     _test_model('moonshotai/Moonlight-16B-A3B-Instruct')
 
 
+def test_gpt_oss():
+    _test_model('openai-mirror/gpt-oss-20b')
+
+
 def test_deepseek_v2():
     # _test_model('deepseek-ai/DeepSeek-V2-Lite')
     _test_model('deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
@@ -153,6 +157,7 @@ if __name__ == '__main__':
     # test_internlm3()
     # test_mimo()
     # test_moonlight()
+    test_gpt_oss()
     # test_deepseek_v2()
     # test_deepseek_moe()
     # test_dots()
@@ -162,4 +167,4 @@ if __name__ == '__main__':
     # test_glm4_5()
     # test_qwen3_next()
     # test_ernie_thinking()
-    test_tongyi_deepresearch()
+    # test_tongyi_deepresearch()

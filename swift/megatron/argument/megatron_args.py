@@ -363,7 +363,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     no_masked_softmax_fusion: bool = False
-    no_bias_dropout_fusion: bool = False
+    no_bias_dropout_fusion: Optional[bool] = None
     no_bias_swiglu_fusion: bool = False
     no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
@@ -446,6 +446,7 @@ class MegatronArguments(ExtraMegatronArguments):
     num_attention_heads: Optional[int] = None
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
+    softmax_type: Optional[Literal['vanilla', 'off-by-one', 'learnable']] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
     mrope_section: Optional[List[int]] = None
@@ -455,6 +456,9 @@ class MegatronArguments(ExtraMegatronArguments):
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
+    quick_geglu: Optional[bool] = None
+    activation_func_clamp_value: Optional[float] = None
+    glu_linear_offset: Optional[float] = None
     untie_embeddings_and_output_weights: Optional[bool] = None
     disable_bias_linear: Optional[bool] = None
     add_qkv_bias: Optional[bool] = None
@@ -546,8 +550,8 @@ class MegatronArguments(ExtraMegatronArguments):
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
-        if self.mlp_padding_free and self.sequence_parallel:
-            raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
+            raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
@@ -557,6 +561,8 @@ class MegatronArguments(ExtraMegatronArguments):
                 self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
+        if self.softmax_type is None:
+            self.softmax_type = 'vanilla'
         if self.norm_epsilon is None:
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
@@ -569,6 +575,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.swiglu is None:
             self.swiglu = True
+        if self.quick_geglu is None:
+            self.quick_geglu = False
+        if self.glu_linear_offset is None:
+            self.glu_linear_offset = 0.
         if self.add_qkv_bias is None:
             self.add_qkv_bias = True
         if self.disable_bias_linear is None:
@@ -587,6 +597,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
+        if self.no_bias_dropout_fusion is None:
+            self.no_bias_dropout_fusion = False
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False

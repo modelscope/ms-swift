@@ -161,6 +161,7 @@
 - num_attention_heads: transformer attention heads的个数，默认为None。
 - group_query_attention: 默认为None。若`num_query_groups>1`，group_query_attention设置为True，否则为False。
 - num_query_groups: 默认为1。
+- softmax_type: 用于注意力机制的 softmax 类型。支持固定偏移和可学习偏移两种方式。可选项为'vanilla'、'off-by-one'和'learnable'，默认为'vanilla'。
 - max_position_embeddings: 位置编码的最大长度，默认为None。
 - position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'mrope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
@@ -168,6 +169,9 @@
 - normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。
 - norm_epsilon: 默认为1e-5。
 - swiglu: 使用swiglu替代默认的gelu。默认为True。
+- quick_geglu: 使用快速 geglu 激活函数而不是默认的 gelu。默认为False。
+- activation_func_clamp_value: 限制激活函数中 linear_fc1 的输出值范围。仅在 `activation_func` 为 `quick_gelu` 时使用。默认为None。
+- glu_linear_offset: GLU 激活函数中的偏移项：`activation_func(x[0]) * (x[1] + offset)`。仅在 gated_linear_unit 为 True 时使用。默认为0.。
 - untie_embeddings_and_output_weights: 解开embedding和输出权重的绑定，默认为True。
 - disable_bias_linear: 禁用linear层的bias。默认为True。
 - add_qkv_bias: 仅在QKV的linear中增加bias，默认为True。
@@ -282,7 +286,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
 - 🔥packing: 将不同长度的数据样本打包成统一长度的样本，实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
-- packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）
+- packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
   - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`max_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
