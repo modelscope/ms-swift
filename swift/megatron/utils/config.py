@@ -27,7 +27,7 @@ config_mapping = {
     'moe_router_topk': ['num_experts_per_tok', 'moe_topk', 'moe_k'],
     'moe_router_num_groups': ['n_group'],
     'moe_router_group_topk': ['topk_group'],
-    'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
+    'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts', 'num_local_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     # deepseek
     'q_lora_rank': ['q_lora_rank'],
@@ -135,6 +135,14 @@ def convert_hf_config(config) -> Dict[str, Any]:
         n_shared_experts = res.pop('n_shared_experts')
     elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
         res['rotary_interleaved'] = True
+    elif llm_architectures == 'GptOssForCausalLM':
+        res['disable_bias_linear'] = False
+        res['no_bias_dropout_fusion'] = True
+        res['softmax_type'] = 'learnable'
+        res['swiglu'] = False
+        res['quick_geglu'] = True
+        res['activation_func_clamp_value'] = 7
+        res['glu_linear_offset'] = 1
     elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
     elif llm_architectures == 'Qwen3NextForCausalLM':
