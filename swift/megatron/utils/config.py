@@ -50,6 +50,8 @@ config_mapping = {
     'partial_rotary_factor': ['partial_rotary_factor'],
     'first_k_dense_replace': ['first_k_dense_replace', 'moe_layer_start_index'],
     'n_shared_experts': ['n_shared_experts', 'num_shared_expert', 'moe_num_shared_experts'],
+    'window_size': ['sliding_window'],
+    'layer_types': ['layer_types']
 }
 
 
@@ -93,14 +95,15 @@ def convert_hf_config(config) -> Dict[str, Any]:
     architectures = res.get('architectures')
     if isinstance(architectures, list) and architectures:
         architectures = architectures[0]
-        res['architectures'] = architectures
+    res['architectures'] = architectures
     llm_architectures = res.get('llm_architectures') or architectures
     if isinstance(llm_architectures, list) and llm_architectures:
         llm_architectures = llm_architectures[0]
-        res['llm_architectures'] = llm_architectures
+    res['llm_architectures'] = llm_architectures
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
+    layer_types = res.pop('layer_types', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
             'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
             'Qwen3VLMoeForConditionalGeneration'
@@ -143,6 +146,12 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['quick_geglu'] = True
         res['activation_func_clamp_value'] = 7
         res['glu_linear_offset'] = 1
+        res['window_size'] = f'{res["window_size"]},0'
+        if layer_types is None:
+            res['window_attn_skip_freq'] = '2'
+        else:
+            window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
+            res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
     elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
     elif llm_architectures == 'Qwen3NextForCausalLM':

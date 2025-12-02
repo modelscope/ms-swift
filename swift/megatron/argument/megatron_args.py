@@ -6,12 +6,16 @@ from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+import megatron.core
 import torch
+from megatron.core import parallel_state
+from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
 
 
@@ -447,6 +451,8 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     softmax_type: Optional[Literal['vanilla', 'off-by-one', 'learnable']] = None
+    window_size: Optional[str] = None
+    window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
     mrope_section: Optional[List[int]] = None
@@ -561,7 +567,7 @@ class MegatronArguments(ExtraMegatronArguments):
                 self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
-        if self.softmax_type is None:
+        if self.softmax_type is None and mcore_015:
             self.softmax_type = 'vanilla'
         if self.norm_epsilon is None:
             self.norm_epsilon = 1e-5
@@ -577,7 +583,7 @@ class MegatronArguments(ExtraMegatronArguments):
             self.swiglu = True
         if self.quick_geglu is None:
             self.quick_geglu = False
-        if self.glu_linear_offset is None:
+        if self.glu_linear_offset is None and mcore_015:
             self.glu_linear_offset = 0.
         if self.add_qkv_bias is None:
             self.add_qkv_bias = True
@@ -636,7 +642,6 @@ class MegatronArguments(ExtraMegatronArguments):
 
     @staticmethod
     def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        from megatron.core import parallel_state
         create_group_origin = parallel_state.create_group
 
         def create_group(ranks=None, timeout=None, *args, **kwargs):

@@ -162,6 +162,8 @@
 - group_query_attention: 默认为None。若`num_query_groups>1`，group_query_attention设置为True，否则为False。
 - num_query_groups: 默认为1。
 - softmax_type: 用于注意力机制的 softmax 类型。支持固定偏移和可学习偏移两种方式。可选项为'vanilla'、'off-by-one'和'learnable'，默认为'vanilla'。
+- window_size: 窗口注意力（window attention）的窗口大小，例如`'128,0'`。如果未提供，则禁用窗口注意力。默认为None。
+- window_attn_skip_freq: 跳过窗口注意力层的频率。默认为None。
 - max_position_embeddings: 位置编码的最大长度，默认为None。
 - position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'mrope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
