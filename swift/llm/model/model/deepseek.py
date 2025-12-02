@@ -1,6 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 import sys
 from typing import Any, Dict
+
+import json
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
@@ -143,6 +146,42 @@ register_model(
         architectures=['DeepseekV3ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
         requires=['transformers>=4.39.3'],
+    ))
+
+
+def get_model_tokenizer_deepseek_v3_2(model_dir: str,
+                                      model_info: ModelInfo,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
+    sys.path.insert(0, os.path.join(model_dir, 'inference'))
+    sys.path.insert(0, os.path.join(model_dir, 'encoding'))
+    from model import ModelArgs, Transformer
+    config_path = os.path.join(model_dir, 'inference', 'config_671B_v3.2.json')
+    with open(config_path) as f:
+        config = ModelArgs(**json.load(f))
+    kwargs['model_config'] = config
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, False, **kwargs)
+    if load_model:
+        model = Transformer(config)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v3_2,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2'),
+                Model('deepseek-ai/DeepSeek-V3.2-Speciale', 'deepseek-ai/DeepSeek-V3.2-Speciale'),
+                Model('deepseek-ai/DeepSeek-V3.2-Exp', 'deepseek-ai/DeepSeek-V3.2-Exp'),
+                Model('deepseek-ai/DeepSeek-V3.2-Exp-Base', 'deepseek-ai/DeepSeek-V3.2-Exp-Base'),
+                Model('deepseek-ai/DeepSeek-Math-V2', 'deepseek-ai/DeepSeek-Math-V2'),
+            ]),
+        ],
+        TemplateType.deepseek_v3_1,
+        get_model_tokenizer_deepseek_v3_2,
+        architectures=['DeepseekV32ForCausalLM'],
     ))
 
 
