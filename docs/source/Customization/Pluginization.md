@@ -70,7 +70,7 @@ example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin
 
 metric可以定制训练时使用的评测参数：
 ```python
-METRIC_MAPPING = {
+metric_mapping = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),
     'custom': (custom_metric, custom_preprocess),
@@ -78,7 +78,7 @@ METRIC_MAPPING = {
 
 
 def get_metric(metric: str):
-    return METRIC_MAPPING[metric]
+    return metric_mapping[metric]
 ```
 在上面的定义中，我们添加了新的custom metric，它的value有两个值，第一个值是计算metric的过程，返回一个包含metric key-value对的dict，第二个值是针对logits做前处理，返回实际的predictions。
 
