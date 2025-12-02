@@ -311,9 +311,12 @@ def get_padding_to(args):
         padding_to = args.tensor_model_parallel_size
     if args.context_parallel_size > 1:
         padding_to = (padding_to or 1) * args.context_parallel_size
+    origin_padding_to = padding_to
     fp8_format = getattr(args, 'fp8_format', None) or getattr(args, 'fp8', None)
     if args.fp8_recipe == 'blockwise':
         padding_to = (padding_to or 1) * 128
     elif fp8_format is not None:
         padding_to = max((padding_to or 1) * 8, 16)
+    if args.attention_backend == 'fused':
+        padding_to = max(padding_to, ((origin_padding_to) or 1) * 64)
     return padding_to

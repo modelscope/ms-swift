@@ -19,7 +19,6 @@ from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
-from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
 from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
@@ -27,7 +26,7 @@ from swift.llm.infer.protocol import RolloutOutput
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache,
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, nanstd,
                                                replace_assistant_response_with_ids, set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)

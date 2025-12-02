@@ -253,10 +253,12 @@ class VLLMClient:
 
     def update_adapter_flattened_param(self, peft_config, metadatas, flattened_tensor):
         """
-        Adds a LoRA adapter to the model on all servers.
+        Adds a LoRA adapter to the model on all servers using flattened tensor.
 
         Args:
-            lora_request: TensorLoRARequest object containing LoRA adapter information.
+            peft_config: PEFT configuration for LoRA adapter.
+            metadatas: List of FlattenedTensorMetadata objects.
+            flattened_tensor: The flattened tensor containing all adapter parameters.
         """
         errors = [None] * self.num_servers
         peft_config = peft_config_to_dict(peft_config)
@@ -281,6 +283,65 @@ class VLLMClient:
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
                 self.pynccl_comms[i].broadcast(flattened_tensor, src=self.pynccl_comms[i].rank)
+                self.pynccl_comms[i].group.barrier()
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_update_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors: {all_errors}')
+
+    def update_adapter_param(self, peft_config, lora_params):
+        """
+        Adds a LoRA adapter to the model on all servers without flattening.
+        Sends each tensor individually.
+
+        Args:
+            peft_config: PEFT configuration for LoRA adapter.
+            lora_params: OrderedDict of (name, tensor) pairs for LoRA parameters.
+        """
+        errors = [None] * self.num_servers
+        peft_config = peft_config_to_dict(peft_config)
+        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
+
+        # Build metadata for each tensor
+        lora_tensors_metadata = []
+        for name, param in lora_params.items():
+            metadata = {
+                'name': name,
+                'dtype': str(param.dtype),
+                'shape': tuple(param.shape),
+                'start_idx': 0,  # Not used in non-flattened mode
+                'end_idx': param.numel(),  # Not used in non-flattened mode
+                'numel': param.numel(),
+            }
+            lora_tensors_metadata.append(metadata)
+
+        def _update_single_server(i):
+            try:
+                data = {
+                    'lora_int_id': lora_int_id,
+                    'peft_config': {
+                        **peft_config
+                    },
+                    'lora_tensors_metadata': lora_tensors_metadata,
+                }
+
+                response = self.sessions[i].post(
+                    f'{self.base_urls[i]}/update_adapter_param/',
+                    json=data,
+                )
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} update adapter failed: {response.text}')
+
+                # Broadcast each tensor individually
+                for name, param in lora_params.items():
+                    self.pynccl_comms[i].broadcast(param, src=self.pynccl_comms[i].rank)
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
                 errors[i] = e

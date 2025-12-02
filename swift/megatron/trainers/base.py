@@ -1037,6 +1037,7 @@ class BaseMegatronTrainer(ABC):
             num_samples = batch.pop('num_samples')
         args = get_args()
         text_position_ids = batch.pop('text_position_ids', None)
+        batch.pop('attention_mask_2d', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
         if args.padding_free and text_position_ids is not None:
