@@ -127,8 +127,8 @@ def npu_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     unpermuted_tokens.index_copy_(0, sorted_indices, permuted_tokens)
     unpermuted_tokens = unpermuted_tokens.reshape(-1, topk, permuted_tokens.size(-1))
     unpermuted_tokens = unpermuted_tokens * probs.unsqueeze(-1)
-    unpermuted_tokens = unpermuted_tokens.sum(dim=1).to(hidden_states.dtype)
-    final_hidden_states = unpermuted_tokens
+    final_hidden_states = unpermuted_tokens.sum(dim=1).to(hidden_states.dtype)
+    final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
 
     return final_hidden_states, router_logits
 
@@ -144,4 +144,3 @@ modeling_qwen3.Qwen3MLP.forward = npu_swiglu_forward
 modeling_qwen3_moe.Qwen3MoeRMSNorm = NpuRMSNorm
 modeling_qwen3_moe.Qwen3MoeSparseMoeBlock.forward = npu_moe_block_forward
 modeling_qwen3_moe.apply_rotary_pos_emb = npu_apply_rotary_pos_emb
-modeling_qwen3_moe.Qwen3MoeMLP.forward = npu_swiglu_forward
