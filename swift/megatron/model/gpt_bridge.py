@@ -255,7 +255,7 @@ class GPTBridge:
                     return {}
                 hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
                 for k, v in hf_state_dict.items():
-                    v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
+                    v, _ = self._get_weight(v, None)
                     hf_state_dict[k] = v
             elif hf_state_dict is None:
                 return {}
