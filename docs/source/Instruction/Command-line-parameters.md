@@ -592,7 +592,6 @@ reward模型参数将在PPO、GRPO中使用。
   - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
   `total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
-
 - num_iterations: 每条数据的更新次数，[GRPO论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
