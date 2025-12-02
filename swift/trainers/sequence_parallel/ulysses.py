@@ -377,18 +377,27 @@ class SequenceParallel:
                 return output
 
             attention_mask = kwargs['attention_mask']
-            num_layers = len(router_logits)
-            sp_len = router_logits[0].shape[0]
-            if isinstance(router_logits, tuple):
-                compute_device = router_logits[0].device
-                router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
-            router_logits, _ = GatherLoss.apply(router_logits, None)
-            router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
-                                                  -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
-                                                                              -1)
-            if attention_mask is not None:
-                router_logits = router_logits[:, :attention_mask.shape[1], :]
-            output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
+            if attention_mask is None:
+                batch_size = 1
+            else:
+                batch_size = attention_mask.shape[0]
+
+            assert router_logits[0].shape[0] % batch_size == 0
+            seq_len = router_logits[0].shape[0] // batch_size
+
+            _gathered_logits = []
+            for i in range(batch_size):
+                _slice = slice(i * seq_len, (i + 1) * seq_len)
+                _bs_logits = [logit[_slice] for logit in router_logits]
+                compute_device = _bs_logits[0].device
+                _bs_logits = torch.stack([layer_gate.to(compute_device) for layer_gate in _bs_logits], dim=0)
+                _bs_logits, _ = GatherLoss.apply(_bs_logits, None, 1, self.real_position_ids)
+                _gathered_logits.append(_bs_logits)
+            router_logits = torch.stack(_gathered_logits, dim=0)
+            if self.real_position_ids is not None:
+                router_logits = router_logits[:, :, :self.real_position_ids.shape[1], :]
+            output['router_logits'] = tuple(
+                [logit.reshape(-1, logit.shape[-1]) for logit in router_logits.split(1, dim=1)])
             return output
 
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
