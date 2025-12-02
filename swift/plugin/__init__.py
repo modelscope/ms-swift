@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .callback import extra_callbacks
     from .loss import loss_mapping, get_loss_func
     from .loss_scale import loss_scale_map
-    from .metric import (InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu, metric_mapping)
+    from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu, metric_mapping
     from .optimizer import optimizers_map
     from .agent_template import agent_templates
     from .tuner import Tuner, extra_tuners, PeftTuner
