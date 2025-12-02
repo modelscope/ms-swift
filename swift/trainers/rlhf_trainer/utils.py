@@ -755,6 +755,13 @@ class UpdateFlattenedParamsRequest(BaseModel):
     metadatas: List[FlattenedTensorMetadata]
 
 
+class UpdateAdapterRequest(BaseModel):
+    """Request for non-flattened adapter weight update"""
+    lora_int_id: int
+    peft_config: LoraConfig
+    lora_tensors_metadata: List[FlattenedTensorMetadata]
+
+
 class FlattenedTensorBucket:
     """
     A bucket that flattens multiple tensors into a single tensor for efficient processing
