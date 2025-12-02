@@ -430,7 +430,8 @@ class VllmEngine(InferEngine):
 
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
-            kwargs[key] = getattr(request_config, key)
+            if hasattr(SamplingParams, key):
+                kwargs[key] = getattr(request_config, key)
 
         res = SamplingParams(**kwargs)
 
