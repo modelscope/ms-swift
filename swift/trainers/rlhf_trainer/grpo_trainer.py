@@ -4,11 +4,15 @@
 # fmt: off
 # apply patch before importing trl, which may internally reference GuidedDecodingParams
 try:
-    from vllm.sampling_params import GuidedDecodingParams
+    import vllm
+    try:
+        from vllm.sampling_params import GuidedDecodingParams
+    except ImportError:
+        import vllm.sampling_params
+        # removed in https://github.com/vllm-project/vllm/pull/22772
+        vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
 except ImportError:
-    import vllm.sampling_params
-    # removed in https://github.com/vllm-project/vllm/pull/22772
-    vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
+    pass
 # fmt: on
 
 import concurrent.futures
