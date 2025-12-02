@@ -95,11 +95,11 @@ def convert_hf_config(config) -> Dict[str, Any]:
     architectures = res.get('architectures')
     if isinstance(architectures, list) and architectures:
         architectures = architectures[0]
-        res['architectures'] = architectures
+    res['architectures'] = architectures
     llm_architectures = res.get('llm_architectures') or architectures
     if isinstance(llm_architectures, list) and llm_architectures:
         llm_architectures = llm_architectures[0]
-        res['llm_architectures'] = llm_architectures
+    res['llm_architectures'] = llm_architectures
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
