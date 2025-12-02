@@ -36,6 +36,13 @@ from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_da
                     patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 
 try:
+    from vllm.sampling_params import GuidedDecodingParams
+except ImportError:
+    import vllm.sampling_params
+    # removed in https://github.com/vllm-project/vllm/pull/22772
+    vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
+
+try:
     from trl.trainer.utils import entropy_from_logits
 except ImportError:
     from .utils import entropy_from_logits
