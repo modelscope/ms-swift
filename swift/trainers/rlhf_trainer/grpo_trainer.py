@@ -1,5 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+
+# fmt: off
+# apply patch before importing trl, which may internally reference GuidedDecodingParams
+try:
+    from vllm.sampling_params import GuidedDecodingParams
+except ImportError:
+    import vllm.sampling_params
+    # removed in https://github.com/vllm-project/vllm/pull/22772
+    vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
+# fmt: on
+
 import concurrent.futures
 import inspect
 import os
@@ -34,13 +45,6 @@ from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_profiling_context,
                     patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
-
-try:
-    from vllm.sampling_params import GuidedDecodingParams
-except ImportError:
-    import vllm.sampling_params
-    # removed in https://github.com/vllm-project/vllm/pull/22772
-    vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
 
 try:
     from trl.trainer.utils import entropy_from_logits
