@@ -745,6 +745,14 @@ class FlattenedTensorMetadata(BaseModel):
         raise ValueError('dtype must be a torch.dtype or str')
 
 
+class TensorMetadata(BaseModel):
+    """Metadata for a single tensor."""
+    name: str
+    shape: Tuple[int, ...]
+    dtype: str
+    numel: int
+
+
 class UpdateFlattenedAdapterRequest(BaseModel):
     lora_int_id: int
     peft_config: LoraConfig
@@ -753,6 +761,13 @@ class UpdateFlattenedAdapterRequest(BaseModel):
 
 class UpdateFlattenedParamsRequest(BaseModel):
     metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateAdapterRequest(BaseModel):
+    """Request for non-flattened adapter weight update"""
+    lora_int_id: int
+    peft_config: LoraConfig
+    lora_tensors_metadata: List[TensorMetadata]
 
 
 class FlattenedTensorBucket:
