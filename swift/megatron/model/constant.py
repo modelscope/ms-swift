@@ -17,6 +17,7 @@ class MLLMMegatronModelType:
     internvl_hf = 'internvl_hf'
     glm4_5v = 'glm4_5v'
     kimi_vl = 'kimi_vl'
+    llama4 = 'llama4'
 
 
 class MegatronModelType(LLMMegatronModelType, MLLMMegatronModelType):

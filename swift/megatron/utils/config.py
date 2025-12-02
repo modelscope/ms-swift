@@ -7,6 +7,7 @@ logger = get_logger()
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
     'hidden_size': ['hidden_size'],
+    'mlp_ffn_hidden_size': ['intermediate_size_mlp'],
     'ffn_hidden_size': ['intermediate_size'],
     'num_attention_heads': ['num_attention_heads'],
     'num_query_groups': ['num_key_value_heads'],
@@ -104,6 +105,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
     layer_types = res.pop('layer_types', None)
+    mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
             'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
             'Qwen3VLMoeForConditionalGeneration'
@@ -161,6 +163,15 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
             for i in range(num_layers)
         ]
+    elif llm_architectures == 'Llama4ForConditionalGeneration':
+        qk_layernorm = res.pop('qk_layernorm', False)
+        if qk_layernorm:
+            res['qk_l2_norm'] = True
+        res['moe_apply_probs_on_input'] = True
+        res['rotary_interleaved'] = True
+        res['moe_router_score_function'] = 'sigmoid'
+        res['moe_ffn_hidden_size'] = res['ffn_hidden_size']
+        res['ffn_hidden_size'] = mlp_ffn_hidden_size
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
