@@ -27,7 +27,8 @@ from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, nanstd,
-                                               replace_assistant_response_with_ids, set_expandable_segments)
+                                               pad_logps_back_to_batch, replace_assistant_response_with_ids,
+                                               set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
@@ -504,7 +505,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.dynamic_sample:
             rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
 
-        def _get_encoded_batch(rollout_batch, advantages=None):
+        def _get_encoded_batch(rollout_batch):
             template = self.template
             with self._template_context(template):
                 encoded_list = [template.encode(data, return_length=True) for data in rollout_batch]
@@ -514,44 +515,44 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     cu_seq_lens_q = encoded_batch['cu_seq_lens_q']
                 else:
                     cu_seq_lens_q = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
-                lengths_tensor = cu_seq_lens_q[1:] - cu_seq_lens_q[:-1]
+                seq_lengths = cu_seq_lens_q[1:] - cu_seq_lens_q[:-1]
+
             labels = encoded_batch['labels']
+            batch_size = len(rollout_batch)
+            max_seq_len = seq_lengths.max().item()
             assert self.template.padding_free
-            # Keep advantages as [batch_size] shape, don't expand to [total_tokens]
-            # advantages will be used with unsqueeze(1) for broadcasting in loss_func
+
             truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
                                           dtype=torch.bool,
                                           device=self.device)
-            # Keep truncated_mask as [batch_size] shape for later use
 
             # completion_mask in rmpad format [1, total_tokens]
-            completion_mask_rmpad = labels != -100
+            completion_mask_rmpad = (labels != -100).float()
+            completion_mask, _ = pad_logps_back_to_batch(
+                logps_rmpad=completion_mask_rmpad,
+                logits_to_keep=max_seq_len,
+                batch_size=batch_size,
+                seq_lengths=seq_lengths,
+                pad_value=0.0)
+            completion_mask = completion_mask.bool()
+
             encoded_batch.update({
-                'completion_mask_rmpad': completion_mask_rmpad,
+                'completion_mask': completion_mask,  # [batch_size, max_seq_len]
                 'truncated_mask': truncated_mask,  # [batch_size]
-                'num_samples': len(rollout_batch),
-                'seq_lengths': lengths_tensor,  # [batch_size]
+                'num_samples': batch_size,
+                'seq_lengths': seq_lengths,  # [batch_size]
+                'max_seq_len': max_seq_len,
             })
 
-            # Add advantages if provided
-            if advantages is not None:
-                encoded_batch['advantages'] = advantages  # [batch_size]
-
             # Process rollout_logprobs for importance sampling correction
-            # Store in rmpad format [1, total_tokens], will be converted to batch format in loss_func
-            rollout_per_token_logps_rmpad = None
+            rollout_per_token_logps = None
             rollout_logprobs_list = [data.get('rollout_logprobs') for data in rollout_batch]
             if all(lp is not None and lp for lp in rollout_logprobs_list):
                 # Validate that logprobs count matches completion tokens count
                 valid_logprobs = True
                 for i, nested_lp in enumerate(rollout_logprobs_list):
                     total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
-                    # In padding_free mode, completion tokens are per-sample
-                    seq_len = lengths_tensor[i].item()
-                    # Get completion mask for this sample
-                    offset = sum(lengths_tensor[:i].tolist()) if i > 0 else 0
-                    completion_count = int(completion_mask_rmpad[0, offset:offset + seq_len].sum().item())
-
+                    completion_count = int(completion_mask[i].sum().item())
                     if total_logprobs != completion_count:
                         logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
                                        f'completion tokens count ({completion_count}). '
@@ -560,28 +561,20 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                         break
 
                 if valid_logprobs:
-                    # In padding_free mode, align rollout_logprobs with completion_mask
-                    total_len = int(lengths_tensor.sum().item())
-                    rollout_logprobs_aligned = torch.zeros(total_len, dtype=torch.float32, device=self.device)
-
-                    offset = 0
+                    batch_size = completion_mask.shape[0]
+                    seq_len = completion_mask.shape[1]
+                    rollout_per_token_logps = torch.zeros(batch_size, seq_len, dtype=torch.float32, device=self.device)
                     for i, nested_lp in enumerate(rollout_logprobs_list):
-                        seq_len = lengths_tensor[i].item()
-                        seq_mask = completion_mask_rmpad[0, offset:offset + seq_len]
-
                         # Flatten logprobs for this sample
                         flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
                         if flat_lps:
                             # Get indices where completion_mask is True
-                            completion_indices = seq_mask.nonzero(as_tuple=True)[0] + offset
+                            completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
                             # Scatter logprobs to completion positions
-                            rollout_logprobs_aligned[completion_indices] = torch.tensor(
+                            rollout_per_token_logps[i, completion_indices] = torch.tensor(
                                 flat_lps, dtype=torch.float32, device=self.device)
-                        offset += seq_len
 
-                    rollout_per_token_logps_rmpad = rollout_logprobs_aligned.unsqueeze(0)
-
-            encoded_batch['rollout_per_token_logps_rmpad'] = rollout_per_token_logps_rmpad
+            encoded_batch['rollout_per_token_logps'] = rollout_per_token_logps
 
             return encoded_batch
 
@@ -593,7 +586,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
-            micro_batch_encoded = _get_encoded_batch(micro_batch_data, advantages=None)
+            micro_batch_encoded = _get_encoded_batch(micro_batch_data)
             with profiling_context(self, 'compute_ref_old_logps'):
                 micro_batch_encoded = self._maybe_compute_logps(micro_batch_encoded)
             mini_batch_data.append(micro_batch_encoded)
@@ -1064,22 +1057,39 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
+        seq_lengths = batch['seq_lengths']
+        batch_size = batch['num_samples']
+        max_seq_len = batch['max_seq_len']
+
         inputs = {
             k: v
-            for k, v in batch.items() if k not in
-            ['completion_mask_rmpad', 'advantages', 'truncated_mask', 'seq_lengths', 'rollout_per_token_logps_rmpad']
+            for k, v in batch.items() if k not in [
+                'completion_mask', 'advantages', 'truncated_mask', 'seq_lengths', 'rollout_per_token_logps',
+                'max_seq_len'
+            ]
         }
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
                 ref_model = ref_models[0]
-                # Store in rmpad format
-                batch['ref_per_token_logps_rmpad'] = self.model_forward(
+                ref_per_token_logps_rmpad = self.model_forward(
                     ref_model, iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+                ref_per_token_logps, _ = pad_logps_back_to_batch(
+                    logps_rmpad=ref_per_token_logps_rmpad,
+                    logits_to_keep=max_seq_len,
+                    batch_size=batch_size,
+                    seq_lengths=seq_lengths)
+                batch['ref_per_token_logps'] = ref_per_token_logps
 
-        # Store in rmpad format
-        batch['old_per_token_logps_rmpad'] = self.model_forward(
+        old_per_token_logps_rmpad = self.model_forward(
             self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+        old_per_token_logps, _ = pad_logps_back_to_batch(
+            logps_rmpad=old_per_token_logps_rmpad,
+            logits_to_keep=max_seq_len,
+            batch_size=batch_size,
+            seq_lengths=seq_lengths)
+        batch['old_per_token_logps'] = old_per_token_logps
+
         return batch
 
     def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
@@ -1090,45 +1100,27 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         Args:
             mini_batch_data: List of encoded batch dictionaries containing:
-                - old_per_token_logps_rmpad: [1, total_tokens] in rmpad format
-                - ref_per_token_logps_rmpad: [1, total_tokens] in rmpad format
-                - completion_mask_rmpad: [1, total_tokens] mask for completion tokens
-                - seq_lengths: [batch_size] length of each sequence
+                - old_per_token_logps: [batch_size, max_seq_len] in batch format
+                - ref_per_token_logps: [batch_size, max_seq_len] in batch format
+                - completion_mask: [batch_size, max_seq_len] mask for completion tokens
 
         Returns:
             kl_values: Per-sample KL values, shape [total_samples]
         """
         kl_list = []
         assert self.beta != 0.0
+
         for batch in mini_batch_data:
-            old_per_token_logps_rmpad = batch.get('old_per_token_logps_rmpad')
-            ref_per_token_logps_rmpad = batch.get('ref_per_token_logps_rmpad')
-            completion_mask_rmpad = batch['completion_mask_rmpad']
-            seq_lengths = batch['seq_lengths']
+            old_per_token_logps = batch['old_per_token_logps']  # [batch_size, max_seq_len]
+            ref_per_token_logps = batch['ref_per_token_logps']  # [batch_size, max_seq_len]
+            completion_mask = batch['completion_mask']  # [batch_size, max_seq_len]
 
             # Compute per-token KL: old_logp - ref_logp
-            per_token_kl_rmpad = old_per_token_logps_rmpad - ref_per_token_logps_rmpad  # [1, total_tokens]
+            per_token_kl = old_per_token_logps - ref_per_token_logps  # [batch_size, max_seq_len]
 
-            # Compute per-sample KL by summing over tokens for each sample
-            # Need to split by seq_lengths in rmpad format
-            per_token_kl_flat = per_token_kl_rmpad.squeeze(0)  # [total_tokens]
-            completion_mask_flat = completion_mask_rmpad.squeeze(0)  # [total_tokens]
-
-            batch_size = seq_lengths.shape[0]
-            sample_kls = []
-            offset = 0
-
-            for i in range(batch_size):
-                seq_len = seq_lengths[i].item()
-                # Get this sample's tokens
-                sample_kl = per_token_kl_flat[offset:offset + seq_len]
-                sample_mask = completion_mask_flat[offset:offset + seq_len]
-                # Sum KL over completion tokens
-                sample_kl_sum = (sample_kl * sample_mask).sum()
-                sample_kls.append(sample_kl_sum)
-                offset += seq_len
-
-            kl_list.append(torch.stack(sample_kls))
+            # Compute per-sample KL by summing over completion tokens
+            sample_kl = (per_token_kl * completion_mask).sum(-1)  # [batch_size]
+            kl_list.append(sample_kl)
 
         # Concatenate all KL values and gather across ranks
         kl_values = torch.cat(kl_list, dim=0)
@@ -1197,8 +1189,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         inputs = {
             k: v
             for k, v in data.items() if k not in [
-                'completion_mask_rmpad', 'ref_per_token_logps_rmpad', 'advantages', 'old_per_token_logps_rmpad',
-                'truncated_mask', 'seq_lengths', 'rollout_per_token_logps_rmpad'
+                'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask',
+                'seq_lengths', 'rollout_per_token_logps', 'num_samples', 'max_seq_len'
             ]
         }
 
@@ -1206,129 +1198,36 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             output_tensor = model(**inputs)
         return output_tensor, partial(self.loss_func, data=data)
 
-    @staticmethod
-    def _pad_logps_back_to_batch(
-        logps_rmpad: torch.Tensor,
-        seq_lengths: torch.Tensor,
-        batch_size: int,
-        max_seq_len: int,
-        dtype: Optional[torch.dtype] = None,
-        pad_value: float = 0.0,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Restore padding-free logprobs back to [batch_size, max_seq_len] shape with LEFT PADDING.
-
-        Args:
-            logps_rmpad: [1, total_nnz] per-token values in padding_free format
-            seq_lengths: [batch_size] actual sequence lengths
-            batch_size: number of sequences in the batch
-            max_seq_len: target sequence length (all sequences will be padded to this length)
-            dtype: optional dtype for output, defaults to logps_rmpad.dtype
-            pad_value: value to use for padding positions (default: 0.0)
-
-        Returns:
-            logps_padded: [batch_size, max_seq_len] padded values (left-padded, data right-aligned)
-            valid_mask: [batch_size, max_seq_len] mask indicating valid (non-padding) positions
-        """
-        if dtype is None:
-            dtype = logps_rmpad.dtype
-
-        device = logps_rmpad.device
-
-        # Compute cumulative sequence lengths
-        cu_seqlens = torch.cumsum(
-            torch.cat([torch.tensor([0], device=device, dtype=seq_lengths.dtype), seq_lengths]), dim=0)
-
-        # Initialize output tensors with padding value
-        logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
-        valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.bool, device=device)
-
-        # Unflatten: assign each sequence's logps to the corresponding row
-        # Use LEFT PADDING (right-align the data) to match the standard padding convention
-        logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
-
-        for i in range(batch_size):
-            start_idx = cu_seqlens[i].item()
-            end_idx = cu_seqlens[i + 1].item()
-            seq_len = int(seq_lengths[i].item())
-
-            actual_end_idx = min(end_idx, len(logps_flat))
-            actual_len = actual_end_idx - start_idx
-
-            if actual_len <= 0:
-                continue
-
-            # Left padding: place data at the RIGHT side of the row
-            pad_len = max_seq_len - seq_len
-
-            if actual_len < seq_len:
-                # Input data is shorter than expected seq_len
-                data_pad_len = max_seq_len - actual_len
-                logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
-                valid_mask[i, data_pad_len:] = True
-            else:
-                # Normal case: seq_len tokens of data
-                logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
-                valid_mask[i, pad_len:] = True
-
-        return logps_padded, valid_mask
-
     @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        # Get data in rmpad format
+        # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
         labels = data['labels']
-        completion_mask_rmpad = data['completion_mask_rmpad']  # [1, total_tokens]
+        completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
         packed_seq_params = data['packed_seq_params']
         truncated_mask = data['truncated_mask']  # [batch_size]
+        seq_lengths = data['seq_lengths']  # [batch_size]
+        max_seq_len = data['max_seq_len']
         micro_batch_size = self.micro_batch_size
-        batch_size = packed_seq_params.num_samples
 
         # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
         lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
-        seq_lengths = packed_seq_params.cu_seqlens_q[1:batch_size + 1] - packed_seq_params.cu_seqlens_q[:batch_size]
 
-        # Compute max_seq_len for padding back to batch format
-        max_seq_len = seq_lengths.max().item()
+        # get_logps with per_token=True returns rmpad format [1, total_tokens]
+        # Pad to batch format [batch_size, max_seq_len]
+        per_token_logps_rmpad = self.get_logps(
+            output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
+        per_token_logps, _ = pad_logps_back_to_batch(
+            logps_rmpad=per_token_logps_rmpad,
+            logits_to_keep=max_seq_len,
+            batch_size=micro_batch_size,
+            seq_lengths=seq_lengths)
 
-        # get_logps with per_token=True now returns full sequences (all_gather in CP mode)
-        # per_token_logps is in rmpad format [1, total_tokens]
-        per_token_logps_rmpad = self.get_logps(output_tensor, labels, packed_seq_params, batch_size, per_token=True)
-
-        # Pad logps back to batch format [batch_size, max_seq_len]
-        per_token_logps, valid_mask = self._pad_logps_back_to_batch(per_token_logps_rmpad, seq_lengths, batch_size,
-                                                                    max_seq_len)
-
-        # Pad completion_mask back to batch format
-        completion_mask, _ = self._pad_logps_back_to_batch(
-            completion_mask_rmpad.float(), seq_lengths, batch_size, max_seq_len, pad_value=0.0)
-        completion_mask = completion_mask.bool()
-
-        # Handle ref_per_token_logps
-        if self.beta != 0.0:
-            ref_per_token_logps_rmpad = data.get('ref_per_token_logps_rmpad')
-            if ref_per_token_logps_rmpad is not None:
-                ref_per_token_logps, _ = self._pad_logps_back_to_batch(ref_per_token_logps_rmpad, seq_lengths,
-                                                                       batch_size, max_seq_len)
-            else:
-                ref_per_token_logps = None
-
-        # Handle old_per_token_logps
-        old_per_token_logps_rmpad = data.get('old_per_token_logps_rmpad')
-        if old_per_token_logps_rmpad is not None:
-            old_per_token_logps, _ = self._pad_logps_back_to_batch(old_per_token_logps_rmpad, seq_lengths, batch_size,
-                                                                   max_seq_len)
-        else:
-            old_per_token_logps = per_token_logps.detach()
-
-        # Handle rollout_per_token_logps
-        rollout_per_token_logps_rmpad = data.get('rollout_per_token_logps_rmpad')
-        if rollout_per_token_logps_rmpad is not None:
-            rollout_per_token_logps, _ = self._pad_logps_back_to_batch(rollout_per_token_logps_rmpad, seq_lengths,
-                                                                       batch_size, max_seq_len)
-        else:
-            rollout_per_token_logps = None
+        # Get pre-padded ref/old/rollout logps from data
+        ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
+        old_per_token_logps = data.get('old_per_token_logps')  # [batch_size, max_seq_len]
+        rollout_per_token_logps = data.get('rollout_per_token_logps')  # [batch_size, max_seq_len] or None
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
