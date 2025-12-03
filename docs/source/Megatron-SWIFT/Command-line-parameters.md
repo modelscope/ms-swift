@@ -182,7 +182,7 @@
 - kv_channels: 默认为None，设置为`args.hidden_size // args.num_attention_heads`。
 - qk_layernorm: 是否对Q和K进行层归一化。
 - qk_l2_norm: 使用 Llama 4 的 QK L2 范数。
-- no_rope_freq: 控制在哪些层上跳过应用旋转位置编码（RoPE）。默认该参数未None，表示在每一层都执行 RoPE。
+- no_rope_freq: 控制在哪些层上跳过应用旋转位置编码（RoPE）。默认该参数为None，表示在每一层都执行 RoPE。
 - moe_apply_probs_on_input: 在 MoE 路由中，在 MLP 激活函数之前应用概率（probs）。
 - transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
 - padded_vocab_size: 完整词表大小，默认为None。
@@ -285,6 +285,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
+- attn_impl: 多模态模型训练时，设置vit部分的attn_impl实现。默认为'flash_attn'。
 - vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
@@ -389,3 +390,4 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - exist_ok: 如果`args.save`存在，不抛出异常，进行覆盖。默认为False。
+- device_map: 设置`--test_convert_precision true`时生效，控制HF模型的加载位置，默认为'auto'。你可以设置为'cpu'节约显存资源。
