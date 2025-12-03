@@ -610,7 +610,10 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         args = self.args
-        hf_mlp = self.hf_layers[layer_idx].mlp
+        if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
+            hf_mlp = self.hf_layers[layer_idx].feed_forward
+        else:
+            hf_mlp = self.hf_layers[layer_idx].mlp
         if hasattr(hf_mlp, 'router'):
             hf_gate_key = 'router.weight'
         elif hasattr(hf_mlp.gate, 'wg'):
@@ -668,7 +671,10 @@ class GPTBridge:
                        ep_rank: Optional[int] = None,
                        hf_mlp=None):
         if hf_mlp is None:
-            hf_mlp = self.hf_layers[layer_idx].mlp
+            if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
+                hf_mlp = self.hf_layers[layer_idx].feed_forward
+            else:
+                hf_mlp = self.hf_layers[layer_idx].mlp
         is_expert = ep_rank is not None
         num_local_experts = 1
         hf_grouped = False
@@ -1102,7 +1108,7 @@ class GPTBridge:
                                 if 'down_proj_scale_inv' in hf_state_dict:
                                     scale_inv = torch.concat([hf_state_dict['down_proj_scale_inv'], scale_inv], dim=0)
                                 hf_state_dict['down_proj_scale_inv'] = scale_inv.clone()
-                            if down_proj_bias is not None:
+                            if args.add_bias_linear:
                                 if 'down_proj_bias' in hf_state_dict:
                                     down_proj_bias = torch.concat([hf_state_dict['down_proj_bias'], down_proj_bias],
                                                                   dim=0)
@@ -1167,15 +1173,19 @@ class GPTBridge:
         return hf_state_dict
 
     def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
-        hf_mlp = self.hf_layers[layer_idx].mlp
+        if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
+            hf_mlp_prefix = 'feed_forward'
+        else:
+            hf_mlp_prefix = 'mlp'
+        hf_mlp = getattr(self.hf_layers[layer_idx], hf_mlp_prefix)
         is_moe = self._is_moe(hf_mlp.state_dict())
         mg_mlp = None if mg_layer is None else mg_layer.mlp
         if is_moe:
-            hf_state_dict.update(self._set_moe_state(mg_mlp, hf_state_dict, 'mlp.', layer_idx, to_mcore))
+            hf_state_dict.update(self._set_moe_state(mg_mlp, hf_state_dict, f'{hf_mlp_prefix}.', layer_idx, to_mcore))
             self._set_state_dict(mg_layer, 'pre_mlp_layernorm.weight', hf_state_dict, 'post_attention_layernorm.weight',
                                  to_mcore)
         else:
-            hf_state_dict.update(self._set_mlp_state(mg_mlp, hf_state_dict, 'mlp.', layer_idx, to_mcore))
+            hf_state_dict.update(self._set_mlp_state(mg_mlp, hf_state_dict, f'{hf_mlp_prefix}.', layer_idx, to_mcore))
             self._set_state_dict(mg_layer, 'mlp.linear_fc1.layer_norm_weight', hf_state_dict,
                                  'post_attention_layernorm.weight', to_mcore)
         return hf_state_dict
