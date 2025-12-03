@@ -1108,7 +1108,7 @@ class GPTBridge:
                                 if 'down_proj_scale_inv' in hf_state_dict:
                                     scale_inv = torch.concat([hf_state_dict['down_proj_scale_inv'], scale_inv], dim=0)
                                 hf_state_dict['down_proj_scale_inv'] = scale_inv.clone()
-                            if down_proj_bias is not None:
+                            if args.add_bias_linear:
                                 if 'down_proj_bias' in hf_state_dict:
                                     down_proj_bias = torch.concat([hf_state_dict['down_proj_bias'], down_proj_bias],
                                                                   dim=0)
