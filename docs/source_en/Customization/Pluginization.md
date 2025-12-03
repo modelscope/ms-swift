@@ -81,14 +81,14 @@ An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/
 Metrics can be customized to evaluate the training process:
 
 ```python
-METRIC_MAPPING = {
+metric_mapping = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),
     'custom': (custom_metric, custom_preprocess),
 }
 
 def get_metric(metric: str):
-    return METRIC_MAPPING[metric]
+    return metric_mapping[metric]
 ```
 
 In the above definition, we added a new `custom` metric. Its value consists of two parts: the first is the metric computation process, which returns a dictionary containing metric key-value pairs, and the second is the preprocessing step for logits, which returns the actual predictions.

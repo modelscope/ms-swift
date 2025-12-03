@@ -30,3 +30,14 @@ class Fp8Dequantizer:
         expanded_scales = expanded_scales.unsqueeze(-1).unsqueeze(2)
         dequantized = reshaped * expanded_scales
         return dequantized.reshape(quantized_fp32.shape)  # return torch.float32
+
+
+class MxFp4Dequantizer:
+
+    def convert(
+        self,
+        blocks: torch.Tensor,
+        scales: torch.Tensor,
+    ) -> torch.Tensor:
+        from transformers.integrations import convert_moe_packed_tensors
+        return convert_moe_packed_tensors(blocks, scales)

@@ -172,6 +172,9 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - num_attention_heads: Number of transformer attention heads, default is None.
 - group_query_attention: Default is None. If `num_query_groups > 1`, group_query_attention is set to True, otherwise False.
 - num_query_groups: Default is 1.
+- softmax_type: The softmax type used for attention mechanism. Supports both fixed offset and learnable offset approaches. Options are 'vanilla', 'off-by-one', and 'learnable', default is 'vanilla'.
+- window_size: The window size for window attention, e.g. `'128,0'`. If not provided, window attention is disabled. Defaults to `None`.
+- window_attn_skip_freq: The frequency for skipping window attention layers. Defaults to `None`.
 - max_position_embeddings: Maximum length of positional embeddings, default is None.
 - position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'mrope', 'relative', and 'none'. Default is 'rope'.
 - rotary_base: Default is 10000.
@@ -179,6 +182,9 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - normalization: Options are 'LayerNorm', 'RMSNorm'. Default is RMSNorm.
 - norm_epsilon: Default is 1e-5.
 - swiglu: Uses swiglu instead of the default gelu. Default is True.
+- quick_geglu: Use quick geglu activation instead of default gelu. Default is False.
+- activation_func_clamp_value: Clamp the output value range of linear_fc1 in the activation function. Only used when `activation_func` is `quick_gelu`. Default is None.
+- glu_linear_offset: Offset term in the GLU activation function: `activation_func(x[0]) * (x[1] + offset)`. Only used when gated_linear_unit is True. Default is 0.
 - untie_embeddings_and_output_weights: Unties embedding and output weights. Default is True.
 - disable_bias_linear: Disables bias in linear layers. Default is True.
 - add_qkv_bias: Adds bias only to QKV linear layers. Default is True.
@@ -301,7 +307,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to `None`. This parameter only takes effect when `vit_gradient_checkpointing` is enabled.
 - 🔥packing: Packs data samples of varying lengths into samples of uniform length, achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other (except for Qwen3-Next, which contains linear-attention). This parameter defaults to `False`. All training tasks in Megatron-SWIFT support this parameter. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
-- packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing)
+- packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - streaming: Stream data loading and processing, default is False. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
   - Note: Since the length of a streaming dataset cannot be determined, the `--train_iters` parameter must be set. Also set the `max_epochs` parameter to ensure training exits after the specified number of epochs, and to validate and save the model weights accordingly.
   - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. **This is generally less efficient than the data sharding approach used in non-streaming datasets.** When the training world_size is large, preprocessing and data distribution can become a training bottleneck.

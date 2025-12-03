@@ -391,10 +391,14 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 del cur_lora_params
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
-            metadatas = bucket.get_metadata()
-            flattened_tensor = bucket.get_flattened_tensor()
-            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+            use_flatten = getattr(self.args, 'enable_flattened_weight_sync', True)
+            if use_flatten:
+                bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
+                metadatas = bucket.get_metadata()
+                flattened_tensor = bucket.get_flattened_tensor()
+                self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+            else:
+                self.vllm_client.update_adapter_param(peft_config, lora_params)
         elif self.vllm_mode == 'colocate':
             lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
             lora_request = TensorLoRARequest(
@@ -410,14 +414,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _load_state_dict_to_vllm(self, state_dict):
         """Load state_dict to vLLM engine (server or colocate mode)"""
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
-            named_params = list(state_dict.items())
-            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
-
-            for bucket in parameter_buckets:
-                _process_bucket_with_flattened_tensor(self, bucket)
-
-            del named_params, parameter_buckets
+            use_flatten = getattr(self.args, 'enable_flattened_weight_sync', True)
+            if use_flatten:
+                bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+                named_params = list(state_dict.items())
+                parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
+                for bucket in parameter_buckets:
+                    _process_bucket_with_flattened_tensor(self, bucket)
+                del named_params, parameter_buckets
+            else:
+                for name, param in state_dict.items():
+                    self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
             llm_model.load_weights(state_dict.items())

@@ -6,12 +6,16 @@ from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+import megatron.core
 import torch
+from megatron.core import parallel_state
+from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
 
 
@@ -267,7 +271,7 @@ class MegatronTunerMixin:
     use_rslora: bool = False
 
     def __post_init__(self):
-        if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
+        if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
             self.target_modules = self.target_regex
@@ -363,7 +367,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     no_masked_softmax_fusion: bool = False
-    no_bias_dropout_fusion: bool = False
+    no_bias_dropout_fusion: Optional[bool] = None
     no_bias_swiglu_fusion: bool = False
     no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
@@ -446,6 +450,9 @@ class MegatronArguments(ExtraMegatronArguments):
     num_attention_heads: Optional[int] = None
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
+    softmax_type: Optional[Literal['vanilla', 'off-by-one', 'learnable']] = None
+    window_size: Optional[str] = None
+    window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
     mrope_section: Optional[List[int]] = None
@@ -455,6 +462,9 @@ class MegatronArguments(ExtraMegatronArguments):
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
+    quick_geglu: Optional[bool] = None
+    activation_func_clamp_value: Optional[float] = None
+    glu_linear_offset: Optional[float] = None
     untie_embeddings_and_output_weights: Optional[bool] = None
     disable_bias_linear: Optional[bool] = None
     add_qkv_bias: Optional[bool] = None
@@ -546,8 +556,8 @@ class MegatronArguments(ExtraMegatronArguments):
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
-        if self.mlp_padding_free and self.sequence_parallel:
-            raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
+            raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
@@ -557,6 +567,8 @@ class MegatronArguments(ExtraMegatronArguments):
                 self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
+        if self.softmax_type is None and mcore_015:
+            self.softmax_type = 'vanilla'
         if self.norm_epsilon is None:
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
@@ -569,6 +581,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.swiglu is None:
             self.swiglu = True
+        if self.quick_geglu is None:
+            self.quick_geglu = False
+        if self.glu_linear_offset is None and mcore_015:
+            self.glu_linear_offset = 0.
         if self.add_qkv_bias is None:
             self.add_qkv_bias = True
         if self.disable_bias_linear is None:
@@ -587,6 +603,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
+        if self.no_bias_dropout_fusion is None:
+            self.no_bias_dropout_fusion = False
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
@@ -624,7 +642,6 @@ class MegatronArguments(ExtraMegatronArguments):
 
     @staticmethod
     def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        from megatron.core import parallel_state
         create_group_origin = parallel_state.create_group
 
         def create_group(ranks=None, timeout=None, *args, **kwargs):
