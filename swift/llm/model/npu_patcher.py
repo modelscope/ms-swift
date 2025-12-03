@@ -54,7 +54,6 @@ class NpuGmmFunction(torch.autograd.Function):
         wt = weight.permute(0, 2, 1)
         xt = x.permute(1, 0)
         dx = torch_npu.npu_grouped_matmul([grad_outputs], [wt], group_list=group_list, group_type=0, split_item=2)
-        dw = torch.zeros_like(weight)
         split_size = ctx.split_size
         xt_list = torch.split(xt, split_size, dim=1)
         grad_outputs_list = torch.split(grad_outputs, split_size, dim=0)
@@ -65,7 +64,6 @@ class NpuGmmFunction(torch.autograd.Function):
 
 
 def npu_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    """ """
     batch_size, sequence_length, hidden_dim = hidden_states.shape
     hidden_states = hidden_states.view(-1, hidden_dim)
     # router_logits: (batch * sequence_length, n_experts)
@@ -77,10 +75,6 @@ def npu_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
-
-    final_hidden_states = torch.zeros((batch_size * sequence_length, hidden_dim),
-                                      dtype=hidden_states.dtype,
-                                      device=hidden_states.device)
 
     # One hot encode the selected experts to create an expert mask
     # this will be used to easily index which expert is going to be sollicitated
