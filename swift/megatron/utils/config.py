@@ -172,6 +172,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['moe_router_score_function'] = 'sigmoid'
         res['moe_ffn_hidden_size'] = res['ffn_hidden_size']
         res['ffn_hidden_size'] = mlp_ffn_hidden_size
+        res['no_rope_freq'] = 4
+        res['moe_router_enable_expert_bias'] = False
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
@@ -181,7 +183,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
-    if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
+    if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
         res['moe_router_enable_expert_bias'] = True
     if n_shared_experts is not None and 'moe_shared_expert_intermediate_size' not in res:
         res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']

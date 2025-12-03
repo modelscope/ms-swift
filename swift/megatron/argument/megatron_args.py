@@ -472,7 +472,8 @@ class MegatronArguments(ExtraMegatronArguments):
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
     qk_layernorm: Optional[bool] = None
-    qk_l2_norm: Optional[bool] = None 
+    qk_l2_norm: Optional[bool] = None
+    no_rope_freq: Optional[bool] = None
     moe_apply_probs_on_input: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
