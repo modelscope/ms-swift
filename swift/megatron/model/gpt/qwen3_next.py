@@ -13,14 +13,14 @@ from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, 
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
+from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
 from packaging import version
 
 from swift.llm import ModelType
+from swift.megatron.utils import get_local_layer_specs
 from swift.utils import get_logger
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
@@ -445,22 +445,6 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
         return res, None
 
 
-def get_local_layer_specs(config, layer_specs, vp_stage=None):
-    kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
-    num_layers_to_build = get_num_layers_to_build(config, **kwargs)
-
-    if getattr(config, 'pipeline_model_parallel_layout', None) is not None:
-        from megatron.core.transformer.enums import LayerType
-        local_layer_specs = [
-            layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
-                layer_type=LayerType.decoder, **kwargs)
-        ]
-    else:
-        offset = get_transformer_layer_offset(config, **kwargs)
-        local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
-    return local_layer_specs
-
-
 def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.hetereogenous_dist_checkpoint = True
     # compat Qwen3NextGatedDeltaNet
@@ -474,7 +458,6 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.linear_value_head_dim = args.linear_value_head_dim
     config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
 
-    layer_norm_impl = TENorm
     kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
@@ -488,17 +471,13 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     for layer_type in args.layer_types:
         layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
-            layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
-            layer_spec.submodules.input_layernorm = layer_norm_impl
             layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
         layer_specs.append(layer_spec)
 
     local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
-
-    # Block spec.
-    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
+    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=TENorm)
 
     return block_spec
 
