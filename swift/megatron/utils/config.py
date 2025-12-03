@@ -174,6 +174,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['ffn_hidden_size'] = mlp_ffn_hidden_size
         res['no_rope_freq'] = 4
         res['moe_router_enable_expert_bias'] = False
+        res['moe_shared_expert_intermediate_size'] = res['moe_ffn_hidden_size']
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
