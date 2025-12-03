@@ -821,10 +821,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 extra_kwargs.update({'seq_lengths': lengths})
 
                 # Pad completion_mask back to [batch_size, max_seq_len] for padding_free mode
-                max_seq_len = lengths.max().item()
                 completion_mask, _ = pad_logps_back_to_batch(
                     logps_rmpad=completion_mask_raw.float(),
-                    logits_to_keep=max_seq_len,
+                    logits_to_keep=logits_to_keep,
                     batch_size=batch_size,
                     seq_lengths=lengths,
                     pad_value=0.0)
@@ -890,6 +889,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 # Flatten logprobs for this sample
                                 flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
                                 if flat_lps:
+                                    # Check for None values in flat_lps
+                                    if any(lp is None for lp in flat_lps):
+                                        logger.warning('Found None values in rollout_logprobs. '
+                                                       'Skipping rollout importance sampling for this batch.')
+                                        rollout_logps_tensor = None
+                                        break
                                     # Get indices where completion_mask is True
                                     completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
                                     # Scatter logprobs to completion positions

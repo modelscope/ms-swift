@@ -567,6 +567,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                         # Flatten logprobs for this sample
                         flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
                         if flat_lps:
+                            # Check for None values in flat_lps
+                            if any(lp is None for lp in flat_lps):
+                                logger.warning('Found None values in rollout_logprobs. '
+                                               'Skipping rollout importance sampling for this batch.')
+                                rollout_per_token_logps = None
+                                break
                             # Get indices where completion_mask is True
                             completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
                             # Scatter logprobs to completion positions
