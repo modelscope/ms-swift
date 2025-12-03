@@ -473,7 +473,7 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_channels: Optional[int] = None
     qk_layernorm: Optional[bool] = None
     qk_l2_norm: Optional[bool] = None
-    no_rope_freq: Optional[bool] = None
+    no_rope_freq: Optional[int] = None
     moe_apply_probs_on_input: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
