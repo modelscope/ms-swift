@@ -52,7 +52,8 @@ config_mapping = {
     'first_k_dense_replace': ['first_k_dense_replace', 'moe_layer_start_index'],
     'n_shared_experts': ['n_shared_experts', 'num_shared_expert', 'moe_num_shared_experts'],
     'window_size': ['sliding_window'],
-    'layer_types': ['layer_types']
+    'layer_types': ['layer_types'],
+    'interleave_moe_layer_step': ['interleave_moe_layer_step'],
 }
 
 
@@ -106,6 +107,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     n_shared_experts = res.pop('n_shared_experts', None)
     layer_types = res.pop('layer_types', None)
     mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
+    interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
             'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
             'Qwen3VLMoeForConditionalGeneration'
@@ -167,14 +169,20 @@ def convert_hf_config(config) -> Dict[str, Any]:
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:
             res['qk_l2_norm'] = True
+        res['no_rope_freq'] = 4
         res['moe_apply_probs_on_input'] = True
         res['rotary_interleaved'] = True
         res['moe_router_score_function'] = 'sigmoid'
         res['moe_ffn_hidden_size'] = res['ffn_hidden_size']
         res['ffn_hidden_size'] = mlp_ffn_hidden_size
-        res['no_rope_freq'] = 4
         res['moe_router_enable_expert_bias'] = False
         res['moe_shared_expert_intermediate_size'] = res['moe_ffn_hidden_size']
+        if interleave_moe_layer_step > 1:
+            moe_layer_freq = [
+                '1' if i % interleave_moe_layer_step == (interleave_moe_layer_step - 1) else '0'
+                for i in range(res['num_layers'])
+            ]
+            res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']

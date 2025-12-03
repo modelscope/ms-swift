@@ -4,9 +4,11 @@ from copy import deepcopy
 import megatron.core
 import torch
 from megatron.core.extensions.transformer_engine import TENorm
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
+                                                      get_gpt_layer_with_transformer_engine_spec)
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
+from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.training import get_args
 from packaging import version
 
@@ -54,29 +56,20 @@ class Llama4Vit(HuggingFaceModule):
 
 def get_llama4_transformer_layer_spec(config, vp_stage=None):
     args = get_args()
+    use_te = args.transformer_impl == 'transformer_engine'
+    kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage} if mcore_013 else {}
     # Define the decoder block spec
-    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
-    moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-        num_experts=config.num_moe_experts,
-        moe_grouped_gemm=config.moe_grouped_gemm,
-        qk_layernorm=config.qk_layernorm,
-        multi_latent_attention=config.multi_latent_attention,
-        moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        qk_l2_norm=args.qk_l2_norm,
-        **kwargs,
-    )
-    layer_specs = []
-    for i in range(args.num_layers):
-        no_rope = config.no_rope_freq[i]
-        layer_spec = deepcopy(moe_layer_spec)
+    transformer_layer_spec = get_gpt_decoder_block_spec(
+        config, use_transformer_engine=use_te, normalization=args.normalization, **kwargs)
+    for i, layer_spec in enumerate(transformer_layer_spec.layer_specs):
+        global_i = i + get_transformer_layer_offset(config, vp_stage)
+        no_rope = config.no_rope_freq[global_i]
+        layer_spec = deepcopy(layer_spec)
         if no_rope:
             layer_spec.submodules.self_attention.submodules.q_layernorm = IdentityOp
             layer_spec.submodules.self_attention.submodules.k_layernorm = IdentityOp
-        layer_specs.append(layer_spec)
-    local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
-    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=TENorm)
-
-    return block_spec
+            transformer_layer_spec.layer_specs[i] = layer_spec
+    return transformer_layer_spec
 
 
 class Llama4Bridge(GPTBridge):
