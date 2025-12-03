@@ -541,7 +541,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'truncated_mask': truncated_mask,  # [batch_size]
                 'num_samples': batch_size,
                 'seq_lengths': seq_lengths,  # [batch_size]
-                'max_seq_len': max_seq_len,
             })
 
             # Process rollout_logprobs for importance sampling correction
@@ -1059,15 +1058,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # TODO: entropy
         seq_lengths = batch['seq_lengths']
         batch_size = batch['num_samples']
-        max_seq_len = batch['max_seq_len']
+        max_seq_len = batch['completion_mask'].shape[1]
 
-        inputs = {
-            k: v
-            for k, v in batch.items() if k not in [
-                'completion_mask', 'advantages', 'truncated_mask', 'seq_lengths', 'rollout_per_token_logps',
-                'max_seq_len'
-            ]
-        }
+        inputs = self._prepare_model_inputs(batch)
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
@@ -1186,13 +1179,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # return: output_tensor, loss_func
         data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
-        inputs = {
-            k: v
-            for k, v in data.items() if k not in [
-                'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask',
-                'seq_lengths', 'rollout_per_token_logps', 'num_samples', 'max_seq_len'
-            ]
-        }
+        inputs = self._prepare_model_inputs(data)
 
         with self.stimer:
             output_tensor = model(**inputs)
@@ -1207,7 +1194,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         packed_seq_params = data['packed_seq_params']
         truncated_mask = data['truncated_mask']  # [batch_size]
         seq_lengths = data['seq_lengths']  # [batch_size]
-        max_seq_len = data['max_seq_len']
+        max_seq_len = completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
 
         # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
@@ -1892,3 +1879,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
 
         return metrics
+
+    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
+        """Filters inputs to create model_inputs, removing GRPO-specific keys."""
+        return {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+            ]
+        }
