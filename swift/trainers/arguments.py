@@ -433,6 +433,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
 
+    enable_flattened_weight_sync: bool = True
     async_generate: bool = False
 
     sleep_level: int = 0

@@ -39,7 +39,7 @@ class LoRAActivationMixin(ActivationMixin):
     def active_adapter(self) -> str:
         return self.get_activated_adapters()
 
-    def set_adapter(self, adapter_names, offload=None):
+    def set_adapter(self, adapter_names, inference_mode: bool = False, offload=None):
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]
 
@@ -47,7 +47,7 @@ class LoRAActivationMixin(ActivationMixin):
         for layer_name in self.adapter_layer_names:
             module_dict = getattr(self, layer_name)
             for key, layer in module_dict.items():
-                if key in adapter_names:
+                if key in adapter_names and (not inference_mode):
                     self.set_activation(key, True)
                     layer.requires_grad_(True)
                     SwiftAdapter.save_memory(layer, key, self.module_key, True)

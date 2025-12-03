@@ -15,11 +15,8 @@ Megatron GRPO 当前已支持以下功能：
 以下参数或功能将在后续版本中逐步支持：
 
 - **Entropy 相关配置**：如 `top_entropy_quantile`、`log_entropy`
-- **Rollout Correction(TIS/MIS)**
 - **Reward Model / Reward Model Plugin**
 - **多轮 Rollout 调度机制**（`multi_turn_scheduler`）：实现多轮对话策略优化
-- **优势估计器**（`advantage_estimator`）：支持更复杂的策略梯度估计方法
-- **KL 散度计入奖励**（`kl_in_reward`）
 - **虚拟流水线并行**（VPP）
 - **参考模型同步更新**（`sync_ref_model`）
 - **Async Generate** (`async_generate`)

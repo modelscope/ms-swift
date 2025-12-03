@@ -77,6 +77,7 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
 
 
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
+    # TODO: compat bshd
     if dim < 0:
         dim = (dim + inputs.ndim) % inputs.ndim
     new_inputs = []
