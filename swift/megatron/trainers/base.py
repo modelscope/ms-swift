@@ -124,34 +124,22 @@ class BaseMegatronTrainer(ABC):
     def new_cyclic_iter(self, iterable):
         args = get_args()
         i = 0
-        n_batch = 0
+        is_finished = False
         while True:
             training = self.unwrapped_models[0].training
-            if training:
+            if training and not is_finished:
                 logger.info(f'The training of Epoch {i} starts...')
+            for x in iterable:
+                if is_finished:
+                    logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
+                    if isinstance(x, dict):
+                        x['is_finished'] = True
+                    elif isinstance(x, list):
+                        for item in x:
+                            item[0]['is_finished'] = True
+                yield x
             if training and args.max_epochs and i >= args.max_epochs - 1:
-                it = iter(iterable)
-                num_microbatches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
-                x = [next(it) for _ in range(num_microbatches - n_batch % num_microbatches)]
-                while True:
-                    try:
-                        next_x = [next(it) for _ in range(num_microbatches)]
-                    except StopIteration:
-                        break
-                    yield from x
-                    x = next_x
-                logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
-                if isinstance(x, list) and all(isinstance(item, dict) for item in x):
-                    x[0]['is_finished'] = True
-                elif isinstance(x, list) and all(isinstance(item, list) for item in x):
-                    # grpo
-                    for item in x:
-                        item[0]['is_finished'] = True
-                yield from x
-            else:
-                for x in iterable:
-                    n_batch += 1
-                    yield x
+                is_finished = True
             i += 1
 
     def _replace_data_iterator(self, data_iterator, model):
