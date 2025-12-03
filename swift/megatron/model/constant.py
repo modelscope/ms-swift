@@ -2,7 +2,6 @@
 class LLMMegatronModelType:
     gpt = 'gpt'
     qwen3_next = 'qwen3_next'
-    deepseek_v3_2 = 'deepseek_v3_2'
 
 
 class MLLMMegatronModelType:
