@@ -3,17 +3,13 @@ from copy import deepcopy
 
 import megatron.core
 import torch
-from megatron.core.extensions.transformer_engine import TENorm
-from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
-                                                      get_gpt_layer_with_transformer_engine_spec)
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_decoder_block_spec
 from megatron.core.transformer.identity_op import IdentityOp
-from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.training import get_args
 from packaging import version
 
-from swift.llm import ModelType, Template
-from swift.megatron.utils import get_local_layer_specs
+from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
