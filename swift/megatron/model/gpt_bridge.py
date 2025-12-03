@@ -255,7 +255,7 @@ class GPTBridge:
                     return {}
                 hf_state_dict = hf_state_dict or {k: None for k in meta_data[0]}
                 for k, v in hf_state_dict.items():
-                    v, _ = self._get_weight(deep_getattr(mg_module, k, None), None)
+                    v, _ = self._get_weight(v, None)
                     hf_state_dict[k] = v
             elif hf_state_dict is None:
                 return {}
@@ -1102,7 +1102,7 @@ class GPTBridge:
                                 if 'down_proj_scale_inv' in hf_state_dict:
                                     scale_inv = torch.concat([hf_state_dict['down_proj_scale_inv'], scale_inv], dim=0)
                                 hf_state_dict['down_proj_scale_inv'] = scale_inv.clone()
-                            if down_proj_bias is not None:
+                            if args.add_bias_linear:
                                 if 'down_proj_bias' in hf_state_dict:
                                     down_proj_bias = torch.concat([hf_state_dict['down_proj_bias'], down_proj_bias],
                                                                   dim=0)

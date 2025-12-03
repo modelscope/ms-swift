@@ -52,6 +52,25 @@ if is_vllm_available():
             return self.lora_embeddings
 
 
+def nanstd(tensor: torch.Tensor) -> torch.Tensor:
+    """
+    refer: trl/trainer/utils
+    Compute the standard deviation of a tensor, ignoring NaNs. This function only supports 1D tensors.
+
+    Args:
+        tensor (`torch.Tensor`):
+            Input tensor of shape `(N,)`.
+
+    Returns:
+        `torch.Tensor`:
+            Standard deviation of the tensor, ignoring NaNs.
+    """
+    variance = torch.nanmean((tensor - torch.nanmean(tensor, keepdim=True))**2)  # Compute variance ignoring NaNs
+    count = torch.sum(~torch.isnan(tensor))  # Count of non-NaN values
+    variance *= count / (count - 1)  # Bessel's correction
+    return torch.sqrt(variance)
+
+
 # code borrowed from verl/verl/utils/memory_utils.py
 def aggressive_empty_cache(force_sync: bool = True, max_retries: int = 3) -> None:
     """
@@ -745,6 +764,14 @@ class FlattenedTensorMetadata(BaseModel):
         raise ValueError('dtype must be a torch.dtype or str')
 
 
+class TensorMetadata(BaseModel):
+    """Metadata for a single tensor."""
+    name: str
+    shape: Tuple[int, ...]
+    dtype: str
+    numel: int
+
+
 class UpdateFlattenedAdapterRequest(BaseModel):
     lora_int_id: int
     peft_config: LoraConfig
@@ -753,6 +780,13 @@ class UpdateFlattenedAdapterRequest(BaseModel):
 
 class UpdateFlattenedParamsRequest(BaseModel):
     metadatas: List[FlattenedTensorMetadata]
+
+
+class UpdateAdapterRequest(BaseModel):
+    """Request for non-flattened adapter weight update"""
+    lora_int_id: int
+    peft_config: LoraConfig
+    lora_tensors_metadata: List[TensorMetadata]
 
 
 class FlattenedTensorBucket:
