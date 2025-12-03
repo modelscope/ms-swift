@@ -78,6 +78,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
+    vllm_group_port: List[int] = field(default_factory=lambda: [51216])
 
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None

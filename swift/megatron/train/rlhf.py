@@ -59,6 +59,7 @@ class MegatronRLHF(MegatronSft):
                 base_urls=self.args.vllm_server_base_url,
                 hosts=self.args.vllm_server_host,
                 server_ports=self.args.vllm_server_port,
+                group_ports=self.args.vllm_group_port,
                 connection_timeout=self.args.vllm_server_timeout)
             vllm_client.close_communicator()
             vllm_client.init_communicator(device=get_current_device())
