@@ -96,7 +96,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
 
-        # Entropy mask settings (TODO: entropy mask implementation)
+        # Entropy mask settings, TODO
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
@@ -1077,10 +1077,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 batch['ref_per_token_logps_rmpad'] = self.model_forward(
                     ref_model, iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
 
-        if not self.on_policy:
-            # Store in rmpad format
-            batch['old_per_token_logps_rmpad'] = self.model_forward(
-                self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+        # Store in rmpad format
+        batch['old_per_token_logps_rmpad'] = self.model_forward(
+            self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
         return batch
 
     def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
@@ -1100,25 +1099,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             kl_values: Per-sample KL values, shape [total_samples]
         """
         kl_list = []
-
+        assert self.beta != 0.0
         for batch in mini_batch_data:
             old_per_token_logps_rmpad = batch.get('old_per_token_logps_rmpad')
             ref_per_token_logps_rmpad = batch.get('ref_per_token_logps_rmpad')
             completion_mask_rmpad = batch['completion_mask_rmpad']
             seq_lengths = batch['seq_lengths']
-
-            # If on_policy, old_logps is not computed yet, use zeros
-            if old_per_token_logps_rmpad is None:
-                # On-policy case: old_logps will be the same as current policy
-                # For kl_in_reward computation, we need to estimate it
-                # Use ref_logps as approximation (KL will be computed with current policy in loss_func)
-                old_per_token_logps_rmpad = ref_per_token_logps_rmpad
-
-            if ref_per_token_logps_rmpad is None:
-                # No ref model, skip KL computation
-                num_samples = batch['num_samples']
-                kl_list.append(torch.zeros(num_samples, device=self.device))
-                continue
 
             # Compute per-token KL: old_logp - ref_logp
             per_token_kl_rmpad = old_per_token_logps_rmpad - ref_per_token_logps_rmpad  # [1, total_tokens]
