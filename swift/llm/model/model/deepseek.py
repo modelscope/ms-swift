@@ -153,7 +153,8 @@ def get_model_tokenizer_deepseek_v3_2(model_dir: str, *args, **kwargs):
     except ImportError:
         # It’s only for compatibility with Megatron training or vllm/sglang infer,
         # while we wait for Transformers to support deepseek_v3_2.
-        from transformers.models.deepseek_v3 import DeepseekV3ForCausalLM as DeepseekV32ForCausalLM, DeepseekV3Config as DeepseekV32Config
+        from transformers.models.deepseek_v3 import (DeepseekV3ForCausalLM as DeepseekV32ForCausalLM, DeepseekV3Config
+                                                     as DeepseekV32Config)
     kwargs['automodel_class'] = DeepseekV32ForCausalLM
     kwargs['model_config'] = DeepseekV32Config.from_pretrained(model_dir)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)

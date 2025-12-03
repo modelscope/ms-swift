@@ -29,7 +29,7 @@ extra_callbacks = [CustomCallback()]
 
 example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
 
-SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后trainer会自动使用你定制的loss方法。
+SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后在训练时设置`--loss_type custom_loss`使用你定制的loss方法。
 例如在plugin/loss.py中添加下面的代码：
 ```python
 def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
