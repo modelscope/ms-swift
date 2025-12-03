@@ -2,7 +2,7 @@
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
-from . import qwen3_next
+from . import qwen3_next, deepseek_v32
 
 register_megatron_model(
     MegatronModelMeta(

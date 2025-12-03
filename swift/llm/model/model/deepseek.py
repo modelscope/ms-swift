@@ -150,20 +150,17 @@ register_model(
 
 
 def get_model_tokenizer_deepseek_v3_2(model_dir: str,
-                                      model_info: ModelInfo,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
+                                      *args,
                                       **kwargs):
-    sys.path.insert(0, os.path.join(model_dir, 'inference'))
-    sys.path.insert(0, os.path.join(model_dir, 'encoding'))
-    from model import ModelArgs, Transformer
-    config_path = os.path.join(model_dir, 'inference', 'config_671B_v3.2.json')
-    with open(config_path) as f:
-        config = ModelArgs(**json.load(f))
-    kwargs['model_config'] = config
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, False, **kwargs)
-    if load_model:
-        model = Transformer(config)
+    # It’s only for compatibility with Megatron training, 
+    # while we wait for Transformers to support deepseek_v3_2.
+    try:
+        from transformers.models.deepseek_v32 import DeepseekV32ForCausalLM, DeepseekV32Config
+    except ImportError:
+        from transformers.models.deepseek_v3 import DeepseekV3ForCausalLM as DeepseekV32ForCausalLM, DeepseekV3Config as DeepseekV32Config
+    kwargs['automodel_class'] = DeepseekV32ForCausalLM
+    kwargs['model_config'] = DeepseekV32Config.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, tokenizer
 
 
