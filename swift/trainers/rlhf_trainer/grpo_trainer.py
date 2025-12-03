@@ -993,7 +993,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss_and_metrics(self, model, inputs):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
-        # completion_mask is already [batch_size, max_seq_len] for both padding_free and non-padding_free modes
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
@@ -1373,7 +1372,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _unpad_logps_and_entropies(self,
                                    logps: torch.Tensor,
                                    entropies: Optional[torch.Tensor],
-                                   inputs: 'DataType',
                                    logits_to_keep: int,
                                    batch_size: int,
                                    seq_lengths: torch.Tensor,
@@ -1384,7 +1382,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Args:
             logps: Per-token log probabilities in rmpad format [1, total_nnz]
             entropies: Per-token entropies in rmpad format [1, total_nnz] or None
-            inputs: Original inputs dict
             logits_to_keep: Number of tokens to keep per sequence
             batch_size: Number of sequences in the batch
             seq_lengths: Actual sequence lengths [batch_size]
@@ -1546,7 +1543,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Unified unpad for padding_free mode
         if is_padding_free:
-            logps, entropies = self._unpad_logps_and_entropies(logps, entropies, inputs, logits_to_keep, batch_size,
+            logps, entropies = self._unpad_logps_and_entropies(logps, entropies, logits_to_keep, batch_size,
                                                                original_seq_lengths, compute_entropy)
 
         return logps, entropies
