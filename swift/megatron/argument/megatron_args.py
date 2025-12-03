@@ -313,6 +313,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     task_type: Literal['causal_lm', 'seq_cls'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
+    save_strategy: Literal['steps', 'epoch'] = 'steps'
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
@@ -682,6 +683,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.save_strategy == 'epoch':
+            self.save_interval = 1
+            self.eval_interval = 1
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:

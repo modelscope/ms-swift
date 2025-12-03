@@ -89,12 +89,20 @@ class BaseMegatronTrainer(ABC):
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
             num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
-            if args.train_iters is None and args.max_epochs is not None:
+            if args.save_strategy == 'epoch':
                 if hasattr(train_dataset, '__len__'):
-                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
-                    dataset_sample = dataset_sample * num_generations
-                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
+                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
+                    args.save_interval = dataset_sample // args.global_batch_size
+                    args.eval_interval = args.save_interval
+                    if getattr(args, 'save_retain_interval', None) is not None:
+                        args.save_retain_interval *= args.save_interval
                 else:
+                    raise ValueError('streaming dataset is not supported with `--save_strategy epoch`')
+            if args.max_epochs is not None:
+                if hasattr(train_dataset, '__len__'):
+                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
+                elif args.train_iters is None:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
             if args.eval_iters < 0:
@@ -122,25 +130,26 @@ class BaseMegatronTrainer(ABC):
             initialize.validate_args = origin_validate_args
 
     def new_cyclic_iter(self, iterable):
+        training = self.unwrapped_models[0].training
+        if not training:
+            yield from self._origin_cyclic_iter(iterable)
+            return
+
         args = get_args()
-        i = 0
+        n_epoch = 0
         is_finished = False
         while True:
-            training = self.unwrapped_models[0].training
-            if training and not is_finished:
-                logger.info(f'The training of Epoch {i} starts...')
+            if not is_finished:
+                logger.info(f'The training of Epoch {n_epoch} starts...')
             for x in iterable:
                 if is_finished:
-                    logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
-                    if isinstance(x, dict):
-                        x['is_finished'] = True
-                    elif isinstance(x, list):
-                        for item in x:
-                            item[0]['is_finished'] = True
+                    # streaming
+                    logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
+                    args.train_iters = args.curr_iteration + 1
                 yield x
-            if training and args.max_epochs and i >= args.max_epochs - 1:
+            if training and args.max_epochs and n_epoch >= args.max_epochs - 1:
                 is_finished = True
-            i += 1
+            n_epoch += 1
 
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
@@ -1037,9 +1046,4 @@ class BaseMegatronTrainer(ABC):
 
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
-        args = get_args()
-        data = next(data_iterator)
-        is_finished = data.pop('is_finished', False)
-        if is_finished:
-            args.train_iters = args.curr_iteration + 1
-        return self._prepare_batch(data, vp_stage)
+        return self._prepare_batch(next(data_iterator), vp_stage)
