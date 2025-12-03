@@ -181,6 +181,9 @@
 - hidden_dropout: 默认为0.。
 - kv_channels: 默认为None，设置为`args.hidden_size // args.num_attention_heads`。
 - qk_layernorm: 是否对Q和K进行层归一化。
+- qk_l2_norm: 使用 Llama 4 的 QK L2 范数。
+- no_rope_freq: 控制在哪些层上跳过应用旋转位置编码（RoPE）。默认该参数未None，表示在每一层都执行 RoPE。
+- moe_apply_probs_on_input: 在 MoE 路由中，在 MLP 激活函数之前应用概率（probs）。
 - transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
 - padded_vocab_size: 完整词表大小，默认为None。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。

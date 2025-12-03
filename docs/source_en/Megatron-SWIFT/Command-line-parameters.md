@@ -192,6 +192,9 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - hidden_dropout: Default is 0.
 - kv_channels: Defaults to None, set to `args.hidden_size // args.num_attention_heads`.
 - qk_layernorm: Whether to apply layer normalization to Q and K.
+- qk_l2_norm: Use Llama 4’s QK L2 norm.
+- no_rope_freq: Controls which layers skip applying Rotary Position Embedding (RoPE). By default this parameter is set to None, meaning RoPE is applied on every layer.
+- moe_apply_probs_on_input: In MoE routing, apply probabilities (probs) before the MLP activation.
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
 - rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1). Pass the value as a JSON string.
