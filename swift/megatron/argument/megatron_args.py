@@ -178,10 +178,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
-            if self.kl_in_reward:
-                raise ValueError('kl_in_reward is not supported for Megatron GRPO right now')
-            if self.advantage_estimator != 'grpo':
-                raise ValueError('advantage_estimator must be grpo for Megatron GRPO right now')
 
         def _check_batch_params():
             # Set default values if both are None
