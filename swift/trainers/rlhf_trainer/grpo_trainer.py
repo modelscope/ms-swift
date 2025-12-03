@@ -1532,19 +1532,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 entropies = None
         elif use_sp:
             # Path 2: Use sequence parallel
-            # Returns [1, total_nnz] in padding_free mode, or [batch_size, logits_to_keep] otherwise
+            # Returns [batch_size, logits_to_keep] format (already gathered and sliced)
             logps, entropies = self._get_logps_via_sp(
                 model, inputs, logits_to_keep, input_ids, compute_entropy=compute_entropy)
+            # SP mode returns batch format directly, no need to unpad
         else:
             # Path 3: Local forward pass (padding_free or multimodal or no logits_to_keep support)
             # Returns [1, total_nnz] in padding_free mode, or [batch_size, logits_to_keep] otherwise
             logps, entropies = self._get_logps_via_local_forward(
                 model, inputs, logits_to_keep, input_ids, compute_entropy=compute_entropy)
 
-        # Unified unpad for padding_free mode
-        if is_padding_free:
-            logps, entropies = self._unpad_logps_and_entropies(logps, entropies, logits_to_keep, batch_size,
-                                                               original_seq_lengths, compute_entropy)
+            # Unpad for padding_free mode (only for non-SP path)
+            if is_padding_free:
+                logps, entropies = self._unpad_logps_and_entropies(logps, entropies, logits_to_keep, batch_size,
+                                                                   original_seq_lengths, compute_entropy)
 
         return logps, entropies
 
