@@ -21,7 +21,7 @@ from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
 from vllm.distributed import parallel_state as vllm_ps
 
-from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
+from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, get_packed_seq_params, to_device
 from swift.llm.infer.protocol import RolloutOutput
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
@@ -93,10 +93,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Dr. GRPO / RLOO / REINFORCE++
         self.scale_rewards = args.scale_rewards
-        self.advantage_estimator = args.advantage_estimator  # TODO
-        self.kl_in_reward = args.kl_in_reward  # TODO
+        self.advantage_estimator = args.advantage_estimator
+        self.kl_in_reward = args.kl_in_reward
 
-        # Entropy mask settings, TODO
+        # Entropy mask settings (TODO: entropy mask implementation)
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
@@ -504,15 +504,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.dynamic_sample:
             rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
 
-        advantages = self._compute_advantages(rollout_batch, rewards_per_func)
-
-        def _get_encoded_batch(rollout_batch, advantages):
+        def _get_encoded_batch(rollout_batch, advantages=None):
             template = self.template
             with self._template_context(template):
                 encoded_list = [template.encode(data, return_length=True) for data in rollout_batch]
                 encoded_batch = to_device(
                     template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
-                lengths_tensor = encoded_batch['cu_seq_lens_q'][1:] - encoded_batch['cu_seq_lens_q'][:-1]
+                if 'cu_seq_lens_q' in encoded_batch:
+                    cu_seq_lens_q = encoded_batch['cu_seq_lens_q']
+                else:
+                    cu_seq_lens_q = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
+                lengths_tensor = cu_seq_lens_q[1:] - cu_seq_lens_q[:-1]
             labels = encoded_batch['labels']
             assert self.template.padding_free
             # Keep advantages as [batch_size] shape, don't expand to [total_tokens]
@@ -527,10 +529,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             encoded_batch.update({
                 'completion_mask_rmpad': completion_mask_rmpad,
                 'truncated_mask': truncated_mask,  # [batch_size]
-                'advantages': advantages,  # [batch_size]
                 'num_samples': len(rollout_batch),
                 'seq_lengths': lengths_tensor,  # [batch_size]
             })
+
+            # Add advantages if provided
+            if advantages is not None:
+                encoded_batch['advantages'] = advantages  # [batch_size]
 
             # Process rollout_logprobs for importance sampling correction
             # Store in rmpad format [1, total_tokens], will be converted to batch format in loss_func
@@ -580,19 +585,34 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
             return encoded_batch
 
-        # Step2: ref/old logps
+        # Gather rollout data across rollout group
         total_batch = gather_object(rollout_batch, group=rollout_group)
-        total_advantages = gather(advantages, group=rollout_group)
         mini_batch_data = []
 
+        # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
-            micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
-            micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
+            micro_batch_encoded = _get_encoded_batch(micro_batch_data, advantages=None)
             with profiling_context(self, 'compute_ref_old_logps'):
-                micro_batch_data = self._maybe_compute_logps(micro_batch_data)
-            mini_batch_data.append(micro_batch_data)
+                micro_batch_encoded = self._maybe_compute_logps(micro_batch_encoded)
+            mini_batch_data.append(micro_batch_encoded)
+
+        # Step 2: Compute KL from logps if kl_in_reward is enabled
+        kl_values = None
+        if self.kl_in_reward and self.beta != 0.0:
+            kl_values = self._compute_kl_from_batches(mini_batch_data)
+
+        # Step 3: Compute advantages (with KL penalty if kl_in_reward is enabled)
+        advantages = self._compute_advantages(rollout_batch, rewards_per_func, kl_values=kl_values)
+        total_advantages = gather(advantages, group=rollout_group)
+
+        # Step 4: Add advantages to encoded batches
+        for idx, micro_batch_encoded in enumerate(mini_batch_data):
+            start_idx = idx * self.micro_batch_size
+            end_idx = start_idx + micro_batch_encoded['num_samples']
+            micro_batch_advantages = total_advantages[start_idx:end_idx]
+            micro_batch_encoded['advantages'] = micro_batch_advantages
 
         if self.loss_type in ['cispo', 'dapo']:
             # Calculate num_items_in_batch
@@ -855,42 +875,88 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, batch: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
-        """Compute advantages for RL training."""
+    def _compute_advantages(self,
+                            batch: DataType,
+                            rewards_per_func: torch.Tensor,
+                            kl_values: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Compute advantages for RL training.
 
-        def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
+        Supports different advantage estimators:
+        - 'grpo': Group mean baseline
+        - 'rloo': Leave-One-Out baseline
+        - 'reinforce_plus_plus': Similar to grpo but normalizes advantages std
+
+        Args:
+            batch: Local batch data samples
+            rewards_per_func: Reward per function for local data samples
+            kl_values: Optional KL values for kl_in_reward mode, shape [total_samples]
+
+        Returns:
+            advantages: Computed advantages for local batch, shape [local_batch_size]
+        """
+
+        def normalize_advantages(advantages: torch.Tensor, std_values: torch.Tensor) -> torch.Tensor:
             """Normalize advantages if configured; otherwise, return as-is."""
             if self.scale_rewards != 'none':
-                return advantages / (rewards_std + 1e-4)
+                return advantages / (std_values + 1e-4)
             return advantages
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         assert len(batch) == rewards_per_func.shape[0]
         total_rewards_per_func = gather(rewards_per_func)
         rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+
+        # Apply KL penalty to rewards if kl_in_reward is enabled
+        if self.kl_in_reward and self.beta != 0.0 and kl_values is not None:
+            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
+            rewards = rewards - self.beta * kl_values
+
         grouped_rewards = rewards.view(-1, self.num_generations)
+        K = self.num_generations
 
         # Compute group statistics
         group_rewards_mean = grouped_rewards.mean(dim=1)
 
         # Broadcast stats back to the original shape
-        group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
+        group_rewards_mean = group_rewards_mean.repeat_interleave(K)
 
-        # Compute advantages relative to group mean
-        advantages = rewards - group_rewards_mean
+        # Compute advantages based on estimation type
+        if self.advantage_estimator == 'rloo':
+            # RLOO: Leave-One-Out baseline
+            # A_i = r_i - mean(r_j for j != i)
+            # = r_i * K/(K-1) - mean_all * K/(K-1)
+            advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+        else:  # 'grpo' or 'reinforce_plus_plus'
+            # Both use group mean as baseline
+            advantages = rewards - group_rewards_mean
 
-        # Normalize advantages based on scale_rewards setting
-        if self.scale_rewards == 'batch':
-            # Global batch-level normalization
-            rewards_std = rewards.std().expand_as(rewards)
-        elif self.scale_rewards == 'group':
-            # Group-level normalization (default)
-            rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
-        else:  # 'none'
-            rewards_std = None
-
-        if rewards_std is not None:
-            advantages = normalize_advantages(advantages, rewards_std)
+        # Normalize advantages based on estimator and scale_rewards
+        if self.advantage_estimator == 'reinforce_plus_plus':
+            # REINFORCE++: Use std of advantages (not rewards)
+            if self.scale_rewards == 'batch':
+                # Global whitening: std computed on advantages
+                advantages_std = advantages.std().expand_as(advantages)
+            elif self.scale_rewards == 'group':
+                # Group-level whitening on advantages
+                advantages_grouped = advantages.view(-1, K)
+                advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+            else:  # 'none'
+                advantages_std = None
+            if advantages_std is not None:
+                advantages = normalize_advantages(advantages, advantages_std)
+        else:  # 'grpo' or 'rloo'
+            # GRPO/RLOO: Use std of original rewards
+            if self.scale_rewards == 'batch':
+                # Global batch-level normalization
+                rewards_std = rewards.std().expand_as(rewards)
+            elif self.scale_rewards == 'group':
+                # Group-level normalization (default)
+                rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+            else:  # 'none'
+                rewards_std = None
+            if rewards_std is not None:
+                advantages = normalize_advantages(advantages, rewards_std)
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
@@ -1016,6 +1082,73 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             batch['old_per_token_logps_rmpad'] = self.model_forward(
                 self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
         return batch
+
+    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
+        """
+        Compute per-sample KL divergence from encoded batches for kl_in_reward.
+
+        The KL is computed as: sum over tokens of (old_logp - ref_logp) for each sample.
+
+        Args:
+            mini_batch_data: List of encoded batch dictionaries containing:
+                - old_per_token_logps_rmpad: [1, total_tokens] in rmpad format
+                - ref_per_token_logps_rmpad: [1, total_tokens] in rmpad format
+                - completion_mask_rmpad: [1, total_tokens] mask for completion tokens
+                - seq_lengths: [batch_size] length of each sequence
+
+        Returns:
+            kl_values: Per-sample KL values, shape [total_samples]
+        """
+        kl_list = []
+
+        for batch in mini_batch_data:
+            old_per_token_logps_rmpad = batch.get('old_per_token_logps_rmpad')
+            ref_per_token_logps_rmpad = batch.get('ref_per_token_logps_rmpad')
+            completion_mask_rmpad = batch['completion_mask_rmpad']
+            seq_lengths = batch['seq_lengths']
+
+            # If on_policy, old_logps is not computed yet, use zeros
+            if old_per_token_logps_rmpad is None:
+                # On-policy case: old_logps will be the same as current policy
+                # For kl_in_reward computation, we need to estimate it
+                # Use ref_logps as approximation (KL will be computed with current policy in loss_func)
+                old_per_token_logps_rmpad = ref_per_token_logps_rmpad
+
+            if ref_per_token_logps_rmpad is None:
+                # No ref model, skip KL computation
+                num_samples = batch['num_samples']
+                kl_list.append(torch.zeros(num_samples, device=self.device))
+                continue
+
+            # Compute per-token KL: old_logp - ref_logp
+            per_token_kl_rmpad = old_per_token_logps_rmpad - ref_per_token_logps_rmpad  # [1, total_tokens]
+
+            # Compute per-sample KL by summing over tokens for each sample
+            # Need to split by seq_lengths in rmpad format
+            per_token_kl_flat = per_token_kl_rmpad.squeeze(0)  # [total_tokens]
+            completion_mask_flat = completion_mask_rmpad.squeeze(0)  # [total_tokens]
+
+            batch_size = seq_lengths.shape[0]
+            sample_kls = []
+            offset = 0
+
+            for i in range(batch_size):
+                seq_len = seq_lengths[i].item()
+                # Get this sample's tokens
+                sample_kl = per_token_kl_flat[offset:offset + seq_len]
+                sample_mask = completion_mask_flat[offset:offset + seq_len]
+                # Sum KL over completion tokens
+                sample_kl_sum = (sample_kl * sample_mask).sum()
+                sample_kls.append(sample_kl_sum)
+                offset += seq_len
+
+            kl_list.append(torch.stack(sample_kls))
+
+        # Concatenate all KL values and gather across ranks
+        kl_values = torch.cat(kl_list, dim=0)
+        kl_values = gather(kl_values)
+
+        return kl_values
 
     @contextmanager
     def _disable_maxlength_template_context(self, template: Template):
@@ -1211,6 +1344,23 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         else:
             rollout_per_token_logps = None
 
+        # Rollout importance sampling correction
+        rollout_correction_metrics = {}
+        if rollout_per_token_logps is not None:
+            # Compute off-policy diagnostic metrics
+            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
+                                                                                 rollout_per_token_logps,
+                                                                                 completion_mask)
+
+            # Apply importance sampling correction if mode is enabled
+            if self.rollout_importance_sampling_mode is not None:
+                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+
+                # Compute IS-specific metrics
+                is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
+                rollout_correction_metrics.update(is_metrics)
+
         # Apply truncated_mask filter (now in batch format)
         if self.args.overlong_filter and truncated_mask.any():
             if truncated_mask.all():
@@ -1221,7 +1371,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             completion_mask = completion_mask & (~truncated_mask_expanded)
 
         # Compute KL divergence if needed
-        if self.beta != 0.0 and ref_per_token_logps is not None:
+        # Only compute KL for loss if kl_in_reward=False (GRPO style)
+        # When kl_in_reward=True, KL penalty is already applied to rewards in _compute_advantages
+        if self.beta != 0.0 and ref_per_token_logps is not None and not self.kl_in_reward:
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
         else:
@@ -1269,29 +1421,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
+        if self.rollout_importance_sampling_mode is not None:
+            # Apply IS weights to loss
+            per_token_loss = per_token_loss * rollout_is_weights
         # Add KL penalty if needed
         if self.beta != 0.0 and per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
-
-        # Rollout importance sampling correction
-        rollout_correction_metrics = {}
-        if rollout_per_token_logps is not None:
-            # Compute off-policy diagnostic metrics
-            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
-                                                                                 rollout_per_token_logps,
-                                                                                 completion_mask)
-
-            # Apply importance sampling correction if mode is enabled
-            if self.rollout_importance_sampling_mode is not None:
-                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
-                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
-
-                # Compute IS-specific metrics
-                is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
-                rollout_correction_metrics.update(is_metrics)
-
-                # Apply IS weights to loss
-                per_token_loss = per_token_loss * rollout_is_weights
 
         if self.loss_type in ['grpo', 'sapo']:
             # Per-sample mean, then batch mean

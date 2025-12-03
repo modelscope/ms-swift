@@ -102,6 +102,10 @@ class RLHFMegatronArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: Literal['none', 'group', 'batch'] = 'group'
 
+    # RLOO / REINFORCE++
+    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
+    kl_in_reward: bool = False
+
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
 
@@ -110,9 +114,7 @@ class RLHFMegatronArgumentsMixin:
     rollout_importance_sampling_threshold: float = 2.0
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
-    # RLOO / REINFORCE++
-    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
-    kl_in_reward: bool = False
+
     # reward model
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
