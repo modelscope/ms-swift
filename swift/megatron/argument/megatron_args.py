@@ -683,7 +683,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self.model_type = self.model_info.model_type
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
-            raise ValueError('pipeline_model_parallel_size must be greater than 1 before you can set '
+            raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
