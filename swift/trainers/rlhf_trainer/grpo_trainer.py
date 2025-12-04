@@ -198,12 +198,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs
 
     @contextmanager
-    def _template_context(self, template: Template):
+    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
         template.max_length = None
+        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
         try:
-            yield
+            with forward_ctx:
+                yield
         finally:
             template.max_length = max_length
 
@@ -795,9 +797,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            batch_size = len(batch)
+
+            # Create completion_mask
+            # In padding_free mode: labels shape is [1, total_seq_len] (rmpad format)
+            # In non-padding_free mode: labels shape is [batch_size, seq_len] (batch format)
+            completion_mask_raw = labels[:, -logits_to_keep:] != -100
+
             extra_kwargs = {
-                'completion_mask':
-                labels[:, -logits_to_keep:] != -100,
                 'truncated_mask':
                 torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool, device=self.accelerator.device),
                 'logits_to_keep':
@@ -816,6 +823,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # The first sentence has its prompt portion removed due to logits_to_keep
                 lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
                 extra_kwargs.update({'seq_lengths': lengths})
+
+                # In padding_free mode, completion_mask_raw is [1, logits_to_keep] (rmpad format)
+                # Pad it back to [batch_size, logits_to_keep] for consistency with per_token_logps
+                completion_mask, _ = pad_logps_back_to_batch(
+                    logps_rmpad=completion_mask_raw.float(),
+                    logits_to_keep=logits_to_keep,
+                    batch_size=batch_size,
+                    seq_lengths=lengths,
+                    pad_value=0.0)
+                completion_mask = completion_mask.bool()
+            else:
+                # In non-padding_free mode, completion_mask is already [batch_size, logits_to_keep]
+                completion_mask = completion_mask_raw
+
+            extra_kwargs['completion_mask'] = completion_mask
             batch_encoded_inputs.update(extra_kwargs)
 
             with torch.no_grad():
@@ -851,13 +873,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         valid_logprobs = True
                         for i, nested_lp in enumerate(rollout_logprobs_list):
                             total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
-                            if self.template.padding_free:
-                                seq_lengths = batch_encoded_inputs['seq_lengths']
-                                offset = sum(seq_lengths[:i].tolist()) if i > 0 else 0
-                                seq_len = seq_lengths[i].item()
-                                completion_count = int(completion_mask[0, offset:offset + seq_len].sum().item())
-                            else:
-                                completion_count = int(completion_mask[i].sum().item())
+                            completion_count = int(completion_mask[i].sum().item())
 
                             if total_logprobs != completion_count:
                                 logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
@@ -867,63 +883,31 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 break
 
                         if valid_logprobs:
-                            if self.template.padding_free:
-                                # In padding_free mode, we need to align rollout_logprobs with completion_mask
-                                # completion_mask marks which positions are completion tokens (not prompts)
-                                # rollout_logprobs[i] is List[List[float]], each inner list for one response turn
-                                seq_lengths = batch_encoded_inputs['seq_lengths']
-                                total_len = int(seq_lengths.sum().item())
+                            # Align rollout_logprobs with completion_mask for each sample
+                            batch_size = completion_mask.shape[0]
+                            seq_len = completion_mask.shape[1]
 
-                                # Initialize aligned tensor with zeros (for prompt positions)
-                                rollout_logprobs_aligned = torch.zeros(
-                                    total_len, dtype=torch.float32, device=self.accelerator.device)
+                            # Initialize with zeros (for prompt positions)
+                            rollout_logps_tensor = torch.zeros(
+                                batch_size, seq_len, dtype=torch.float32, device=self.accelerator.device)
 
-                                offset = 0
-                                for i, nested_lp in enumerate(rollout_logprobs_list):
-                                    seq_len = seq_lengths[i].item()
-                                    seq_mask = completion_mask[0, offset:offset + seq_len]  # [seq_len]
+                            for i, nested_lp in enumerate(rollout_logprobs_list):
+                                # Flatten logprobs for this sample
+                                flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                                if flat_lps:
+                                    # Check for None values in flat_lps
+                                    if any(lp is None for lp in flat_lps):
+                                        logger.warning('Found None values in rollout_logprobs. '
+                                                       'Skipping rollout importance sampling for this batch.')
+                                        rollout_logps_tensor = None
+                                        break
+                                    # Get indices where completion_mask is True
+                                    completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+                                    # Scatter logprobs to completion positions
+                                    rollout_logps_tensor[i, completion_indices] = torch.tensor(
+                                        flat_lps, dtype=torch.float32, device=self.accelerator.device)
 
-                                    # Flatten logprobs for this sample
-                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
-                                    if flat_lps:
-                                        # Get indices where completion_mask is True
-                                        completion_indices = seq_mask.nonzero(as_tuple=True)[0] + offset
-                                        # Scatter logprobs to completion positions
-                                        rollout_logprobs_aligned[completion_indices] = torch.tensor(
-                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
-                                    offset += seq_len
-
-                                # Convert to batch format
-                                rollout_logprobs_rmpad = rollout_logprobs_aligned.unsqueeze(0)
-
-                                batch_size = seq_lengths.shape[0]
-                                rollout_logps_padded, _ = pad_logps_back_to_batch(
-                                    logps_rmpad=rollout_logprobs_rmpad,
-                                    logits_to_keep=logits_to_keep,
-                                    batch_size=batch_size,
-                                    seq_lengths=seq_lengths,
-                                    dtype=torch.float32)
-                                batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_padded
-                            else:
-                                # Standard mode: align rollout_logprobs with completion_mask for each sample
-                                batch_size = completion_mask.shape[0]
-                                seq_len = completion_mask.shape[1]
-
-                                # Initialize with zeros (for prompt positions)
-                                rollout_logps_tensor = torch.zeros(
-                                    batch_size, seq_len, dtype=torch.float32, device=self.accelerator.device)
-
-                                for i, nested_lp in enumerate(rollout_logprobs_list):
-                                    # Flatten logprobs for this sample
-                                    flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
-                                    if flat_lps:
-                                        # Get indices where completion_mask is True
-                                        completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
-                                        # Scatter logprobs to completion positions
-                                        rollout_logps_tensor[i, completion_indices] = torch.tensor(
-                                            flat_lps, dtype=torch.float32, device=self.accelerator.device)
-
-                                batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_tensor
+                            batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_tensor
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1015,10 +999,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss_and_metrics(self, model, inputs):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
-        if self.template.padding_free:
-            completion_mask = inputs['completion_mask_padded']
-        else:
-            completion_mask = inputs['completion_mask']
+        completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
@@ -1394,33 +1375,51 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Update metrics
         self._update_metrics(aggregated_metrics)
 
-    def _get_per_token_logps_and_entropies_sp(
-            self,
-            model: torch.nn.Module,
-            inputs: 'DataType',
-            compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Get per token logps for GRPO sequence parallel training"""
-        try:
-            from trl.trainer.utils import selective_log_softmax
-        except ImportError:
-            raise ImportError('trl is required for GRPO training. Please install it with: pip install trl')
+    def _unpad_logps_and_entropies(self,
+                                   logps: torch.Tensor,
+                                   entropies: Optional[torch.Tensor],
+                                   logits_to_keep: int,
+                                   batch_size: int,
+                                   seq_lengths: torch.Tensor,
+                                   compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Restore logps and entropies from rmpad format [1, total_nnz] to batch format [batch_size, max_seq_len].
 
+        Args:
+            logps: Per-token log probabilities in rmpad format [1, total_nnz]
+            entropies: Per-token entropies in rmpad format [1, total_nnz] or None
+            logits_to_keep: Number of tokens to keep per sequence
+            batch_size: Number of sequences in the batch
+            seq_lengths: Actual sequence lengths [batch_size]
+            compute_entropy: Whether entropy was computed
+
+        Returns:
+            logps: Restored log probabilities [batch_size, logits_to_keep]
+            entropies: Restored entropies [batch_size, logits_to_keep] or None
+        """
+        logps, _ = pad_logps_back_to_batch(
+            logps_rmpad=logps, logits_to_keep=logits_to_keep, batch_size=batch_size, seq_lengths=seq_lengths)
+
+        if compute_entropy and entropies is not None:
+            entropies, _ = pad_logps_back_to_batch(
+                logps_rmpad=entropies, logits_to_keep=logits_to_keep, batch_size=batch_size, seq_lengths=seq_lengths)
+
+        return logps, entropies
+
+    def _get_logps_via_sp(self,
+                          model: torch.nn.Module,
+                          inputs: 'DataType',
+                          logits_to_keep: int,
+                          input_ids: torch.Tensor,
+                          compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Get per token logps via sequence parallel, returns rmpad format [1, total_nnz] for padding_free mode"""
         from swift.trainers.sequence_parallel.utils import GatherLoss
         from swift.trainers.sequence_parallel import sequence_parallel
 
-        # original logits to keep
-        logits_to_keep = inputs['logits_to_keep']
-        input_ids = inputs['input_ids']
-        inputs = {
-            k: v
-            for k, v in inputs.items() if k not in [
-                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-            ]
-        }
-        sequence_parallel.prepare_inputs(inputs)
-        with self._template_context(self.template):
-            output = model(**inputs)
+        model_inputs = self._prepare_model_inputs(inputs)
+        sequence_parallel.prepare_inputs(model_inputs)
+        with self._template_context(self.template, inputs):
+            output = model(**model_inputs)
             logits = output.logits
         # split input_ids to labels
         position_ids = sequence_parallel.real_position_ids
@@ -1436,11 +1435,118 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             entropies = entropy_from_logits(logits)
             entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
 
-        per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
-        if compute_entropy:
-            entropies = entropies[:, -logits_to_keep - 1:-1]
-        # ignore the last token
+        if self.template.padding_free:
+            # In padding_free mode, we need to extract completion tokens from gathered data.
+            # The behavior differs based on rp_world_size:
+            # - rp_world_size > 1: Each sequence is padded to world_size * 2 multiple (per-sequence padding)
+            # - rp_world_size == 1: Entire data is padded to world_size multiple (end padding only)
+            seq_lengths = inputs['seq_lengths']
+            batch_size = seq_lengths.shape[0]
+            rp_world_size = sequence_parallel.rp_world_size
+
+            from swift.utils import get_cu_seqlens_from_position_ids
+
+            if rp_world_size > 1:
+                # With ring parallel: GatherLoss pads each sequence to world_size * 2 multiple
+                # Data layout after gather: [seq1_data, seq1_padding, seq2_data, seq2_padding, ...]
+                # - Original data is at [offset:offset+orig_len]
+                # - Padding is at [offset+orig_len:offset+padded_len]
+
+                # Get original sequence boundaries (before padding)
+                cu_seqlens_orig = get_cu_seqlens_from_position_ids(position_ids)
+
+                # Get padded sequence boundaries (for offset calculation)
+                padded_position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                cu_seqlens_padded = get_cu_seqlens_from_position_ids(padded_position_ids)
+
+                result_logps = []
+                result_entropies = [] if compute_entropy else None
+                gathered_logps = per_token_logps.squeeze(0)
+                gathered_entropies = entropies.squeeze(0) if compute_entropy else None
+
+                offset = 0
+                for i in range(batch_size):
+                    # Original sequence length (before SP padding)
+                    orig_len = (cu_seqlens_orig[i + 1] - cu_seqlens_orig[i]).item()
+                    # Padded sequence length (multiple of world_size * 2)
+                    padded_len = (cu_seqlens_padded[i + 1] - cu_seqlens_padded[i]).item()
+                    # Actual completion tokens for this sequence
+                    actual_len = seq_lengths[i].item()
+
+                    # Extract the last `actual_len` tokens from this sequence's ORIGINAL data region
+                    # Due to label shifting (roll -1), per_token_logps[i] predicts token i+1
+                    # So completion tokens [prompt_len, total_len) have logps at [prompt_len-1, total_len-1)
+                    seq_start = offset + orig_len - actual_len - 1
+                    seq_end = offset + orig_len - 1
+                    result_logps.append(gathered_logps[seq_start:seq_end])
+                    if compute_entropy:
+                        result_entropies.append(gathered_entropies[seq_start:seq_end])
+
+                    # Use padded_len for offset because gathered data includes padding
+                    offset += padded_len
+
+                per_token_logps = torch.cat(result_logps).unsqueeze(0)
+                if compute_entropy:
+                    entropies = torch.cat(result_entropies).unsqueeze(0)
+            else:
+                # Without ring parallel (rp_world_size == 1): Simple gather with end padding only
+                # Use input_ids length directly as the authoritative original length
+                original_total_len = input_ids.shape[-1]
+                # Due to label shifting (roll -1), per_token_logps[i] predicts token i+1.
+                start_idx = original_total_len - logits_to_keep - 1
+                end_idx = original_total_len - 1
+                per_token_logps = per_token_logps[:, start_idx:end_idx]
+                if compute_entropy:
+                    entropies = entropies[:, start_idx:end_idx]
+        else:
+            per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
+            if compute_entropy:
+                entropies = entropies[:, -logits_to_keep - 1:-1]
+
         return per_token_logps, entropies
+
+    def _get_logps_via_local_forward(self,
+                                     model: torch.nn.Module,
+                                     inputs: 'DataType',
+                                     logits_to_keep: int,
+                                     input_ids: torch.Tensor,
+                                     compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Get per token logps via local forward pass, returns rmpad format [1, total_nnz] for padding_free mode"""
+        model_inputs = self._prepare_model_inputs(inputs)
+        if 'logits_to_keep' in self.model_kwarg_keys:
+            model_inputs['logits_to_keep'] = logits_to_keep + 1
+
+        # Forward pass
+        logits = model(**model_inputs).logits
+
+        # Extract relevant portion and apply temperature
+        logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
+        input_ids_for_logps = input_ids[:, -logits_to_keep:]
+
+        is_padding_free = self.template.padding_free
+        if is_padding_free:
+            # In padding_free mode, compute logps on flattened tensors
+            logits_rmpad = logits.squeeze(0)  # [total_nnz, vocab_size]
+            input_ids_rmpad = input_ids_for_logps.squeeze(0)  # [total_nnz]
+
+            # Compute logps on rmpad tensors
+            logps = selective_log_softmax(logits_rmpad, input_ids_rmpad)  # [total_nnz]
+            logps = logps.unsqueeze(0)  # [1, total_nnz]
+
+            # Compute entropy if needed
+            if compute_entropy:
+                entropies = entropy_from_logits(logits_rmpad)  # [total_nnz]
+                entropies = entropies.unsqueeze(0)  # [1, total_nnz]
+            else:
+                entropies = None
+        else:
+            logps = selective_log_softmax(logits, input_ids_for_logps)
+            if compute_entropy:
+                entropies = entropy_from_logits(logits)
+            else:
+                entropies = None
+
+        return logps, entropies
 
     @patch_profiling_decorator
     def _get_per_token_logps_and_entropies(self,
@@ -1466,12 +1572,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                   model,
                                                   inputs,
                                                   compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        if self.template.sequence_parallel_size > 1:
-            return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
-
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         is_padding_free = self.template.padding_free
+        use_sp = self.template.sequence_parallel_size > 1
 
         # Store metadata for padding_free restoration
         if is_padding_free:
@@ -1485,87 +1589,34 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         use_local_entropy = not hasattr(super(), '_get_per_token_logps_and_entropies') and compute_entropy
 
+        # can_use_super only when not padding_free and not using SP
         can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy
-                         and not is_padding_free)
+                         and not is_padding_free and not use_sp)
 
         if can_use_super:
+            # Path 1: Use super() method (non-padding_free, non-SP)
             if hasattr(super(), '_get_per_token_logps_and_entropies'):
                 logps, entropies = super()._get_per_token_logps_and_entropies(
                     model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
             else:
                 logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
                 entropies = None
+        elif use_sp:
+            # Path 2: Use sequence parallel
+            # In padding_free mode: returns [1, logits_to_keep] format (rmpad, needs unpad)
+            # In non-padding_free mode: returns [batch_size, logits_to_keep] format
+            logps, entropies = self._get_logps_via_sp(
+                model, inputs, logits_to_keep, input_ids, compute_entropy=compute_entropy)
         else:
-            model_inputs = {
-                k: v
-                for k, v in inputs.items() if k not in [
-                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-                ]
-            }
-            if 'logits_to_keep' in self.model_kwarg_keys:
-                model_inputs['logits_to_keep'] = logits_to_keep + 1
+            # Path 3: Local forward pass (padding_free or multimodal or no logits_to_keep support)
+            # Returns [1, total_nnz] in padding_free mode, or [batch_size, logits_to_keep] otherwise
+            logps, entropies = self._get_logps_via_local_forward(
+                model, inputs, logits_to_keep, input_ids, compute_entropy=compute_entropy)
 
-            # Forward pass
-            logits = model(**model_inputs).logits
-
-            # Extract relevant portion and apply temperature
-            logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
-            input_ids_for_logps = input_ids[:, -logits_to_keep:]
-
-            # Compute on rmpad, then pad back
-            if is_padding_free:
-                # In padding_free mode, compute logps on flattened tensors
-                logits_rmpad = logits.squeeze(0)  # [total_nnz, vocab_size]
-                input_ids_rmpad = input_ids_for_logps.squeeze(0)  # [total_nnz]
-
-                # Compute logps on rmpad tensors
-                per_token_logps_rmpad = selective_log_softmax(logits_rmpad, input_ids_rmpad)  # [total_nnz]
-
-                # Compute entropy if needed
-                if compute_entropy:
-                    entropy_rmpad = entropy_from_logits(logits_rmpad)  # [total_nnz]
-                else:
-                    entropy_rmpad = None
-
-                # Restore to batch shape using seq_lengths
-                logps, padded_shape_mask = pad_logps_back_to_batch(
-                    logps_rmpad=per_token_logps_rmpad.unsqueeze(0),  # [1, total_nnz]
-                    logits_to_keep=logits_to_keep,
-                    batch_size=batch_size,
-                    seq_lengths=original_seq_lengths)
-
-                # Also restore entropy if computed
-                if compute_entropy:
-                    entropies, _ = pad_logps_back_to_batch(
-                        logps_rmpad=entropy_rmpad.unsqueeze(0),
-                        logits_to_keep=logits_to_keep,
-                        batch_size=batch_size,
-                        seq_lengths=original_seq_lengths)
-                else:
-                    entropies = None
-
-                # In padding_free mode, the original completion_mask is [1, logits_to_keep] (flattened).
-                # We need to convert it to [batch_size, max_seq_len] format.
-                # The original mask correctly identifies completion vs prompt tokens.
-                if 'completion_mask_padded' not in inputs:
-                    original_completion_mask = inputs['completion_mask']  # [1, logits_to_keep]
-                    completion_mask_padded, _ = pad_logps_back_to_batch(
-                        logps_rmpad=original_completion_mask.float(),  # [1, logits_to_keep]
-                        logits_to_keep=logits_to_keep,
-                        batch_size=batch_size,
-                        seq_lengths=original_seq_lengths,
-                        pad_value=0.0)
-                    # Combine with shape mask to ensure padding positions are also masked
-                    inputs['completion_mask_padded'] = completion_mask_padded
-
-            else:
-                logps = selective_log_softmax(logits, input_ids_for_logps)
-
-                if compute_entropy:
-                    entropies = entropy_from_logits(logits)
-                else:
-                    entropies = None
+        # Unpad for padding_free mode (both SP and non-SP paths need this)
+        if is_padding_free:
+            logps, entropies = self._unpad_logps_and_entropies(logps, entropies, logits_to_keep, batch_size,
+                                                               original_seq_lengths, compute_entropy)
 
         return logps, entropies
 
@@ -1642,17 +1693,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             last_hidden_state = unwrapped_model.model(
                 input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
         else:
-            inputs = {
-                k: v
-                for k, v in inputs.items() if k not in [
-                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
-                ]
-            }
+            model_inputs = self._prepare_model_inputs(inputs)
             if 'logits_to_keep' in self.model_kwarg_keys:
-                inputs['logits_to_keep'] = logits_to_keep + 1
+                model_inputs['logits_to_keep'] = logits_to_keep + 1
 
-            last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
+            last_hidden_state = unwrapped_model.model(**model_inputs).last_hidden_state
 
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
@@ -1785,7 +1830,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 except Exception as e:
                     # Encoding failed — attempt to resample a new input.
-                    logger.warning(f'Encoding failed for one sample; resampling a new input. {e}')
+                    logger.info(f'Encoding failed for one sample; resampling a new input. {e}')
                     n_try += 1
 
                     # Stop if the maximum retry limit is exceeded.
@@ -2447,3 +2492,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
 
         return metrics
+
+    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
+        """Filters inputs to create model_inputs, removing GRPO-specific keys."""
+        return {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+            ]
+        }
