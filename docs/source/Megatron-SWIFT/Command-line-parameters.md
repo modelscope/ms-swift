@@ -131,7 +131,7 @@
 - log_throughput: 记录每个GPU的吞吐量（理论值）。默认为False。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
-- tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。
+- tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
 - log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
 - no_log_learning_rate_to_tensorboard: 不记录学习率到tensorboard。默认为False。
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。

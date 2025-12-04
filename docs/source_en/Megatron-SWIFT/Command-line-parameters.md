@@ -137,7 +137,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - log_throughput: Log the theoretical throughput per GPU. Defaults to False.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
-- tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
+- tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
 - no_log_learning_rate_to_tensorboard: Do not log learning rate to TensorBoard. Default is False.
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
