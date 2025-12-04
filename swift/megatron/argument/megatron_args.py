@@ -78,6 +78,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
+    vllm_server_group_port: List[int] = field(default_factory=lambda: [51216])
 
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
@@ -102,13 +103,19 @@ class RLHFMegatronArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: Literal['none', 'group', 'batch'] = 'group'
 
-    wandb_log_unique_prompts: Optional[bool] = None
-    log_completions: bool = False
-
-    # ───────────────────────────  Not Supported Yet  ───────────────────────────
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     kl_in_reward: bool = False
+
+    wandb_log_unique_prompts: Optional[bool] = None
+    log_completions: bool = False
+
+    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+                                                       'sequence_mask']] = None
+    rollout_importance_sampling_threshold: float = 2.0
+
+    # ───────────────────────────  Not Supported Yet  ───────────────────────────
+
     # reward model
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
@@ -172,10 +179,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
-            if self.kl_in_reward:
-                raise ValueError('kl_in_reward is not supported for Megatron GRPO right now')
-            if self.advantage_estimator != 'grpo':
-                raise ValueError('advantage_estimator must be grpo for Megatron GRPO right now')
 
         def _check_batch_params():
             # Set default values if both are None
@@ -311,6 +314,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     task_type: Literal['causal_lm', 'seq_cls'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
+    save_strategy: Literal['steps', 'epoch'] = 'steps'
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
@@ -432,6 +436,9 @@ class MegatronArguments(ExtraMegatronArguments):
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
+    account_for_embedding_in_pipeline_split: bool = False
+    account_for_loss_in_pipeline_split: bool = False
+
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
@@ -472,6 +479,9 @@ class MegatronArguments(ExtraMegatronArguments):
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
     qk_layernorm: Optional[bool] = None
+    qk_l2_norm: Optional[bool] = None
+    no_rope_freq: Optional[int] = None
+    moe_apply_probs_on_input: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # moe
@@ -677,6 +687,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.save_strategy == 'epoch':
+            self.save_interval = 1
+            self.eval_interval = 1
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:

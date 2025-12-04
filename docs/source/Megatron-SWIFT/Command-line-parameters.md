@@ -80,6 +80,7 @@
 - 🔥save_interval: checkpoint保存的间隔（steps），默认为500。
   - 注意：训练结束时一定会保存权重。
 - 🔥save_retain_interval: 保留检查点的迭代间隔。只有迭代步数是该间隔倍数的检查点才会被保留（最后一个检查点除外）。
+  - 提示：你可以设置为一个很大的值来只保存最后一个检查点。
 - 🔥no_save_optim: 不保存optimizer，默认为False。在全参数训练时，可以显著降低存储时间。
 - 🔥no_save_rng: 不保存rng，默认为False。
 - 🔥load: 加载的checkpoint目录，默认None。
@@ -110,6 +111,8 @@
 - 🔥decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
   - 该参数通常用于**Transformer层数无法被PP整除**，或者多模态模型第0个pp阶段显存占用过高的情况。
 - 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- account_for_embedding_in_pipeline_split: 如果设置为 True，在流水线并行的划分和放置策略中，输入 embedding 层会被视为一个标准的 Transformer 层来处理。默认为False。
+- account_for_loss_in_pipeline_split: 如果设置为 True，在流水线并行的划分和放置策略中，loss 层会被视为一个标准的 Transformer 层来处理。默认为False。
 - 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
@@ -181,6 +184,9 @@
 - hidden_dropout: 默认为0.。
 - kv_channels: 默认为None，设置为`args.hidden_size // args.num_attention_heads`。
 - qk_layernorm: 是否对Q和K进行层归一化。
+- qk_l2_norm: 使用 Llama 4 的 QK L2 范数。
+- no_rope_freq: 控制在哪些层上跳过应用旋转位置编码（RoPE）。默认该参数为None，表示在每一层都执行 RoPE。
+- moe_apply_probs_on_input: 在 MoE 路由中，在 MLP 激活函数之前应用概率（probs）。
 - transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
 - padded_vocab_size: 完整词表大小，默认为None。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
@@ -282,6 +288,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
+- attn_impl: 多模态模型训练时，设置vit部分的attn_impl实现。默认为'flash_attn'。
 - vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
@@ -300,6 +307,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
+- 🔥save_strategy: 保存策略，可选项为'steps'和'epochs'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
 
 
 ## RLHF参数
@@ -386,3 +394,4 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - exist_ok: 如果`args.save`存在，不抛出异常，进行覆盖。默认为False。
+- device_map: 设置`--test_convert_precision true`时生效，控制HF模型的加载位置，默认为'auto'。你可以设置为'cpu'节约显存资源。

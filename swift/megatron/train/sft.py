@@ -76,13 +76,13 @@ class MegatronSft(SwiftSft):
 
         try:
             self.trainer.train(train_dataset, val_dataset, data_collator)
-            dist.barrier()  # Ensure all weights are saved completely
         finally:
             # Visualization
             if is_last_rank():
                 images_dir = os.path.join(args.save, 'images')
                 logger.info(f'images_dir: {images_dir}')
                 plot_images(images_dir, args.tensorboard_dir)
+            dist.barrier()  # Ensure all weights are saved completely
 
 
 def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):

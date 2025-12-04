@@ -142,8 +142,38 @@ def add_version_to_work_dir(work_dir: str) -> str:
 _T = TypeVar('_T')
 
 
+def _patch_args(class_type):
+    try:
+        for k, v in class_type.__annotations__.items():
+            if v == Union[str, dict, type(None)]:
+                class_type.__annotations__[k] = Union[dict, str, type(None)]
+    except Exception:
+        logger.warning('patch args failed')
+
+
+@contextmanager
+def _patch_get_type_hints():
+    # Fix parsing string arguments into dicts
+    from transformers import hf_argparser
+    origin_get_type_hints = hf_argparser.get_type_hints
+
+    def get_type_hints(*args, **kwargs):
+        kwargs = origin_get_type_hints(*args, **kwargs)
+        for k, v in kwargs.items():
+            if v == Union[str, dict, type(None)]:
+                kwargs[k] = Union[dict, str, type(None)]
+        return kwargs
+
+    hf_argparser.get_type_hints = get_type_hints
+    try:
+        yield
+    finally:
+        hf_argparser.get_type_hints = origin_get_type_hints
+
+
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
-    parser = HfArgumentParser([class_type])
+    with _patch_get_type_hints():
+        parser = HfArgumentParser([class_type])
     _ray_args = os.environ.get('RAY_SWIFT_ARGS')
     if _ray_args:
         argv = json.loads(_ray_args)

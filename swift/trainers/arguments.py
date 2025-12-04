@@ -432,7 +432,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
-
+    vllm_server_group_port: List[int] = field(default_factory=lambda: [51216])
     enable_flattened_weight_sync: bool = True
     async_generate: bool = False
 

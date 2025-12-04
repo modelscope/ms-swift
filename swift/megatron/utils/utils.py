@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from typing import Optional, Tuple
 
+import megatron.core
 import torch
 import torch.distributed as dist
 from megatron.core import mpu
@@ -10,13 +11,18 @@ from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayer
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.transformer.moe.router import TopKRouter
+from megatron.core.transformer.transformer_block import get_num_layers_to_build
+from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
+from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 logger = get_logger()
 
@@ -320,3 +326,19 @@ def get_padding_to(args):
     if args.attention_backend == 'fused':
         padding_to = max(padding_to, ((origin_padding_to) or 1) * 64)
     return padding_to
+
+
+def get_local_layer_specs(config, layer_specs, vp_stage=None):
+    kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
+    num_layers_to_build = get_num_layers_to_build(config, **kwargs)
+
+    if getattr(config, 'pipeline_model_parallel_layout', None) is not None:
+        from megatron.core.transformer.enums import LayerType
+        local_layer_specs = [
+            layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
+                layer_type=LayerType.decoder, **kwargs)
+        ]
+    else:
+        offset = get_transformer_layer_offset(config, **kwargs)
+        local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
+    return local_layer_specs
