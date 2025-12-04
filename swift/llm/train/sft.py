@@ -86,7 +86,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset, val_dataset = None, None
         if args.dataset:
             train_dataset, val_dataset = load_dataset(
-                args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
+                args.dataset,
+                split_dataset_ratio=args.split_dataset_ratio,
+                shuffle=args.dataset_shuffle,
+                **dataset_kwargs)
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(
