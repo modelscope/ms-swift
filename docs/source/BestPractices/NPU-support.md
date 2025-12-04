@@ -133,7 +133,7 @@ Legend:
 
 ## 微调
 
-以下介绍LoRA的微调, 全参数微调设置参数`--train_type full`即可.
+以下介绍LoRA的微调, 全参数微调设置参数`--train_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | 模型大小 | NPU数量 | deepspeed类型 | 最大显存占用量 |
 | -------- | ------- | ------------- | -------------- |
