@@ -1124,8 +1124,6 @@ def test_mistral_2512_thinking():
     response1 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
-    print(response1)
-    print(response2)
     assert response1[:256] == response2[:256]
 
 
