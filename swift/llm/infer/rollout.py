@@ -27,7 +27,8 @@ from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                                UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
-                                               UpdateFlattenedParamsRequest, patch_vllm_load_adapter)
+                                               UpdateFlattenedParamsRequest, check_vllm_version_ge,
+                                               patch_vllm_load_adapter)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -374,7 +375,11 @@ class SwiftRolloutDeploy(SwiftPipeline):
         kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
         # Important: Use processed_logprobs so temperature scaling affects the logprobs
         # This is required for correct importance sampling in rollout correction
-        kwargs['logprobs_mode'] = 'processed_logprobs'
+        vllm_version_ge_10_2 = check_vllm_version_ge('10.2.0')
+        if vllm_version_ge_10_2:
+            kwargs['logprobs_mode'] = 'processed_logprobs'
+        else:
+            kwargs['logprobs_mode'] = None
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync

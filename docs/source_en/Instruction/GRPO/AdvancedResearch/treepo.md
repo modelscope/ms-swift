@@ -2,6 +2,8 @@
 
 **Version Requirement**: ms-swift>=3.11
 
+Author: [li2zhi](https://github.com/li2zhi)
+
 ## Principle Introduction
 [TreePO paper](https://arxiv.org/abs/2508.17445) proposes a tree-structured modeling method. This method organizes sequence generation into a segmented tree structure search. Through dynamic branching, backtracking, and early termination mechanisms, it significantly improves the reuse rate of the key-value cache, thereby reducing computational overhead, while maintaining or even enhancing the diversity of exploration.
 

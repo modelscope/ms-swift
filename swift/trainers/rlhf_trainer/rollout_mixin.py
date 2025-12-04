@@ -34,9 +34,10 @@ from swift.utils import get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
-                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, get_even_process_data,
-                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_vllm_load_adapter, set_expandable_segments)
+                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
+                    get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
+                    set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -208,6 +209,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
+        vllm_version_ge_10_2 = check_vllm_version_ge('10.2.0')
+
+        if vllm_version_ge_10_2:
+            logprobs_mode = 'processed_logprobs'
+        else:
+            logprobs_mode = None
+            self.disable_rollout_importance_sampling = True
+            if getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 10.2.0, '
+                                 'please update vLLM to 10.2.0 or later.')
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
@@ -231,7 +242,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
                 engine_kwargs=self.args.vllm_engine_kwargs,
-                logprobs_mode='processed_logprobs',
+                logprobs_mode=logprobs_mode,
                 **lora_kwargs,
             )
             set_expandable_segments(True)

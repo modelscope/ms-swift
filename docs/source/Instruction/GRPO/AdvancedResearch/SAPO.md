@@ -1,4 +1,4 @@
-# Soft Adaptive Policy Optimization
+# Soft Adaptive Policy Optimization (SAPO)
 
 **版本依赖**：ms-swift>=3.11
 
