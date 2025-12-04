@@ -1182,7 +1182,7 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
                             batch_size: int = None,
                             seq_lengths: Optional[torch.Tensor] = None,
                             dtype: Optional[torch.dtype] = None,
-                            pad_value: float = 0) -> Tuple[torch.Tensor, torch.Tensor]:
+                            pad_value: float = -1e10) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Restore padding-free logprobs back to [batch_size, seq_len] shape with LEFT PADDING.
 
