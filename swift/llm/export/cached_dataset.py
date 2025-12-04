@@ -37,9 +37,10 @@ class ExportCachedDataset(SwiftSft):
         train_data_dir = os.path.join(self.args.output_dir, 'train')
         val_data_dir = os.path.join(self.args.output_dir, 'val')
         train_dataset.save_to_disk(train_data_dir)
-        logger.info(f'cached_dataset: `{train_data_dir}`')
         if val_dataset is not None:
             val_dataset.save_to_disk(val_data_dir)
+        logger.info(f'cached_dataset: `{train_data_dir}`')
+        if val_dataset is not None:
             logger.info(f'cached_val_dataset: `{val_data_dir}`')
 
 
