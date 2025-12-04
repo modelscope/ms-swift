@@ -95,6 +95,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             _, val_dataset = load_dataset(
                 args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
             assert args.split_dataset_ratio == 0.
+        if args.truncation_strategy == 'split':
+            logger.info(f'train_dataset: {train_dataset}')
+            logger.info(f'val_dataset: {val_dataset}')
         return train_dataset, val_dataset
 
     def _get_data_collator(self):
@@ -131,8 +134,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
-        logger.info(f'train_dataset: {train_dataset}')
-        logger.info(f'val_dataset: {val_dataset}')
+        if args.truncation_strategy != 'split':
+            logger.info(f'train_dataset: {train_dataset}')
+            logger.info(f'val_dataset: {val_dataset}')
         datasets = [train_dataset, val_dataset]
         if not pre_process:
             return datasets
