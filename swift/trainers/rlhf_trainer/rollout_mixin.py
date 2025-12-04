@@ -183,6 +183,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        vllm_template.sequence_parallel_size = 1
         lora_kwargs = {}
         is_moe = model.model_info.is_moe_model
         vllm_enable_lora = args.vllm_enable_lora

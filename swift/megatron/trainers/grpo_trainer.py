@@ -171,6 +171,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        vllm_template.sequence_parallel_size = 1
         engine = GRPOVllmEngine(
             self.hf_model_dir,
             args.torch_dtype,
