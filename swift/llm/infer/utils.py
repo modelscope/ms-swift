@@ -166,10 +166,8 @@ def _select_dataset(dataset, max_length):
 
 def get_cached_dataset(args):
     train_datasets, val_datasets = [], []
-    for cached_dataset in args.cached_dataset:
-        train_path = os.path.join(cached_dataset, 'train')
-        val_path = os.path.join(cached_dataset, 'val')
-        train_datasets.append(_select_dataset(load_from_disk(train_path), args.max_length))
-        if os.path.exists(val_path):
-            val_datasets.append(_select_dataset(load_from_disk(val_path), args.max_length))
+    for train_data in args.cached_dataset:
+        train_datasets.append(_select_dataset(load_from_disk(train_data), args.max_length))
+    for val_data in args.cached_val_dataset:
+        val_datasets.append(_select_dataset(load_from_disk(val_path), args.max_length))
     return train_datasets, val_datasets

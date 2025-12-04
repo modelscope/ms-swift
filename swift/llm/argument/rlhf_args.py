@@ -305,7 +305,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _init_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-        if self.cached_dataset:
+        if self.cached_dataset or self.cached_val_dataset:
             raise ValueError('cached_dataset is not supported for GRPO.')
         if self.use_vllm:
             set_default_ddp_config()

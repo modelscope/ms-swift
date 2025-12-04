@@ -71,6 +71,7 @@ class DataArguments:
     dataset: List[str] = field(default_factory=list)
     val_dataset: List[str] = field(default_factory=list)
     cached_dataset: List[str] = field(default_factory=list)
+    cached_val_dataset: List[str] = field(default_factory=list)
     split_dataset_ratio: float = 0.
 
     data_seed: int = 42
@@ -115,13 +116,9 @@ class DataArguments:
         self._init_val_dataset_exists()
 
     def _init_val_dataset_exists(self):
-        exists = self.dataset and self.split_dataset_ratio > 0 or self.val_dataset
-        if not exists and self.cached_dataset:
-            for dataset in self.cached_dataset:
-                if os.path.exists(os.path.join(dataset, 'val')):
-                    exists = True
-                    break
-        self._val_dataset_exists = exists
+        self._val_dataset_exists = (
+            self.dataset and self.split_dataset_ratio > 0 or self.val_dataset or self.cached_val_dataset
+        )
 
     def get_dataset_kwargs(self):
         return {
