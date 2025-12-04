@@ -375,8 +375,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
         # Important: Use processed_logprobs so temperature scaling affects the logprobs
         # This is required for correct importance sampling in rollout correction
-        vllm_version_ge_10_2 = check_vllm_version_ge('10.2.0')
-        if vllm_version_ge_10_2:
+        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        if vllm_version_ge_0_10_2:
             kwargs['logprobs_mode'] = 'processed_logprobs'
         else:
             kwargs['logprobs_mode'] = None

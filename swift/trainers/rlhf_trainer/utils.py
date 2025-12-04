@@ -1176,11 +1176,11 @@ def check_vllm_version_ge(min_version: str) -> bool:
     if not is_vllm_available():
         return False
     import vllm
-    vllm_version = version.parse(vllm.__version__)
+    vllm_version = vllm.__version__
     # if dev version, regard it as latest version
     if vllm_version is None or 'dev' in vllm_version:
         return True
-    return vllm_version >= version.parse(min_version)
+    return version.parse(vllm_version) >= version.parse(min_version)
 
 
 # ============================================================================

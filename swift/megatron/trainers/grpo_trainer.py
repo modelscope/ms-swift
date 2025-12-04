@@ -172,15 +172,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
-        vllm_version_ge_10_2 = check_vllm_version_ge('10.2.0')
-        if vllm_version_ge_10_2:
+        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        if vllm_version_ge_0_10_2:
             logprobs_mode = 'processed_logprobs'
         else:
             logprobs_mode = None
             if getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 10.2.0, '
-                                 'please update vLLM to 10.2.0 or later.')
-        self.disable_rollout_importance_sampling = not vllm_version_ge_10_2
+                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                                 'please update vLLM to 0.10.2 or later.')
+        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
 
         engine = GRPOVllmEngine(
             self.hf_model_dir,

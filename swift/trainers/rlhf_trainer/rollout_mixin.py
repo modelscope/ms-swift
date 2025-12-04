@@ -209,16 +209,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
-        vllm_version_ge_10_2 = check_vllm_version_ge('10.2.0')
+        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
 
-        if vllm_version_ge_10_2:
+        if vllm_version_ge_0_10_2:
             logprobs_mode = 'processed_logprobs'
         else:
             logprobs_mode = None
-            self.disable_rollout_importance_sampling = True
+            self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
             if getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 10.2.0, '
-                                 'please update vLLM to 10.2.0 or later.')
+                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                                 'please update vLLM to 0.10.2 or later.')
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
