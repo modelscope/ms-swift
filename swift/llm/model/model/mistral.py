@@ -252,7 +252,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.mistral_2512,
+        MLLMModelType.mistral_2512_thinking,
         [
             ModelGroup([
                 Model('mistralai/Ministral-3-3B-Reasoning-2512', 'mistralai/Ministral-3-3B-Reasoning-2512'),
