@@ -210,15 +210,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             patch_vllm_load_adapter()
         vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
-
-        if vllm_version_ge_0_10_2:
-            logprobs_mode = 'processed_logprobs'
-        else:
-            logprobs_mode = None
-            self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
-            if getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-                raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
-                                 'please update vLLM to 0.10.2 or later.')
+        logprobs_mode = 'processed_logprobs' if vllm_version_ge_0_10_2 else None
+        if not vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
+        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
