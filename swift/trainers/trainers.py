@@ -328,7 +328,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
+        if hasattr(self.args, 'past_index') and self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
         if labels is None:

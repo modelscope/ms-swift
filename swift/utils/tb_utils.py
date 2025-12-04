@@ -48,7 +48,10 @@ def plot_images(images_dir: str,
         return
     smooth_key = smooth_key or []
     os.makedirs(images_dir, exist_ok=True)
-    fname = [fname for fname in os.listdir(tb_dir) if os.path.isfile(os.path.join(tb_dir, fname))][0]
+    fnames = [fname for fname in os.listdir(tb_dir) if os.path.isfile(os.path.join(tb_dir, fname))]
+    if not fnames:
+        return
+    fname = fnames[0]
     tb_path = os.path.join(tb_dir, fname)
     data = read_tensorboard_file(tb_path)
 
