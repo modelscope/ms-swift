@@ -254,17 +254,26 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            trainer.train(trainer.args.resume_from_checkpoint)
+            resume_checkpoint = None
+            if self.args.use_flash_ckpt:
+                resume_checkpoint = trainer.get_resume_checkpoint()
+            if self.args.elastic and resume_checkpoint and not os.path.exists(
+                    os.path.join(resume_checkpoint, 'latest_universal')):
+                resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
+            if self.args.resume_from_checkpoint:
+                resume_checkpoint = self.args.resume_from_checkpoint
+            trainer.train(resume_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
-            if self.args.use_flash_ckpt:
-                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT)
+            if self.args.use_flash_ckpt and hasattr(trainer, 'flash_checkpointer'):
+                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT, trainer.state.global_step)
 
         return res
 
     @RayHelper.function(group='default')
     def _prepare_callbacks(self):
-        from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
+        from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback, GracefulExitCallBack
+        from swift.utils import ShutdownManager
         args = self.args
         callbacks = []
         if args.lisa_activated_layers > 0:
@@ -275,7 +284,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 model=self.model)
             lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
             callbacks.append(lisa_callback)
-
+        if args.elastic:
+            graceful_exit_callback = GracefulExitCallBack()
+            callbacks.append(graceful_exit_callback)
         if args.is_adapter and args.train_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))
         callbacks += extra_callbacks

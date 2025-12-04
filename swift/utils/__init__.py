@@ -8,6 +8,7 @@ from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available,
 from .io_utils import JsonlWriter, append_to_jsonl, download_ms_file, get_file_mm_type, read_from_jsonl, write_to_jsonl
 from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
+from .shutdown_manager import ShutdownManager
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, activate_parameters, check_shared_disk, disable_safe_ddp_context_use_barrier,
                           empty_cache, find_all_linears, find_embedding, find_layers, find_norm, freeze_parameters,

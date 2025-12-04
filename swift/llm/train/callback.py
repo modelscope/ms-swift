@@ -3,9 +3,10 @@ import types
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from transformers import TrainerCallback
 
-from swift.utils import get_logger
+from swift.utils import ShutdownManager, get_logger
 
 logger = get_logger()
 
@@ -78,3 +79,28 @@ class DynamicLayerActivationCallback(TrainerCallback):
         for idx in self.active_layers_indices:
             for param in layers[idx].parameters():
                 param.requires_grad = True
+
+
+class GracefulExitCallBack(TrainerCallback):
+
+    def __init__(self):
+        shutdown_manager = ShutdownManager()
+        shutdown_manager.register()
+        self.shutdown_manager = shutdown_manager
+
+    def on_step_end(self, args, state, control, **kwargs):
+
+        local_req = 1 if self.shutdown_manager.should_shutdown() else 0
+        if dist.is_available() and dist.is_initialized():
+
+            t = torch.tensor([local_req], dtype=torch.uint8, device='cuda' if torch.cuda.is_available() else 'cpu')
+            # all_reduce with MAX: if any rank has 1 -> result 1 everywhere
+            dist.all_reduce(t, op=dist.ReduceOp.MAX)
+            any_req = bool(int(t.item()))
+        else:
+            any_req = bool(local_req)
+
+        if any_req:
+            control.should_save = True
+            control.should_training_stop = True
+        return control
