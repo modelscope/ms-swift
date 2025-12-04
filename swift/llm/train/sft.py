@@ -75,7 +75,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         support_padding_free = template.support_padding_free
         if support_padding_free is None:
             support_padding_free = not args.model_meta.is_multimodal
-        if args.padding_free or args.packing and not support_padding_free:
+        if (args.padding_free or args.packing) and not support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
 
