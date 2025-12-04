@@ -83,8 +83,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        train_dataset, val_dataset = load_dataset(
-            args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
+        train_dataset, val_dataset = None, None
+        if args.dataset:
+            train_dataset, val_dataset = load_dataset(
+                args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(
@@ -120,11 +122,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             train_datasets, val_datasets = get_cached_dataset(self.args)
         else:
             train_datasets, val_datasets = [], []
-        if args.dataset:
+        if args.dataset or args.val_dataset:
             train_dataset, val_dataset = self._get_dataset()
             train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
-            train_datasets.append(train_dataset)
-            val_datasets.append(val_dataset)
+            if train_dataset is not None:
+                train_datasets.append(train_dataset)
+            if val_dataset is not None:
+                val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         datasets = [train_dataset, val_dataset]
