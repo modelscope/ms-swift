@@ -345,7 +345,7 @@ register_template(
 
 
 class GptTemplate(Template):
-
+    support_padding_free = False
     def _get_gpt_oss_prefix(self):
         today = datetime.now().strftime('%Y-%m-%d')
         return ('<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
