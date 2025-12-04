@@ -52,7 +52,7 @@ def plot_images(images_dir: str,
     matches = []
     for root, dirs, files in os.walk(tb_dir):
         for f in files:
-            if f.startswith("events.out.tfevents."):
+            if f.startswith('events.out.tfevents.'):
                 matches.append(os.path.join(root, f))
     if not matches:
         return
