@@ -1109,6 +1109,26 @@ def test_sensenova_si():
     assert response == response2
 
 
+def test_mistral_2512():
+    pt_engine = PtEngine('mistralai/Ministral-3-8B-Instruct-2512-BF16')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response[:256] == (
+        'This image depicts a charming kitten with a few notable features:\n\n'
+        '1. **Appearance**: The kitten has a soft, fluffy coat with a mix of white '
+        'and grayish-brown stripes, typical of a tabby pattern. The fur appears plush and slightly ruffled, '
+        'especially aroun')
+
+
+def test_mistral_2512_thinking():
+    pt_engine = PtEngine('mistralai/Ministral-3-8B-Reasoning-2512')
+    response1 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    print(response1)
+    print(response2)
+    assert response1[:256] == response2[:256]
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1187,4 +1207,6 @@ if __name__ == '__main__':
     # test_ernie_vl()
     # test_ernie_vl_thinking()
     # test_mistral_2506()
-    test_sensenova_si()
+    # test_sensenova_si()
+    test_mistral_2512()
+    test_mistral_2512_thinking()
