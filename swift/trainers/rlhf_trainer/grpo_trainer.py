@@ -1068,7 +1068,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
 
                 # Apply importance sampling correction based on mode
-                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+                # Pass advantages to support scope-based masking (negative_advantage scope)
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask,
+                                                                             advantages)
 
                 # Compute additional IS-specific metrics (ESS, clipped_frac, is_weight_mean)
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
@@ -2122,6 +2124,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+        self.rollout_importance_sampling_scope = args.rollout_importance_sampling_scope
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
@@ -2257,14 +2260,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return seq_ratios
 
-    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor,
-                                           completion_mask: torch.Tensor) -> torch.Tensor:
+    def _apply_rollout_importance_sampling(self,
+                                           rollout_log_ratio: torch.Tensor,
+                                           completion_mask: torch.Tensor,
+                                           advantages: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Apply vLLM importance sampling correction using one of four modes.
 
         Args:
             rollout_log_ratio: log(π_θ / π_rollout) per token, shape [B, T]
             completion_mask: Boolean mask for completion tokens, shape [B, T]
+            advantages: Advantage values per sample, shape [B]. Used when
+                rollout_importance_sampling_scope='neg_adv' to only apply
+                IS correction to samples with negative advantage.
 
         Returns:
             IS weights to multiply with loss, same shape as rollout_log_ratio
@@ -2304,6 +2312,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             is_weights = is_ratio * seq_mask.unsqueeze(-1)
         else:
             return is_ratio
+
+        # Apply scope-based masking: only apply IS correction to negative advantage tokens
+        # TODO:check
+        if self.rollout_importance_sampling_scope == 'neg_adv' and advantages is not None:
+            # advantages shape: [B], is_weights shape: [B, T]
+            # For samples with advantage >= 0, set is_weights to 1.0 (no correction)
+            positive_advantage_mask = (advantages >= 0).unsqueeze(-1)  # [B, 1]
+            is_weights = torch.where(positive_advantage_mask, torch.ones_like(is_weights), is_weights)
 
         return is_weights
 

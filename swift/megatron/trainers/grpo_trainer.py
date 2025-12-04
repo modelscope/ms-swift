@@ -105,6 +105,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+        self.rollout_importance_sampling_scope = args.rollout_importance_sampling_scope
 
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
@@ -1255,7 +1256,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Apply importance sampling correction if mode is enabled
             if self.rollout_importance_sampling_mode is not None:
                 rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
-                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+                # Pass advantages to support scope-based masking (negative_advantage scope)
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask,
+                                                                             advantages)
 
                 # Compute IS-specific metrics
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
@@ -1779,14 +1782,19 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         seq_ratios = torch.exp(seq_log_ratios)
         return seq_ratios
 
-    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor,
-                                           completion_mask: torch.Tensor) -> torch.Tensor:
+    def _apply_rollout_importance_sampling(self,
+                                           rollout_log_ratio: torch.Tensor,
+                                           completion_mask: torch.Tensor,
+                                           advantages: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Apply rollout importance sampling correction using one of four modes.
 
         Args:
             rollout_log_ratio: log(π_θ / π_rollout) per token, shape [batch_size, seq_len]
             completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+            advantages: Advantage values per sample, shape [batch_size]. Used when
+                rollout_importance_sampling_scope='neg_adv' to only apply
+                IS correction to samples with negative advantage.
 
         Returns:
             IS weights to multiply with loss, same shape as rollout_log_ratio
@@ -1827,6 +1835,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             is_weights = is_ratio * seq_mask_expanded
         else:
             return is_ratio
+
+        # Apply scope-based masking: only apply IS correction to negative advantage tokens
+        if self.rollout_importance_sampling_scope == 'neg_adv' and advantages is not None:
+            # advantages shape: [batch_size], is_weights shape: [batch_size, seq_len]
+            # For samples with advantage >= 0, set is_weights to 1.0 (no correction)
+            positive_advantage_mask = (advantages >= 0).unsqueeze(-1)  # [batch_size, 1]
+            is_weights = torch.where(positive_advantage_mask, torch.ones_like(is_weights), is_weights)
 
         return is_weights
 

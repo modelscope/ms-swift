@@ -113,6 +113,10 @@ class RLHFMegatronArgumentsMixin:
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0
+    # Scope for rollout importance sampling correction:
+    # 'all': Apply IS correction to all tokens (default)
+    # 'neg_adv': Only apply IS correction to tokens with negative advantage (advantage < 0)
+    rollout_importance_sampling_scope: Literal['all', 'neg_adv'] = 'all'
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
