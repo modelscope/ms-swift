@@ -420,6 +420,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 base_urls=self.vllm_server_base_url,
                 hosts=self.vllm_server_host,
                 server_ports=self.vllm_server_port,
+                group_ports=self.vllm_server_group_port,
                 connection_timeout=self.vllm_server_timeout)
             self.vllm_client.close_communicator()
             self.vllm_client.init_communicator(device=get_current_device())

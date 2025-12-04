@@ -588,6 +588,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - vllm_server_pass_dataset: pass additional dataset information through to the vLLM server for multi-turn training.
+  - vllm_server_group_port: The internal communication port for the vLLM server. Generally, there is no need to set it unless the port is occupied. The default value is 51216.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
   - enable_flattened_weight_sync: Whether to use flattened tensor for weight synchronization. When enabled, multiple parameters are packed into a single contiguous tensor for transfer, which can improve synchronization efficiency; Only takes effect in Server Mode. Default is True.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: An environment variable that controls the bucket size (in MB) for flattened tensor weight synchronization during full-parameter training in Server Mode. Default is 512 MB.
