@@ -574,6 +574,7 @@ reward模型参数将在PPO、GRPO中使用。
   - vllm_server_host: vLLM server host地址，默认为None。
   - vllm_server_port: vLLM server 服务端口，默认为8000。
   - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
+  - vllm_server_group_port: vllm server 内部通信端口，除非端口被占用，一般无需设置，默认为51216。
   - vllm_server_timeout: 连接vLLM server的超时时间，默认为 240s。
   - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
