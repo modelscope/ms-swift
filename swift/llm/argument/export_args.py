@@ -27,7 +27,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         quant_batch_size (int): The batch size for quantization. Defaults to 1.
         group_size (int): The group size for quantization. Defaults to 128.
         to_cached_dataset (bool): Whether to tokenize and export the dataset in advance as a cached dataset. Defaults
-            to False. Note: You need to distinguish between training and validation sets beforehand using
+            to False. Note: You can specify the validation set content through
             `--split_dataset_ratio` or `--val_dataset`.
         to_ollama (bool): Whether to generate the `Modelfile` required by Ollama. Defaults to False.
         to_mcore (bool): Whether to convert Hugging Face format weights to Megatron-Core format. Defaults to False.

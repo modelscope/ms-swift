@@ -72,7 +72,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template.set_mode('train')
         if template.use_model:
             template.model = self.model
-        if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
+        support_padding_free = template.support_padding_free
+        if support_padding_free is None:
+            support_padding_free = not args.model_meta.is_multimodal
+        if (args.padding_free or args.packing) and not support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
 
@@ -80,8 +83,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        train_dataset, val_dataset = load_dataset(
-            args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
+        train_dataset, val_dataset = None, None
+        if args.dataset:
+            train_dataset, val_dataset = load_dataset(
+                args.dataset,
+                split_dataset_ratio=args.split_dataset_ratio,
+                shuffle=args.dataset_shuffle,
+                **dataset_kwargs)
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(
@@ -112,16 +120,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         # Defer encoding to the training phase
         pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
-        if args.cached_dataset:
+        if args.cached_dataset or args.cached_val_dataset:
             assert not args.streaming, 'Cached dataset does not support streaming.'
             train_datasets, val_datasets = get_cached_dataset(self.args)
         else:
             train_datasets, val_datasets = [], []
-        if args.dataset:
+        if args.dataset or args.val_dataset:
             train_dataset, val_dataset = self._get_dataset()
             train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
-            train_datasets.append(train_dataset)
-            val_datasets.append(val_dataset)
+            if train_dataset is not None:
+                train_datasets.append(train_dataset)
+            if val_dataset is not None:
+                val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         datasets = [train_dataset, val_dataset]

@@ -25,7 +25,8 @@ megatron rlhf \
     --model Qwen/Qwen3-VL-30B-A3B-Instruct \
     --load_safetensors true \
     --save_safetensors true \
-    --cached_dataset qwen3_vl_cached_dataset \
+    --cached_dataset qwen3_vl_cached_dataset/train \
+    --cached_val_dataset qwen3_vl_cached_dataset/val \
     --load_from_cache_file true \
     --train_type full \
     --tensor_model_parallel_size 4 \

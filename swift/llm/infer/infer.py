@@ -179,7 +179,7 @@ class SwiftInfer(SwiftPipeline):
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        if args.cached_dataset:
+        if args.cached_dataset or args.cached_val_dataset:
             _, val_datasets = get_cached_dataset(self.args)
         else:
             val_datasets = []
