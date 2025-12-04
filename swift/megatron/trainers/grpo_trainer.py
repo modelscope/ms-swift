@@ -26,8 +26,8 @@ from swift.llm.infer.protocol import RolloutOutput
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, nanstd,
-                                               pad_logps_back_to_batch, replace_assistant_response_with_ids,
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
+                                               nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
                                                set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
@@ -172,6 +172,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
+        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        logprobs_mode = 'processed_logprobs' if vllm_version_ge_0_10_2 else None
+        if not vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
+        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
+
         engine = GRPOVllmEngine(
             self.hf_model_dir,
             args.torch_dtype,
@@ -190,7 +197,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             load_format='dummy',
             template=vllm_template,
             distributed_executor_backend='external_launcher',
-            logprobs_mode='processed_logprobs')
+            logprobs_mode=logprobs_mode)
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         self._buffered_inputs = None
@@ -1225,7 +1232,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
-        if rollout_per_token_logps is not None:
+        if rollout_per_token_logps is not None and not self.disable_rollout_importance_sampling:
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,

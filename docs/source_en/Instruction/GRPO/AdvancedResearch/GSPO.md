@@ -1,4 +1,4 @@
-# Group Sequence Policy Optimization
+# Group Sequence Policy Optimization (GSPO)
 
 **Version Requirement**: ms-swift>=3.8
 
