@@ -144,6 +144,7 @@ class BaseMegatronTrainer(ABC):
             for x in iterable:
                 if is_finished:
                     # streaming
+                    # Note that this approach will train for one additional step.
                     logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
                     args.train_iters = args.curr_iteration + 1
                 yield x
