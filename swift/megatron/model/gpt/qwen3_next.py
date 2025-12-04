@@ -404,6 +404,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
+        assert _Qwen3NextGatedDeltaNet is not object, 'please update the `transformers` version.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
         extra_kwargs = _get_extra_te_kwargs(config)

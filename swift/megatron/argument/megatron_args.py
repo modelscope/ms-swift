@@ -435,6 +435,9 @@ class MegatronArguments(ExtraMegatronArguments):
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
+    account_for_embedding_in_pipeline_split: bool = False
+    account_for_loss_in_pipeline_split: bool = False
+
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False

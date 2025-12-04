@@ -116,6 +116,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
   - This parameter is typically used when **the total number of Transformer layers is not divisible by the pipeline parallelism (PP) size**, or when the first pipeline stage (PP stage 0) of a multimodal model consumes excessive GPU memory.
 - 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
+- account_for_embedding_in_pipeline_split: If set to `True`, the input embedding layer will be treated as a standard Transformer layer in the context of partitioning and placement for pipeline parallelism. The default is `False`.
+- account_for_loss_in_pipeline_split: If set to `True`, the loss layer will be treated as a standard Transformer layer in the context of partitioning and placement for pipeline parallelism. The default is `False`.
 - 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.
