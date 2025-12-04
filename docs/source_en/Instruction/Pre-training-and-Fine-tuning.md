@@ -184,7 +184,8 @@ default_system = "You are a helpful assistant."  # None: use the default system 
 
 # Load model and dialogue template
 model, tokenizer = get_model_tokenizer(model)
-model = Swift.from_pretrained(model, lora_checkpoint)
+if lora_checkpoint is not None:
+    model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(template_type, tokenizer, default_system=default_system)
 engine = PtEngine.from_model_template(model, template, max_batch_size=2)
@@ -221,7 +222,8 @@ default_system = None  # None: use the default system prompt of the correspondin
 
 # Load model and dialogue template
 model, tokenizer = get_model_tokenizer(model)
-model = Swift.from_pretrained(model, lora_checkpoint)
+if lora_checkpoint is not None:
+    model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(template_type, tokenizer, default_system=default_system)
 engine = PtEngine.from_model_template(model, template, max_batch_size=2)

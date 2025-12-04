@@ -97,7 +97,7 @@ class BaseMegatronTrainer(ABC):
                     if getattr(args, 'save_retain_interval', None) is not None:
                         args.save_retain_interval *= args.save_interval
                 else:
-                    raise ValueError('streaming dataset is not supported with `--save_strategy epoch`')
+                    raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
             if args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
@@ -142,15 +142,15 @@ class BaseMegatronTrainer(ABC):
             if not is_finished:
                 logger.info(f'The training of Epoch {n_epoch} starts...')
             for x in iterable:
-                if is_finished:
-                    # streaming
-                    # Note that this approach will train for one additional step.
-                    logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
-                    args.train_iters = args.curr_iteration + 1
                 yield x
             if training and args.max_epochs and n_epoch >= args.max_epochs - 1:
                 is_finished = True
             n_epoch += 1
+            if is_finished:
+                # streaming
+                # Note that this approach will train for one additional step.
+                logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
+                args.train_iters = args.curr_iteration + 1
 
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
