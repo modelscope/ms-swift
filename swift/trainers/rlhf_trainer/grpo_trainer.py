@@ -1830,7 +1830,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 except Exception as e:
                     # Encoding failed — attempt to resample a new input.
-                    logger.warning(f'Encoding failed for one sample; resampling a new input. {e}')
+                    logger.info(f'Encoding failed for one sample; resampling a new input. {e}')
                     n_try += 1
 
                     # Stop if the maximum retry limit is exceeded.
