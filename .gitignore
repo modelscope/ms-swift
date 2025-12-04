@@ -1,3 +1,9 @@
+# Custom
+_datasets/*
+_my/*
+_output/*
+Megatron-LM/*
+
 # Byte-compiled / optimized / DLL files
 tmp
 *.ttf
