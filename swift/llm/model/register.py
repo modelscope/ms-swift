@@ -258,6 +258,8 @@ def _set_property(model, key):
     if not hasattr(model, 'model'):
         return
     text_model = model.model
+    if not hasattr(text_model, key):
+        return
 
     def _value(self):
         return getattr(text_model, key)
