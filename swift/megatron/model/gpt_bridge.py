@@ -1440,8 +1440,8 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
-                self.hf_model.config.vocab_size = self.args.padded_vocab_size
-                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
+                self.hf_model.config.vocab_size = args.padded_vocab_size
+                if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
                     if getattr(self.hf_model.config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
@@ -1459,7 +1459,7 @@ class GPTBridge:
                     None,
                     self.processor,
                     output_dir,
-                    model_dirs=[self.args.model_dir],
+                    model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
 
