@@ -74,9 +74,9 @@ class QuantizeArguments:
             from transformers import FineGrainedFP8Config
             from swift.llm import get_model_tokenizer
             with torch.device('meta'):
-                self.hf_model, self.processor = get_model_tokenizer(
+                hf_model, _ = get_model_tokenizer(
                     self.model_dir, model_type=self.model_type, return_dummy_model=True)
-            modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
+            modules_to_not_convert = get_modules_to_not_convert(hf_model)
             quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
