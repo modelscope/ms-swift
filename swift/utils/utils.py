@@ -19,7 +19,6 @@ import json_repair
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
