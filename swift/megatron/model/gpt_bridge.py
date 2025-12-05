@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 from copy import copy
 from typing import List, Optional, Union
 
@@ -14,10 +15,9 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.llm.argument.base_args.quant_args import QuantizeArguments
-from swift.utils import get_logger, is_last_rank
+from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import Fp8Dequantizer, MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -67,7 +67,7 @@ class GPTBridge:
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
-        self.fp8_quantizer = Fp8Dequantizer()
+        self._fp8_quantizer = None
         self.mxfp4_quantizer = MxFp4Dequantizer()
 
         dp_size = dist.get_world_size() // self.etp_size // self.ep_size // self.pp_size
@@ -179,23 +179,36 @@ class GPTBridge:
                     param.data.copy_(tensor)
                     param._high_precision_init_val.copy_(tensor)
                 else:
-                    scale_inv = hf_scale_inv[i]
                     tensor = tensor.view(torch.uint8)
                     param._rowwise_data.data.copy_(tensor)
-                    scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
-                    if scale_inv.shape[-1] < param._rowwise_scale_inv.shape[-1]:
-                        scale_inv = torch.concat([
-                            scale_inv,
-                            scale_inv.new_zeros(
-                                (scale_inv.shape[0], param._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
-                        ],
-                                                 dim=-1)
-                    param._rowwise_scale_inv.data.copy_(scale_inv)
+                    self._copy_scale_inv(param, hf_scale_inv[i])
                     del param.get_high_precision_init_val
             else:
                 if hf_scale_inv is not None:
-                    tensor = self.fp8_quantizer.convert(tensor, hf_scale_inv[i])
+                    fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
+                    fp8_tensor._rowwise_data.copy_(tensor.view(torch.uint8))
+                    self._copy_scale_inv(fp8_tensor, hf_scale_inv[i])
+                    tensor = fp8_tensor
                 param.data.copy_(tensor)
+
+    @staticmethod
+    def _copy_scale_inv(tensor, scale_inv):
+        scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
+        if scale_inv.shape[-1] < tensor._rowwise_scale_inv.shape[-1]:
+            scale_inv = torch.concat([
+                scale_inv,
+                scale_inv.new_zeros((scale_inv.shape[0], tensor._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
+            ],
+                                     dim=-1)
+        tensor._rowwise_scale_inv.data.copy_(scale_inv)
+
+    @property
+    def fp8_quantizer(self):
+        if self._fp8_quantizer is None:
+            from transformer_engine_torch import DType as TE_DType
+            from transformer_engine.pytorch import Float8BlockQuantizer
+            self._fp8_quantizer = Float8BlockQuantizer(TE_DType.kFloat8E4M3, rowwise=True, columnwise=True)
+        return self._fp8_quantizer
 
     @staticmethod
     def _is_fp8_param(param):
@@ -351,7 +364,7 @@ class GPTBridge:
             mg_scale_inv = self._all_gather_tp(mg_scale_inv, tp_dim, is_expert)
             mg_scale_inv = self._broadcast_ep_pp(mg_scale_inv, is_expert)
             tensor = tensor.view(torch.float8_e4m3fn)
-            mg_scale_inv = mg_scale_inv[..., :tensor.shape[-1] // self.fp8_block_size].contiguous()
+            mg_scale_inv = mg_scale_inv[..., :math.ceil(tensor.shape[-1] / self.fp8_block_size)].contiguous()
         assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
@@ -1427,11 +1440,11 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
-                self.hf_model.config.vocab_size = self.args.padded_vocab_size
-                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
-                    if self.hf_model.config.quantization_config is None:
+                self.hf_model.config.vocab_size = args.padded_vocab_size
+                if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
+                    if getattr(self.hf_model.config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
-                        modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
+                        modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
                         self.hf_model.config.quantization_config = FineGrainedFP8Config(
                             modules_to_not_convert=modules_to_not_convert)
                 elif hasattr(self.hf_model.config, 'quantization_config'):
@@ -1446,7 +1459,7 @@ class GPTBridge:
                     None,
                     self.processor,
                     output_dir,
-                    model_dirs=[self.args.model_dir],
+                    model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
 
