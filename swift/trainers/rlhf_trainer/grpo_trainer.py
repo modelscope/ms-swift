@@ -840,7 +840,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             extra_kwargs['completion_mask'] = completion_mask
             batch_encoded_inputs.update(extra_kwargs)
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0])
                 if self.beta == 0.0:
