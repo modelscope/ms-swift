@@ -665,9 +665,11 @@ def get_model_info_meta(
     if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
-        model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
-        logger.info(f'Temporarily create model_meta: {model_meta}')
-
+        raise ValueError(
+            f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
+            'Please refer to the documentation and specify an appropriate `model_type` manually: '
+            'https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html'
+        )
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
