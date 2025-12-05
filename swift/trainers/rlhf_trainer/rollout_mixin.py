@@ -26,7 +26,7 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
+from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
@@ -1222,34 +1222,42 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._queue.put(DataCache(results))
 
     @contextmanager
-    def _disable_sp_context(self):
+    def _disable_sp_context(self, template: Optional[Template] = None):
+        """
+        Context manager to temporarily disable Sequence Parallel (SP) for operations
+        like reward model inference that should not use SP.
+
+        All SP-patched functions in ulysses.py check `sequence_parallel.world_size == 1`
+        and automatically bypass SP logic when this condition is true. This makes the
+        disable mechanism simple and robust - we only need to set world_size = 1.
+        """
         from swift.trainers.sequence_parallel import sequence_parallel
-        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
         # Save original SP state
         origin_size = sequence_parallel.world_size
+        origin_extra_kwargs = sequence_parallel.extra_kwargs.copy()
 
-        # Save and restore original attention functions
-        flash_attn_backup = None
-        sdpa_backup = None
-        if 'flash_attention_2_origin' in ALL_ATTENTION_FUNCTIONS:
-            flash_attn_backup = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin']
-        if 'sdpa_origin' in ALL_ATTENTION_FUNCTIONS:
-            sdpa_backup = ALL_ATTENTION_FUNCTIONS['sdpa']
-            ALL_ATTENTION_FUNCTIONS['sdpa'] = ALL_ATTENTION_FUNCTIONS['sdpa_origin']
-
-        # Disable SP
+        # Disable SP by setting world_size = 1
+        # All patched functions will check this and use original implementations
         sequence_parallel.world_size = 1
+        sequence_parallel.extra_kwargs = {}
+
+        # Also update template settings if provided
+        original_padding_free = None
+        original_sequence_parallel_size = None
+        if template is not None:
+            original_padding_free = template.padding_free
+            template.padding_free = False
+            original_sequence_parallel_size = template.sequence_parallel_size
+            template.sequence_parallel_size = 1
 
         try:
             yield
         finally:
             # Restore SP state
             sequence_parallel.world_size = origin_size
+            sequence_parallel.extra_kwargs = origin_extra_kwargs
 
-            # Restore patched attention functions
-            if flash_attn_backup is not None:
-                ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = flash_attn_backup
-            if sdpa_backup is not None:
-                ALL_ATTENTION_FUNCTIONS['sdpa'] = sdpa_backup
+            if template is not None:
+                template.padding_free = original_padding_free
+                template.sequence_parallel_size = original_sequence_parallel_size
