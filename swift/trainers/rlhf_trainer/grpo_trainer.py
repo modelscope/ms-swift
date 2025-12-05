@@ -340,7 +340,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = [inp['messages'][-1]['content'] for inp in inputs]
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with patch_profiling_context(self, reward_func_name):
+            template = None if not hasattr(reward_model_plugin, 'template') else reward_model_plugin.template
+            with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
                 if self.enable_server_multi_turn:
