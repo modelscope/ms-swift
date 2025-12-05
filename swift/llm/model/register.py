@@ -605,6 +605,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     max_model_len = HfConfigFactory.get_max_model_len(config)
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
     is_moe_model = HfConfigFactory.is_moe_model(config)
+    is_multimodal = HfConfigFactory.is_multimodal(config)
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
@@ -629,6 +630,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         quant_info.get('quant_bits'),
         rope_scaling=rope_scaling,
         is_moe_model=is_moe_model,
+        is_multimodal=is_multimodal,
     )
     return res
 
@@ -665,9 +667,13 @@ def get_model_info_meta(
     if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
-        model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
-        logger.info(f'Temporarily create model_meta: {model_meta}')
-
+        if model_info.is_multimodal:
+            raise ValueError(f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
+                             'Please refer to the documentation and specify an appropriate `model_type` manually: '
+                             'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
+        else:
+            model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
+            logger.info(f'Temporarily create model_meta: {model_meta}')
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
