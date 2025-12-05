@@ -667,7 +667,7 @@ def get_model_info_meta(
     if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
-        if is_multimodal:
+        if model_info.is_multimodal:
             raise ValueError(f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
                              'Please refer to the documentation and specify an appropriate `model_type` manually: '
                              'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
