@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 from copy import copy
 from typing import List, Optional, Union
 
@@ -194,7 +195,6 @@ class GPTBridge:
                     del param.get_high_precision_init_val
             else:
                 if hf_scale_inv is not None:
-                    from transformer_engine.pytorch import Float8BlockQuantizer
                     fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
                     fp8_tensor._rowwise_data.copy_(tensor)
                     fp8_tensor._rowwise_scale_inv.copy_(hf_scale_inv[i])
