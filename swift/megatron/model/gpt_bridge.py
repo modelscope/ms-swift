@@ -15,8 +15,7 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.llm.argument.base_args.quant_args import QuantizeArguments
-from swift.utils import get_logger, is_last_rank
+from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
 from ..tuners import LoraParallelLinear
 from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
@@ -180,26 +179,28 @@ class GPTBridge:
                     param.data.copy_(tensor)
                     param._high_precision_init_val.copy_(tensor)
                 else:
-                    scale_inv = hf_scale_inv[i]
                     tensor = tensor.view(torch.uint8)
                     param._rowwise_data.data.copy_(tensor)
-                    scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
-                    if scale_inv.shape[-1] < param._rowwise_scale_inv.shape[-1]:
-                        scale_inv = torch.concat([
-                            scale_inv,
-                            scale_inv.new_zeros(
-                                (scale_inv.shape[0], param._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
-                        ],
-                                                 dim=-1)
-                    param._rowwise_scale_inv.data.copy_(scale_inv)
+                    self._copy_scale_inv(param, hf_scale_inv[i])
                     del param.get_high_precision_init_val
             else:
                 if hf_scale_inv is not None:
                     fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
                     fp8_tensor._rowwise_data.copy_(tensor.view(torch.uint8))
-                    fp8_tensor._rowwise_scale_inv.copy_(hf_scale_inv[i].reshape((-1, hf_scale_inv[i].shape[-1])))
+                    self._copy_scale_inv(fp8_tensor, hf_scale_inv[i])
                     tensor = fp8_tensor
                 param.data.copy_(tensor)
+
+    @staticmethod
+    def _copy_scale_inv(tensor, scale_inv):
+        scale_inv = scale_inv.reshape(-1, scale_inv.shape[-1])
+        if scale_inv.shape[-1] < tensor._rowwise_scale_inv.shape[-1]:
+            scale_inv = torch.concat([
+                scale_inv,
+                scale_inv.new_zeros((scale_inv.shape[0], tensor._rowwise_scale_inv.shape[-1] - scale_inv.shape[1]))
+            ],
+                                     dim=-1)
+        tensor._rowwise_scale_inv.data.copy_(scale_inv)
 
     @property
     def fp8_quantizer(self):
@@ -1443,7 +1444,7 @@ class GPTBridge:
                 if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
                     if getattr(self.hf_model.config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
-                        modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
+                        modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
                         self.hf_model.config.quantization_config = FineGrainedFP8Config(
                             modules_to_not_convert=modules_to_not_convert)
                 elif hasattr(self.hf_model.config, 'quantization_config'):

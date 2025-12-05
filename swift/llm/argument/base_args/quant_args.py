@@ -69,8 +69,7 @@ class QuantizeArguments:
                 llm_int8_skip_modules=llm_int8_skip_modules)
         elif self.quant_method == 'fp8':
             from transformers import FineGrainedFP8Config
-            modules_to_not_convert = self.get_modules_to_not_convert()
-            quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
+            quantization_config = FineGrainedFP8Config()
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)
