@@ -254,6 +254,25 @@ def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
         logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
 
 
+def _set_property(model, key):
+    if not hasattr(model, 'model'):
+        return
+    text_model = model.model
+    if not hasattr(text_model, key):
+        return
+
+    def _value(self):
+        return getattr(text_model, key)
+
+    setattr(model.__class__, key, property(_value))
+
+
+def _compat_transformers5(model, model_meta):
+    if model_meta.is_multimodal:
+        for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
+            _set_property(model, key)
+
+
 def get_model_tokenizer_from_local(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -380,7 +399,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         if leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             deepspeed_set_z3_leaf_modules(model, leaf_modules)
-
+    if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+        _compat_transformers5(model, model_meta)
     return model, tokenizer
 
 
