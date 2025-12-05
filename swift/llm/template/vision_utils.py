@@ -104,7 +104,7 @@ _T = TypeVar('_T')
 
 def _check_path(path: str) -> Union[str, None]:
     """If it is a path, return the string; if it is base64, return None."""
-    MAX_PATH_HEURISTIC = 1000
+    MAX_PATH_HEURISTIC = 2000
     if len(path) > MAX_PATH_HEURISTIC:
         return
     if os.path.exists(path):
