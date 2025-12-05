@@ -196,8 +196,8 @@ class GPTBridge:
             else:
                 if hf_scale_inv is not None:
                     fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
-                    fp8_tensor._rowwise_data.copy_(tensor)
-                    fp8_tensor._rowwise_scale_inv.copy_(hf_scale_inv[i])
+                    fp8_tensor._rowwise_data.copy_(tensor.view(torch.uint8))
+                    fp8_tensor._rowwise_scale_inv.copy_(hf_scale_inv[i].reshape((-1, hf_scale_inv[i].shape[-1])))
                     tensor = fp8_tensor
                 param.data.copy_(tensor)
 
@@ -1440,8 +1440,8 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 self.hf_model.config.vocab_size = self.args.padded_vocab_size
-                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise':
-                    if self.hf_model.config.quantization_config is None:
+                if self.args.fp8 is not None and self.args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
+                    if getattr(self.hf_model.config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = QuantizeArguments.get_modules_to_not_convert(self.hf_model)
                         self.hf_model.config.quantization_config = FineGrainedFP8Config(
