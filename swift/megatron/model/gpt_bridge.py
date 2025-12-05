@@ -17,7 +17,7 @@ from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download,
 from swift.llm.argument.base_args.quant_args import QuantizeArguments
 from swift.utils import get_logger, is_last_rank
 from ..tuners import LoraParallelLinear
-from ..utils import Fp8Dequantizer, MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
+from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -67,7 +67,7 @@ class GPTBridge:
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
         self.ep_rank = mpu.get_expert_model_parallel_rank()
 
-        self.fp8_quantizer = Fp8Dequantizer()
+        self._fp8_quantizer = None
         self.mxfp4_quantizer = MxFp4Dequantizer()
 
         dp_size = dist.get_world_size() // self.etp_size // self.ep_size // self.pp_size
@@ -194,8 +194,20 @@ class GPTBridge:
                     del param.get_high_precision_init_val
             else:
                 if hf_scale_inv is not None:
-                    tensor = self.fp8_quantizer.convert(tensor, hf_scale_inv[i])
+                    from transformer_engine.pytorch import Float8BlockQuantizer
+                    fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
+                    fp8_tensor._rowwise_data.copy_(tensor)
+                    fp8_tensor._rowwise_scale_inv.copy_(hf_scale_inv[i])
+                    tensor = fp8_tensor
                 param.data.copy_(tensor)
+
+    @property
+    def fp8_quantizer(self):
+        if self._fp8_quantizer is None:
+            from transformer_engine_torch import DType as TE_DType
+            from transformer_engine.pytorch import Float8BlockQuantizer
+            self._fp8_quantizer = Float8BlockQuantizer(TE_DType.kFloat8E4M3, rowwise=True, columnwise=True)
+        return self._fp8_quantizer
 
     @staticmethod
     def _is_fp8_param(param):
@@ -351,7 +363,7 @@ class GPTBridge:
             mg_scale_inv = self._all_gather_tp(mg_scale_inv, tp_dim, is_expert)
             mg_scale_inv = self._broadcast_ep_pp(mg_scale_inv, is_expert)
             tensor = tensor.view(torch.float8_e4m3fn)
-            mg_scale_inv = mg_scale_inv[..., :tensor.shape[-1] // self.fp8_block_size].contiguous()
+            mg_scale_inv = mg_scale_inv[..., :math.ceil(tensor.shape[-1] / self.fp8_block_size)].contiguous()
         assert tensor is not None, f'mg_key: {mg_key}'
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
