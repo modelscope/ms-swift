@@ -126,11 +126,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.enable_server_multi_turn = False
         self.rollout_enable_lora = False
         self.vllm_use_async_engine = False
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         if not args.use_vllm:
             return
+
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
+
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
+
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
@@ -209,12 +217,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
-        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
-        logprobs_mode = 'processed_logprobs' if vllm_version_ge_0_10_2 else None
-        if not vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
-                             'please update vLLM to 0.10.2 or later.')
-        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
