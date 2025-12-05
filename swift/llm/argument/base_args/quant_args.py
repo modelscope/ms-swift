@@ -6,6 +6,7 @@ from typing import Literal, Optional
 import torch
 
 from swift.llm import HfConfigFactory
+from swift.utils import get_modules_to_not_convert
 
 
 @dataclass
@@ -68,8 +69,15 @@ class QuantizeArguments:
                 bnb_4bit_quant_storage=self.bnb_4bit_quant_storage,
                 llm_int8_skip_modules=llm_int8_skip_modules)
         elif self.quant_method == 'fp8':
+            if not hasattr(self, 'model_info'):
+                return
             from transformers import FineGrainedFP8Config
-            quantization_config = FineGrainedFP8Config()
+            from swift.llm import get_model_tokenizer
+            with torch.device('meta'):
+                self.hf_model, self.processor = get_model_tokenizer(
+                    self.model_dir, model_type=self.model_type, return_dummy_model=True)
+            modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
+            quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)
