@@ -159,6 +159,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
 - fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 - fp8_param_gather: Keep the compute parameter in FP8 (do not use any other intermediate dtype) and perform the parameter all-gather in FP8 format. Default is False.
+  - Tips: Set this to True if you want to export weights in FP8 format; otherwise, set it to False.
 
 
 **Mixed Precision Parameters**:
