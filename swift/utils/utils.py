@@ -470,4 +470,4 @@ def get_modules_to_not_convert(model):
         if 'linear' in m.__class__.__name__.lower() and (any(n.endswith(suffix) for suffix in suffix_list)
                                                          or any(n.startswith(prefix) for prefix in prefix_list)):
             res.append(n)
-    return res
+    return res if res else None
