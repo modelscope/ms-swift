@@ -101,12 +101,14 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
 
 _T = TypeVar('_T')
 
-def _check_path(path):
-    # If it is a path, return the string; if it is base64, return None.
-    if len(path) > 1000:
+
+def _check_path(path: str) -> Union[str, None]:
+    """If it is a path, return the string; if it is base64, return None."""
+    MAX_PATH_HEURISTIC = 1000
+    if len(path) > MAX_PATH_HEURISTIC:
         return
     if os.path.exists(path):
-        return path
+        return os.path.abspath(path)
     data = path
     ROOT_IMAGE_DIR = get_env_args('ROOT_IMAGE_DIR', str, None)
     if ROOT_IMAGE_DIR is not None:
@@ -122,6 +124,7 @@ def _check_path(path):
     except Exception:
         pass
     return data
+
 
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
