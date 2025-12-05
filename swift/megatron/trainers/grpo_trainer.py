@@ -148,6 +148,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
 
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         assert self.use_vllm
         if not is_vllm_available():
@@ -180,9 +183,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
-        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
-                             'please update vLLM to 0.10.2 or later.')
 
         engine = GRPOVllmEngine(
             self.hf_model_dir,
