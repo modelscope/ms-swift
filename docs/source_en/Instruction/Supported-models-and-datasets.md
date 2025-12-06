@@ -1162,6 +1162,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[damo/nlp_polylm_multialpaca_sft](https://modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft)|ar<br>de<br>es<br>fr<br>id<br>ja<br>ko<br>pt<br>ru<br>th<br>vi|131867|101.6±42.5, min=30, max=1029|chat, general, multilingual|-|
 |[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news)|default|4959|3234.4±2547.5, min=91, max=19548|chat, classification|-|
 |[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE)|default|1266|118.3±45.5, min=44, max=223|chat, ner|-|
+|-|train<br>validation<br>test|3002|49.7±15.5, min=34, max=153|multi-modal, en, math|[hiyouga/geometry3k](https://huggingface.co/datasets/hiyouga/geometry3k)|
 |[hjh0119/shareAI-Llama3-DPO-zh-en-emoji](https://modelscope.cn/datasets/hjh0119/shareAI-Llama3-DPO-zh-en-emoji)|default|2449|334.0±162.8, min=36, max=1801|rlhf, dpo|[shareAI/DPO-zh-en-emoji](https://huggingface.co/datasets/shareAI/DPO-zh-en-emoji)|
 |[huangjintao/AgentInstruct_copy](https://modelscope.cn/datasets/huangjintao/AgentInstruct_copy)|alfworld<br>db<br>kg<br>mind2web<br>os<br>webshop|1866|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|-|
 |[iic/100PoisonMpts](https://modelscope.cn/datasets/iic/100PoisonMpts)|default|906|150.6±80.8, min=39, max=656|poison-management, zh|-|
