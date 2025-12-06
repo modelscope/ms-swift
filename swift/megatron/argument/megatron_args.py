@@ -209,6 +209,9 @@ class RLHFMegatronArgumentsMixin:
                                  f'Please adjust generation_batch_size/steps_per_generation/num_generations.')
 
             per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+            assert per_device_num_rollout_prompt >= 1, \
+                (f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be greater than 1, '
+                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
 
             if per_device_num_rollout_prompt % self.micro_batch_size != 0:
                 raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
@@ -220,6 +223,9 @@ class RLHFMegatronArgumentsMixin:
                                  f'micro_batch_size == 0')
 
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
+            assert self.per_device_generation_batch_size >= 1, \
+                (f'per_device_generation_batch_size ({self.per_device_generation_batch_size}) must be greater than 1, '
+                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
 
         _check_not_supported()
         _check_batch_params()
@@ -675,6 +681,10 @@ class MegatronArguments(ExtraMegatronArguments):
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
+        if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
+                                                       or self.decoder_last_pipeline_num_layers is not None):
+            raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
+                             'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self._patch_megatron_timeout(self.distributed_timeout_minutes)

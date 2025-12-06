@@ -52,7 +52,8 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
-    support_padding_free = False  # It only takes effect for multimodal models.
+    # For pure text models, the default is True; for multimodal models, the default is False.
+    support_padding_free = None
 
     is_encoder_decoder = False
 
@@ -1023,7 +1024,7 @@ class Template(ProcessorMixin):
         if system is None:
             system = template_meta.default_system
 
-        if tools is not None:
+        if tools:
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 

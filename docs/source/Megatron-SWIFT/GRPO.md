@@ -25,7 +25,7 @@ Megatron GRPO 当前已支持以下功能：
 
 ⚠️ 注意：以下参数在 Megatron GRPO 中不生效：
 
-- **`use_vllm`**：Megatron GRPO 暂不支持使用 PTEngine 进行 Rollout 推理。
+- **`use_vllm`**：Megatron GRPO 仅使用 vLLM 进行 Rollout 推理。
 - **`move_model_batches`**：该参数专用于 DeepSpeed ZeRO-3 优化，在 Megatron 架构下无效。
 
 与 ms-swift GRPO 相同，Megatron GRPO batch size 相关的参数均以 **completion-level** 为单位，即表示模型生成的 completion 数量，而非 prompt 数量。

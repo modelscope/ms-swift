@@ -127,7 +127,7 @@ Check the status of the NPU. Detailed information about the `npu-smi` command ca
 ```
 
 ## Fine-tuning
-The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--train_type full`.
+The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--train_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | Model Size | Number of NPUs | Deepspeed Type | Max Memory Usage   |
 |------|-------|-------------|-----------|

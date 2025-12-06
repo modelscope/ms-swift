@@ -119,6 +119,9 @@ class DistributedAttention(torch.nn.Module):
 
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
                 *args: Any, **kwargs) -> torch.Tensor:
+        if self.sequence_parallel.world_size == 1:
+            return self.local_attn(query, key, value, attention_mask, *args, **kwargs)
+
         # gather ulysses first, ring-attention next
         if self.sequence_parallel.sp_world_size > 1:
             query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
@@ -184,6 +187,8 @@ class SequenceParallel:
         try:
             from transformers import masking_utils
 
+            _origin_flash_attention_mask = masking_utils.flash_attention_mask
+
             def flash_attention_mask(batch_size,
                                      cache_position,
                                      kv_length,
@@ -191,6 +196,9 @@ class SequenceParallel:
                                      mask_function=masking_utils.causal_mask_function,
                                      attention_mask=None,
                                      **kwargs):
+                if self.world_size == 1:
+                    return _origin_flash_attention_mask(batch_size, cache_position, kv_length, kv_offset, mask_function,
+                                                        attention_mask, **kwargs)
                 if attention_mask is not None:
                     if attention_mask.all():
                         attention_mask = None
@@ -201,6 +209,11 @@ class SequenceParallel:
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
             def sdpa_mask(batch_size, cache_position, kv_length, *args, **kwargs):
+                if self.world_size == 1:
+                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
+                                                                                                     cache_position,
+                                                                                                     kv_length, *args,
+                                                                                                     **kwargs)
                 device = cache_position.device
                 cache_position = self.real_position_ids[0]
                 cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
@@ -216,6 +229,9 @@ class SequenceParallel:
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa'] = sdpa_mask
 
             def create_causal_mask(config, input_embeds, attention_mask, cache_position, *args, **kwargs):
+                if self.world_size == 1:
+                    return masking_utils.origin_create_causal_mask(config, input_embeds, attention_mask, cache_position,
+                                                                   *args, **kwargs)
                 input_embeds = torch.ones(
                     (input_embeds.shape[0], input_embeds.shape[1] * self.sp_world_size, input_embeds.shape[2]),
                     dtype=input_embeds.dtype,
@@ -243,9 +259,14 @@ class SequenceParallel:
             from transformers.modeling_flash_attention_utils import _flash_attention_forward
             _distributed_flash_attention = DistributedAttention(_flash_attention_forward, self)
 
+            modeling_flash_attention_utils._flash_attention_forward_origin = _flash_attention_forward
+
             def flash_attention_forward(query_states: torch.Tensor, key_states: torch.Tensor,
                                         value_states: torch.Tensor, attention_mask: Optional[torch.Tensor], q_len,
                                         *args, **kwargs):
+                if self.world_size == 1:
+                    return _flash_attention_forward(query_states, key_states, value_states, attention_mask, q_len,
+                                                    *args, **kwargs)
                 return _distributed_flash_attention(query_states, key_states, value_states, attention_mask,
                                                     q_len * self.sp_world_size, *args, **kwargs)
 
@@ -255,7 +276,7 @@ class SequenceParallel:
 
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
-            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
+            if self.world_size == 1 or module.__class__ not in [m.__class__ for m in text_model.modules()]:
                 return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
@@ -317,7 +338,8 @@ class SequenceParallel:
 
         def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                             dist_attn, **kwargs):
-            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
+            # Bypass SP logic when world_size == 1 (SP disabled) or module not in text_model
+            if self.world_size == 1 or module.__class__ not in [m.__class__ for m in text_model.modules()]:
                 return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
                                                               attention_mask, *args, **kwargs)
             if dist_attn.local_attn is None:
@@ -344,6 +366,8 @@ class SequenceParallel:
     def _prepare_forward_hook(self, base_model: torch.nn.Module):
 
         def pre_forward_split_hook(_self, args, kwargs):
+            if self.world_size == 1:
+                return args, kwargs
             input_ids = kwargs.get('input_ids', None)
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']

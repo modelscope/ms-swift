@@ -35,7 +35,8 @@
   - 注意：该参数在rlhf训练或者`task_type`不等于'causal_lm'时，默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
   - **注意：推荐flash_attn版本：2.7.4.post1/2.8.1**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
-  - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
+  - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
+  - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4, GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
@@ -130,7 +131,7 @@
 - log_throughput: 记录每个GPU的吞吐量（理论值）。默认为False。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
-- tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。
+- tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
 - log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
 - no_log_learning_rate_to_tensorboard: 不记录学习率到tensorboard。默认为False。
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
@@ -150,6 +151,7 @@
 - fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
 - fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
 - fp8_param_gather: 保持计算参数为 fp8（不使用任何其他中间数据类型），并在 fp8 格式下执行参数的 all-gather 操作。默认为False。
+  - 提示：若想导出FP8权重格式，设置为True；否则设置为False。
 
 **混合精度参数**:
 - fp16: fp16模式。默认为None，会根据模型的torch_dtype进行设置，即torch_dtype为float16或者float32则fp16设置为True。torch_dtype默认读取config.json。
@@ -351,6 +353,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
+- truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`。注意对于多模态模型，
+左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
 - log_completions: 是否记录训练中的模型生成内容，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，

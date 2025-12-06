@@ -26,8 +26,8 @@ from swift.llm.infer.protocol import RolloutOutput
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, nanstd,
-                                               pad_logps_back_to_batch, replace_assistant_response_with_ids,
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
+                                               nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
                                                set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
@@ -60,7 +60,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def train(self, train_dataset, val_dataset, data_collator):
         # Store dataset provider for lazy resample iterator initialization
-        if self.dynamic_sample:
+        # Used by both dynamic_sample and truncation_strategy='raise'(delete)
+        if self.dynamic_sample or self.truncation_strategy == 'raise':
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
         super().train(train_dataset, val_dataset, data_collator)
@@ -130,6 +131,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self._last_loaded_step = -1
         self._rollout_group = None  # Will be lazily initialized
 
+        # truncation_strategy support
+        self.truncation_strategy = self.template.truncation_strategy
+
     def _prepare_rollout_engine(self):
         args = self.args
         self.vllm_mode = args.vllm_mode
@@ -141,6 +145,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False  # TODO
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         assert self.use_vllm
         if not is_vllm_available():
@@ -171,6 +181,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        vllm_template.sequence_parallel_size = 1
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
+
         engine = GRPOVllmEngine(
             self.hf_model_dir,
             args.torch_dtype,
@@ -189,7 +202,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             load_format='dummy',
             template=vllm_template,
             distributed_executor_backend='external_launcher',
-            logprobs_mode='processed_logprobs')
+            logprobs_mode=logprobs_mode)
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         self._buffered_inputs = None
@@ -495,6 +508,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         rollout_group = self._get_rollout_group()
 
+        # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+        # This handles: (1) prompt length exceeds max_length, (2) multimodal encoding failures
+        # Do this before get_local_rollout_batch to process prompt-level data
+        if self.truncation_strategy == 'raise':
+            batch = self.resample_encode_failed_inputs(batch)
+
         rollout_batch = self.get_local_rollout_batch(batch)
 
         rollout_batch = self._generate_completions(rollout_batch)
@@ -567,6 +586,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                         # Flatten logprobs for this sample
                         flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
                         if flat_lps:
+                            # Check for None values in flat_lps
+                            if any(lp is None for lp in flat_lps):
+                                logger.warning('Found None values in rollout_logprobs. '
+                                               'Skipping rollout importance sampling for this batch.')
+                                rollout_per_token_logps = None
+                                break
                             # Get indices where completion_mask is True
                             completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
                             # Scatter logprobs to completion positions
@@ -1033,6 +1058,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             for _ in range(num_iters_per_step):
                 next_rollout_prompt_batch.extend(next(self.resample_data_iterator))
 
+            # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+            if self.truncation_strategy == 'raise':
+                next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
+
             # Repeat num_generations times and get local slice
             rollout_batch = self.get_local_rollout_batch(next_rollout_prompt_batch)
 
@@ -1218,7 +1247,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
-        if rollout_per_token_logps is not None:
+        if rollout_per_token_logps is not None and not self.disable_rollout_importance_sampling:
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,
@@ -1523,6 +1552,71 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         for input_item in processed_inputs:
             remove_response(input_item['messages'])
         return processed_inputs
+
+    @profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until we have enough valid samples.
+
+        This method handles two cases:
+        1. Prompt length exceeds max_length
+        2. Encoding failures (e.g., multimodal data processing errors)
+
+        Unlike GRPOTrainer which fetches one sample at a time, this method accumulates
+        successfully encoded samples from each resample batch (micro_batch_size samples per fetch)
+        to avoid wasting data.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            max_resample_rounds (int, optional): Maximum number of resample rounds.
+                Each round processes samples from pending_samples buffer. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples with the same length as inputs.
+
+        Raises:
+            RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
+        """
+        template = self.template
+        required_count = len(inputs)
+        valid_samples = []
+
+        # Buffer for samples waiting to be validated
+        pending_samples = list(inputs)
+        # Lazy initialization of resample_data_iterator
+        if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
+            self.resample_data_iterator = self._init_resample_data_iterator()
+        for _ in range(max_resample_rounds + 1):
+            # Calculate how many more samples we need
+            still_needed = required_count - len(valid_samples)
+            if still_needed <= 0:
+                break
+
+            # Ensure pending_samples has enough samples to try
+            while len(pending_samples) < still_needed:
+                # Fetch a new batch of samples (micro_batch_size samples)
+                pending_samples.extend(next(self.resample_data_iterator))
+
+            # Try to encode samples from pending_samples until we have enough valid ones
+            while pending_samples and len(valid_samples) < required_count:
+                data = pending_samples.pop(0)
+                try:
+                    remove_response(data['messages'])
+                    template.encode(data)
+                    # Encoding succeeded, add to valid samples
+                    valid_samples.append(data)
+                except Exception as e:
+                    # Encoding failed, skip this sample
+                    logger.info(f'Encoding failed for one sample; will resample. {e}')
+
+        if len(valid_samples) < required_count:
+            raise RuntimeError(
+                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
+                f'Only collected {len(valid_samples)} valid samples. '
+                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
+
+        return valid_samples[:required_count]
 
     def _add_prompt_id_to_inputs(self, inputs: DataType) -> DataType:
         """Add unique prompt_id and request_id to each input"""
