@@ -1325,3 +1325,22 @@ register_dataset(
         preprocess_func=Voc2007MultilabelPreprocessor(columns={'webp': 'images'}),
         tags=['multilabel', 'multi-modal'],
     ))
+
+
+class Geometry3KPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['solution'] = row['response']
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        hf_dataset_id='hiyouga/geometry3k',
+        subsets=[
+            SubsetDataset('train', split=['train']),
+            SubsetDataset('validation', split=['validation']),
+            SubsetDataset('test', split=['test']),
+        ],
+        preprocess_func=Geometry3KPreprocessor(),
+        tags=['multi-modal', 'en', 'math']))
