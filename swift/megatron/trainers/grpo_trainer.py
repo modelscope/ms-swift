@@ -178,7 +178,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = args.vllm_max_num_seqs or self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
@@ -200,8 +200,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             seed=self.process_index // self.vllm_tensor_parallel_size,
             disable_cascade_attn=self.args.vllm_disable_cascade_attn,
             load_format='dummy',
+            mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
             template=vllm_template,
             distributed_executor_backend='external_launcher',
+            engine_kwargs=self.args.vllm_engine_kwargs,
             logprobs_mode=logprobs_mode)
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group

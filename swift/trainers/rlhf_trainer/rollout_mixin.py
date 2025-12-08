@@ -189,7 +189,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         args = self.args
         model = self.model
         steps_per_generation = args.steps_per_generation if hasattr(args, 'steps_per_generation') else 1
-        max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * steps_per_generation)
+        per_rollout_batch_size = args.per_device_train_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = args.vllm_max_num_seqs or (per_rollout_batch_size * steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1

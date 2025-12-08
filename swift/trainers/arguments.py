@@ -423,6 +423,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     use_vllm: bool = False
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
+    vllm_max_num_seqs: Optional[int] = None
     vllm_enable_prefix_caching: bool = True  # overwrite
     vllm_enable_lora: bool = False
     lora_rank: int = 8  # for vllm lora adapter
