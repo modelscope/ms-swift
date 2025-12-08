@@ -48,31 +48,6 @@ class ProcessorMixin:
         elif self.tokenizer is not value:
             raise AttributeError('Please use `self.processor` for assignment.')
 
-
-def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
-    """Change the float inputs to a dtype"""
-    if isinstance(data, Mapping):
-        return type(data)({k: to_float_dtype(v, dtype) for k, v in data.items()})
-    elif isinstance(data, (tuple, list)):
-        return type(data)(to_float_dtype(v, dtype) for v in data)
-    elif isinstance(data, torch.Tensor) and torch.is_floating_point(data):
-        return data.to(dtype=dtype)
-    else:
-        return data
-
-
-def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bool = False) -> Any:
-    """Move inputs to a device"""
-    if isinstance(data, Mapping):
-        return type(data)({k: to_device(v, device, non_blocking) for k, v in data.items()})
-    elif isinstance(data, (tuple, list)):
-        return type(data)(to_device(v, device, non_blocking) for v in data)
-    elif isinstance(data, torch.Tensor):
-        return data.to(device=device, non_blocking=non_blocking)
-    else:
-        return data
-
-
 def set_generation_config(model: nn.Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
     old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']

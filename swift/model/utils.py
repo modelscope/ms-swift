@@ -12,7 +12,7 @@ from torch import nn
 from transformers import PretrainedConfig
 
 from swift.hub import get_hub
-from swift.llm import to_device
+from swift.utils import to_device
 from swift.utils import deep_getattr, get_logger, is_local_master, safe_ddp_context, subprocess_run
 
 logger = get_logger()

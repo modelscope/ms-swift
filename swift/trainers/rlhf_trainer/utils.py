@@ -1001,7 +1001,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         Combined CHORD loss tensor
     """
     from swift.trainers import per_token_loss_func
-    from swift.llm import to_device
+    from swift.utils import to_device
 
     current_step = trainer.state.global_step
     mu = mu_schedule_function(current_step, trainer.args.chord_mu_warmup_steps, trainer.args.chord_mu_decay_steps,
