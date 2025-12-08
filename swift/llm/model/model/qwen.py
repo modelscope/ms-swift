@@ -507,36 +507,58 @@ register_model(
     ModelMeta(
         LLMModelType.qwen3,
         [
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
+                    Model('Qwen/Qwen3-1.7B-Base', 'Qwen/Qwen3-1.7B-Base'),
+                    Model('Qwen/Qwen3-4B-Base', 'Qwen/Qwen3-4B-Base'),
+                    Model('Qwen/Qwen3-8B-Base', 'Qwen/Qwen3-8B-Base'),
+                    Model('Qwen/Qwen3-14B-Base', 'Qwen/Qwen3-14B-Base'),
+                    # instruct
+                    Model('Qwen/Qwen3-0.6B', 'Qwen/Qwen3-0.6B'),
+                    Model('Qwen/Qwen3-1.7B', 'Qwen/Qwen3-1.7B'),
+                    Model('Qwen/Qwen3-4B', 'Qwen/Qwen3-4B'),
+                    Model('Qwen/Qwen3-8B', 'Qwen/Qwen3-8B'),
+                    Model('Qwen/Qwen3-14B', 'Qwen/Qwen3-14B'),
+                    Model('Qwen/Qwen3-32B', 'Qwen/Qwen3-32B'),
+                ],
+                template=TemplateType.qwen3_nothinking),
+            ModelGroup(
+                [
+                    # fp8
+                    Model('Qwen/Qwen3-0.6B-FP8', 'Qwen/Qwen3-0.6B-FP8'),
+                    Model('Qwen/Qwen3-1.7B-FP8', 'Qwen/Qwen3-1.7B-FP8'),
+                    Model('Qwen/Qwen3-4B-FP8', 'Qwen/Qwen3-4B-FP8'),
+                    Model('Qwen/Qwen3-8B-FP8', 'Qwen/Qwen3-8B-FP8'),
+                    Model('Qwen/Qwen3-14B-FP8', 'Qwen/Qwen3-14B-FP8'),
+                    Model('Qwen/Qwen3-32B-FP8', 'Qwen/Qwen3-32B-FP8'),
+                    # awq
+                    Model('Qwen/Qwen3-4B-AWQ', 'Qwen/Qwen3-4B-AWQ'),
+                    Model('Qwen/Qwen3-8B-AWQ', 'Qwen/Qwen3-8B-AWQ'),
+                    Model('Qwen/Qwen3-14B-AWQ', 'Qwen/Qwen3-14B-AWQ'),
+                    Model('Qwen/Qwen3-32B-AWQ', 'Qwen/Qwen3-32B-AWQ'),
+                    # swift
+                    Model('swift/Qwen3-32B-AWQ'),
+                ],
+                template=TemplateType.qwen3_mixed),
             ModelGroup([
-                Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
-                Model('Qwen/Qwen3-1.7B-Base', 'Qwen/Qwen3-1.7B-Base'),
-                Model('Qwen/Qwen3-4B-Base', 'Qwen/Qwen3-4B-Base'),
-                Model('Qwen/Qwen3-8B-Base', 'Qwen/Qwen3-8B-Base'),
-                Model('Qwen/Qwen3-14B-Base', 'Qwen/Qwen3-14B-Base'),
-                # instruct
-                Model('Qwen/Qwen3-0.6B', 'Qwen/Qwen3-0.6B'),
-                Model('Qwen/Qwen3-1.7B', 'Qwen/Qwen3-1.7B'),
-                Model('Qwen/Qwen3-4B', 'Qwen/Qwen3-4B'),
-                Model('Qwen/Qwen3-8B', 'Qwen/Qwen3-8B'),
-                Model('Qwen/Qwen3-14B', 'Qwen/Qwen3-14B'),
-                Model('Qwen/Qwen3-32B', 'Qwen/Qwen3-32B'),
-                # fp8
-                Model('Qwen/Qwen3-0.6B-FP8', 'Qwen/Qwen3-0.6B-FP8'),
-                Model('Qwen/Qwen3-1.7B-FP8', 'Qwen/Qwen3-1.7B-FP8'),
-                Model('Qwen/Qwen3-4B-FP8', 'Qwen/Qwen3-4B-FP8'),
-                Model('Qwen/Qwen3-8B-FP8', 'Qwen/Qwen3-8B-FP8'),
-                Model('Qwen/Qwen3-14B-FP8', 'Qwen/Qwen3-14B-FP8'),
-                Model('Qwen/Qwen3-32B-FP8', 'Qwen/Qwen3-32B-FP8'),
-                # awq
-                Model('Qwen/Qwen3-4B-AWQ', 'Qwen/Qwen3-4B-AWQ'),
-                Model('Qwen/Qwen3-8B-AWQ', 'Qwen/Qwen3-8B-AWQ'),
-                Model('Qwen/Qwen3-14B-AWQ', 'Qwen/Qwen3-14B-AWQ'),
-                Model('Qwen/Qwen3-32B-AWQ', 'Qwen/Qwen3-32B-AWQ'),
-                # swift
-                Model('swift/Qwen3-32B-AWQ'),
-            ]),
+                Model('Qwen/Qwen3Guard-Gen-0.6B', 'Qwen/Qwen3Guard-Gen-0.6B'),
+                Model('Qwen/Qwen3Guard-Gen-4B', 'Qwen/Qwen3Guard-Gen-4B'),
+                Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
+            ],
+                       template=TemplateType.qwen3_guard),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
+                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
+            ],
+                       template=TemplateType.qwen3_nothinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
+                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
+            ],
+                       template=TemplateType.qwen3_thinking),
         ],
-        TemplateType.qwen3,
+        None,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM'],
         requires=['transformers>=4.51'],
@@ -548,84 +570,35 @@ register_model(
         [
             ModelGroup([
                 Model('Qwen/Qwen3-30B-A3B-Base', 'Qwen/Qwen3-30B-A3B-Base'),
-                # instruct
-                Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
-                Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
-                # fp8
-                Model('Qwen/Qwen3-30B-A3B-FP8', 'Qwen/Qwen3-30B-A3B-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-FP8', 'Qwen/Qwen3-235B-A22B-FP8'),
-                # awq
-                Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
-                Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
-            ]),
+            ],
+                       template=TemplateType.qwen3_nothinking),
+            ModelGroup(
+                [
+                    # instruct
+                    Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
+                    Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
+                    # fp8
+                    Model('Qwen/Qwen3-30B-A3B-FP8', 'Qwen/Qwen3-30B-A3B-FP8'),
+                    Model('Qwen/Qwen3-235B-A22B-FP8', 'Qwen/Qwen3-235B-A22B-FP8'),
+                    # awq
+                    Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
+                    Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
+                ],
+                template=TemplateType.qwen3_mixed),
             ModelGroup([
                 Model('iic/Tongyi-DeepResearch-30B-A3B', 'Alibaba-NLP/Tongyi-DeepResearch-30B-A3B'),
-            ])
-        ],
-        TemplateType.qwen3,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_guard,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3Guard-Gen-0.6B', 'Qwen/Qwen3Guard-Gen-0.6B'),
-                Model('Qwen/Qwen3Guard-Gen-4B', 'Qwen/Qwen3Guard-Gen-4B'),
-                Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
-            ])
-        ],
-        TemplateType.qwen3_guard,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_thinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
-                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
-            ]),
-        ],
-        TemplateType.qwen3_thinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_nothinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
-                # awq
-                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
-            ]),
-            ModelGroup([
-                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
-                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
-            ])
-        ],
-        TemplateType.qwen3_nothinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_coder,
-        [
+            ],
+                       template=TemplateType.qwen3_mixed),
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
+                    Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
+                    Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+                    Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
+                    # awq
+                    Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
+                ],
+                template=TemplateType.qwen3_nothinking),
             ModelGroup([
                 Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
                 Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
@@ -633,28 +606,20 @@ register_model(
                 Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
                 Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
             ],
+                       template=TemplateType.qwen3_coder,
                        tags=['coding']),
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
+                    Model('Qwen/Qwen3-30B-A3B-Thinking-2507-FP8', 'Qwen/Qwen3-30B-A3B-Thinking-2507-FP8'),
+                    Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
+                    Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
+                    # awq
+                    Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
+                ],
+                template=TemplateType.qwen3_thinking),
         ],
-        TemplateType.qwen3_coder,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM'],
-        requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_moe_thinking,
-        [
-            ModelGroup([
-                Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
-                Model('Qwen/Qwen3-30B-A3B-Thinking-2507-FP8', 'Qwen/Qwen3-30B-A3B-Thinking-2507-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
-                Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
-                # awq
-                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
-            ]),
-        ],
-        TemplateType.qwen3_thinking,
+        None,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
@@ -663,24 +628,18 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwen3_next,
-        [ModelGroup([
-            Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
-            Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
-        ])],
-        TemplateType.qwen3_nothinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_next_thinking,
-        [ModelGroup([
-            Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
-            Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
-        ])],
-        TemplateType.qwen3_thinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Next-80B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Next-80B-A3B-Instruct-FP8'),
+            ],
+                       template=TemplateType.qwen3_nothinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
+                Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
+            ],
+                       template=TemplateType.qwen3_thinking)
+        ],
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
         requires=['transformers>=4.57'],

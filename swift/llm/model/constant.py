@@ -12,17 +12,12 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    # TODO: others
     qwen3 = 'qwen3'
-    qwen3_guard = 'qwen3_guard'
-    qwen3_thinking = 'qwen3_thinking'
-    qwen3_nothinking = 'qwen3_nothinking'
-    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
-    qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_next = 'qwen3_next'
-    qwen3_next_thinking = 'qwen3_next_thinking'
-    qwen3_emb = 'qwen3_emb'
 
+    qwen3_emb = 'qwen3_emb'
     qwen2_gte = 'qwen2_gte'
 
     codefuse_qwen = 'codefuse_qwen'
@@ -168,6 +163,7 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qwen3_vl = 'qwen3_vl'
     qwen3_moe_vl = 'qwen3_moe_vl'
+
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
