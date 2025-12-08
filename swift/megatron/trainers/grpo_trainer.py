@@ -1704,18 +1704,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }
-        if is_wandb_available():
-            # when log profiling, the step is different from the step in the training loop
-            # here patch wandb log to pop the step argument
-            from wandb.sdk.wandb_run import Run
-            origin_log = Run.log
-            from functools import wraps
-
-            @wraps(origin_log)
-            def log(self, data: dict[str, Any], step: int | None = None, commit: bool | None = None):
-                return origin_log(self, data, None, commit)
-
-            Run.log = log
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
