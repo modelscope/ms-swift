@@ -5,9 +5,9 @@ from typing import Type
 import gradio as gr
 
 from swift.model import ModelType
-from swift.template import TEMPLATE_MAPPING
-from swift.pipelines import DeployArguments
 from swift.model.register import get_all_models
+from swift.pipelines import DeployArguments
+from swift.template import TEMPLATE_MAPPING
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.generate import Generate
 

@@ -16,7 +16,7 @@ from .torch_utils import (Serializer, activate_parameters, check_shared_disk, di
                           get_device_count, get_last_valid_indices, get_model_parameter_info, get_n_params_grads,
                           init_process_group, safe_ddp_context, seed_worker, set_default_ddp_config, set_device,
                           show_layers, time_synchronize, to_device, to_float_dtype, unwrap_model_for_generation)
-from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
-                    format_time, get_env_args, get_modules_to_not_convert, import_external_file, json_parse_to_dict,
-                    lower_bound, parse_args, patch_getattr, read_multi_line, remove_response, seed_everything,
-                    split_list, subprocess_run, test_time, upper_bound)
+from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr,
+                    disable_deepspeed_zero3, find_free_port, format_time, get_env_args, get_modules_to_not_convert,
+                    import_external_file, json_parse_to_dict, lower_bound, parse_args, patch_getattr, read_multi_line,
+                    remove_response, seed_everything, split_list, subprocess_run, test_time, upper_bound)

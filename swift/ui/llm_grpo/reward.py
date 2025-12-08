@@ -4,8 +4,8 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import BaseArguments, ModelType
-from swift.llm.model.register import get_all_models
+from swift.model import ModelType
+from swift.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 

@@ -17,9 +17,9 @@ from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.pipelines import DeployArguments, RLHFArguments, RolloutArguments
 from swift.ui.base import BaseUI
-from .external_runtime import RolloutRuntime
 from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
+from .external_runtime import RolloutRuntime
 
 logger = get_logger()
 
