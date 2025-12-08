@@ -4,11 +4,11 @@
 
 ## 安装依赖
 
-集群部署K8S,并在集群中部署DLrover,[DLRover]https://github.com/intelligent-machine-learning/dlrover,
+集群部署K8S,并在集群中部署DLrover,[DLRover](https://github.com/intelligent-machine-learning/dlrover),
 `pip install dlrover && pip install tornado && pip install kubernetes && pip install ms-swift`
 
 经过反复测试验证的训练镜像中的其它依赖以及版本：
-deepseed 0.16.5（需参考https://github.com/deepspeedai/DeepSpeed/pull/7585/files 修复universal checkpoint 相关问题）
+deepspeed 0.16.5（需参考https://github.com/deepspeedai/DeepSpeed/pull/7585/files 修复universal checkpoint 相关问题）
 pytorch 2.6.0
 
 
@@ -133,7 +133,7 @@ dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 - micro_batch_sizes：即train_micro_batch_size_per_gpu
 - min_gpus：最小gpu数目
 - max_gpus：最大gpu数目
-更详细的内容见：[Deepspeed]https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02
+更详细的内容见：[Deepspeed](https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02)
 
 
 ## 启动训练

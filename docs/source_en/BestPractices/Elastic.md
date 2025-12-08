@@ -3,10 +3,10 @@
 
 ## Installing Dependencies
 
-Deploy a K8S cluster and deploy[DLRover]https://github.com/intelligent-machine-learning/dlrover in the cluster,Install the required packages using `pip install dlrover && pip install tornado && pip install kubernetes && pip install ms-swift`
+Deploy a K8S cluster and deploy [DLRover](https://github.com/intelligent-machine-learning/dlrover) in the cluster, and install the required packages using `pip install dlrover && pip install tornado && pip install kubernetes && pip install ms-swift`
 
 Other dependencies and versions verified through repeated testing in the training image:
-deepseed 0.16.5（refer to this [PR]https://github.com/deepspeedai/DeepSpeed/pull/7585/files to fix issues related to universal checkpoint）
+deepspeed 0.16.5 (refer to this [PR](https://github.com/deepspeedai/DeepSpeed/pull/7585/files) to fix issues related to universal checkpoint)
 pytorch 2.6.0
 
 
@@ -131,8 +131,7 @@ Calculation principle：
 - micro_batch_sizes：Equivalent to train_micro_batch_size_per_gpu.
 - min_gpus：Minimum number of GPUs.
 - max_gpus：Maximum number of GPUs.
-For more details, see:[Deepspeed]https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02
-
+For more details, see: [Deepspeed](https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02)
 
 ## Starting Training
 
@@ -148,7 +147,7 @@ spec:
   optimizeMode: single-job
   replicaSpecs:
     worker:
-      replicas: 1 #【This should match the maximum value of --nnodes NNODES in the startup command】
+      replicas: 1 # This should match the maximum value of --nnodes NNODES in the startup command
       template:
         spec:
           restartPolicy: Never

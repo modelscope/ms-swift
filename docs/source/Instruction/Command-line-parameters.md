@@ -471,7 +471,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - eval_limit: 评测数据集采样数。
 - eval_generation_config: 评测时模型推理配置，json格式，默认为`{'max_tokens': 512}`。
 - use_flash_ckpt: 是否启用[DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover)的flash checkpoint。默认为`false`，启用后，权重会先保存至共享内存，之后异步持久化；建议搭配`PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` 一起使用，避免训练过程CUDA OOM。
-- elastic：是否启用弹性，依赖[DLRover]https://github.com/intelligent-machine-learning/dlrover,`pip install dlrover && pip install tornado && pip install kubernetes `，具体使用参考[示例](../BestPractices/Elastic.md)
+- elastic: 是否启用弹性，依赖[DLRover](https://github.com/intelligent-machine-learning/dlrover),`pip install dlrover && pip install tornado && pip install kubernetes `，具体使用参考[示例](../BestPractices/Elastic.md)
 - early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[callback plugin](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。
 
 #### SWANLAB

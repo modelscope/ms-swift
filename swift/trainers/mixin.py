@@ -477,12 +477,12 @@ class SwiftMixin:
         """
         resume_dir = get_resume_dir(self.args.output_dir)
         if resume_dir is None:
-            return False
+            return None
         tracer_file = os.path.join(resume_dir, 'dlrover_latest.txt')
         if not os.path.exists(tracer_file):
             step = 0
             if step == 0:
-                return False
+                return None
         with open(tracer_file, 'r') as f:
             step = int(f.read())
         checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{step}'
@@ -500,7 +500,7 @@ class SwiftMixin:
         if not os.path.exists(tracer_file):
             step = 0
             if step == 0:
-                return False
+                return None
         with open(tracer_file, 'r') as f:
             step = int(f.read())
         checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{step}'
