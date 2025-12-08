@@ -1,4 +1,5 @@
 # 8 * 95GiB
+# In this example, FP8 training does not provide any speedup.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 OMP_NUM_THREADS=14 \
 NPROC_PER_NODE=8 \
