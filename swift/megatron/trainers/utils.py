@@ -141,7 +141,7 @@ def profiling_context(trainer, name: str):
     wandb_writer = get_wandb_writer()
     if wandb_writer and trainer.is_main_process:
         step = getattr(getattr(wandb_writer, 'run', None), 'step', None)
-        wandb_writer.log(profiling_metrics, step=step, commit=False)
+        wandb_writer.log(profiling_metrics, step=step)
 
 
 def profiling_decorator(func):
