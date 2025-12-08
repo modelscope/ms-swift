@@ -7,7 +7,7 @@ from typing import Any, Dict
 from transformers import AutoConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,

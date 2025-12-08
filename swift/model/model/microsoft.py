@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from transformers import AutoConfig
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_device, get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch

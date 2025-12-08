@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model

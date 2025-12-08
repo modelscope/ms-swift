@@ -13,7 +13,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
-from swift.llm import TemplateType, to_device
+from swift.template import TemplateType, to_device
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
 from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch

@@ -2,7 +2,7 @@
 import sys
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device

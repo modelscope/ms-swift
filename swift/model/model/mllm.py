@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
 from ..constant import MLLMModelType, RerankerModelType

@@ -6,7 +6,7 @@ from functools import wraps
 
 from transformers import AutoModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone

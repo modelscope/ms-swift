@@ -6,7 +6,7 @@ from typing import Any, Dict
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
