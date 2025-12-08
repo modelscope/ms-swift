@@ -375,7 +375,7 @@ class ResponsePreprocessor(RowPreprocessor):
             if isinstance(response, (list, tuple)):
                 from transformers.utils import strtobool
                 # sometimes response is a list, pick one randomly
-                if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'True')):
+                if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
                     response = self.random_state.choice(response)
                 else:
                     response = response[0]

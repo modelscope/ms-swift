@@ -436,7 +436,8 @@ class HFHub(HubOperation):
             streaming=streaming,
             revision=revision,
             download_mode=download_mode,
-            num_proc=num_proc)
+            num_proc=num_proc,
+            trust_remote_code=True)
 
     @classmethod
     def download_model(cls,

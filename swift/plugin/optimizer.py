@@ -9,10 +9,12 @@ from peft import PeftModel
 from transformers import Trainer
 
 from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
-from swift.utils import get_dist_setting
+from swift.utils import get_dist_setting, get_logger
 
 if TYPE_CHECKING:
     from swift.trainers import TrainingArguments
+
+logger = get_logger()
 
 
 def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
@@ -136,10 +138,11 @@ def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
     aligner_parameters = get_param_startswith(model, model_arch.aligner)
     llm_parameters = get_param_startswith(model, model_arch.language_model)
     optimizer_grouped_parameters = []
-    for lr, parameters in zip([args.vit_lr, args.aligner_lr, args.learning_rate],
+    vit_lr = args.vit_lr if args.vit_lr is not None else args.learning_rate
+    aligner_lr = args.aligner_lr if args.aligner_lr is not None else args.learning_rate
+    logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {args.learning_rate}')
+    for lr, parameters in zip([vit_lr, aligner_lr, args.learning_rate],
                               [vit_parameters, aligner_parameters, llm_parameters]):
-        if lr is None:
-            lr = args.learning_rate
         for use_wd, wd in zip([False, True], [0., args.weight_decay]):
             if use_wd:
                 params = [p for n, p in parameters if n in decay_parameters]

@@ -925,3 +925,10 @@ register_dataset(
         ],
         dataset_name='self-cognition',
         tags=['chat', 'self-cognition', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='open-r1/DAPO-Math-17k-Processed',
+        hf_dataset_id='open-r1/DAPO-Math-17k-Processed',
+        subsets=['all'],
+        tags=['math', 'rlvr']))

@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib.metadata
 import os
 from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+import transformers
+from packaging import version
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -737,6 +740,21 @@ def patch_qwen_vl_utils(vision_process):
     return res
 
 
+def compat_qwen_vl_utils(image_patch_size: int):
+    spatial_merge_size = int(os.getenv('SPATIAL_MERGE_SIZE', '2'))
+    image_factor = image_patch_size * spatial_merge_size
+    env_vars_to_process = {
+        'MAX_PIXELS': 'IMAGE_MAX_TOKEN_NUM',
+        'MIN_PIXELS': 'IMAGE_MIN_TOKEN_NUM',
+        'VIDEO_MAX_PIXELS': 'VIDEO_MAX_TOKEN_NUM',
+        'VIDEO_MIN_PIXELS': 'VIDEO_MIN_TOKEN_NUM',
+    }
+    for source_var, target_var in env_vars_to_process.items():
+        value = os.getenv(source_var)
+        if value and not os.getenv(target_var):
+            os.environ[target_var] = str(int(value) // image_factor**2)
+
+
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
@@ -746,9 +764,18 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
+    import qwen_vl_utils
     check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
     if check_qwen_vl_utils:
-        require_version('qwen_vl_utils<0.0.12')
+        try:
+            qwen_vl_utils_version = importlib.metadata.version('qwen_vl_utils')
+        except importlib.metadata.PackageNotFoundError:
+            raise importlib.metadata.PackageNotFoundError(
+                "The 'qwen_vl_utils' distribution was not found and is required by this application.")
+        if version.parse(qwen_vl_utils_version) >= version.parse('0.0.14'):
+            compat_qwen_vl_utils(image_patch_size=14)
+        else:
+            require_version('qwen_vl_utils<0.0.12')
     global_vars = patch_qwen_vl_utils(vision_process)
     tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
@@ -936,7 +963,8 @@ def _patch_deepstack_process(model):
     def _deepstack_process(self, hidden_states: torch.Tensor, visual_pos_masks: torch.Tensor,
                            visual_embeds: torch.Tensor):
         from swift.trainers.sequence_parallel import sequence_parallel
-        if sequence_parallel.world_size:
+        world_size = sequence_parallel.world_size
+        if world_size and world_size > 1 and visual_pos_masks is not None:
             visual_pos_masks, visual_embeds = sequence_parallel.pad_and_split_mm_tokens(visual_pos_masks, visual_embeds)
         if visual_pos_masks is None:
             return hidden_states + visual_embeds.mean() * 0
@@ -950,12 +978,15 @@ def _patch_deepstack_process(model):
 
 
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
-    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+    if hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
-                                                                check_model_inputs, Cache, is_torchdynamo_compiling)
+                                                                check_model_inputs, Cache)
     from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
     output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
+
+    if version.parse(transformers.__version__) >= version.parse('4.57.2'):
+        check_model_inputs = check_model_inputs()
 
     @check_model_inputs
     def forward(
@@ -994,38 +1025,19 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
             self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
             video_grid_thw)
         if position_ids is None:
-            attention_mask_tensor = (
-                attention_mask if not isinstance(attention_mask, dict) else attention_mask['full_attention'])
-            if attention_mask_tensor is not None and attention_mask_tensor.ndim == 4:
-                attention_mask_tensor = torch.diagonal(attention_mask_tensor[:, 0], dim1=1, dim2=2)
-                # Only apply conversion for floating point tensors (inverted masks)
-                if attention_mask_tensor.dtype.is_floating_point:
-                    attention_mask_tensor = attention_mask_tensor / torch.finfo(attention_mask_tensor.dtype).min
-                    attention_mask_tensor = (1.0 - attention_mask_tensor).int()
-
-            # Calculate RoPE index once per generation in the pre-fill stage only.
-            # When compiling, we can't check tensor values thus we check only input length
-            # It is safe to assume that `length!=1` means we're in pre-fill because compiled
-            # models currently cannot do asssisted decoding
-            prefill_compiled_stage = is_torchdynamo_compiling() and (
-                (input_ids is not None and input_ids.shape[1] != 1) or
-                (inputs_embeds is not None and inputs_embeds.shape[1] != 1))
-            prefill_noncompiled_stage = not is_torchdynamo_compiling() and (
-                (cache_position is not None and cache_position[0] == 0) or
-                (past_key_values is None or past_key_values.get_seq_length() == 0))
-            if (prefill_compiled_stage or prefill_noncompiled_stage) or self.rope_deltas is None:
+            past_key_values_length = 0 if past_key_values is None else past_key_values.get_seq_length()
+            if self.rope_deltas is None or past_key_values_length == 0:
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
                     image_grid_thw,
                     video_grid_thw,
-                    attention_mask=attention_mask_tensor,
+                    attention_mask=attention_mask,
                 )
                 self.rope_deltas = rope_deltas
             # then use the prev pre-calculated rope-deltas to get the correct position ids
             else:
                 batch_size, seq_length, _ = inputs_embeds.shape
-                delta = ((cache_position[0]
-                          + self.rope_deltas).to(inputs_embeds.device) if cache_position is not None else 0)
+                delta = (past_key_values_length + self.rope_deltas).to(inputs_embeds.device)
                 position_ids = torch.arange(seq_length, device=inputs_embeds.device)
                 position_ids = position_ids.view(1, -1).expand(batch_size, -1)
                 if cache_position is not None:  # otherwise `deltas` is an int `0`
@@ -1059,6 +1071,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
+    compat_qwen_vl_utils(image_patch_size=16)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
@@ -1100,6 +1113,7 @@ register_model(
 def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
+    compat_qwen_vl_utils(image_patch_size=16)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)

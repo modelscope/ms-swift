@@ -29,6 +29,10 @@ class MoonlightTemplateMeta(TemplateMeta):
 
 register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
 
+register_template(
+    MoonlightTemplateMeta(
+        LLMTemplateType.kimi_k2, default_system='You are Kimi, an AI assistant created by Moonshot AI.'))
+
 
 class KimiVLTemplate(Template):
     placeholder_tokens = ['<|media_pad|>']

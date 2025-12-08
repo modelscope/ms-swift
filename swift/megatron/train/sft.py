@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from dataclasses import asdict
 from functools import partial
 from typing import List, Optional, Union
 
 import torch
+import torch.distributed as dist
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
@@ -12,6 +15,12 @@ from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
 from ..utils import get_padding_to
 from .utils import build_streaming_dataloader
+
+if is_torch_npu_available():
+    # Enable Megatron on Ascend NPU
+    from mindspeed.megatron_adaptor import repatch
+else:
+    repatch = None
 
 logger = get_logger()
 
@@ -27,14 +36,20 @@ class MegatronSft(SwiftSft):
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
+        if repatch is not None:
+            if args.attention_backend != 'local':
+                # MindSpeed requires passing `use_flash_attn` to Megatron
+                # to enable flash attention on Ascend NPU.
+                self.args.use_flash_attn = True
+            megatron_args = asdict(self.args)
+            repatch(megatron_args)
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
         else:
             kwargs = {'load_model': False}
-        download_model = args.load_safetensors is not None
         with torch.device('meta'):
-            self.model, self.processor = args.get_model_processor(**kwargs, download_model=download_model)
+            self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load_safetensors)
         self._prepare_template()
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         args.save_args(args.save)
@@ -66,6 +81,7 @@ class MegatronSft(SwiftSft):
                 images_dir = os.path.join(args.save, 'images')
                 logger.info(f'images_dir: {images_dir}')
                 plot_images(images_dir, args.tensorboard_dir)
+            dist.barrier()  # Ensure all weights are saved completely
 
 
 def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):

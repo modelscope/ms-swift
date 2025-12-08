@@ -1,0 +1,75 @@
+name: citest-npu
+
+on:
+  push:
+    branches:
+      - master
+      - "release/**"
+    paths-ignore:
+      - "setup.*"
+      - "requirements.txt"
+      - "requirements/**"
+      - "docs/**"
+      - "tools/**"
+      - ".dev_scripts/**"
+      - "README.md"
+      - "README_*.md"
+      - "NOTICE"
+      - ".github/workflows/lint.yaml"
+      - ".github/workflows/publish.yaml"
+
+  pull_request:
+    paths-ignore:
+      - "setup.*"
+      - "requirements.txt"
+      - "requirements/**"
+      - "docs/**"
+      - "tools/**"
+      - ".dev_scripts/**"
+      - "README.md"
+      - "README_*.md"
+      - "NOTICE"
+      - ".github/workflows/lint.yaml"
+      - ".github/workflows/publish.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unittest:
+    # The type of runner that the job will run on
+    runs-on: [linux-aarch64-a2-1]
+    timeout-minutes: 240
+    container:
+      image: 'ascendai/cann:8.3.rc2-910b-ubuntu22.04-py3.11'
+    steps:
+      - name: Config mirrors
+        run: |
+          sed -Ei 's@(ports|archive).ubuntu.com@cache-service.nginx-pypi-cache.svc.cluster.local:8081@g' /etc/apt/sources.list
+          pip config set global.index-url http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple
+          pip config set global.trusted-host cache-service.nginx-pypi-cache.svc.cluster.local
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+            fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+      - name: Get changed files
+        id: changed-files
+        run: |
+            if ${{ github.event_name == 'pull_request' }}; then
+                echo "PR_CHANGED_FILES=$(git diff --name-only -r HEAD^1 HEAD | xargs)" >> $GITHUB_ENV
+            else
+                echo "PR_CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | xargs)" >> $GITHUB_ENV
+            fi
+      - name: Run unittest
+        shell: bash
+        run: |
+          set -e
+          export IMAGE_NAME=ascendai/cann
+          export IMAGE_VERSION=8.3.rc2-910b-ubuntu22.04-py3.11
+          export TEST_LEVEL=0
+          mkdir -p ~/.cache
+          export MODELSCOPE_CACHE=~/.cache
+          export CI_COMMAND='bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --subprocess --run_config tests/run_config.yaml'
+          bash .dev_scripts/dockerci_npu.sh

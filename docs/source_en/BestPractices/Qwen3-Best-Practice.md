@@ -258,7 +258,7 @@ ms-swift supports RLHF methods such as DPO, GRPO, DAPO, PPO, KTO, and GKD. This 
 In addition to installing the dependencies related to ms-swift mentioned above, you also need to install the following:
 
 ```shell
-pip install "math_verify==0.5.2"
+pip install "math_verify"
 pip install vllm==0.8.5.post1
 ```
 
@@ -332,7 +332,7 @@ swift rlhf \
 
 Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/KTO/RM for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/GRPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 

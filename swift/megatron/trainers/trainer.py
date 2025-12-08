@@ -76,7 +76,7 @@ class MegatronTrainer(BaseMegatronTrainer):
 
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        if args.context_parallel_size > 1 and not self.megatron_core_013:
+        if args.context_parallel_size > 1 and not self.mcore_013:
             loss = all_reduce(loss, group=mpu.get_context_parallel_group())
 
         # Check individual rank losses are not NaN prior to DP all-reduce.
@@ -114,7 +114,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         # Reduce loss for logging.
         reporting_loss = loss.detach().clone()
         lm_loss = loss[0]
-        if not self.megatron_core_013:
+        if not self.mcore_013:
             # fix megatron-lm bug
             # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
             torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())

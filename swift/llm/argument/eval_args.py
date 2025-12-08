@@ -13,20 +13,38 @@ logger = get_logger()
 
 @dataclass
 class EvalArguments(DeployArguments):
-    """
-    EvalArguments is a dataclass that extends DeployArguments and is used to define
-    the arguments required for evaluating a model.
+    """A dataclass that extends DeployArguments to define model evaluation arguments.
+
+    These arguments control the evaluation process, including the choice of backend, datasets, generation parameters,
+    and other configurations.
 
     Args:
-        eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
-        eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
-        local_dataset(bool): Download extra dataset from opencompass, default False.
-        eval_generation_config (Optional[Union[Dict, str]]): The generation config for evaluation. Default is None.
-        eval_output_dir (str): The eval output dir.
-        temperature (float): The temperature.
-        verbose (bool): Output verbose information.
-        eval_url (str): The extra eval url, use this as --model.
-        extra_eval_args (Optional[Union[Dict, str]]): Additional evaluation arguments. Default is an empty dict.
+        eval_dataset (List[str]): List of evaluation datasets. Please refer to the evaluation documentation for
+            available options. Defaults to [].
+        eval_limit (Optional[int]): The number of samples to take from each evaluation dataset. If None, all samples
+            are used. Defaults to None.
+        eval_dataset_args (Optional[Union[Dict, str]]): Evaluation dataset parameters, in JSON format, can be set for
+            multiple datasets. Defaults to None.
+        eval_generation_config (Optional[Union[Dict, str]]): The model's inference configuration for evaluation,
+            provided as a JSON string (e.g., '{"max_new_tokens": 512}'). Defaults to None.
+        eval_output_dir (str): The directory to store evaluation results. Defaults to 'eval_output'.
+        eval_backend (str): The evaluation backend. Can be 'Native', 'OpenCompass', or 'VLMEvalKit'. Defaults to
+            'Native'.
+        local_dataset (bool): Whether to automatically download extra datasets required for certain evaluations
+            (e.g., CMB). If True, a 'data' folder will be created in the current directory for the datasets. This
+            download occurs only once, and subsequent runs will use the cache. Defaults to False.
+            Note: By default, evaluation uses datasets from `~/.cache/opencompass`. When this is set to True, the
+            `data` folder in the current directory is used instead.
+        temperature (float): The temperature for sampling, which overrides the default generation config. Defaults
+            to 0.0.
+        verbose (bool): Whether to output verbose information during the evaluation process. Defaults to False.
+        eval_num_proc (int): The maximum number of concurrent clients for evaluation. Defaults to 16.
+        extra_eval_args (Optional[Union[Dict, str]]): Additional evaluation arguments, provided as a JSON string.
+            These are only effective when using the 'Native' backend. Refer to the documentation for more details on
+            available arguments. Defaults to {}.
+        eval_url (Optional[str]): The URL for the evaluation service (e.g., 'http://localhost:8000/v1'). If not
+            specified, evaluation runs on the locally deployed model. See documentation for more examples. Defaults
+            to None.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None

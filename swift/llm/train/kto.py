@@ -41,16 +41,17 @@ def _get_kl_dataset(dataset: Optional[HfDataset],
 
 
 def prepare_kto_dataset(args, train_dataset, val_dataset):
-    world_size = get_dist_setting()[2]
-    if hasattr(args, 'global_batch_size') and args.global_batch_size is not None:
-        total_batch_size = args.global_batch_size
-    else:
-        total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
-    if total_batch_size <= 1:
-        raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
-                         'will be equivalent to the implied reward.')
-    train_dataset = _get_kl_dataset(train_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
-    val_dataset = _get_kl_dataset(val_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
+    if args.loss_type != 'apo_zero_unpaired':
+        world_size = get_dist_setting()[2]
+        if hasattr(args, 'global_batch_size') and args.global_batch_size is not None:
+            total_batch_size = args.global_batch_size
+        else:
+            total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
+        if total_batch_size <= 1:
+            raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
+                             'will be equivalent to the implied reward.')
+        train_dataset = _get_kl_dataset(train_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
+        val_dataset = _get_kl_dataset(val_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
 
     label = train_dataset['label']
     num_desirable = max(sum(label), 1)

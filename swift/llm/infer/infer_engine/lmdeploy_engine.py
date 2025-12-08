@@ -260,7 +260,7 @@ class LmdeployEngine(InferEngine):
         toolcall = self._get_toolcall(response, template)
         finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                 output.status.name == 'FINISH')
-        token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
+        token_ids = output.token_ids if request_config.return_details else None
         choices = [
             ChatCompletionResponseChoice(
                 index=0,

@@ -426,7 +426,7 @@ class PtEngine(InferEngine):
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response, template)
-                token_ids = template.skip_stop_tokens(generate_ids) if request_config.return_details else None
+                token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,

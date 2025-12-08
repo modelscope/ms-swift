@@ -26,7 +26,7 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
+from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
@@ -34,9 +34,10 @@ from swift.utils import get_logger, is_vllm_available, remove_response
 from swift.utils.torch_utils import get_current_device
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
-                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, get_even_process_data,
-                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_vllm_load_adapter, set_expandable_segments)
+                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
+                    get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
+                    set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -100,6 +101,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.completion_length_limit_scope = args.completion_length_limit_scope
         self.async_generate = args.async_generate
 
+        # Enable logprobs for vLLM importance sampling if requested
+
         self.request_config = RequestConfig(
             n=1,
             max_tokens=args.max_completion_length,
@@ -108,26 +111,33 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True)
+            return_details=True,
+            logprobs=args.use_vllm)
+
+        self.disable_rollout_importance_sampling = False
 
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
-        if not is_vllm_available():
-            raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                              'Please install vLLM with `pip install vllm -U` to use it.')
-
-        # Initialize default values
         args = self.args
-
         self.use_fast_infer = args.use_vllm
+        # Initialize default values
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False
         self.rollout_enable_lora = False
         self.vllm_use_async_engine = False
-
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         if not args.use_vllm:
             return
+
+        if not is_vllm_available():
+            raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                              'Please install vLLM with `pip install vllm -U` to use it.')
+
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
 
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
@@ -182,6 +192,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        vllm_template.sequence_parallel_size = 1
         lora_kwargs = {}
         is_moe = model.model_info.is_moe_model
         vllm_enable_lora = args.vllm_enable_lora
@@ -206,6 +217,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
@@ -229,6 +241,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
                 engine_kwargs=self.args.vllm_engine_kwargs,
+                logprobs_mode=logprobs_mode,
                 **lora_kwargs,
             )
             set_expandable_segments(True)
@@ -389,10 +402,14 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 del cur_lora_params
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
-            metadatas = bucket.get_metadata()
-            flattened_tensor = bucket.get_flattened_tensor()
-            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+            use_flatten = getattr(self.args, 'enable_flattened_weight_sync', True)
+            if use_flatten:
+                bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
+                metadatas = bucket.get_metadata()
+                flattened_tensor = bucket.get_flattened_tensor()
+                self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+            else:
+                self.vllm_client.update_adapter_param(peft_config, lora_params)
         elif self.vllm_mode == 'colocate':
             lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
             lora_request = TensorLoRARequest(
@@ -408,14 +425,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _load_state_dict_to_vllm(self, state_dict):
         """Load state_dict to vLLM engine (server or colocate mode)"""
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
-            named_params = list(state_dict.items())
-            parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
-
-            for bucket in parameter_buckets:
-                _process_bucket_with_flattened_tensor(self, bucket)
-
-            del named_params, parameter_buckets
+            use_flatten = getattr(self.args, 'enable_flattened_weight_sync', True)
+            if use_flatten:
+                bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
+                named_params = list(state_dict.items())
+                parameter_buckets = _create_parameter_buckets(named_params, bucket_size_mb=bucket_size_mb)
+                for bucket in parameter_buckets:
+                    _process_bucket_with_flattened_tensor(self, bucket)
+                del named_params, parameter_buckets
+            else:
+                for name, param in state_dict.items():
+                    self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
             llm_model.load_weights(state_dict.items())
@@ -538,6 +558,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         rollout_infos = [{} for _ in range(orig_size)]
         response_token_ids = [[] for _ in range(orig_size)]
         response_loss_mask = [[] for _ in range(orig_size)]
+        rollout_logprobs = [[] for _ in range(orig_size)]
         is_continuations = [False] * orig_size
         # Attach index to inputs for tracking
         requests = self.inputs2requests(inputs)
@@ -580,6 +601,56 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 if args.max_turns:
                     stop = stop or (current_turn >= args.max_turns)
                 if stop:
+                    # For stopped dialogues, collect final turn's data
+                    is_continuation = is_continuations[index]
+                    response_choice = output.response.choices[0]
+                    current_logprobs = self._extract_logprobs_from_choice(response_choice)
+                    final_token_ids = response_choice.token_ids
+
+                    if is_continuation and response_token_ids[index]:
+                        # For continuation, extend the last turn's data
+                        response_token_ids[index][-1].extend(final_token_ids)
+                        if response_loss_mask[index]:
+                            response_loss_mask[index][-1].extend([1] * len(final_token_ids))
+                        if rollout_logprobs[index] and current_logprobs:
+                            rollout_logprobs[index][-1].extend(current_logprobs)
+                    elif not response_token_ids[index]:
+                        # First turn stopped immediately - need to initialize with final response data
+                        if final_token_ids:
+                            response_token_ids[index] = [list(final_token_ids)]
+                            response_loss_mask[index] = [[1] * len(final_token_ids)]
+                        if current_logprobs:
+                            rollout_logprobs[index] = [current_logprobs]
+                    else:
+                        # Not continuation but has previous data - append as new turn
+                        if final_token_ids:
+                            response_token_ids[index].append(list(final_token_ids))
+                            response_loss_mask[index].append([1] * len(final_token_ids))
+                        if current_logprobs:
+                            rollout_logprobs[index].append(current_logprobs)
+
+                    # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
+                    # clear them to disable rollout importance sampling correction (which requires complete logprobs)
+                    # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
+                    # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1 # noqa
+                    final_rollout_logprobs = rollout_logprobs[index]
+                    if rollout_logprobs[index]:
+                        total_logprob_count = sum(len(turn_lps) for turn_lps in rollout_logprobs[index])
+                        if response_loss_mask[index]:
+                            # Check if the number of logprobs matches the number of loss_mask=1 tokens
+                            total_loss_mask_1_count = sum(sum(mask) for mask in response_loss_mask[index])
+                            if total_loss_mask_1_count != total_logprob_count:
+                                # Incomplete logprobs, clear them
+                                final_rollout_logprobs = []
+                        else:
+                            # No loss_mask, fall back to checking against response_token_ids
+                            if response_token_ids[index]:
+                                total_token_count = sum(len(turn_ids) for turn_ids in response_token_ids[index])
+                                if total_token_count != total_logprob_count:
+                                    final_rollout_logprobs = []
+                            else:
+                                final_rollout_logprobs = []
+
                     rollout_outputs[index] = RolloutOutput(
                         response=output.response,
                         messages=requests[index].messages,
@@ -587,7 +658,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                         response_loss_mask=response_loss_mask[index],
                         rollout_infos={
                             **rollout_infos[index], 'num_turns': current_turn
-                        })
+                        },
+                        rollout_logprobs=final_rollout_logprobs)
                     continue
                 is_continuation = is_continuations[index]
                 step_result = self.multi_turn_scheduler.step(requests[index], output.response.choices[0], current_turn)
@@ -613,6 +685,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     # Always overwrite the rollout info for this step.
                     # If you need to keep all step-wise details, switch to append or merge instead.
                     rollout_infos[index].update(step_result['rollout_infos'])
+
+                # Track rollout_logprobs for rollout importance sampling correction
+                # Prefer step's returned logprobs (which may be modified/truncated) over raw response_choice logprobs
+                if 'rollout_logprobs' in step_result and step_result['rollout_logprobs']:
+                    current_logprobs = step_result['rollout_logprobs']
+                else:
+                    current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
+                if current_logprobs:
+                    if is_continuation and rollout_logprobs[index]:
+                        rollout_logprobs[index][-1].extend(current_logprobs)
+                    else:
+                        rollout_logprobs[index].append(current_logprobs)
+
                 if current_request.messages[-1]['role'] == 'assistant':
                     # for continuation, we add dummy response, add here
                     current_request.messages.append({'role': 'assistant', 'content': None})
@@ -637,6 +722,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if self.engine.inner_model_executor.is_sleeping:
                 wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
                 kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+                aggressive_empty_cache()
                 self.engine.engine.wake_up(**kwargs)
 
         if self.state.global_step != self._last_loaded_step:
@@ -788,7 +874,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with patch_profiling_context(self, 'generate'):
+        with patch_profiling_context(self, 'generate'), self._disable_sp_context():
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
@@ -816,6 +902,22 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         return False
 
+    @staticmethod
+    def _extract_logprobs_from_choice(response_choice) -> List[float]:
+        """Extract logprobs list from response choice for rollout importance sampling.
+
+        Args:
+            response_choice: The response choice containing logprobs
+
+        Returns:
+            List of logprob values, or empty list if not available
+        """
+        if response_choice.logprobs is None:
+            return []
+        if 'content' in response_choice.logprobs:
+            return [item['logprob'] for item in response_choice.logprobs['content']]
+        return []
+
     def _postprocess_rollout_outputs(self, inputs: DataType, outputs: List[RolloutOutput]) -> DataType:
         """Postprocess rollout outputs by merging them back into inputs"""
 
@@ -841,9 +943,21 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if output.rollout_infos:
                 input_data['rollout_infos'] = output.rollout_infos
 
+            # Extract rollout logprobs for importance sampling if available
+            # Keep the same structure as response_token_ids (List[List[float]] for multi-turn)
+            if output.rollout_logprobs:
+                # Multi-turn scenario: preserve the nested structure to match response_token_ids
+                input_data['rollout_logprobs'] = output.rollout_logprobs
+            elif choice.logprobs is not None:
+                # Single-turn scenario: extract from response and wrap in list for consistency
+                # logprobs format: {'content': [{'token': ..., 'logprob': ..., 'bytes': ...}, ...]}
+                if 'content' in choice.logprobs:
+                    rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['rollout_logprobs'] = [rollout_logprobs]
+
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
-
+            input_data['add_eos'] = False
             if output.rollout_infos:
                 multi_modal_keys = ['images', 'videos', 'audios']
                 for key in multi_modal_keys:
@@ -930,9 +1044,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             return
 
         if args.multi_turn_scheduler:
+            # Get tokenizer for scheduler (needed in colocate mode where infer_engine may be None)
+            tokenizer = getattr(self, 'processing_class', None)
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](
+                    max_turns=args.max_turns, tokenizer=tokenizer)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
@@ -974,7 +1091,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
@@ -987,45 +1104,60 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if not inputs:
             return []
+
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_dicts = []
+        requests_list = []
 
         for data in inputs:
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data['request_id']
-            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {
-                    k: v
-                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+            if isinstance(data, RolloutInferRequest):
+                request_obj = data
+            else:
+                request_data = {
+                    key: data[key]
+                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
                 }
-                if extra_fields:
-                    request_data['data_dict'] = extra_fields
-            elif self.multi_turn_scheduler:
-                base_data_dict = {}
-                if 'data_dict' in data:
-                    if isinstance(data['data_dict'], dict):
-                        base_data_dict = data['data_dict']
-                    else:
-                        raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {
-                    k: v
-                    for k, v in data.items()
-                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                }
-                final_data_dict = {**extra_data, **base_data_dict}
-                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+                if 'uuid' not in request_data:
+                    request_data['uuid'] = data['request_id']
+                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                    extra_fields = {
+                        k: v
+                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                    }
+                    if extra_fields:
+                        request_data['data_dict'] = extra_fields
+                elif self.multi_turn_scheduler:
+                    base_data_dict = {}
+                    if 'data_dict' in data:
+                        if isinstance(data['data_dict'], dict):
+                            base_data_dict = data['data_dict']
+                        else:
+                            raise ValueError('data_dict exists but is not a dictionary')
+                    extra_data = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                    }
+                    final_data_dict = {**extra_data, **base_data_dict}
+                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
-            requests_dicts.append(request_data)
+                if 'images' in request_data and request_data['images']:
+                    imgs = request_data['images']
+                    if not isinstance(imgs, list):
+                        imgs = [imgs]
+                    request_data['images'] = [_process_image_data(img) for img in imgs]
 
-        for request in requests_dicts:
-            if 'images' in request and request['images']:
-                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
-                    request['images'], list) else _process_image_data(request['images']))
+                if 'tools' in request_data and isinstance(request_data['tools'], str):
+                    try:
+                        request_data['tools'] = json.loads(request_data['tools'])
+                    except json.JSONDecodeError:
+                        pass
 
-        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+                request_obj = from_dict(RolloutInferRequest, request_data)
+            requests_list.append(request_obj)
+
+        return requests_list
 
     def async_generate_rollout(self, all_inputs):
         """Async generation task for rollout"""
@@ -1091,3 +1223,44 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self._last_loaded_step = self.state.global_step
         results = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(results))
+
+    @contextmanager
+    def _disable_sp_context(self, template: Optional[Template] = None):
+        """
+        Context manager to temporarily disable Sequence Parallel (SP) for operations
+        like reward model inference that should not use SP.
+
+        All SP-patched functions in ulysses.py check `sequence_parallel.world_size == 1`
+        and automatically bypass SP logic when this condition is true. This makes the
+        disable mechanism simple and robust - we only need to set world_size = 1.
+        """
+        from swift.trainers.sequence_parallel import sequence_parallel
+
+        # Save original SP state
+        origin_size = sequence_parallel.world_size
+        origin_extra_kwargs = sequence_parallel.extra_kwargs.copy()
+
+        # Disable SP by setting world_size = 1
+        # All patched functions will check this and use original implementations
+        sequence_parallel.world_size = 1
+        sequence_parallel.extra_kwargs = {}
+
+        # Also update template settings if provided
+        original_padding_free = None
+        original_sequence_parallel_size = None
+        if template is not None:
+            original_padding_free = template.padding_free
+            template.padding_free = False
+            original_sequence_parallel_size = template.sequence_parallel_size
+            template.sequence_parallel_size = 1
+
+        try:
+            yield
+        finally:
+            # Restore SP state
+            sequence_parallel.world_size = origin_size
+            sequence_parallel.extra_kwargs = origin_extra_kwargs
+
+            if template is not None:
+                template.padding_free = original_padding_free
+                template.sequence_parallel_size = original_sequence_parallel_size

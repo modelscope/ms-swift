@@ -6,7 +6,9 @@ from typing import Any, Dict, Tuple, Union
 import pandas as pd
 import torch
 import torch.nn as nn
+import trl
 from accelerate.utils import gather_object
+from packaging import version
 from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
 from trl.trainer.utils import print_rich_table
@@ -26,13 +28,17 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         super().__init__(*args, **kwargs)
         try:
             from trl.models import get_act_offloading_ctx_manager
-            if self.args.activation_offloading:
+            if getattr(self.args, 'activation_offloading', False):
                 self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
             else:
                 self.maybe_activation_offload_context = nullcontext()
         except ImportError:
             self.maybe_activation_offload_context = nullcontext()
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
+        if version.parse(trl.__version__) >= version.parse('0.24'):
+            # During evaluation, Trainer calls compute_loss() only if can_return_loss is True and label_names is empty.
+            self.can_return_loss = True
+            self.label_names = []
 
     def compute_loss(self,
                      model: Union[PreTrainedModel, nn.Module],

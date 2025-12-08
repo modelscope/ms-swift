@@ -249,15 +249,6 @@ Below is a fine-tuning script for the `Qwen3-VL-30B-A3B-Instruct` model. We use 
 
 For Megatron-SWIFT environment installation, please refer to the [Megatron-SWIFT Documentation](../Megatron-SWIFT/Quick-start.md). Megatron-SWIFT shares the template and dataset modules with ms-swift, so the custom dataset format and model-specific environment variables introduced earlier still apply.
 
-Convert HF format weights to Megatron format:
-```shell
-CUDA_VISIBLE_DEVICES=0,1 \
-swift export \
-    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --to_mcore true \
-    --torch_dtype bfloat16 \
-    --output_dir Qwen3-VL-30B-A3B-Instruct-mcore
-```
 The fine-tuning script is as follows. For adjusting training techniques and parallelism strategies, refer to the [Megatron-SWIFT Documentation](../Megatron-SWIFT/Quick-start.md#training-tips).
 
 ```shell
@@ -270,14 +261,16 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
-    --load Qwen3-VL-30B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 4 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -304,22 +297,9 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --moe_expert_capacity_factor 2 \
-    --optimizer_cpu_offload true \
-    --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.2 \
     --attention_backend flash
 ```
-Convert Megatron format weights to HF format:
 
-```shell
-CUDA_VISIBLE_DEVICES=0,1 \
-swift export \
-    --mcore_model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf
-```
-- To use weights from a specific iteration, please modify the `latest_checkpointed_iteration.txt` file in the `megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx` directory.
 After training, we use the following script to perform inference on the validation set:
 
 ```shell
@@ -329,7 +309,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 swift infer \
-    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true \
     --max_new_tokens 2048 \
     --load_data_args true

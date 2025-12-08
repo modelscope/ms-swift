@@ -440,6 +440,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('ZhipuAI/GLM-4.6', 'zai-org/GLM-4.6'),
+                Model('ZhipuAI/GLM-4.6-FP8', 'zai-org/GLM-4.6-FP8'),
             ])
         ],
         TemplateType.glm4_5,

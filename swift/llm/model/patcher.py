@@ -257,14 +257,15 @@ def _patch_sequence_classification(model, model_meta):
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     llm_model = get_lm_head_model(model, model_meta, lm_heads)
     llm_model.num_labels = model.config.num_labels
+    for lm_head in lm_heads:
+        if hasattr(llm_model, lm_head):
+            hidden_size = getattr(llm_model, lm_head).in_features
+            setattr(llm_model, lm_head, nn.Identity())
+            break
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
     if llm_model.score.weight.device == torch.device('meta'):
         llm_model.score.to_empty(device='cpu')
     llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
-    for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            setattr(llm_model, lm_head, nn.Identity())
-            break
 
     origin_forward = llm_model.forward
 

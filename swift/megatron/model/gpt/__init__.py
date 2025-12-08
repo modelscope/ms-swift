@@ -44,6 +44,7 @@ register_megatron_model(
             ModelType.mimo,
             ModelType.mimo_rl,
             ModelType.moonlight,
+            ModelType.kimi_k2,
             ModelType.deepseek_moe,
             ModelType.deepseek_v2,
             ModelType.deepseek_v2_5,
@@ -53,5 +54,6 @@ register_megatron_model(
             ModelType.glm4_5,
             ModelType.deepseek_v3_1,
             ModelType.ernie_thinking,
+            ModelType.gpt_oss,
         ],
     ))

@@ -72,18 +72,14 @@ class Qwen2_5OmniBridge(GPTBridge):
 
 
 class Qwen2_5Omni_Vit(HuggingFaceModule):
-    module_mapping = {
-        'thinker': 'thinker',
-    }
+    module_mapping = {'thinker': 'thinker', 'talker': 'talker', 'token2wav': 'token2wav'}
     _vision_tower = ['thinker.audio_tower', 'thinker.visual']
     _aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
+    _generator = ['talker', 'token2wav']
 
     def __init__(self, config):
-        from transformers.models.qwen2_5_omni import (Qwen2_5OmniThinkerTextModel,
-                                                      Qwen2_5OmniTalkerForConditionalGeneration,
-                                                      Qwen2_5OmniToken2WavModel)
-        super().__init__(
-            config, [Qwen2_5OmniThinkerTextModel, Qwen2_5OmniTalkerForConditionalGeneration, Qwen2_5OmniToken2WavModel])
+        from transformers.models.qwen2_5_omni import Qwen2_5OmniThinkerTextModel
+        super().__init__(config, [Qwen2_5OmniThinkerTextModel])
 
     def prepare_model(self, hf_model):
         del self.thinker.model

@@ -111,13 +111,16 @@ def get_multimodal_target_regex(
     res = []
     for module in modules:
         rejected_modules = []
-        if not freeze_vit:
+        if not freeze_vit or not freeze_llm:
             for aligner in model_arch.aligner:
                 if aligner.startswith(f'{module}.'):
                     rejected_modules.append(aligner)
 
         sub_module = deep_getattr(model, module)
-        target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        if isinstance(sub_module, nn.Linear) and module.endswith('lm_head'):
+            target_modules = []
+        else:
+            target_modules = find_all_linears(sub_module, model_arch, extra_layers)
         if exclude_router and model.model_info.is_moe_model:
             target_modules = [tm for tm in target_modules if tm not in {'gate'}]
         if not target_modules:

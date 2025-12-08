@@ -1,5 +1,5 @@
 # 24GiB
-pip install "transformers==4.46.3" easydict
+pip install "transformers==4.46.3" easydict "peft==0.15.2"
 
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \

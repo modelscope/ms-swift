@@ -220,7 +220,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         print(f'token_mean_diff: {token_mean_diff}')
         print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
         print(f'mean_diff (with loss): {mean_diff_with_loss}, max_diff (with loss): {max_diff_with_loss} '
-              '(Please check that mean_diff is less than 0.1).')
+              '(Please check that mean_diff (with loss) is less than 0.1).')
         hf_tokens = hf_logits.argmax(-1)
         mg_tokens = mg_logits.argmax(-1)
         print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')

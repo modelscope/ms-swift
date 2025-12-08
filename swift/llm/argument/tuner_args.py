@@ -15,31 +15,69 @@ class TunerArguments:
     TunerArguments is a dataclass that holds configuration for various tuners.
 
     Args:
+        freeze_parameters (List[str]): A list of prefixes for parameters that should be frozen during training.
+            Defaults to an empty list `[]`.
+        freeze_parameters_regex (Optional[str]): A regular expression to match the names of parameters that should be
+            frozen. Defaults to `None`.
+        freeze_parameters_ratio (float): The ratio of parameters to freeze, starting from the bottom layers upwards
+            (from 0.0 to 1.0). Setting this to 1.0 freezes all model parameters, which can be useful when selectively
+            unfreezing specific parameters with `trainable_parameters`. Defaults to 0.0.
+        trainable_parameters (List[str]): A list of prefixes for parameters that should be made explicitly trainable.
+            Defaults to an empty list `[]`.
+        trainable_parameters_regex (Optional[str]): A regular expression to match the names of parameters that should
+            be made explicitly trainable. Defaults to `None`.
+            Note on parameter freezing priority: The `trainable_*` arguments have higher priority than the `freeze_*`
+            arguments. The freezing logic is applied as follows:
+            Firstly, all parameters are set to trainable.
+            Then, `freeze_parameters`, `freeze_parameters_regex`, and `freeze_parameters_ratio` are applied to freeze
+            parts of the model.
+            Finally, `trainable_parameters` and `trainable_parameters_regex` are used to unfreeze specific parameters,
+            ensuring they are trainable regardless of the freezing rules.
+
+        freeze_llm (bool): For multi-modal models only. If `True`, it affects the Large Language Model (LLM) part.
+            In full fine-tuning, this freezes the LLM weights. In LoRA training with `target_modules='all-linear'`,
+            this prevents adding LoRA modules to the LLM. Defaults to `False`.
+        freeze_vit (bool): For multi-modal models only. If `True`, it affects the Vision/Audio Transformer (ViT) part.
+            In full fine-tuning, this freezes the ViT weights. In LoRA training with `target_modules='all-linear'`,
+            this prevents adding LoRA modules to the ViT. Note: 'vit' can refer to `vision_tower` and `audio_tower`.
+            Defaults to `True`.
+        freeze_aligner (bool): For multi-modal models only. If `True`, it affects the aligner (projector) part.
+            In full fine-tuning, this freezes the aligner weights. In LoRA training with `target_modules='all-linear'`,
+            this prevents adding LoRA modules to the aligner. Defaults to `True`.
+
         target_modules (List[str]): List of target modules for tuning. Default is ['all-linear'].
         target_regex (Optional[str]): Regular expression to match target modules. Default is None.
+        target_parameters (Optional[List[str]]): A list of parameter names to be replaced by LoRA modules. This is
+            similar to `target_modules` but targets parameters directly, which is useful for layers like MoE that use
+            `nn.Parameter` instead of `nn.Linear`. Requires `peft>=0.17.0`. Defaults to `None`.
         modules_to_save (List[str]): List of modules to save. Default is an empty list.
 
         lora_rank (int): Rank for LoRA. Default is 8.
         lora_alpha (int): Alpha value for LoRA. Default is 32.
         lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
-            Allowed values are 'none', 'all'.
+        lora_bias (Literal['none', 'all']): The possible values are 'none' and 'all'. If set to 'all', all biases
+            will be trainable. Default is 'none'.
         lora_dtype (Literal): Data type for LoRA. Default is 'AUTO'. Allowed values are 'fp16', 'bf16', 'fp32', 'AUTO'.
         lorap_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
-        init_weights (str): Initialization method for weights of supported tuners. Default is 'true'.
-        lora_ga_batch_size (int): Batch size used for estimating gradients during initialization in LoRA-GA.
-                                    Default value is 2.
-        lora_ga_iters (int): Number of iterations for estimating gradients during initialization in LoRA-GA.
-                                Default value is 2.
+
+        lora_ga_batch_size (int): Batch size used for estimating gradients during initialization in LoRA-GA. Default
+            value is 2.
+        lora_ga_iters (int): Number of iterations for estimating gradients during initialization in LoRA-GA. Default
+            value is 2.
         lora_ga_max_length (int): Maximum input length for estimating gradients during initialization in LoRA-GA.
-                                    Default value is 1024.
+            Default value is 1024.
         lora_ga_direction (str): Initial direction used for gradient estimation during initialization in LoRA-GA.
-                                    Default value is `ArB2r`. Allowed: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+            Default value is `ArB2r`. Allowed: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
         lora_ga_scale (str): The scaling method for initialization in LoRA-GA.
-                                Default value is `stable`. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
-        lora_ga_stable_gamma (int): The gamma value when choosing `stable` scaling for initialization.
-                                    Default value is 16.
+            Default value is `stable`. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+        lora_ga_stable_gamma (int): The gamma value when choosing `stable` scaling for initialization. Default
+            value is 16.
+
+        init_weights (str): The method for initializing adapter weights. For LoRA, options include 'true', 'false',
+            'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', and 'lora-ga'. For BoNE,
+            options are 'true', 'false', and 'bat'. Defaults to 'true'.
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
@@ -121,7 +159,8 @@ class TunerArguments:
     lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
-    # Lora: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false', 'lora-ga']
+
+    # lora_ga
     lora_ga_batch_size: int = 2
     lora_ga_iters: int = 2
     lora_ga_max_length: int = 1024
@@ -129,6 +168,7 @@ class TunerArguments:
     lora_ga_scale: str = 'stable'
     lora_ga_stable_gamma: int = 16
 
+    # Lora: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false', 'lora-ga']
     # Bone: Literal['bat', 'true', 'false']
     init_weights: str = 'true'
 

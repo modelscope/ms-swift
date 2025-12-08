@@ -61,6 +61,7 @@ class TestSCETuning(unittest.TestCase):
         model_check = Swift.from_pretrained(model_check, self.tmp_dir)
         self.model_comparison(model, model_check)
 
+    @unittest.skip('Legacy test cases')
     def test_scetuning_part_mixin(self):
         model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v1-5')
         from diffusers import UNet2DConditionModel

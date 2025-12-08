@@ -1,0 +1,56 @@
+# SAPO https://arxiv.org/abs/2511.20347
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+MAX_PIXELS=602112 \
+megatron rlhf \
+  --rlhf_type grpo \
+  --loss_type sapo \
+  --tau_pos 1 \
+  --tau_neg 1.05 \
+  --model Qwen/Qwen2.5-VL-3B-Instruct \
+  --context_parallel_size 1 \
+  --tensor_model_parallel_size 1 \
+  --pipeline_model_parallel_size 1 \
+  --dataset AI-ModelScope/clevr_cogen_a_train \
+  --load_safetensors true \
+  --save_safetensors true \
+  --external_plugins examples/train/grpo/plugin/plugin.py \
+  --reward_funcs external_r1v_acc format \
+  --dynamic_sample false \
+  --steps_per_generation 4 \
+  --micro_batch_size 2 \
+  --global_batch_size 128 \
+  --num_generations 8 \
+  --use_vllm true \
+  --vllm_mode colocate \
+  --vllm_gpu_memory_utilization 0.7 \
+  --vllm_max_model_len 8192 \
+  --max_length 4096 \
+  --max_completion_length 4096 \
+  --train_type full \
+  --bf16 true \
+  --importance_sampling_level token \
+  --epsilon 0.2 \
+  --epsilon_high 0.2 \
+  --overlong_filter true \
+  --max_epochs 1 \
+  --eval_interval 1000 \
+  --save_interval 1000 \
+  --sleep_level 2 \
+  --offload_model true \
+  --offload_optimizer true \
+  --log_interval 1 \
+  --recompute_granularity selective \
+  --finetune \
+  --lr 1e-6 \
+  --num_workers 8 \
+  --dataset_num_proc 8 \
+  --no_save_optim \
+  --no_save_rng \
+  --attention_backend flash \
+  --temperature 1.0 \
+  --system examples/train/grpo/prompt.txt \
+  --beta 0.001 \
+  --padding_free true \
+  --wandb_project swift-megatron \
+  --wandb_exp_name xxx

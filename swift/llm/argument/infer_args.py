@@ -16,15 +16,16 @@ logger = get_logger()
 
 @dataclass
 class LmdeployArguments:
-    """
-    LmdeployArguments is a dataclass that holds the configuration for lmdeploy.
+    """Holds the configuration arguments for lmdeploy.
 
     Args:
-        lmdeploy_tp (int): Tensor parallelism size. Default is 1.
-        lmdeploy_session_len(Optional[int]): The session length, default None.
-        lmdeploy_cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
-        lmdeploy_quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
-        lmdeploy_vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
+        lmdeploy_tp (int): The tensor parallelism size. Defaults to 1.
+        lmdeploy_session_len (Optional[int]): The maximum session length. Defaults to None.
+        lmdeploy_cache_max_entry_count (float): The percentage of GPU memory to be used by the K/V cache. Defaults
+            to 0.8.
+        lmdeploy_quant_policy (int): The quantization policy for the K/V cache. Set to 4 or 8 for 4-bit or 8-bit
+            quantization respectively. Defaults to 0, which means no quantization.
+        lmdeploy_vision_batch_size (int): The `max_batch_size` parameter to be passed to `VisionConfig`. Defaults to 1.
     """
 
     # lmdeploy
@@ -49,6 +50,38 @@ class LmdeployArguments:
 
 @dataclass
 class SglangArguments:
+    """Arguments for configuring the SGLang backend.
+
+    Args:
+        sglang_tp_size (int): The number of tensor parallel workers. Defaults to 1.
+        sglang_pp_size (int): The number of pipeline parallel workers. Defaults to 1.
+        sglang_dp_size (int): The number of data parallel workers. Defaults to 1.
+        sglang_ep_size (int): The number of expert parallel workers. Defaults to 1.
+        sglang_enable_ep_moe (bool): Whether to enable expert parallelism for MoE.
+            Note: This argument has been removed in recent versions of SGLang. Defaults to False.
+        sglang_mem_fraction_static (Optional[float]): The fraction of GPU memory for the static allocation of model
+            weights and the KV cache memory pool. Try lowering this value if you encounter GPU out-of-memory errors.
+            Defaults to None.
+        sglang_context_length (Optional[int]): The maximum context length for the model. If None, the value from the
+            model's `config.json` will be used. Defaults to None.
+        sglang_disable_cuda_graph (bool): Disable CUDA graph for inference. Defaults to False.
+        sglang_quantization (Optional[str]): The quantization method to use. Defaults to None.
+        sglang_kv_cache_dtype (str): The data type for K/V cache storage. 'auto' will use the model's data type.
+            'fp8_e5m2' and 'fp8_e4m3' are available for CUDA 11.8 and later. Defaults to 'auto'.
+        sglang_enable_dp_attention (bool): Enables data parallelism for the attention mechanism and tensor parallelism
+            for the feed-forward network (FFN). The data parallel size (dp_size) must equal the tensor parallel size
+            (tp_size). Currently supported for DeepSeek-V2/3 and Qwen2/3 MoE models. Defaults to False.
+        sglang_disable_custom_all_reduce (bool): Disable the custom all-reduce kernel and fall back to NCCL. Enabled by
+            default (True) for stability. Defaults to True.
+        sglang_speculative_algorithm (Optional[str]): The speculative decoding algorithm. Options include "EAGLE",
+            "EAGLE3", "NEXTN", "STANDALONE", "NGRAM". Defaults to None.
+        sglang_speculative_num_steps (Optional[int]): The number of steps to sample from the draft model during
+            speculative decoding. Defaults to None.
+        sglang_speculative_eagle_topk (Optional[int]): The number of tokens to sample from the draft model at each step
+            for the EAGLE2 algorithm. Defaults to None.
+        sglang_speculative_num_draft_tokens (Optional[int]): The number of tokens to sample from the draft model during
+            speculative decoding. Defaults to None.
+    """
     sglang_tp_size: int = 1
     sglang_pp_size: int = 1
     sglang_dp_size: int = 1
@@ -61,6 +94,12 @@ class SglangArguments:
     sglang_kv_cache_dtype: str = 'auto'
     sglang_enable_dp_attention: bool = False
     sglang_disable_custom_all_reduce: bool = True
+    # speculative decoding
+    # e.g. EAGLE, EAGLE3, NEXTN
+    sglang_speculative_algorithm: Optional[str] = None
+    sglang_speculative_num_steps: Optional[int] = None
+    sglang_speculative_eagle_topk: Optional[int] = None
+    sglang_speculative_num_draft_tokens: Optional[int] = None
 
     def get_sglang_engine_kwargs(self):
         kwargs = {
@@ -76,6 +115,10 @@ class SglangArguments:
             'kv_cache_dtype': self.sglang_kv_cache_dtype,
             'enable_dp_attention': self.sglang_enable_dp_attention,
             'disable_custom_all_reduce': self.sglang_disable_custom_all_reduce,
+            'speculative_algorithm': self.sglang_speculative_algorithm,
+            'speculative_num_steps': self.sglang_speculative_num_steps,
+            'speculative_eagle_topk': self.sglang_speculative_eagle_topk,
+            'speculative_num_draft_tokens': self.sglang_speculative_num_draft_tokens,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
@@ -84,18 +127,27 @@ class SglangArguments:
 
 @dataclass
 class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArguments, BaseArguments):
-    """
-    InferArguments is a dataclass that extends BaseArguments, MergeArguments, VllmArguments, and LmdeployArguments.
-    It is used to define the arguments required for model inference.
+    """Arguments for model inference.
+
+    A dataclass that extends BaseArguments, MergeArguments, VllmArguments, and LmdeployArguments to define all
+    arguments required for model inference.
 
     Args:
-        ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
-        infer_backend (Literal): Backend to use for inference. Default is 'pt'.
-            Allowed values are 'vllm', 'pt', 'lmdeploy'.
-        result_path (Optional[str]): Directory to store inference results. Default is None.
-        max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
-        val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
-        reranker_use_activation (bool): reranker use activation after calculating. Default is True.
+        infer_backend (Literal['pt', 'vllm', 'sglang', 'lmdeploy']): The inference acceleration backend to use.
+            Defaults to 'pt'.
+        result_path (Optional[str]): The path to store inference results in JSONL format. If the file already exists,
+            new results will be appended. If None, results are saved in the checkpoint directory (if available) or
+            './result'. The final path will be printed to the console. Defaults to None.
+        write_batch_size (int): The batch size for writing results to `result_path`. A value of -1 means no limit.
+            Defaults to 1000.
+        metric (Optional[str]): The metric to use for evaluating inference results. Supported values are 'acc' and
+            'rouge'. If None, no evaluation is performed. Defaults to None.
+        max_batch_size (int): The maximum batch size for inference, effective only when `infer_backend` is 'pt'. A
+            value of -1 means no limit. Defaults to 1.
+        val_dataset_sample (Optional[int]): The number of samples to use from the inference dataset. If None, the
+            entire dataset is used. Defaults to None.
+        reranker_use_activation (bool): Whether to apply a sigmoid activation to the scores during reranker inference.
+            Defaults to True.
     """
     infer_backend: Literal['vllm', 'pt', 'sglang', 'lmdeploy'] = 'pt'
 
@@ -127,7 +179,8 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
-        self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
+        self.eval_human = not self._val_dataset_exists
+        logger.info(f'Setting args.eval_human: {self.eval_human}')
         if self.stream is None:
             self.stream = self.eval_human
         if self.stream and self.num_beams != 1:
@@ -148,13 +201,4 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         self._init_result_path('infer_result')
-        self._init_eval_human()
         self._init_ddp()
-
-    def _init_eval_human(self):
-        if len(self.dataset) == 0 and len(self.val_dataset) == 0:
-            eval_human = True
-        else:
-            eval_human = False
-        self.eval_human = eval_human
-        logger.info(f'Setting args.eval_human: {self.eval_human}')

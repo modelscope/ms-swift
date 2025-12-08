@@ -7,6 +7,7 @@ logger = get_logger()
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
     'hidden_size': ['hidden_size'],
+    'mlp_ffn_hidden_size': ['intermediate_size_mlp'],
     'ffn_hidden_size': ['intermediate_size'],
     'num_attention_heads': ['num_attention_heads'],
     'num_query_groups': ['num_key_value_heads'],
@@ -24,13 +25,16 @@ config_mapping = {
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
-    'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk', 'moe_k'],
-    'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
+    'moe_router_topk': ['num_experts_per_tok', 'moe_topk', 'moe_k'],
+    'moe_router_num_groups': ['n_group'],
+    'moe_router_group_topk': ['topk_group'],
+    'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts', 'num_local_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     # deepseek
     'q_lora_rank': ['q_lora_rank'],
     'kv_lora_rank': ['kv_lora_rank'],
     'moe_router_score_function': ['scoring_func'],
+    'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
@@ -47,6 +51,9 @@ config_mapping = {
     'partial_rotary_factor': ['partial_rotary_factor'],
     'first_k_dense_replace': ['first_k_dense_replace', 'moe_layer_start_index'],
     'n_shared_experts': ['n_shared_experts', 'num_shared_expert', 'moe_num_shared_experts'],
+    'window_size': ['sliding_window'],
+    'layer_types': ['layer_types'],
+    'interleave_moe_layer_step': ['interleave_moe_layer_step'],
 }
 
 
@@ -90,14 +97,17 @@ def convert_hf_config(config) -> Dict[str, Any]:
     architectures = res.get('architectures')
     if isinstance(architectures, list) and architectures:
         architectures = architectures[0]
-        res['architectures'] = architectures
+    res['architectures'] = architectures
     llm_architectures = res.get('llm_architectures') or architectures
     if isinstance(llm_architectures, list) and llm_architectures:
         llm_architectures = llm_architectures[0]
-        res['llm_architectures'] = llm_architectures
+    res['llm_architectures'] = llm_architectures
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
+    layer_types = res.pop('layer_types', None)
+    mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
+    interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
             'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
             'Qwen3VLMoeForConditionalGeneration'
@@ -132,6 +142,20 @@ def convert_hf_config(config) -> Dict[str, Any]:
         n_shared_experts = res.pop('n_shared_experts')
     elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
         res['rotary_interleaved'] = True
+    elif llm_architectures == 'GptOssForCausalLM':
+        res['disable_bias_linear'] = False
+        res['no_bias_dropout_fusion'] = True
+        res['softmax_type'] = 'learnable'
+        res['swiglu'] = False
+        res['quick_geglu'] = True
+        res['activation_func_clamp_value'] = 7
+        res['glu_linear_offset'] = 1
+        res['window_size'] = f'{res["window_size"]},0'
+        if layer_types is None:
+            res['window_attn_skip_freq'] = '2'
+        else:
+            window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
+            res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
     elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
     elif llm_architectures == 'Qwen3NextForCausalLM':
@@ -141,6 +165,24 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
             for i in range(num_layers)
         ]
+    elif llm_architectures == 'Llama4ForConditionalGeneration':
+        qk_layernorm = res.pop('qk_layernorm', False)
+        if qk_layernorm:
+            res['qk_l2_norm'] = True
+        res['no_rope_freq'] = 4
+        res['moe_apply_probs_on_input'] = True
+        res['rotary_interleaved'] = True
+        res['moe_router_score_function'] = 'sigmoid'
+        res['moe_ffn_hidden_size'] = res['ffn_hidden_size']
+        res['ffn_hidden_size'] = mlp_ffn_hidden_size
+        res['moe_router_enable_expert_bias'] = False
+        res['moe_shared_expert_intermediate_size'] = res['moe_ffn_hidden_size']
+        if interleave_moe_layer_step > 1:
+            moe_layer_freq = [
+                '1' if i % interleave_moe_layer_step == (interleave_moe_layer_step - 1) else '0'
+                for i in range(res['num_layers'])
+            ]
+            res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
@@ -150,7 +192,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
-    if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
+    if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
         res['moe_router_enable_expert_bias'] = True
     if n_shared_experts is not None and 'moe_shared_expert_intermediate_size' not in res:
         res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']

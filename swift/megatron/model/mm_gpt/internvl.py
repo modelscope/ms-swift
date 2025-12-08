@@ -64,6 +64,7 @@ register_megatron_model(
         MegatronModelType.internvl3, [
             ModelType.internvl3,
             ModelType.internvl3_5,
+            ModelType.internvl3_5_gpt,
         ],
         bridge_cls=Internvl3Bridge,
         visual_cls=Internvl3Vit))
@@ -130,4 +131,7 @@ register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.internvl_hf, [
             ModelType.internvl_hf,
-        ], bridge_cls=InternvlHfBridge, visual_cls=InternvlHfVit))
+            ModelType.internvl_gpt_hf,
+        ],
+        bridge_cls=InternvlHfBridge,
+        visual_cls=InternvlHfVit))

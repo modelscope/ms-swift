@@ -147,6 +147,8 @@ class SeedTemplate(Template):
 
     def _simplify_context_list(self, context_list, loss_scale_list, inputs):
         res, res_loss_scale = super()._simplify_context_list(context_list, loss_scale_list, inputs)
+        if not self.use_chat_template:
+            return res, res_loss_scale
         budget = self.get_thinking_budget(inputs)
         if res[-1].endswith('assistant\n') and budget == 0:
             res.append('<seed:think><seed:cot_budget_reflect>')

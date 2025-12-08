@@ -146,6 +146,46 @@ register_model(
     ))
 
 
+def get_model_tokenizer_deepseek_v3_2(model_dir: str,
+                                      model_info: ModelInfo,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
+
+    try:
+        from transformers.models.deepseek_v32 import DeepseekV32ForCausalLM, DeepseekV32Config
+    except ImportError:
+        # It’s only for compatibility with Megatron training or vllm/sglang infer,
+        # while we wait for Transformers to support deepseek_v3_2.
+        from transformers.models.deepseek_v3 import (DeepseekV3ForCausalLM as DeepseekV32ForCausalLM, DeepseekV3Config
+                                                     as DeepseekV32Config)
+        if load_model and not kwargs.get('return_dummy_model'):
+            raise ValueError('DeepSeek-V3.2 is not supported in transformers.')
+
+    kwargs['automodel_class'] = DeepseekV32ForCausalLM
+    kwargs['model_config'] = DeepseekV32Config.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v3_2,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2'),
+                Model('deepseek-ai/DeepSeek-V3.2-Speciale', 'deepseek-ai/DeepSeek-V3.2-Speciale'),
+                Model('deepseek-ai/DeepSeek-V3.2-Exp', 'deepseek-ai/DeepSeek-V3.2-Exp'),
+                Model('deepseek-ai/DeepSeek-V3.2-Exp-Base', 'deepseek-ai/DeepSeek-V3.2-Exp-Base'),
+                Model('deepseek-ai/DeepSeek-Math-V2', 'deepseek-ai/DeepSeek-Math-V2'),
+            ]),
+        ],
+        TemplateType.deepseek_v3_1,
+        get_model_tokenizer_deepseek_v3_2,
+        architectures=['DeepseekV32ForCausalLM'],
+    ))
+
+
 def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)

@@ -2,8 +2,9 @@
 from copy import deepcopy
 from typing import Optional, Tuple, Union
 
+import megatron.core
 import torch
-from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
+from megatron.core.extensions.transformer_engine import TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
@@ -12,18 +13,21 @@ from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, 
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
+from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
+from packaging import version
 
 from swift.llm import ModelType
+from swift.megatron.utils import get_local_layer_specs
 from swift.utils import get_logger
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
     from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
@@ -58,6 +62,11 @@ class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
+        kwargs = {}
+        if mcore_015:
+            kwargs['tp_group'] = self.pg_collection.tp
+        elif mcore_013:
+            kwargs['tp_group'] = self.model_comm_pgs.tp
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -69,7 +78,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='qkv',
-            tp_group=self.model_comm_pgs.tp,
+            **kwargs,
         )
 
         if submodules.q_layernorm is not None:
@@ -107,6 +116,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         sequence_len_offset: Optional[int] = None,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Perform a forward pass through the attention module.
@@ -130,12 +140,22 @@ class Qwen3NextSelfAttention(SelfAttention):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
-        from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        try:
+            from megatron.core.utils import nvtx_range_pop, nvtx_range_push
+        except ImportError:
+
+            def nvtx_range_pop(*args, **kwargs):
+                return
+
+            def nvtx_range_push(*args, **kwargs):
+                return
+
         # Check if we need to skip RoPE
         # no_rope is 0-indexed array and self.layer_number is 1-indexed
-        no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
-        if no_rope:
-            rotary_pos_emb = None
+        if hasattr(self.config, 'no_rope_freq'):
+            no_rope = (self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False)
+            if no_rope:
+                rotary_pos_emb = None
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
@@ -194,17 +214,20 @@ class Qwen3NextSelfAttention(SelfAttention):
         if (in_decode_mode and self.config.enable_cuda_graph and inference_context.is_static_batching()):
             raise ValueError('CUDA graphs must use flash decode with static batching!')
 
-        query, key, value, rotary_pos_emb, attn_mask_type, block_table = (
-            self._adjust_key_value_for_inference(
-                inference_context,
-                query,
-                key,
-                value,
-                rotary_pos_emb,
-                rotary_pos_cos,
-                rotary_pos_sin,
-                sequence_len_offset,
-            ))
+        result = self._adjust_key_value_for_inference(
+            inference_context,
+            query,
+            key,
+            value,
+            rotary_pos_emb,
+            rotary_pos_cos,
+            rotary_pos_sin,
+            sequence_len_offset,
+        )
+        if mcore_013:
+            query, key, value, rotary_pos_emb, attn_mask_type, block_table = result
+        else:
+            query, key, value, rotary_pos_emb, attn_mask_type = result
 
         if packed_seq_params is not None:
             query = query.squeeze(1)
@@ -215,6 +238,11 @@ class Qwen3NextSelfAttention(SelfAttention):
         # ================================================
         # relative positional embedding (rotary embedding)
         # ================================================
+        kwargs = {}
+        if mcore_015:
+            kwargs['cp_group'] = self.pg_collection.cp
+        elif mcore_013:
+            kwargs['cp_group'] = self.model_comm_pgs.cp
         nvtx_range_push(suffix='rotary_pos_emb')
         if rotary_pos_emb is not None and not self.config.flash_decode:
             q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -239,18 +267,18 @@ class Qwen3NextSelfAttention(SelfAttention):
                         q_pos_emb,
                         config=self.config,
                         cu_seqlens=cu_seqlens_q,
-                        cp_group=self.model_comm_pgs.cp,
+                        **kwargs,
                     )
                 else:
                     query = inference_context.apply_rotary_emb_query(query, q_pos_emb, self.config, cu_seqlens_q,
-                                                                     self.model_comm_pgs.cp)
+                                                                     **kwargs)
             if k_pos_emb is not None:
                 key = apply_rotary_pos_emb(
                     key,
                     k_pos_emb,
                     config=self.config,
                     cu_seqlens=cu_seqlens_kv,
-                    cp_group=self.model_comm_pgs.cp,
+                    **kwargs,
                 )
 
             # TODO, can apply positional embedding to value_layer so it has
@@ -376,6 +404,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
+        assert _Qwen3NextGatedDeltaNet is not object, 'please update the `transformers` version.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
         extra_kwargs = _get_extra_te_kwargs(config)
@@ -417,21 +446,6 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
         return res, None
 
 
-def get_local_layer_specs(config, layer_specs, vp_stage=None):
-    from megatron.core.transformer.enums import LayerType
-    num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
-
-    if config.pipeline_model_parallel_layout is not None:
-        local_layer_specs = [
-            layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
-                layer_type=LayerType.decoder, vp_stage=vp_stage)
-        ]
-    else:
-        offset = get_transformer_layer_offset(config, vp_stage=vp_stage)
-        local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
-    return local_layer_specs
-
-
 def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.hetereogenous_dist_checkpoint = True
     # compat Qwen3NextGatedDeltaNet
@@ -445,35 +459,33 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.linear_value_head_dim = args.linear_value_head_dim
     config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
 
-    layer_norm_impl = TENorm
+    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
         moe_grouped_gemm=config.moe_grouped_gemm,
         qk_layernorm=config.qk_layernorm,
         multi_latent_attention=config.multi_latent_attention,
         moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        use_kitchen=config.use_kitchen,
+        **kwargs,
     )
     layer_specs = []
     for layer_type in args.layer_types:
         layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
-            layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
-            layer_spec.submodules.input_layernorm = layer_norm_impl
+            layer_spec.submodules.input_layernorm = TENorm
             layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
         layer_specs.append(layer_spec)
 
     local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
-
-    # Block spec.
-    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
+    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=TENorm)
 
     return block_spec
 
 
 class Qwen3NextBridge(GPTBridge):
+    hf_mtp_prefix = 'mtp.layers'
 
     def _set_state_dict(self,
                         mg_module,
@@ -484,7 +496,7 @@ class Qwen3NextBridge(GPTBridge):
                         *,
                         offset: float = 0,
                         is_expert: bool = False):
-        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key:
+        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key or 'enorm' in mg_key or 'hnorm' in mg_key:
             offset = 1 if to_mcore else -1
         return super()._set_state_dict(
             mg_module,
@@ -506,6 +518,15 @@ class Qwen3NextBridge(GPTBridge):
         elif layer_type == 'full_attention':
             hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
         return hf_state_dict
+
+    def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
+        hf_state_dict = self._remove_prefix(origin_hf_state_dict, 'mtp.')
+        for mg_key, key in zip(['enorm.weight', 'hnorm.weight', 'eh_proj.weight'],
+                               ['pre_fc_norm_embedding.weight', 'pre_fc_norm_hidden.weight', 'fc.weight']):
+            self._set_state_dict(mtp_layer, mg_key, hf_state_dict, key, to_mcore)
+        self._set_state_dict(mtp_layer, 'final_layernorm.weight', hf_state_dict, 'norm.weight', to_mcore)
+        if not to_mcore:
+            origin_hf_state_dict.update(self._add_prefix(hf_state_dict, 'mtp.'))
 
 
 register_megatron_model(

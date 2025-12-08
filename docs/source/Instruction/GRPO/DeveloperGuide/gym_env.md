@@ -142,7 +142,7 @@ swift rollout \
 
 3. 数据流程
 整个gym数据流程如下:
-<img src="../../../../resources/gym_env.png" width="400" />
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/gym_env.png" width="250" />
 
 4. 奖励日志
 由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajectory_infos`字段.

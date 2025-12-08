@@ -45,6 +45,7 @@ class MultiTurnScheduler(ABC):
                 - infer_request (required): the inference request for the next turn
                 - response_token_ids (optional): token IDs of each rollout response
                 - response_loss_mask (optional): loss mask of each rollout response
+                - rollout_logprobs (optional): token logps of each rollout response
                 - rollout_infos (optional): extra information
         """
         raise NotImplementedError
@@ -150,6 +151,8 @@ AsyncEngine reduces compute bubbles in multi-turn inference:
 
 Use the `use_async_engine` argument in the `rollout` command to specify the engine type (async is the default).
 
+> Note: The async engine and the custom multi-turn interaction logic below are currently only supported in server mode. For multi-turn interaction logic in colocate mode, please refer to the _colocate_multi_turn_infer method in RolloutTrainerMixin.
+
 ## Advanced topics
 
 ### Customising the interaction logic
@@ -237,3 +240,28 @@ class RewardFunction():
 
 Set `--vllm_server_pass_dataset` on the training side to pass other dataset columns to the scheduler.
 They can be read from `infer_request.data_dict`.
+
+### Training-Inference-Mismatch
+
+Swift >= 3.11 supports returning rollout logprobs from the vLLM side to address training-inference mismatch issues. For details, please refer to this [document](../AdvancedResearch/training_inference_mismatch.md).
+
+In multi-turn training, if `rollout_importance_sampling_mode` is enabled, the framework automatically collects log probabilities from each rollout turn to correct off-policy issues.
+
+**Default Behavior**:
+- When using the default `run` method, the framework automatically extracts log probabilities from `response_choice.logprobs`
+- These logprobs are passed to the trainer along with `response_token_ids` and `response_loss_mask`
+
+**Notes for Custom Schedulers**:
+
+If you modify the response in your `step` method (e.g., truncation, adding content), you need to return the corresponding `rollout_logprobs`:
+
+**Key Rules**:
+- The length of `rollout_logprobs` should equal the count of 1s in `response_loss_mask`
+- For tokens with `loss_mask=0` (e.g., user-added prompts, tool return results), no logprobs are needed
+- If `step` does not return `rollout_logprobs`, the framework will automatically extract them from `response_choice.logprobs`
+
+**When Overriding the `run` Method**:
+
+If you completely override the `run` method, you need to manually collect and pass `rollout_logprobs`
+
+For implementation, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)

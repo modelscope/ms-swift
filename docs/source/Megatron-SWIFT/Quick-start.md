@@ -1,17 +1,18 @@
 
 # 快速开始
 
-ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
+ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO/GRPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
 
 
-| 方法   | 全参数 | LoRA | MoE | 多模态 |
-| ------ | ------ | ---- | ----- | ----- |
-| 预训练| ✅ | ✅| ✅ | ✅ |
-| 指令监督微调 | ✅ | ✅| ✅ | ✅ |
-| DPO | ✅ | ✅| ✅ | ✅ |
-| KTO | ✅ | ✅| ✅ | ✅ |
-| RM | ✅ | ✅| ✅ | ✅ |
-| 分类任务 | ✅ | ✅| ✅ | ✅ |
+| 方法   | 全参数 | LoRA | MoE | 多模态 | FP8 |
+| ------ | ------ | ---- | ----- | ----- | ----- |
+| 预训练 | ✅ | ✅| ✅ | ✅ | ✅ |
+| [指令监督微调](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 
 ## 环境准备
@@ -27,6 +28,7 @@ pip install --no-build-isolation transformer_engine[pytorch]
 # pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
+# 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--no_gradient_accumulation_fusion true`即可。
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
@@ -47,14 +49,14 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
 # 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
+MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
 ```
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
 ```
 
 推荐运行环境：
@@ -65,11 +67,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | torch        | >=2.0        | 2.7.1/2.8.0       |                    |
 | transformer_engine    | >=2.3       |          |                  |
 | apex |   |  0.1 | |
-| megatron_core    |        | 0.14      |                  |
+| megatron_core    |   >=0.12,<0.16    | 0.14      |                  |
 | flash_attn    |        | 2.8.1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.1      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.18 |             |      LoRA          |
+| peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
 
 
@@ -80,6 +82,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 多卡权重转换：将`CUDA_VISIBLE_DEVICES=0`删除即可使用多卡权重转换。
 - 转换精度测试：`--test_convert_precision true`将测试转换精度。在MoE大型模型的转换时，该参数所需时间较长，且需要更多的内存消耗，可酌情去除。
+- ms-swift支持了Mcore-Bridge来避免权重转换的额外耗时，请参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -161,7 +164,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 
 ## 训练技巧
-- 增加训练吞吐量方法：使用packing、增加DP、减少重计算、增加计算通信overlap。MoE还可以通过丢弃tokens加速。
+- 增加训练吞吐量方法：使用packing（不要开启流式）、增加DP、减少重计算、增加计算通信overlap。MoE还可以通过丢弃tokens加速。
 - 并行技术选择：
   - Megatron-SWIFT的并行技术采用zero1（默认开启use_distributed_optimizer）+各种并行技术的组合。
   - DP的速度最快，但显存占用较多，使用其他并行技术以降低显存占用。
@@ -188,3 +191,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 | -------- | ----------- | --------------- | --------------- |
 | 训练速度 | 9.6s/it     | -               | 91.2s/it        |
 | 显存使用 | 16 * 60GiB  | OOM             | 16 * 80GiB      |
+
+
+## Megatron-SWIFT微信群
+
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">

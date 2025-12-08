@@ -42,6 +42,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/LoRA-Training.md
    Megatron-SWIFT/Multimodal-Model.md
    Megatron-SWIFT/Mcore-Bridge.md
+   Megatron-SWIFT/GRPO.md
 
 
 .. toctree::

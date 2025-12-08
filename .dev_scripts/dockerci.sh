@@ -2,6 +2,7 @@
 MODELSCOPE_CACHE_DIR_IN_CONTAINER=/modelscope_cache
 CODE_DIR=$PWD
 CODE_DIR_IN_CONTAINER=/ms-swift
+MODELSCOPE_SDK_DEBUG=True
 echo "$USER"
 gpus='0,1 2,3'
 cpu_sets='0-15 16-31'

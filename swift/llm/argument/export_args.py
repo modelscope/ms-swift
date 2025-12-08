@@ -16,33 +16,51 @@ logger = get_logger()
 
 @dataclass
 class ExportArguments(MergeArguments, BaseArguments):
-    """
-    ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
+    """ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
 
     Args:
-        output_dir (Optional[str]): Directory where the output will be saved.
-        quant_n_samples (int): Number of samples for quantization.
-        max_length (int): Sequence length for quantization.
-        quant_batch_size (int): Batch size for quantization.
-        to_ollama (bool): Flag to indicate export model to ollama format.
-        push_to_hub (bool): Flag to indicate if the output should be pushed to the model hub.
-        hub_model_id (Optional[str]): Model ID for the hub.
-        hub_private_repo (bool): Flag to indicate if the hub repository is private.
-        commit_message (str): Commit message for pushing to the hub.
-        to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
-            This argument is useless for now.
+        output_dir (Optional[str]): Directory to save the exported results. Defaults to None, which automatically sets
+            a path with an appropriate suffix.
+        quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', or 'gptq_v2'.
+            Defaults to None. See examples for more details.
+        quant_n_samples (int): Number of samples for GPTQ/AWQ calibration. Defaults to 256.
+        quant_batch_size (int): The batch size for quantization. Defaults to 1.
+        group_size (int): The group size for quantization. Defaults to 128.
+        to_cached_dataset (bool): Whether to tokenize and export the dataset in advance as a cached dataset. Defaults
+            to False. Note: You can specify the validation set content through
+            `--split_dataset_ratio` or `--val_dataset`.
+        to_ollama (bool): Whether to generate the `Modelfile` required by Ollama. Defaults to False.
+        to_mcore (bool): Whether to convert Hugging Face format weights to Megatron-Core format. Defaults to False.
+        to_hf (bool): Whether to convert Megatron-Core format weights to Hugging Face format. Defaults to False.
+        mcore_model (Optional[str]): The path to the Megatron-Core format model. Defaults to None.
+        mcore_adapters (List[str]): A list of adapter paths for the Megatron-Core format model. Defaults to [].
+        thread_count (Optional[int]): The number of model shards when `to_mcore` is True. Defaults to None, which
+            automatically sets the number based on the model size to keep the largest shard under 10GB.
+        test_convert_precision (bool): Whether to test the precision error of weight conversion between Hugging Face
+            and Megatron-Core formats. Defaults to False.
+        test_convert_dtype (str): The dtype to use for the conversion precision test. Defaults to 'float32'.
+        push_to_hub (bool): Whether to push the output to the Model Hub. Defaults to False. See examples for more
+            details.
+        hub_model_id (Optional[str]): The model ID for pushing to the Hub (e.g., 'user_name/repo_name' or 'repo_name').
+            Defaults to None.
+        hub_private_repo (bool): Whether the Hub repository is private. Defaults to False.
+        commit_message (str): The commit message for pushing to the Hub. Defaults to 'update files'.
+        to_peft_format (bool): Whether to export in PEFT format. This argument is for compatibility and currently has
+            no effect. Defaults to False.
+        exist_ok (bool): If the output_dir exists, do not raise an exception and overwrite its contents. Defaults to
+            False.
     """
     output_dir: Optional[str] = None
 
     # awq/gptq
     quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
     quant_n_samples: int = 256
-    max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
 
     # cached_dataset
     to_cached_dataset: bool = False
+    template_mode: Literal['train', 'rlhf', 'kto'] = 'train'
 
     # ollama
     to_ollama: bool = False
@@ -65,6 +83,11 @@ class ExportArguments(MergeArguments, BaseArguments):
     # compat
     to_peft_format: bool = False
     exist_ok: bool = False
+
+    def load_args_from_ckpt(self) -> None:
+        if self.to_cached_dataset:
+            return
+        super().load_args_from_ckpt()
 
     def _init_output_dir(self):
         if self.output_dir is None:
@@ -108,6 +131,11 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if self.to_mcore or self.to_hf:
+            if self.merge_lora:
+                self.merge_lora = False
+                logger.warning('`swift export --to_mcore/to_hf` does not support the `--merge_lora` parameter. '
+                               'To export LoRA delta weights, please use `megatron export`')
+
             self.mcore_model = to_abspath(self.mcore_model, check_path_exist=True)
             if not dist.is_initialized():
                 set_default_ddp_config()

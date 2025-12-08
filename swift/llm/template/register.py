@@ -22,7 +22,7 @@ def get_template(
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     *,
-    truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+    truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
     max_pixels: Optional[int] = None,  # h * w
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,

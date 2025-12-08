@@ -18,7 +18,7 @@ from swift.plugin.orm import ORM, orms
 try:
     from math_verify import parse, verify
 except ImportError as e:
-    raise ImportError('please install math_verify by `pip install math_verify==0.5.2`') from e
+    raise ImportError('please install math_verify by `pip install math_verify`') from e
 """
 3 dataset file
     1. data_v0.8_visual_toolbox_v2.parquet:  data_source == 'chart' (vl_agent.compute_score)

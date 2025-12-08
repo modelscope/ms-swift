@@ -1,6 +1,8 @@
 import os
 import unittest
 
+import torch
+
 from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
 from swift.utils import get_logger, seed_everything
 
@@ -32,6 +34,7 @@ def _infer_model(pt_engine, system=None, messages=None):
 
 class TestTemplate(unittest.TestCase):
 
+    @unittest.skipIf(not torch.cuda.is_available(), reason='GPTQ is only available on GPU')
     def test_template(self):
         pt_engine = PtEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
         response = _infer_model(pt_engine)
