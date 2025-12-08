@@ -534,7 +534,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             See the documentation for details.
         rollout_importance_sampling_threshold (float): The threshold for importance sampling weights, used to truncate
             or mask extreme weights. Defaults to 2.0.
-        log_rollout_metrics (bool): Whether to log rollout off-policy diagnostic metrics (KL, PPL, chi2, etc.)
+        log_rollout_offpolicy_metrics (bool): Whether to log rollout off-policy diagnostic metrics (KL, PPL, chi2, etc.)
             when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set,
             metrics are always logged regardless of this setting. Defaults to False.
     """
@@ -606,7 +606,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
-    log_rollout_metrics: bool = False  # Log off-policy metrics even when IS correction is disabled
+    log_rollout_offpolicy_metrics: bool = False  # Log off-policy metrics even when IS correction is disabled
 
 
 @dataclass

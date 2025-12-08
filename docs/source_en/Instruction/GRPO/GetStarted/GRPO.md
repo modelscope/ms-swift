@@ -256,7 +256,7 @@ If the `log_entropy` parameter is set, additional entropy-related metrics will b
 If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
 - entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.
 
-Training-inference consistency metrics, prefixed with rollout_correction (ms-swift>=3.11), requires setting `log_rollout_metrics=true` or `rollout_importance_sampling_mode`:
+Training-inference consistency metrics, prefixed with rollout_correction (ms-swift>=3.11), requires setting `log_rollout_offpolicy_metrics=true` or `rollout_importance_sampling_mode`:
 - `kl` / `k3_kl`: KL divergence between training policy and rollout policy (direct estimator / K3 estimator)
 - `training_ppl` / `rollout_ppl`: Perplexity of training policy and rollout policy
 - `log_ppl_diff`: Log PPL difference, reflects the degree of distribution shift

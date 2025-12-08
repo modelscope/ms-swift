@@ -105,7 +105,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
-        self.log_rollout_metrics = args.log_rollout_metrics
+        self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
 
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
@@ -1250,7 +1250,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
-        should_compute_rollout_metrics = (self.rollout_importance_sampling_mode is not None or self.log_rollout_metrics)
+        should_compute_rollout_metrics = (
+            self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
         if (rollout_per_token_logps is not None and not self.disable_rollout_importance_sampling
                 and should_compute_rollout_metrics):
             # Compute off-policy diagnostic metrics

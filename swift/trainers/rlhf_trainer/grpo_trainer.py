@@ -1053,7 +1053,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
-        should_compute_rollout_metrics = (self.rollout_importance_sampling_mode is not None or self.log_rollout_metrics)
+        should_compute_rollout_metrics = (
+            self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
 
         local_has_rollout_per_token_logps = inputs.get('rollout_per_token_logps') is not None
         all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps])
@@ -2129,7 +2130,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
-        self.log_rollout_metrics = args.log_rollout_metrics
+        self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408

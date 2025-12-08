@@ -258,7 +258,7 @@ swift rlhf \
 如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
 - entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
 
-训推一致性指标，前缀为rollout_correction (ms-swift>=3.11)，需设置`log_rollout_metrics=true`或`rollout_importance_sampling_mode`：
+训推一致性指标，前缀为rollout_correction (ms-swift>=3.11)，需设置`log_rollout_offpolicy_metrics=true`或`rollout_importance_sampling_mode`：
 - `kl` / `k3_kl`：训练策略与 rollout 策略之间的 KL 散度（直接估计器 / K3 估计器）
 - `training_ppl` / `rollout_ppl`：训练策略和 rollout 策略的困惑度
 - `log_ppl_diff`：log PPL 差异，反映分布偏移程度
