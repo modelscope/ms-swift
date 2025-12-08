@@ -9,9 +9,10 @@ import transformers
 from packaging import version
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, load_dataset,
-                       prepare_model_template, save_checkpoint, to_device)
-from swift.utils import get_logger, get_model_parameter_info
+from swift.template import MaxLengthError
+from swift.dataset import load_dataset
+from swift.model import HfConfigFactory, prepare_model_template, save_checkpoint
+from swift.utils import get_logger, get_model_parameter_info, ProcessorMixin, deep_getattr, to_device
 
 logger = get_logger()
 

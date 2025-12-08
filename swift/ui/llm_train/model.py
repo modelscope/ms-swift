@@ -4,9 +4,11 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ModelType, RLHFArguments
-from swift.llm.model.register import get_all_models
-from swift.ui.base import BaseUI
+from swift.template import TEMPLATE_MAPPING
+from swift.model import ModelType
+from swift.model.register import get_all_models
+from swift.pipelines import RLHFArguments
+from ..base import BaseUI
 
 
 class Model(BaseUI):

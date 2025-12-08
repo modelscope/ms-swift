@@ -14,8 +14,8 @@ import json
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import ExportArguments, RLHFArguments
-from swift.llm.argument.base_args.base_args import get_supported_tuners
+from swift.pipelines import ExportArguments, RLHFArguments
+from swift.pipelines.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset

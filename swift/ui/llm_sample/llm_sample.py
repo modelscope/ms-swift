@@ -14,7 +14,7 @@ import json
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import SamplingArguments
+from swift.pipelines import SamplingArguments
 from swift.llm.dataset.register import get_dataset_list
 from swift.ui.base import BaseUI
 from swift.ui.llm_sample.model import Model

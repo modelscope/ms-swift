@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Iterator, List, Optional, Union
 
-from swift.llm import InferRequest
+from swift.pipelines import InferRequest
 from swift.plugin import Metric
 from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
 

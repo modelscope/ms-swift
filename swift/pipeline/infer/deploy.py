@@ -15,7 +15,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments, InferArguments
+from swift.pipelines import AdapterRequest, DeployArguments, InferArguments
 from swift.llm.infer.protocol import EmbeddingRequest, MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger

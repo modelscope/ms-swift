@@ -5,7 +5,9 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
-from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
+from swift.pipelines import InferArguments, InferRequest, SwiftPipeline, 
+from swift.dataset import load_dataset, sample_dataset
+from swift.model import prepare_model_template
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
 from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
 from ..dataset.loader import DatasetLoader
@@ -21,7 +23,7 @@ class SwiftInfer(SwiftPipeline):
     args: args_class
 
     def __init__(self, args: Optional[Union[List[str], InferArguments]] = None) -> None:
-        from swift.llm import merge_lora
+        from swift.pipelines import merge_lora
         super().__init__(args)
         args = self.args
         if args.merge_lora:

@@ -54,7 +54,7 @@ class GenerationArguments:
     def get_request_config(self):
         if getattr(self, 'task_type') != 'causal_lm':
             return
-        from swift.llm import RequestConfig
+        from swift.pipelines import RequestConfig
 
         return RequestConfig(
             max_tokens=self.max_new_tokens,

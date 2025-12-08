@@ -4,8 +4,10 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ModelType, SamplingArguments
-from swift.llm.model.register import get_all_models
+from swift.template import TEMPLATE_MAPPING
+from swift.model import ModelType
+from swift.pipelines import SamplingArguments
+from swift.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
