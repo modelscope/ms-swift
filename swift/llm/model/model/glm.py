@@ -467,6 +467,10 @@ register_model(
                 Model('ZhipuAI/GLM-4.5V', 'zai-org/GLM-4.5V'),
                 Model('ZhipuAI/GLM-4.5V-FP8', 'zai-org/GLM-4.5V-FP8'),
             ]),
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.6V', 'zai-org/GLM-4.6V'),
+                Model('ZhipuAI/GLM-4.6V-FP8', 'zai-org/GLM-4.6V-FP8'),
+            ]),
         ],
         TemplateType.glm4_5v,
         get_model_tokenizer_glm4_5v,
