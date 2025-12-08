@@ -4,11 +4,9 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class GLM4AgentTemplate(BaseAgentTemplate):
@@ -16,7 +14,6 @@ class GLM4AgentTemplate(BaseAgentTemplate):
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
         single_content = single_content.replace('<|observation|>', '')
         pattern = re.compile(r'([^\n`]*?)\n({.*?})(?=\w*\n|$)', re.DOTALL)
         matches = pattern.findall(single_content)
@@ -82,7 +79,6 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^\n<]+)', single_content)
         if not func_name_match:

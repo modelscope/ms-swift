@@ -12,6 +12,8 @@ from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 from trl.trainer.utils import selective_log_softmax
 
+from swift.model import HfConfigFactory
+
 
 class RLHFTrainerMixin:
 
@@ -21,7 +23,6 @@ class RLHFTrainerMixin:
                  *_args,
                  **kwargs):
         from trl.trainer import disable_dropout_in_model
-        from swift.llm import HfConfigFactory
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']

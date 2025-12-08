@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import json
 
-from swift.infer_engine import InferRequest
+from swift.infer_engine import InferClient, InferRequest
 
 
 class PRM:
@@ -93,7 +93,6 @@ class QwenMaxPRM(PRM):
 class ClientPRM(PRM):
 
     def __init__(self, api_key=None, base_url=None, model=None):
-        from swift.llm import InferClient
         import os
         if api_key is None:
             api_key = os.getenv('DASHSCOPE_API_KEY')

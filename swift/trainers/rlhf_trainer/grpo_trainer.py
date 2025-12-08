@@ -39,11 +39,12 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
-from swift.llm import RowPreprocessor, Template, to_device
-from swift.llm.template.template_inputs import TemplateInputs
-from swift.plugin import orms, rm_plugins
+from swift.dataset import RowPreprocessor
+from swift.infer_engine import PtEngine
+from swift.plugins import orms, rm_plugins
+from swift.template import Template, TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
-                         seed_worker, unwrap_model_for_generation)
+                         seed_worker, to_device, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
@@ -120,7 +121,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if not self.args.use_vllm:
-            from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1

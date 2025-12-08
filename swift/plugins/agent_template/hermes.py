@@ -4,17 +4,14 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
+from swift.infer import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class HermesAgentTemplate(BaseAgentTemplate):
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer import Function
         res_list = re.findall(r'<tool_call>(.+?)</tool_call>', response, re.DOTALL)
         functions = []
         for res in res_list:
@@ -88,7 +85,6 @@ For each function call, return a json object with function name and arguments wi
 class HunyuanHermesAgentTemplate(HermesAgentTemplate):
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer import Function
         res_list = re.findall(r'<tool_call>(.+?)\n```json(.+?)```</tool_call>', response, re.DOTALL)
         functions = []
         for name, arguments in res_list:

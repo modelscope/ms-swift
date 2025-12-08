@@ -7,11 +7,10 @@ from typing import List, Literal, Optional
 
 from datasets import load_from_disk
 
-from ..utils import update_generation_config_eos_token
 from swift.plugins import extra_tuners
+from swift.template import Messages, update_generation_config_eos_token
 from swift.tuners import Swift
 from swift.utils import get_logger
-from swift.templates import Messages
 
 logger = get_logger()
 

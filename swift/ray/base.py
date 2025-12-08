@@ -8,10 +8,9 @@ from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 import json
 import numpy as np
 
-from swift.llm.argument.base_args.ray_args import RayArguments
-from swift.ray.resource_manager import ResourceManager
 from swift.utils import find_free_port
 from swift.utils.utils import find_node_ip
+from .resource_manager import ResourceManager
 
 T = TypeVar('T')
 
@@ -26,8 +25,6 @@ class RayHelper:
     resource_manager: Optional[ResourceManager] = None
 
     worker_cls: Dict = {}
-
-    args: RayArguments = None
 
     worker_instance: Dict = {}
 

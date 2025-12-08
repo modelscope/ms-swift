@@ -25,13 +25,13 @@ class VanillaSampler(Sampler):
     @RayHelper.function(group='sampler')
     def _prepare_sampler(self):
         if self.args.sampler_engine == 'pt':
-            from swift.llm import PtEngine
+            from swift.infer_engine import PtEngine
             _Engine = PtEngine
         elif self.args.sampler_engine == 'vllm':
-            from swift.llm import VllmEngine
+            from swift.infer_engine import VllmEngine
             _Engine = VllmEngine
         elif self.args.sampler_engine == 'lmdeploy':
-            from swift.llm import LmdeployEngine
+            from swift.infer_engine import LmdeployEngine
             _Engine = LmdeployEngine
         elif self.args.sampler_engine == 'no':
             _Engine = None

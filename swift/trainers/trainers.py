@@ -16,7 +16,8 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.infer_engine import InferRequest, RequestConfig
+from swift.infer_engine import InferRequest, PtEngine, RequestConfig
+from swift.model import HfConfigFactory
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -214,7 +215,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         if self.args.predict_with_generate:
-            from swift.llm import PtEngine
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
@@ -282,7 +282,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
-        from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:

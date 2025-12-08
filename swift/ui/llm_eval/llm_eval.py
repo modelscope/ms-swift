@@ -13,7 +13,7 @@ import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import EvalArguments
+from swift.arguments import EvalArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval
 from swift.ui.llm_eval.model import Model

@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Uni
 
 import json
 
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
+from swift.infer_engine import Function
+from swift.template import Prompt, split_str_parts_by
 
 
 @dataclass
@@ -32,8 +31,6 @@ class ReactCompatMixin:
 
     @staticmethod
     def _split_action_action_input(response: str, keyword: AgentKeyword) -> List['Function']:
-        from swift.llm.template import split_str_parts_by
-        from swift.llm.infer import Function
         agent_parts = split_str_parts_by(response, list(asdict(keyword).values()))
         functions = []
         action_content = None

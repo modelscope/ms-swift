@@ -14,14 +14,14 @@ import json
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm.dataset.register import get_dataset_list
+from swift.dataset import get_dataset_list
 from swift.pipelines import SamplingArguments
-from swift.ui.base import BaseUI
-from swift.ui.llm_sample.model import Model
-from swift.ui.llm_sample.runtime import SampleRuntime
-from swift.ui.llm_sample.sample import Sample
-from swift.ui.llm_train.utils import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
+from .base import BaseUI
+from .llm_sample.model import Model
+from .llm_sample.runtime import SampleRuntime
+from .llm_sample.sample import Sample
+from .llm_train.utils import run_command_in_background_with_popen
 
 logger = get_logger()
 

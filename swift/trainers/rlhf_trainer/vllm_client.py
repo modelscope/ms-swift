@@ -17,9 +17,9 @@ from requests import ConnectionError
 from torch import nn
 from transformers.utils import is_torch_cuda_available
 
-from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
+from swift.infer_engine import AdapterRequest, ChatCompletionResponse, RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.plugin import Metric
+from swift.template import Template
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 from .utils import peft_config_to_dict
 

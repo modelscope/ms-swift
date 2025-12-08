@@ -9,7 +9,7 @@ from peft import PeftModel
 from transformers import Trainer
 
 from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_dist_setting, get_logger, git_clone_github
 
 if TYPE_CHECKING:
     from swift.trainers import TrainingArguments
@@ -64,7 +64,6 @@ def create_lorap_optimizer(args: 'TrainingArguments', model, dataset):
 
 
 def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
-    from swift.llm import git_clone_github
     if not args.local_repo_path:
         args.local_repo_path = git_clone_github('https://github.com/MoonshotAI/Moonlight.git')
     sys.path.append(os.path.join(args.local_repo_path, 'examples'))

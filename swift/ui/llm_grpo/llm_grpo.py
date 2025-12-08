@@ -5,25 +5,25 @@ from typing import Dict, Type
 import gradio as gr
 from packaging import version
 
-from swift.llm.argument.base_args.base_args import get_supported_tuners
-from swift.ui.base import BaseUI
-from swift.ui.llm_grpo.advanced import GRPOAdvanced
-from swift.ui.llm_grpo.dataset import GRPODataset
-from swift.ui.llm_grpo.external_rollout import LLMRollout
-from swift.ui.llm_grpo.grpo_advanced import GrpoAdvanced
-from swift.ui.llm_grpo.hyper import GRPOHyper
-from swift.ui.llm_grpo.model import GRPOModel
-from swift.ui.llm_grpo.optimizer import GRPOOptimizer
-from swift.ui.llm_grpo.quantization import GRPOQuantization
-from swift.ui.llm_grpo.report_to import GRPOReportTo
-from swift.ui.llm_grpo.reward import Reward
-from swift.ui.llm_grpo.rollout import Rollout
-from swift.ui.llm_grpo.runtime import GRPORuntime
-from swift.ui.llm_grpo.save import GRPOSave
-from swift.ui.llm_grpo.tuner import GRPOTuner
-from swift.ui.llm_train.llm_train import LLMTrain
-from swift.ui.llm_train.runtime import Runtime
+from swift.arguments import get_supported_tuners
 from swift.utils import get_device_count, get_logger
+from .base import BaseUI
+from .llm_grpo.advanced import GRPOAdvanced
+from .llm_grpo.dataset import GRPODataset
+from .llm_grpo.external_rollout import LLMRollout
+from .llm_grpo.grpo_advanced import GrpoAdvanced
+from .llm_grpo.hyper import GRPOHyper
+from .llm_grpo.model import GRPOModel
+from .llm_grpo.optimizer import GRPOOptimizer
+from .llm_grpo.quantization import GRPOQuantization
+from .llm_grpo.report_to import GRPOReportTo
+from .llm_grpo.reward import Reward
+from .llm_grpo.rollout import Rollout
+from .llm_grpo.runtime import GRPORuntime
+from .llm_grpo.save import GRPOSave
+from .llm_grpo.tuner import GRPOTuner
+from .llm_train.llm_train import LLMTrain
+from .llm_train.runtime import Runtime
 
 logger = get_logger()
 

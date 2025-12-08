@@ -9,10 +9,12 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, deep_getattr
+from swift.arguments import TrainArguments
+from swift.model import ModelType
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters, get_logger
+from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_norm,
+                         freeze_parameters, get_logger)
 
 logger = get_logger()
 
@@ -24,7 +26,6 @@ def apply_liger(model_type: str):
                                                apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
                                                apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
                                                apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
-        from swift.llm import ModelType
         if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
             apply_liger_kernel_to_llama()
         elif model_type in (ModelType.mistral):

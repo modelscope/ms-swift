@@ -2,9 +2,9 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from swift.utils import find_free_port, get_logger
 from swift.model import get_matched_model_meta
 from swift.template import get_template_meta
+from swift.utils import find_free_port, get_logger
 from .deploy_args import DeployArguments
 from .webui_args import WebUIArguments
 

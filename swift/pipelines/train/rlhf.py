@@ -4,10 +4,12 @@ from contextlib import nullcontext
 from typing import List, Optional, Union
 
 from swift.argument import BaseArguments, RLHFArguments
-from swift.model import HfConfigFactory, safe_snapshot_download
-from swift.plugin import Tuner, extra_tuners
+from swift.dataset import DatasetLoader
+from swift.models import HfConfigFactory, get_model_info_meta, safe_snapshot_download
+from swift.plugins import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import disable_deepspeed_zero3, get_logger, get_model_parameter_info
+from ..infer.utils import prepare_adapter
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
 
@@ -47,7 +49,6 @@ class SwiftRLHF(SwiftSft):
         return task_type, num_labels
 
     def _prepare_single_model(self, key, origin_key, model_type, model_revision):
-        from swift.llm.infer.utils import prepare_adapter
         args = self.args
         origin_key = origin_key or key
         model_id_or_path = getattr(args, f'{key}_model')
@@ -55,7 +56,6 @@ class SwiftRLHF(SwiftSft):
             return
 
         if model_type is None:
-            from swift.llm.model.register import get_model_info_meta
             model_info, _ = get_model_info_meta(model_id_or_path)
             model_type = model_info.model_type
 
@@ -190,7 +190,6 @@ class SwiftRLHF(SwiftSft):
 
     def _prepare_chord_sft_dataset(self):
         from ..dataset import load_dataset
-        from swift.llm.dataset.loader import DatasetLoader
 
         # prepare expert sft dataset for chord
         args = self.args

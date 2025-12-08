@@ -2,11 +2,9 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
+from swift.infer_engine import RolloutInferRequest
 from swift.plugin.orm import MathAccuracy
-
-if TYPE_CHECKING:
-    from swift.llm.template import RolloutInferRequest
-    from swift.llm.utils import Messages
+from swift.template import Messages
 
 
 class Env(ABC):

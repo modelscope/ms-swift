@@ -4,10 +4,8 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 import json
 
+from swift.infer_engine import Function
 from .hermes import HermesAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
 
 
 def render_extra_keys(obj, handled_keys):
@@ -24,7 +22,6 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
         single_content = single_content.strip()
         # Check whether the complete function tag is included
         if not single_content.startswith('<function=') or not single_content.endswith('</function>'):

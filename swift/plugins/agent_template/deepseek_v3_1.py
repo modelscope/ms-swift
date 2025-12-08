@@ -4,11 +4,9 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class DeepSeekV31AgentTemplate(BaseAgentTemplate):

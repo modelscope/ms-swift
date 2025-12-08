@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import json
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
+
 from swift.template import Messages, Tool
 
 
@@ -31,7 +32,6 @@ class Model:
 class ModelList:
     data: List[Model]
     object: str = 'list'
-
 
 
 @dataclass

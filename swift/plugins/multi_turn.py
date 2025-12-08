@@ -3,15 +3,11 @@ from abc import ABC
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from swift.infer_engine import (ChatCompletionResponse, ChatCompletionResponseChoice, GRPOVllmEngine, RequestConfig,
+                                RolloutInferRequest, RolloutOutput)
 from swift.plugin import ContextManager, Env, context_managers, envs
+from swift.template import Messages, ThinkingTemplate
 from swift.utils import remove_response
-
-if TYPE_CHECKING:
-    from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
-                                          RolloutOutput)
-    from swift.llm.template import RolloutInferRequest
-    from swift.llm.infer.infer_engine import GRPOVllmEngine
-    from swift.llm.utils import Messages
 
 
 class RolloutScheduler(ABC):
@@ -79,7 +75,6 @@ class RolloutScheduler(ABC):
 
         async def _infer_async_single(infer_request: Union['RolloutInferRequest', Dict[str, Any]],
                                       request_config: 'RequestConfig', **kwargs):
-            from swift.llm.template import RolloutInferRequest
             if isinstance(infer_request, Dict):
                 infer_request = RolloutInferRequest(**infer_request)
 
@@ -101,7 +96,6 @@ class RolloutScheduler(ABC):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import RolloutOutput
         response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(infer_request, request_config,
                                                                                  **kwargs)
         response_token_ids = response.choices[0].token_ids
@@ -224,7 +218,6 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     # Must return RolloutOutput or List[RolloutOutput]
                     ...
         """
-        from swift.llm.infer.protocol import RolloutOutput
         current_request = infer_request
         current_turn = 1
         rollout_infos = {}
@@ -461,8 +454,6 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         Returns:
             List[RolloutOutput]: A list of RolloutOutput objects, one for each reasoning round.
         """
-        from swift.llm.infer.protocol import RolloutOutput
-
         current_request = infer_request
         current_turn = 1
         rollout_outputs = []
@@ -530,7 +521,6 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
             return False
 
         template = self.infer_engine.default_template
-        from swift.llm.template.template.utils import ThinkingTemplate
 
         return isinstance(template, ThinkingTemplate)
 
@@ -726,7 +716,6 @@ class GYMScheduler(RolloutScheduler):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import RolloutOutput
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager

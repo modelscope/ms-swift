@@ -37,18 +37,16 @@ from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDUL
                                   ParallelMode, Trainer, TrainerCallback, reissue_pt_warnings)
 from transformers.trainer_utils import IntervalStrategy
 
-from swift.hub import get_hub
-from swift.llm.utils import update_generation_config_eos_token
-from swift.model import get_llm_model
+from swift.model import HfConfigFactory, get_llm_model, save_checkpoint
 from swift.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
-from swift.template import Template, get_packed_seq_params
+from swift.template import Template, get_packed_seq_params, update_generation_config_eos_token
 from swift.tuners import SwiftModel
-from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
-                         ms_logger_context, seed_worker)
+from swift.utils import (deep_getattr, get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp,
+                         is_mp_ddp, ms_logger_context, seed_worker)
 from .arguments import TrainingArguments
 from .data_loader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
-from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -395,7 +393,6 @@ class SwiftMixin:
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer
         if not is_adapter:
-            from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(
                 None,
@@ -759,7 +756,6 @@ class SwiftMixin:
             pass
 
     def _prepare_gradient_checkpointing(self, model) -> None:
-        from swift.llm import HfConfigFactory, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:

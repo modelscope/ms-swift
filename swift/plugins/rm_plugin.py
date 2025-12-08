@@ -5,11 +5,9 @@ from typing import TYPE_CHECKING, Dict, List
 
 import torch
 
-from swift.llm import PtEngine, RequestConfig, Template, to_device
-from swift.utils import get_logger
-
-if TYPE_CHECKING:
-    from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.infer_engine import ChatCompletionResponse, PtEngine, RequestConfig
+from swift.template import Template
+from swift.utils import get_logger, to_device
 
 logger = get_logger()
 

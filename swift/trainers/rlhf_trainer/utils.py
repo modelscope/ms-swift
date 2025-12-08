@@ -22,6 +22,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
+from swift.template import Messages
 from swift.tuners.lora import LoraConfig
 from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
 from swift.utils.torch_utils import get_torch_device
@@ -31,8 +32,6 @@ if is_wandb_available():
 if is_swanlab_available():
     import swanlab
 
-if TYPE_CHECKING:
-    from swift.llm.utils import Messages
 T = TypeVar('T')
 
 TensorLoRARequest = None

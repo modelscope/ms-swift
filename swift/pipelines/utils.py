@@ -87,32 +87,6 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
-    from .model import ModelMeta
-    if isinstance(model, PeftModel):
-        model = model.model
-    model_meta: ModelMeta = getattr(model, 'model_meta', None)
-    if model_meta is not None and model_meta.is_multimodal and model_meta.model_arch:
-        tower_names = model_meta.model_arch.language_model.copy()
-        if including_vit:
-            tower_names += model_meta.model_arch.vision_tower
-    else:
-        tower_names = [None]
-
-    model.supports_gradient_checkpointing = True
-    for tower_name in tower_names:
-        if tower_name is None:
-            model_tower = model
-        else:
-            model_tower = deep_getattr(model, tower_name)
-        model_tower.supports_gradient_checkpointing = True
-        module_list = find_module_list(model_tower)
-        if module_list is None:
-            continue
-        _add_gradient_checkpointing(module_list)
-        logger.info(f'Automatically add gradient_checkpointing to {model_tower.__class__}.')
-
-
 TEMP_DIR_POOL = {}
 
 
@@ -135,25 +109,3 @@ def get_temporary_cache_files_directory(prefix=None):
         TEMP_DIR_POOL[prefix] = TEMP_DIR
 
     return TEMP_DIR.name
-
-
-def update_generation_config_eos_token(generation_config, template):
-    if generation_config is None:
-        return
-    stop_words = template.template_meta.stop_words
-    eos_token_id = generation_config.eos_token_id
-    if eos_token_id is None:
-        eos_token_id = []
-    elif isinstance(eos_token_id, int):
-        eos_token_id = [eos_token_id]
-    modified = False
-    for stop_word in stop_words:
-        if stop_word is None:
-            continue
-        if isinstance(stop_word, str):
-            stop_word = template._tokenize(stop_word)
-        if isinstance(stop_word, (list, tuple)) and len(stop_word) == 1 and stop_word[0] not in eos_token_id:
-            eos_token_id.append(stop_word[0])
-            modified = True
-    if modified:
-        generation_config.eos_token_id = eos_token_id

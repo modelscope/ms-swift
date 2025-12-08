@@ -243,3 +243,25 @@ def get_packed_seq_params(position_ids: torch.Tensor):
         'max_length_q': max_length,
         'max_length_k': max_length,
     }
+
+
+def update_generation_config_eos_token(generation_config, template):
+    if generation_config is None:
+        return
+    stop_words = template.template_meta.stop_words
+    eos_token_id = generation_config.eos_token_id
+    if eos_token_id is None:
+        eos_token_id = []
+    elif isinstance(eos_token_id, int):
+        eos_token_id = [eos_token_id]
+    modified = False
+    for stop_word in stop_words:
+        if stop_word is None:
+            continue
+        if isinstance(stop_word, str):
+            stop_word = template._tokenize(stop_word)
+        if isinstance(stop_word, (list, tuple)) and len(stop_word) == 1 and stop_word[0] not in eos_token_id:
+            eos_token_id.append(stop_word[0])
+            modified = True
+    if modified:
+        generation_config.eos_token_id = eos_token_id

@@ -3,7 +3,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm.dataset.register import get_dataset_list
+from swift.dataset import get_dataset_list
 from swift.ui.base import BaseUI
 
 

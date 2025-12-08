@@ -1,6 +1,7 @@
 from typing import Any, Dict, List
 
 from swift.arguments import SamplingArguments
+from swift.infer_engine import PtEngine
 from swift.plugin import orms, prms
 from swift.ray import RayHelper
 from swift.utils import get_logger
@@ -33,7 +34,6 @@ class Sampler:
         elif self.args.prm_model in prms:
             self.prm_model = prms[self.args.prm_model]()
         else:
-            from swift.llm import PtEngine
             self.prm_model = PtEngine(self.args.prm_model, max_batch_size=64)
 
     @RayHelper.function(group='orm')
@@ -44,7 +44,6 @@ class Sampler:
         elif self.args.orm_model in orms:
             self.orm_model = orms[self.args.orm_model]()
         else:
-            from swift.llm import PtEngine
             self.orm_model = PtEngine(self.args.orm_model, max_batch_size=64)
 
     def _prepare_template(self) -> None:

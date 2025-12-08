@@ -17,7 +17,7 @@ from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
-from swift.llm.template.template_inputs import TemplateInputs
+from swift.template import TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin

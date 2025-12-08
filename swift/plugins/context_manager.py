@@ -2,8 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from swift.llm.utils import Messages
+from swift.template import Messages
 
 
 class ContextManager(ABC):
