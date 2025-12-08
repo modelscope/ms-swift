@@ -134,6 +134,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Get data source: 'student', 'teacher', or 'dataset'
+        data_source = inputs.pop('_data_source', 'dataset')
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
@@ -237,8 +239,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             if self._trl_version_gte_0_24:
                 loss /= shifted_student_logits.shape[1]
-            # Add SFT loss if enabled (common for both paths)
-            if self.args.sft_alpha > 0:
+            # Add SFT loss if enabled (skip for student-generated responses)
+            if self.args.sft_alpha > 0 and data_source != 'student':
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
@@ -286,6 +288,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         with patch_profiling_context(self, 'get_completions'):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
+                data_source = 'student'
                 if args.use_vllm:
                     processed_inputs = self._preprocess_inputs(inputs)
                     generated_inputs = self._fast_infer(processed_inputs)
@@ -311,6 +314,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     inputs['labels'] = new_labels
 
             elif self.seq_kd:
+                # Sequential KD: teacher model generates responses
+                data_source = 'teacher'
                 inputs = self._prepare_batch_inputs(inputs)
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
                 with load_context, unwrap_model_for_generation(
@@ -324,7 +329,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 inputs['labels'] = new_labels
 
             else:
+                # Off-policy: use dataset responses
+                data_source = 'dataset'
                 inputs = self._prepare_batch_inputs(inputs)
+
+            # Mark data source for downstream processing (e.g., conditional SFT loss)
+            inputs['_data_source'] = data_source
 
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
