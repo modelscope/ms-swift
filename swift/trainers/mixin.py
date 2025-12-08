@@ -282,15 +282,17 @@ class SwiftMixin:
 
             _unwrap_model = unwrap_model(self.model)
             if isinstance(_unwrap_model, supported_classes):
+                save_kwargs = {'state_dict': state_dict}
+                if isinstance(_unwrap_model, PeftModel):
+                    save_kwargs['selected_adapters'] = ['default']
                 if use_flash_ckpt:
                     _unwrap_model.save_pretrained(
                         output_dir,
-                        state_dict=state_dict,
                         safe_serialization=False,
-                        save_function=self.flash_checkpointer.ckpt_agent.save)
+                        save_function=self.flash_checkpointer.ckpt_agent.save,
+                        **save_kwargs)
                 else:
-                    _unwrap_model.save_pretrained(
-                        output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+                    _unwrap_model.save_pretrained(output_dir, safe_serialization=save_safetensors, **save_kwargs)
             else:
                 logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
                 if use_flash_ckpt:
@@ -334,14 +336,17 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             if self.model.__class__.__name__ != 'SentenceTransformer':
+                save_kwargs = {'state_dict': state_dict}
+                if isinstance(self.model, PeftModel):
+                    save_kwargs['selected_adapters'] = ['default']
                 if use_flash_ckpt:
                     self.model.save_pretrained(
                         output_dir,
-                        state_dict=state_dict,
                         safe_serialization=False,
-                        save_function=self.flash_checkpointer.ckpt_agent.save)
+                        save_function=self.flash_checkpointer.ckpt_agent.save,
+                        **save_kwargs)
                 else:
-                    self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors, **save_kwargs)
             else:
 
                 @contextmanager
