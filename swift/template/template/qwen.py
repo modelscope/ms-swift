@@ -13,14 +13,13 @@ from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm import get_packed_seq_params, to_float_dtype
-from swift.utils import get_env_args, is_deepspeed_enabled
+from swift.utils import get_env_args, is_deepspeed_enabled, to_float_dtype
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Word, findall
+from ..utils import Context, Word, findall, get_packed_seq_params
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
@@ -60,7 +59,7 @@ class Qwen3Template(ThinkingTemplate):
     no_think_prefix = '<think>\n\n</think>\n\n'
 
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_mixed, default_system=None, template_cls=Qwen3Template))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'

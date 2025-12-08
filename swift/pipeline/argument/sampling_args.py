@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 import json
 
-from swift.llm import BaseArguments
+from swift.pipelines import BaseArguments
 from swift.utils import get_logger
 
 logger = get_logger()

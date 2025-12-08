@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from swift.llm import TEMPLATE_MAPPING
+from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger
 
 logger = get_logger()

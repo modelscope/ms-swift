@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 
-from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint
+from swift.pipelines import ExportArguments, HfConfigFactory
+from swift.model import prepare_model_template, save_checkpoint
 from swift.tuners import Swift
 from swift.utils import get_logger
 

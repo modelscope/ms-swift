@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from swift.llm import safe_snapshot_download
+from swift.model import safe_snapshot_download
 from swift.utils import find_free_port, get_device_count, get_logger
 from .base_args import BaseArguments
 from .infer_args import InferArguments

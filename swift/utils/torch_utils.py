@@ -9,7 +9,7 @@ import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
 from datetime import timedelta
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any, Mapping
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -536,7 +536,6 @@ def unwrap_model_for_generation(
         yield unwrapped_model
 
 
-
 def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
     """Change the float inputs to a dtype"""
     if isinstance(data, Mapping):
@@ -559,4 +558,3 @@ def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bo
         return data.to(device=device, non_blocking=non_blocking)
     else:
         return data
-

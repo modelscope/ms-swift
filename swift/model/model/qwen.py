@@ -686,7 +686,7 @@ def patch_qwen_vl_utils(vision_process):
     if _read_video_decord is not None:
 
         def _new_read_video_decord(ele: dict):
-            from swift.llm import load_file
+            from swift.template import load_file
             ele['video'] = load_file(ele['video'])
             return _read_video_decord(ele)
 

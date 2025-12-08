@@ -2,9 +2,9 @@
 
 from typing import Dict, Literal, Optional
 
-from ..utils import Processor
 from .base import Template
 from .template_meta import TemplateMeta
+from .utils import Processor
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
 

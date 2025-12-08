@@ -3,17 +3,19 @@ import os
 from dataclasses import dataclass
 from functools import wraps
 from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union, TYPE_CHECKING
 
 import torch
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedModel
 
 from swift.hub import get_hub
-from swift.utils import to_device
-from swift.utils import deep_getattr, get_logger, is_local_master, safe_ddp_context, subprocess_run
+from swift.utils import deep_getattr, get_logger, is_local_master, safe_ddp_context, subprocess_run, to_device
+
+if TYPE_CHECKING:
+    from swift.template import Processor
 
 logger = get_logger()
 
@@ -539,3 +541,42 @@ class InitModelStrategy:
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
                 init_func(param)
+
+
+def save_checkpoint(model: Optional[PreTrainedModel],
+                    processor: 'Processor',
+                    output_dir: str,
+                    *,
+                    safe_serialization: bool = True,
+                    max_shard_size: Union[int, str] = '5GB',
+                    model_dirs: List[str] = None,
+                    additional_saved_files: Optional[List[str]] = None) -> None:
+    if model is not None:
+        if model.__class__.__name__ != 'SentenceTransformer':
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        else:
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization)
+            # copy sentencetransformers files
+            from swift.utils import copy_files_by_pattern
+            copy_files_by_pattern(model.model_dir, output_dir, '*.py')
+            copy_files_by_pattern(model.model_dir, output_dir, '*.json')
+    processor.save_pretrained(output_dir)
+
+    if model_dirs is None:
+        model_dirs = []
+    else:
+        model_dirs = model_dirs.copy()
+    if model and model.model_dir and model.model_dir not in model_dirs:
+        model_dirs.append(model.model_dir)
+    for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
+        tgt_path = os.path.join(output_dir, src_file)
+        if os.path.exists(tgt_path) and src_file == 'args.json':
+            continue
+        for model_dir in model_dirs:
+            src_path: str = os.path.join(model_dir, src_file)
+            if os.path.isfile(src_path):
+                shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
+                break

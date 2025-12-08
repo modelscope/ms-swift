@@ -9,11 +9,11 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 from tqdm import tqdm
 
-from swift.llm import InferRequest, ProcessorMixin, get_template
+from swift.llm import InferRequest, get_template
 from swift.llm.template import Template
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
-from swift.utils import get_logger
+from swift.utils import ProcessorMixin, get_logger
 from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                         RequestConfig, UsageInfo)
 from .base import BaseInferEngine

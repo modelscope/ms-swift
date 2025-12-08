@@ -53,7 +53,7 @@ def _parse_text(text: str) -> str:
 async def model_chat(history: History, real_history: History, system: Optional[str], *, client, model: str,
                      request_config: Optional['RequestConfig']):
     if history:
-        from swift.llm import InferRequest
+        from swift.pipelines import InferRequest
 
         messages = _history_to_messages(real_history, system)
         resp_or_gen = await client.infer_async(
@@ -102,7 +102,7 @@ def build_ui(base_url: str,
              studio_title: Optional[str] = None,
              lang: Literal['en', 'zh'] = 'en',
              default_system: Optional[str] = None):
-    from swift.llm import InferClient
+    from swift.pipelines import InferClient
     client = InferClient(base_url=base_url)
     model = model or client.models[0]
     studio_title = studio_title or model

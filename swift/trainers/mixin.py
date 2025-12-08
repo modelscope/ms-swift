@@ -38,14 +38,16 @@ from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDUL
 from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
+from swift.model import get_llm_model
+from swift.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
+from swift.template import Template, get_packed_seq_params
 from swift.tuners import SwiftModel
 from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
                          ms_logger_context, seed_worker)
-from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
 from .arguments import TrainingArguments
+from .data_loader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:
@@ -1063,7 +1065,6 @@ class SwiftMixin:
         inputs['logits_to_keep'] = logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
-        from swift.llm import get_packed_seq_params
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
         res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):

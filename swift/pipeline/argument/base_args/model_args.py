@@ -9,7 +9,7 @@ import json
 import torch
 from transformers.utils import is_torch_mps_available
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
+from swift.model import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
@@ -116,7 +116,7 @@ class ModelArguments:
 
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
-        from swift.llm import TrainArguments
+        from swift.pipelines import TrainArguments
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()

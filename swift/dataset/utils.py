@@ -17,7 +17,7 @@ from .preprocessor import RowPreprocessor
 logger = get_logger()
 
 if TYPE_CHECKING:
-    from swift.llm import Template
+    from swift.template import Template
 
 
 def sample_dataset(

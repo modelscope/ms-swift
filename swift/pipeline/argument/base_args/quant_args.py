@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 import torch
 
-from swift.llm import HfConfigFactory
+from swift.model import HfConfigFactory
 from swift.utils import get_modules_to_not_convert
 
 
@@ -72,7 +72,7 @@ class QuantizeArguments:
             if not hasattr(self, 'model_info'):
                 return
             from transformers import FineGrainedFP8Config
-            from swift.llm import get_model_tokenizer
+            from swift.model import get_model_tokenizer
             with torch.device('meta'):
                 hf_model, _ = get_model_tokenizer(self.model_dir, model_type=self.model_type, return_dummy_model=True)
             modules_to_not_convert = get_modules_to_not_convert(hf_model)

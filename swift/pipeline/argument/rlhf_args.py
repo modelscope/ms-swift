@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.llm import MODEL_MAPPING
+from swift.model import MODEL_MAPPING
 from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
 from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
 from .train_args import TrainArguments

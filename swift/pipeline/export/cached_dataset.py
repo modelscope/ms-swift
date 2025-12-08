@@ -4,8 +4,8 @@ from typing import List, Optional, Union
 
 import torch
 
-from swift.llm import TEMPLATE_MAPPING, ExportArguments
-from swift.llm.train import SwiftSft
+from swift.template import TEMPLATE_MAPPING
+from swift.pipelines import ExportArguments, SwiftSft
 from swift.utils import get_logger
 
 logger = get_logger()

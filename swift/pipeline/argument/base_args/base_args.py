@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 
 from swift.hub import get_hub
-from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
-from swift.llm.utils import get_ckpt_dir
+from swift.template import Processor, Template, get_template
+from swift.model import get_model_tokenizer, load_by_unsloth, safe_snapshot_download
+from swift.pipelines import get_ckpt_dir
 from swift.plugin import extra_tuners
 from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
                          json_parse_to_dict, set_device, use_hf_hub)

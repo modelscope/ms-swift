@@ -13,7 +13,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm import history_to_messages
+from swift.template import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
