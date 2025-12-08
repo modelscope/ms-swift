@@ -69,6 +69,10 @@ class RLHFMegatronArgumentsMixin:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_disable_cascade_attn: bool = False
+    vllm_max_num_seqs: Optional[int] = None
+    vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_engine_kwargs: Optional[Dict[str, Any]] = None
+
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
     offload_model: bool = False
@@ -161,6 +165,9 @@ class RLHFMegatronArgumentsMixin:
             self._init_kto()
         if self.rlhf_type == 'grpo':
             self._init_grpo()
+            if self.vllm_limit_mm_per_prompt is not None:
+                self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+            self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def _init_grpo(self):
 
