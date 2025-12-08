@@ -1060,8 +1060,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps])
 
         should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
-        if (local_has_rollout_per_token_logps and not self.disable_rollout_importance_sampling
-                and should_compute_rollout_metrics):
+        if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
             rollout_per_token_logps = inputs['rollout_per_token_logps']
 
             # Compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
