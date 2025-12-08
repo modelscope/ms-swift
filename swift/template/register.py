@@ -17,11 +17,12 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
 
 
 def get_template(
-    template_type: str,
+    model_id_or_path: str,
     processor: Processor,
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     *,
+    template_type: Optional[str] = None,
     truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
     max_pixels: Optional[int] = None,  # h * w
     agent_template: Optional[str] = None,
