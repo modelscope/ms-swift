@@ -282,7 +282,6 @@ class SwiftMixin:
 
             _unwrap_model = unwrap_model(self.model)
             if isinstance(_unwrap_model, supported_classes):
-                # For PeftModel, only save the 'default' adapter (trainable adapter).
                 save_kwargs = {'state_dict': state_dict}
                 if isinstance(_unwrap_model, PeftModel):
                     save_kwargs['selected_adapters'] = ['default']
@@ -337,9 +336,6 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             if self.model.__class__.__name__ != 'SentenceTransformer':
-                # For PeftModel, only save the 'default' adapter (trainable adapter).
-                # Exclude 'ref_adapter' which is frozen and used only for KL computation in RLHF.
-                # This saves storage space and avoids confusion when loading checkpoints.
                 save_kwargs = {'state_dict': state_dict}
                 if isinstance(self.model, PeftModel):
                     save_kwargs['selected_adapters'] = ['default']

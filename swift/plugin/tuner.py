@@ -66,6 +66,10 @@ class PeftTuner(Tuner):
         safe_serialization: bool = True,
         **kwargs,
     ) -> None:
+        # For PeftModel, only save the 'default' adapter (trainable adapter).
+        # Exclude 'ref_adapter' which is frozen and used only for KL computation in RLHF.
+        if isinstance(model, PeftModel):
+            kwargs['selected_adapters'] = ['default']
         model.save_pretrained(save_directory, safe_serialization=safe_serialization, **kwargs)
 
     @staticmethod
