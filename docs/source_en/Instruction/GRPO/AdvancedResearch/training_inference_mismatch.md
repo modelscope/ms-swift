@@ -187,6 +187,16 @@ A larger ESS value (closer to 1) indicates more uniform importance sampling weig
 
 ## Usage
 
+### Logging Diagnostic Metrics Only
+
+If you only want to monitor the degree of training-inference mismatch without enabling importance sampling correction, you can set:
+
+```
+--log_rollout_metrics true
+```
+
+This will log all diagnostic metrics (KL, PPL, χ², etc.) without modifying the loss function.
+
 ### Enabling Importance Sampling Correction
 
 Enable the correction mechanism with the following parameters:
@@ -196,6 +206,7 @@ Enable the correction mechanism with the following parameters:
 --rollout_importance_sampling_threshold (default 2)
 ```
 
+When `rollout_importance_sampling_mode` is set, diagnostic metrics are automatically logged without needing to set `log_rollout_metrics`.
 
 ## References
 

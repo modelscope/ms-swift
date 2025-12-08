@@ -117,6 +117,7 @@ class RLHFMegatronArgumentsMixin:
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0
+    log_rollout_metrics: bool = False
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 

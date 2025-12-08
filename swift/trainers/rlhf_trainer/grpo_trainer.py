@@ -1053,11 +1053,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
-        if inputs.get('rollout_per_token_logps') is not None and not self.disable_rollout_importance_sampling:
+        should_compute_rollout_metrics = (self.rollout_importance_sampling_mode is not None or self.log_rollout_metrics)
+
+        local_has_rollout_per_token_logps = inputs.get('rollout_per_token_logps') is not None
+        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps])
+
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        if (local_has_rollout_per_token_logps and not self.disable_rollout_importance_sampling
+                and should_compute_rollout_metrics):
             rollout_per_token_logps = inputs['rollout_per_token_logps']
 
-            # Always compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
-            # This helps diagnose whether rollout correction is needed
+            # Compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,
                                                                                  completion_mask)
@@ -2123,6 +2129,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+        self.log_rollout_metrics = args.log_rollout_metrics
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
