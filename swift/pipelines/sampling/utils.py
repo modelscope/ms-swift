@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import json
 import numpy as np
-
-from swift.infer_engine import InferRequest, RequestConfig
+from swift.infer_engine import InferRequest, RequestConfig, InferEngine
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -38,7 +37,6 @@ def get_reward(model: Any,
         Index 0: The min-max normalized scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
-    from swift.llm import InferEngine
     infer_func = model.infer if isinstance(model, InferEngine) else model.__call__
     parameters = inspect.signature(infer_func).parameters
     gt_param = {}
