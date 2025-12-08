@@ -9,7 +9,7 @@ import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
 from datetime import timedelta
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -534,3 +534,27 @@ def unwrap_model_for_generation(
                 add_hooks(model)
     else:
         yield unwrapped_model
+
+
+def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
+    """Change the float inputs to a dtype"""
+    if isinstance(data, Mapping):
+        return type(data)({k: to_float_dtype(v, dtype) for k, v in data.items()})
+    elif isinstance(data, (tuple, list)):
+        return type(data)(to_float_dtype(v, dtype) for v in data)
+    elif isinstance(data, torch.Tensor) and torch.is_floating_point(data):
+        return data.to(dtype=dtype)
+    else:
+        return data
+
+
+def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bool = False) -> Any:
+    """Move inputs to a device"""
+    if isinstance(data, Mapping):
+        return type(data)({k: to_device(v, device, non_blocking) for k, v in data.items()})
+    elif isinstance(data, (tuple, list)):
+        return type(data)(to_device(v, device, non_blocking) for v in data)
+    elif isinstance(data, torch.Tensor):
+        return data.to(device=device, non_blocking=non_blocking)
+    else:
+        return data

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer, RerankerTrainer
     from .mixin import SwiftMixin
     from .utils import per_token_loss_func
+    from .data_loader import BatchSamplerShard, DataLoaderShard, DataLoaderDispatcher
 
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -41,6 +42,7 @@ else:
         'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer', 'RerankerTrainer'],
         'mixin': ['SwiftMixin'],
         'utils': ['per_token_loss_func'],
+        'data_loader': ['BatchSamplerShard', 'DataLoaderShard', 'DataLoaderDispatcher'],
     }
 
     import sys

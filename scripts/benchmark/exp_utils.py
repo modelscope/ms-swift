@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import json
 import torch
 
-from swift.llm import ExportArguments
+from swift.pipelines import ExportArguments
 from swift.utils import find_free_port, get_device_count, get_logger
 
 logger = get_logger()
