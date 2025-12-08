@@ -10,11 +10,6 @@ from torch.utils.data import Sampler
 
 from .data_loader import DataLoaderDispatcher
 
-try:
-    from trl.trainer.utils import entropy_from_logits
-except ImportError:
-    from ..rlhf_trainer.utils import entropy_from_logits
-
 
 class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""

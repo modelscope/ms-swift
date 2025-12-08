@@ -13,8 +13,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
-from swift.template import TemplateType, to_device
-from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
+from swift.template import TemplateType
+from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled, to_device
 from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
@@ -640,6 +640,7 @@ register_model(
             ],
                        template=TemplateType.qwen3_thinking)
         ],
+        None,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
         requires=['transformers>=4.57'],

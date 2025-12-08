@@ -24,13 +24,14 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.utils import ProcessorMixin, get_env_args, get_logger, to_device
-from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
+from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, Processor, StopWordsCriteria, fetch_one, findall, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
     from .template_meta import TemplateMeta
+    from swift.infer_engine import InferRequest
 
 
 class MaxLengthError(ValueError):
@@ -480,7 +481,7 @@ class Template(ProcessorMixin):
 
     @torch.inference_mode()
     def encode(self,
-               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
+               inputs: Union[TemplateInputs, Dict[str, Any], 'InferRequest'],
                return_template_inputs: bool = False,
                return_length: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
@@ -488,6 +489,7 @@ class Template(ProcessorMixin):
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
+        from swift.infer_engine import InferRequest
         assert self._processor_inited, ('Please initialize the processor before calling the template.encode method: '
                                         'template.init_processor(processor).')
         if isinstance(inputs, InferRequest):

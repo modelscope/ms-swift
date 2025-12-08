@@ -413,7 +413,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type not in rlhf_support_vllm_types or (self.vllm_server_host is None
                                                              and self.vllm_server_base_url is None):
             return
-        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        from swift.trainers.rlhf_trainers.vllm_client import VLLMClient
         if is_master():
             logger.info('Start connecting to vLLM server')
             self.vllm_client = VLLMClient(

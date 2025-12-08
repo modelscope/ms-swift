@@ -18,11 +18,11 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
-from swift.model import HfConfigFactory
 from swift.utils import (deep_getattr, get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context, to_device,
                          to_float_dtype)
 from swift.utils.torch_utils import (_get_max_memory, _sync_max_memory, get_cu_seqlens_from_position_ids,
                                      get_device_count, get_position_ids_from_cu_seqlens)
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
