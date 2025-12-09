@@ -937,19 +937,20 @@ class BaseMegatronTrainer(ABC):
                         module.unmerge()
 
     def save_checkpoint(self, iteration, *_args, **kwargs):
-        save_peft_format = args.train_type == 'lora' and not args.merge_lora
-        if not args.save_safetensors:
-            with adapter_state_dict_context(is_peft_format=save_peft_format):
-                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
         args = get_args()
         if args.train_type == 'lora' and args.merge_lora:
             self.merge_lora_adapters()
-        output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-        self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-        if is_last_rank():
-            args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-            if os.path.exists(args_path):
-                shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        if args.save_safetensors:
+            output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
+            if is_last_rank():
+                args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+                if os.path.exists(args_path):
+                    shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+        else:
+            with adapter_state_dict_context(is_peft_format=save_peft_format):
+                self._origin_save_checkpoint(iteration, *_args, **kwargs)
         if args.train_type == 'lora' and args.merge_lora:
             self.unmerge_lora_adapters()
 
