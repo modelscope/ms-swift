@@ -1265,3 +1265,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if template is not None:
                 template.padding_free = original_padding_free
                 template.sequence_parallel_size = original_sequence_parallel_size
+
+    @contextmanager
+    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
+        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
+        max_length = template.max_length
+        template.max_length = None
+        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
+        try:
+            with forward_ctx:
+                yield
+        finally:
+            template.max_length = max_length

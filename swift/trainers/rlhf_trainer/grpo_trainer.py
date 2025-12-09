@@ -197,18 +197,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self._generate_and_score_completions(generation_batch)
         return inputs
 
-    @contextmanager
-    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
-        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
-        max_length = template.max_length
-        template.max_length = None
-        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
-        try:
-            with forward_ctx:
-                yield
-        finally:
-            template.max_length = max_length
-
     def _generate_completions(self, inputs: DataType) -> DataType:
         # add prompt ids and system prompts
         inputs = self._preprocess_inputs(inputs)

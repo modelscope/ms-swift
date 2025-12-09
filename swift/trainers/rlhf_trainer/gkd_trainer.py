@@ -102,6 +102,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
         self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
+        # Initialize resample data iterator for truncation_strategy 'raise'
+        if self.template.truncation_strategy == 'raise':
+            self._prepare_resample_data_iterator()
+
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
@@ -296,6 +300,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
                 data_source = DataSource.STUDENT
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 if args.use_vllm:
                     processed_inputs = self._preprocess_inputs(inputs)
                     generated_inputs = self._fast_infer(processed_inputs)
@@ -306,7 +313,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         valid_completions = gather_object(completions)
                         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
                         self._logs['completion'].extend(valid_completions)
-                    inputs = self._prepare_batch_inputs(generated_inputs)
+                    with self._template_context(self.template):
+                        inputs = self._prepare_batch_inputs(generated_inputs)
                 else:
                     inputs = self._prepare_batch_inputs(inputs)
                     with unwrap_model_for_generation(
@@ -323,6 +331,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             elif self.seq_kd:
                 # Sequential KD: teacher model generates responses
                 data_source = DataSource.TEACHER
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 inputs = self._prepare_batch_inputs(inputs)
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
                 with load_context, unwrap_model_for_generation(
@@ -434,6 +445,92 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             'prompt': deque(),
             'completion': deque(),
         }
+
+    def _prepare_resample_data_iterator(self):
+        """Initialize resample data iterator for truncation_strategy 'raise'(delete).
+
+        When truncation_strategy is 'raise'(delete), encoding may fail for some samples due to
+        exceeding max_length. This iterator provides backup samples for resampling.
+        """
+
+        def cyclic_iter(iterable):
+            while True:
+                for x in iterable:
+                    yield x
+
+        @contextmanager
+        def seed_context():
+            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+            seed = self.args.seed
+            self.args.seed = seed + 1
+            yield
+            self.args.seed = seed
+
+        with seed_context():
+            self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+    @patch_profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until successful or until the maximum
+        number of retries is reached.
+
+        This method is used when truncation_strategy is 'raise' to handle samples
+        that exceed max_length during on-policy generation in GKD training.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            n_try_fetch (int, optional): Maximum number of retries to fetch a new sample
+                when encoding fails. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples.
+
+        Raises:
+            RuntimeError: If encoding fails after `n_try_fetch` resampling attempts.
+        """
+        template = self.template
+        last_messages = None
+        last_valid_data = None
+
+        for i, data in enumerate(inputs):
+            # Skip samples with the same `messages` as the previous one.
+            # If the last sample was successfully encoded, reuse it.
+            if last_messages is not None and data['messages'] == last_messages:
+                if last_valid_data is not None:
+                    inputs[i] = last_valid_data
+                    continue
+
+            current_data = data
+            n_try = 0
+
+            while True:
+                try:
+                    # Attempt to encode the current sample.
+                    remove_response(current_data['messages'])
+                    template.encode(current_data)
+                    # If successful, store the result and update the last valid data.
+                    inputs[i] = current_data
+                    last_messages = current_data['messages']
+                    last_valid_data = current_data
+                    break
+
+                except Exception as e:
+                    # Encoding failed — attempt to resample a new input.
+                    logger.info(f'Encoding failed for one sample; resampling a new input. {e}')
+                    n_try += 1
+
+                    # Stop if the maximum retry limit is exceeded.
+                    if n_try > n_try_fetch:
+                        raise RuntimeError('Failed to obtain a valid sample after multiple attempts. '
+                                           'Consider increasing `max_length` or adjusting the '
+                                           '`truncation_strategy` to avoid excessive truncation.')
+
+                    # Fetch a new sample from the resampling iterator.
+                    current_data = next(self.truncated_resample_iterator)[0]
+
+        return inputs
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         """Convert messages list to prompt text list using template (aligned with GRPO)."""

@@ -517,6 +517,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - seq_kd: 默认为False。该参数在GKD中使用。控制是否执行序列级知识蒸馏（Sequence-Level KD）的 seq_kd 参数（可视为对教师模型生成输出的监督式微调）。
   - 注意：你可以提前对数据集内容使用teacher模型进行推理（使用vllm/sglang/lmdeploy等推理引擎加速），并在训练时将`seq_kd`设置为False。或者将`seq_kd`设置为True，在训练时使用teacher模型生成序列（能保证多个epoch生成数据的不同，但效率较慢）。
 - offload_teacher_model: 卸载教师模型以节约显存，只在采样/计算logps时加载，默认为False。
+- truncation_strategy：用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
   - 仅记录 vLLM 采样结果。
@@ -564,8 +565,7 @@ reward模型参数将在PPO、GRPO中使用。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
 - reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/reward_model.md#自定义奖励模型)。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
-- truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`。注意对于多模态模型，
-左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
+- truncation_strategy：用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
