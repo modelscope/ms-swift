@@ -1252,8 +1252,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         rollout_correction_metrics = {}
         should_compute_rollout_metrics = (
             self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
-        if (rollout_per_token_logps is not None and not self.disable_rollout_importance_sampling
-                and should_compute_rollout_metrics):
+        local_has_rollout_per_token_logps = rollout_per_token_logps is not None
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps], group=dp_group)
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,
