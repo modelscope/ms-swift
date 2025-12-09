@@ -28,6 +28,10 @@ def is_liger_available():
     return importlib.util.find_spec('liger_kernel') is not None
 
 
+def is_cce_available():
+    return importlib.util.find_spec('cut_cross_entropy') is not None
+
+
 def is_swanlab_available():
     return importlib.util.find_spec('swanlab') is not None
 
