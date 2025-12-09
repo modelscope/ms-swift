@@ -446,29 +446,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             'completion': deque(),
         }
 
-    def _prepare_resample_data_iterator(self):
-        """Initialize resample data iterator for truncation_strategy 'raise'('delete').
-
-        When truncation_strategy is 'raise'(delete), encoding may fail for some samples due to
-        exceeding max_length. This iterator provides backup samples for resampling.
-        """
-
-        def cyclic_iter(iterable):
-            while True:
-                for x in iterable:
-                    yield x
-
-        @contextmanager
-        def seed_context():
-            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
-            seed = self.args.seed
-            self.args.seed = seed + 1
-            yield
-            self.args.seed = seed
-
-        with seed_context():
-            self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
-
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         """Convert messages list to prompt text list using template (aligned with GRPO)."""
         prompts_text = []
