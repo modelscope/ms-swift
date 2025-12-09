@@ -1277,3 +1277,89 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 yield
         finally:
             template.max_length = max_length
+
+    def _prepare_resample_data_iterator(self):
+        """Initialize resample data iterator for truncation_strategy 'raise'('delete').
+
+        When truncation_strategy is 'raise'(delete), encoding may fail for some samples due to
+        exceeding max_length. This iterator provides backup samples for resampling.
+        """
+
+        def cyclic_iter(iterable):
+            while True:
+                for x in iterable:
+                    yield x
+
+        @contextmanager
+        def seed_context():
+            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+            seed = self.args.seed
+            self.args.seed = seed + 1
+            yield
+            self.args.seed = seed
+
+        with seed_context():
+            self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+    @patch_profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until successful or until the maximum
+        number of retries is reached.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            n_try_fetch (int, optional): Maximum number of retries to fetch a new sample
+                when encoding fails. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples.
+
+        Raises:
+            RuntimeError: If encoding fails after `n_try_fetch` resampling attempts.
+        """
+        assert getattr(self, 'truncated_resample_iterator',
+                       None) is not None, 'Resample data iterator is not initialized'
+
+        template = self.template
+        last_messages = None
+        last_valid_data = None
+
+        for i, data in enumerate(inputs):
+            # Skip samples with the same `messages` as the previous one.
+            # If the last sample was successfully encoded, reuse it.
+            if last_messages is not None and data['messages'] == last_messages:
+                if last_valid_data is not None:
+                    inputs[i] = last_valid_data
+                    continue
+
+            current_data = data
+            n_try = 0
+
+            while True:
+                try:
+                    # Attempt to encode the current sample.
+                    remove_response(current_data['messages'])
+                    template.encode(current_data)
+                    # If successful, store the result and update the last valid data.
+                    inputs[i] = current_data
+                    last_messages = current_data['messages']
+                    last_valid_data = current_data
+                    break
+
+                except Exception as e:
+                    # Encoding failed — attempt to resample a new input.
+                    logger.info(f'Encoding failed for one sample; resampling a new input. {e}')
+                    n_try += 1
+
+                    # Stop if the maximum retry limit is exceeded.
+                    if n_try > n_try_fetch:
+                        raise RuntimeError('Failed to obtain a valid sample after multiple attempts. '
+                                           'Consider increasing `max_length` or adjusting the '
+                                           '`truncation_strategy` to avoid excessive truncation.')
+
+                    # Fetch a new sample from the resampling iterator.
+                    current_data = next(self.truncated_resample_iterator)[0]
+
+        return inputs
