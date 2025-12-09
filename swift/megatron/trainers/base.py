@@ -936,7 +936,7 @@ class BaseMegatronTrainer(ABC):
                         # Unmerge to restore separate LoRA weights for training
                         module.unmerge()
 
-    def save_checkpoint(self, iteration, *_args, **kwargs):
+    def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
         if args.train_type == 'lora' and args.merge_lora:
             self.merge_lora_adapters()
@@ -948,9 +948,17 @@ class BaseMegatronTrainer(ABC):
                 args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
                 if os.path.exists(args_path):
                     shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+            origin_save = args.save
+            args.save = output_dir
+            if not args.no_save_optim or not args.no_save_rng:
+                if args.no_save_optim:
+                    model = []
+                with adapter_state_dict_context(is_peft_format=save_peft_format):
+                    self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+            args.save = origin_save
         else:
             with adapter_state_dict_context(is_peft_format=save_peft_format):
-                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
+                self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
         if args.train_type == 'lora' and args.merge_lora:
             self.unmerge_lora_adapters()
 
