@@ -279,6 +279,12 @@ register_model(
                 ],
                 requires=['transformers>=4.57'],
             ),
+            ModelGroup(
+                [
+                    Model('ZhipuAI/GLM-4.6V-Flash', 'zai-org/GLM-4.6V-Flash'),
+                ],
+                requires=['transformers>=5.0.0.dev'],
+            ),
         ],
         TemplateType.glm4_1v,
         get_model_tokenizer_glm4_1v,
