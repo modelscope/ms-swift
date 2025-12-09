@@ -1,7 +1,7 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 kwargs = {
     'per_device_train_batch_size': 64,
