@@ -282,6 +282,7 @@ register_model(
             ModelGroup(
                 [
                     Model('ZhipuAI/GLM-4.6V-Flash', 'zai-org/GLM-4.6V-Flash'),
+                    Model('ZhipuAI/AutoGLM-Phone-9B', 'zai-org/AutoGLM-Phone-9B')
                 ],
                 requires=['transformers>=5.0.0.dev'],
             ),
