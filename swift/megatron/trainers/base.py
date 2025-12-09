@@ -13,7 +13,7 @@ import torch
 import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
-from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
 from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
@@ -24,7 +24,7 @@ from megatron.core.utils import StragglerDetector
 from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
-from megatron.training.checkpointing import load_checkpoint
+from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
@@ -413,6 +413,33 @@ class BaseMegatronTrainer(ABC):
         finally:
             optimizer._get_param_groups = _get_param_groups
 
+    @staticmethod
+    def _load_iteration(ckpt_dir: str):
+        iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
+        if not os.path.exists(iteration_path):
+            return 0, 0
+        with open(iteration_path, 'r') as f:
+            iteration = f.read()
+
+        common_path = os.path.join(ckpt_dir, f'iter_{5:07d}', 'common.pt')
+        if not os.path.exists(common_path):
+            return iteration, 0
+
+        state_dict = torch.load(common_path)
+        set_checkpoint_version(state_dict.get('checkpoint_version', 0))
+        num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
+        if 'args' in state_dict and not args.finetune:
+            checkpoint_args = state_dict['args']
+            check_checkpoint_args(checkpoint_args)
+            args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
+            args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
+            update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
+            args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
+        else:
+            print_rank_0('could not find arguments in the checkpoint ...')
+
+        return iteration, num_floating_point_operations_so_far
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         args = get_args()
@@ -432,6 +459,14 @@ class BaseMegatronTrainer(ABC):
             return model
 
         self._init_multimodal_full()
+        if args.load_safetensors:
+            if not args.no_load_optim:
+                if args.train_type == 'full' and args.load is None:
+                    args.load = args.ckpt_dir
+                elif args.train_type == 'lora' and args.adapter_load is None:
+                    args.adapter_load = args.ckpt_dir
+            elif not args.finetune and args.ckpt_dir:
+                args.iteration, args.num_floating_point_operations_so_far = self._load_iteration(args.ckpt_dir)
         with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -950,11 +985,10 @@ class BaseMegatronTrainer(ABC):
                     shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
             origin_save = args.save
             args.save = output_dir
-            if not args.no_save_optim or not args.no_save_rng:
-                if args.no_save_optim:
-                    model = []
-                with adapter_state_dict_context(is_peft_format=save_peft_format):
-                    self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+            if args.no_save_optim:
+                model = []
+            with adapter_state_dict_context(is_peft_format=save_peft_format):
+                self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
             args.save = origin_save
         else:
             with adapter_state_dict_context(is_peft_format=save_peft_format):
