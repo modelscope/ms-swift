@@ -766,6 +766,8 @@
 |[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4_1v|glm4_1v|transformers>=4.57|&#x2718;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
 |[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4_5v|glm4_5v|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4_5v|glm4_5v|transformers>=4.56|&#x2718;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
+|[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4_5v|glm4_5v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
+|[ZhipuAI/GLM-4.6V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-FP8)|glm4_5v|glm4_5v|transformers>=5.0.0.dev|&#x2718;|-|[zai-org/GLM-4.6V-FP8](https://huggingface.co/zai-org/GLM-4.6V-FP8)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[ZhipuAI/cogvlm-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat)|cogvlm|cogvlm|transformers<4.42|&#x2718;|-|[zai-org/cogvlm-chat-hf](https://huggingface.co/zai-org/cogvlm-chat-hf)|
