@@ -7,13 +7,14 @@ import megatron.core
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import transformers
 from megatron.core import mpu
 from megatron.training import get_args
 from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
-import transformers
+
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
 from ..tuners import LoraParallelLinear
@@ -698,7 +699,8 @@ class GPTBridge:
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+        if version.parse(
+                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:

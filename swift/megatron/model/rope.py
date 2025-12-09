@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import transformers
@@ -45,7 +45,7 @@ def _compute_default_rope_parameters(
     config: Optional[PretrainedConfig] = None,
     device: Optional['torch.device'] = None,
     seq_len: Optional[int] = None,
-) -> tuple['torch.Tensor', float]:
+) -> Tuple['torch.Tensor', float]:
     """
     Computes the inverse frequencies according to the original RoPE implementation
     Args:
