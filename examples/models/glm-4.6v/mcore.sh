@@ -1,9 +1,13 @@
-# 4 * 66GiB, 6.4s/it
+# 4 * 66GiB, 5s/it
+# Fine-tuning GLM-4.6V requires Transformers 5.0, or you can switch the model to 'ZhipuAI/GLM-4.5V'.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load GLM-4.5V-mcore \
+    --model ZhipuAI/GLM-4.6V \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \

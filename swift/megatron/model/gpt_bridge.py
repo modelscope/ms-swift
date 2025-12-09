@@ -13,7 +13,7 @@ from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
-
+import transformers
 from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
 from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
 from ..tuners import LoraParallelLinear
@@ -691,11 +691,16 @@ class GPTBridge:
         is_expert = ep_rank is not None
         num_local_experts = 1
         hf_grouped = False
+        is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         args = self.args
         if is_expert:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
+        # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
+        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+            hf_grouped = False
+            is_gate_up = False
         if to_mcore or hf_grouped:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
@@ -707,7 +712,7 @@ class GPTBridge:
                 mg_lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name]
                 mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
                              for i in range(num_local_experts)] if is_expert else mg_lora_B.weight
-                if hasattr(hf_mlp, 'gate_up_proj'):
+                if is_gate_up:
                     if is_expert:
                         lora_A = torch.stack([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.lora_A.weight'].load()
@@ -760,7 +765,7 @@ class GPTBridge:
                     assert is_expert and not has_scale_inv, 'not support'  # TODO
                     fc1_bias = [getattr(mg_mlp.linear_fc1, f'bias{i}') for i in range(num_local_experts)]
                 gate_up_scale_inv = None
-                if hasattr(hf_mlp, 'gate_up_proj'):
+                if is_gate_up:
                     if is_expert:
                         if hf_grouped:
                             if 'gate_up_proj_blocks' in hf_state_dict:
@@ -876,7 +881,7 @@ class GPTBridge:
                 lora_B, _ = self._get_weight(
                     lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if lora_A is not None:
-                    if hasattr(hf_mlp, 'gate_up_proj'):
+                    if is_gate_up:
                         self._peft_target_modules.update({'gate_up_proj'})
                         if is_expert:
                             for i in range(num_local_experts):
@@ -923,7 +928,7 @@ class GPTBridge:
                     gate_up_proj_bias, _ = self._get_weight(fc1_bias, 'linear_fc1.bias', is_expert=is_expert)
                 del fc1_weight
                 if gate_up_proj_weight is not None:
-                    if hasattr(hf_mlp, 'gate_up_proj'):
+                    if is_gate_up:
                         if is_expert:
                             if hf_grouped:
                                 gate_up_proj_weight = gate_up_proj_weight.transpose(1, 2)
