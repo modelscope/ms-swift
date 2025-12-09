@@ -1,12 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import math
 import multiprocessing as mp
+import os
+import tempfile
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
+from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
@@ -323,3 +327,27 @@ class AddLengthPreprocessor(EncodePreprocessor):
         encoded = super().preprocess(row)
         row['length'] = encoded['length']
         return row
+
+
+TEMP_DIR_POOL = {}
+
+
+def get_temporary_cache_files_directory(prefix=None):
+    if prefix is None:
+        import datasets.config
+        prefix = datasets.config.TEMP_CACHE_DIR_PREFIX
+    global TEMP_DIR_POOL
+    if prefix in TEMP_DIR_POOL:
+        TEMP_DIR = TEMP_DIR_POOL[prefix]
+    else:
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+        os.makedirs(tmp_dir, exist_ok=True)
+        kwargs = {}
+        parameters = inspect.signature(tempfile.TemporaryDirectory.__init__).parameters
+        if 'ignore_cleanup_errors' in parameters:
+            kwargs['ignore_cleanup_errors'] = True
+        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir, **kwargs)
+        logger.info(f'create tmp_dir: {TEMP_DIR.name}')
+        TEMP_DIR_POOL[prefix] = TEMP_DIR
+
+    return TEMP_DIR.name

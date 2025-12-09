@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from . import template
+from . import templates
 from .base import MaxLengthError, Template
 from .constant import TemplateType
 from .grounding import draw_bbox

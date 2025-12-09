@@ -28,7 +28,6 @@ if TYPE_CHECKING:
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, load_dataset, DATASET_TYPE, sample_dataset, RowPreprocessor, DatasetMeta,
                           HfDataset, SubsetDataset)
-    from .utils import deep_getattr, history_to_messages, messages_to_history, get_temporary_cache_files_directory
     from .base import SwiftPipeline
     from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard
 else:
@@ -75,12 +74,6 @@ else:
             'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset', 'load_dataset',
             'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta', 'HfDataset',
             'SubsetDataset'
-        ],
-        'utils': [
-            'deep_getattr',
-            'history_to_messages',
-            'messages_to_history',
-            'get_temporary_cache_files_directory',
         ],
         'base': ['SwiftPipeline'],
         'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard'],
