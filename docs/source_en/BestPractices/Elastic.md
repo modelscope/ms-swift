@@ -12,9 +12,37 @@ pytorch 2.6.0
 
 ## How to Start
 
-The command format is dlrover-run + DLrover command parameters + Swift startup command + Swift parameters.
-For example
-start.sh:
+The command format is dlrover-run + DLrover command parameters + Swift startup command + Swift parameters.dlrover-run behaves like torchrun for most arguments, except for its custom parameters.
+
+The dlrover-run arguments are as follows:
+
+```
+usage: dlrover-run [-h] [--nnodes NNODES] [--nproc-per-node NPROC_PER_NODE]
+                   [--rdzv-backend RDZV_BACKEND] [--rdzv-endpoint RDZV_ENDPOINT] [--rdzv-id RDZV_ID]
+                   [--rdzv-conf RDZV_CONF] [--standalone] [--max-restarts MAX_RESTARTS]
+                   [--monitor-interval MONITOR_INTERVAL] [--start-method {spawn,fork,forkserver}]
+                   [--role ROLE] [-m] [--no-python] [--run-path] [--log-dir LOG_DIR] [-r REDIRECTS]
+                   [-t TEE] [--local-ranks-filter LOCAL_RANKS_FILTER] [--node-rank NODE_RANK]
+                   [--master-addr MASTER_ADDR] [--master-port MASTER_PORT] [--local-addr LOCAL_ADDR]
+                   [--logs-specs LOGS_SPECS] [--precheck {0,1,2}] [--node_unit NODE_UNIT]
+                   [--auto_config] [--auto_tunning] [--exclude-straggler] [--save_at_breakpoint]
+                   [--accelerator {nvidia.com/gpu,ascend-npu}] [--training_port TRAINING_PORT]
+                   [--switchbox-check] [--box-pairs PAIR [PAIR ...]] [--min-bandwidth MIN_BANDWIDTH]
+                   [--min-channels MIN_CHANNELS] [--numa-affinity] [--network-check]
+                   [--comm-perf-test] [--ucp_device_type UCP_DEVICE_TYPE]
+                   training_script
+
+```
+In elastic training, the parameters  you may pay attention to focus on are:
+
+--nnodes NNODES
+Number of nodes, or the range of nodes in the form <minimum_nodes>:<maximum_nodes>.
+
+--nproc-per-node NPROC_PER_NODE
+Number of processes per node.
+
+Example:
+
 ```bash
 model=your model path
 dataset=your dataset

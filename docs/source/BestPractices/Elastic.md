@@ -13,10 +13,33 @@ pytorch 2.6.0
 
 
 ## 如何启动
+命令组成=dlrover-run +dlrover 命令参数+swift 启动命令 +swift参数,dlrover-run除自定义的参数外，其他参数与torchrun一致；
+dlrover-run 参数如下:
+```
+usage: dlrover-run [-h] [--nnodes NNODES] [--nproc-per-node NPROC_PER_NODE]
+                   [--rdzv-backend RDZV_BACKEND] [--rdzv-endpoint RDZV_ENDPOINT] [--rdzv-id RDZV_ID]
+                   [--rdzv-conf RDZV_CONF] [--standalone] [--max-restarts MAX_RESTARTS]
+                   [--monitor-interval MONITOR_INTERVAL] [--start-method {spawn,fork,forkserver}]
+                   [--role ROLE] [-m] [--no-python] [--run-path] [--log-dir LOG_DIR] [-r REDIRECTS]
+                   [-t TEE] [--local-ranks-filter LOCAL_RANKS_FILTER] [--node-rank NODE_RANK]
+                   [--master-addr MASTER_ADDR] [--master-port MASTER_PORT] [--local-addr LOCAL_ADDR]
+                   [--logs-specs LOGS_SPECS] [--precheck {0,1,2}] [--node_unit NODE_UNIT]
+                   [--auto_config] [--auto_tunning] [--exclude-straggler] [--save_at_breakpoint]
+                   [--accelerator {nvidia.com/gpu,ascend-npu}] [--training_port TRAINING_PORT]
+                   [--switchbox-check] [--box-pairs PAIR [PAIR ...]] [--min-bandwidth MIN_BANDWIDTH]
+                   [--min-channels MIN_CHANNELS] [--numa-affinity] [--network-check]
+                   [--comm-perf-test] [--ucp_device_type UCP_DEVICE_TYPE]
+                   training_script
 
-命令组成=dlrover-run +dlrover 命令参数+swift 启动命令 +swift参数
-示例
-start.sh:
+```
+在弹性训练中我们需要关注的参数为：
+
+--nnodes NNODES       Number of nodes, or the range of nodes in form
+                        <minimum_nodes>:<maximum_nodes>.
+
+--nproc-per-node NPROC_PER_NODE   Number of processes per node.
+示例:
+
 ```bash
 model=your model path
 dataset=your dataset
