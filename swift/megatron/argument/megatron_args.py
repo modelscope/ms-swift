@@ -683,7 +683,8 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.12')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        if 'CUDA_DEVICE_MAX_CONNECTIONS' not in os.environ:
+            os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
