@@ -106,6 +106,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
         self.rollout_importance_sampling_scope = args.rollout_importance_sampling_scope
+        self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
 
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
@@ -146,6 +147,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False  # TODO
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         assert self.use_vllm
         if not is_vllm_available():
@@ -173,16 +180,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = args.vllm_max_num_seqs or self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
-        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
-        logprobs_mode = 'processed_logprobs' if vllm_version_ge_0_10_2 else None
-        if not vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
-                             'please update vLLM to 0.10.2 or later.')
-        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         engine = GRPOVllmEngine(
             self.hf_model_dir,
@@ -200,8 +202,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             seed=self.process_index // self.vllm_tensor_parallel_size,
             disable_cascade_attn=self.args.vllm_disable_cascade_attn,
             load_format='dummy',
+            mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
             template=vllm_template,
             distributed_executor_backend='external_launcher',
+            engine_kwargs=self.args.vllm_engine_kwargs,
             logprobs_mode=logprobs_mode)
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
@@ -1247,7 +1251,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
-        if rollout_per_token_logps is not None and not self.disable_rollout_importance_sampling:
+        should_compute_rollout_metrics = (
+            self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
+        local_has_rollout_per_token_logps = rollout_per_token_logps is not None
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps], group=dp_group)
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,
@@ -1704,18 +1714,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }
-        if is_wandb_available():
-            # when log profiling, the step is different from the step in the training loop
-            # here patch wandb log to pop the step argument
-            from wandb.sdk.wandb_run import Run
-            origin_log = Run.log
-            from functools import wraps
-
-            @wraps(origin_log)
-            def log(self, data: dict[str, Any], step: int | None = None, commit: bool | None = None):
-                return origin_log(self, data, None, commit)
-
-            Run.log = log
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 

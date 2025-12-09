@@ -52,7 +52,8 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
-    support_padding_free = False  # It only takes effect for multimodal models.
+    # For pure text models, the default is True; for multimodal models, the default is False.
+    support_padding_free = None
 
     is_encoder_decoder = False
 
@@ -1023,7 +1024,7 @@ class Template(ProcessorMixin):
         if system is None:
             system = template_meta.default_system
 
-        if tools is not None:
+        if tools:
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
@@ -1176,7 +1177,7 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
+    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
                   truncation_strategy: Literal['left', 'right']):
         placeholder_tokens = torch.tensor(self.placeholder_tokens)
         input_ids_tensor = torch.tensor(input_ids)
@@ -1192,9 +1193,11 @@ class Template(ProcessorMixin):
         input_ids = input_ids_tensor[protected].tolist()
         if labels is not None:
             labels = torch.tensor(labels)[protected].tolist()
-        if loss_mask is not None:
-            loss_mask = torch.tensor(loss_mask)[protected].tolist()
-        return input_ids, labels, loss_mask
+            labels[0] = -100
+        if loss_scale is not None:
+            loss_scale = torch.tensor(loss_scale)[protected].tolist()
+            loss_scale[0] = 0
+        return input_ids, labels, loss_scale
 
     @staticmethod
     def _get_length(input_ids, labels):

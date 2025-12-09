@@ -345,6 +345,7 @@ register_template(
 
 
 class GptTemplate(Template):
+    support_padding_free = False
 
     def _get_gpt_oss_prefix(self):
         today = datetime.now().strftime('%Y-%m-%d')

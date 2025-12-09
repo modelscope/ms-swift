@@ -26,7 +26,7 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest
+from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
@@ -126,11 +126,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.enable_server_multi_turn = False
         self.rollout_enable_lora = False
         self.vllm_use_async_engine = False
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         if not args.use_vllm:
             return
+
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
+
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
+
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
@@ -181,7 +189,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         args = self.args
         model = self.model
         steps_per_generation = args.steps_per_generation if hasattr(args, 'steps_per_generation') else 1
-        max_num_seqs = (args.per_device_train_batch_size * self.vllm_tensor_parallel_size * steps_per_generation)
+        per_rollout_batch_size = args.per_device_train_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = args.vllm_max_num_seqs or (per_rollout_batch_size * steps_per_generation)
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
@@ -209,12 +218,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
-        vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
-        logprobs_mode = 'processed_logprobs' if vllm_version_ge_0_10_2 else None
-        if not vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
-            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
-                             'please update vLLM to 0.10.2 or later.')
-        self.disable_rollout_importance_sampling = not vllm_version_ge_0_10_2
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
@@ -1222,34 +1226,142 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._queue.put(DataCache(results))
 
     @contextmanager
-    def _disable_sp_context(self):
+    def _disable_sp_context(self, template: Optional[Template] = None):
+        """
+        Context manager to temporarily disable Sequence Parallel (SP) for operations
+        like reward model inference that should not use SP.
+
+        All SP-patched functions in ulysses.py check `sequence_parallel.world_size == 1`
+        and automatically bypass SP logic when this condition is true. This makes the
+        disable mechanism simple and robust - we only need to set world_size = 1.
+        """
         from swift.trainers.sequence_parallel import sequence_parallel
-        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
         # Save original SP state
         origin_size = sequence_parallel.world_size
+        origin_extra_kwargs = sequence_parallel.extra_kwargs.copy()
 
-        # Save and restore original attention functions
-        flash_attn_backup = None
-        sdpa_backup = None
-        if 'flash_attention_2_origin' in ALL_ATTENTION_FUNCTIONS:
-            flash_attn_backup = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin']
-        if 'sdpa_origin' in ALL_ATTENTION_FUNCTIONS:
-            sdpa_backup = ALL_ATTENTION_FUNCTIONS['sdpa']
-            ALL_ATTENTION_FUNCTIONS['sdpa'] = ALL_ATTENTION_FUNCTIONS['sdpa_origin']
-
-        # Disable SP
+        # Disable SP by setting world_size = 1
+        # All patched functions will check this and use original implementations
         sequence_parallel.world_size = 1
+        sequence_parallel.extra_kwargs = {}
+
+        # Also update template settings if provided
+        original_padding_free = None
+        original_sequence_parallel_size = None
+        if template is not None:
+            original_padding_free = template.padding_free
+            template.padding_free = False
+            original_sequence_parallel_size = template.sequence_parallel_size
+            template.sequence_parallel_size = 1
 
         try:
             yield
         finally:
             # Restore SP state
             sequence_parallel.world_size = origin_size
+            sequence_parallel.extra_kwargs = origin_extra_kwargs
 
-            # Restore patched attention functions
-            if flash_attn_backup is not None:
-                ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = flash_attn_backup
-            if sdpa_backup is not None:
-                ALL_ATTENTION_FUNCTIONS['sdpa'] = sdpa_backup
+            if template is not None:
+                template.padding_free = original_padding_free
+                template.sequence_parallel_size = original_sequence_parallel_size
+
+    @contextmanager
+    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
+        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
+        max_length = template.max_length
+        template.max_length = None
+        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
+        try:
+            with forward_ctx:
+                yield
+        finally:
+            template.max_length = max_length
+
+    def _prepare_resample_data_iterator(self):
+        """Initialize resample data iterator for truncation_strategy 'raise'('delete').
+
+        When truncation_strategy is 'raise'(delete), encoding may fail for some samples due to
+        exceeding max_length. This iterator provides backup samples for resampling.
+        """
+
+        def cyclic_iter(iterable):
+            while True:
+                for x in iterable:
+                    yield x
+
+        @contextmanager
+        def seed_context():
+            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+            seed = self.args.seed
+            self.args.seed = seed + 1
+            yield
+            self.args.seed = seed
+
+        with seed_context():
+            self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+    @patch_profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until we have enough valid samples.
+
+        This method handles two cases:
+        1. Prompt length exceeds max_length
+        2. Encoding failures (e.g., multimodal data processing errors)
+
+        This implementation uses a pending_samples buffer to accumulate valid samples
+        from each resample batch, avoiding waste when per_device_train_batch_size > 1.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            max_resample_rounds (int, optional): Maximum number of resample rounds.
+                Each round processes samples from pending_samples buffer. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples with the same length as inputs.
+
+        Raises:
+            RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
+        """
+        assert getattr(self, 'truncated_resample_iterator',
+                       None) is not None, 'Resample data iterator is not initialized'
+
+        template = self.template
+        required_count = len(inputs)
+        valid_samples = []
+
+        # Buffer for samples waiting to be validated
+        pending_samples = list(inputs)
+
+        for _ in range(max_resample_rounds + 1):
+            # Calculate how many more samples we need
+            still_needed = required_count - len(valid_samples)
+            if still_needed <= 0:
+                break
+
+            # Ensure pending_samples has enough samples to try
+            while len(pending_samples) < still_needed:
+                # Fetch a new batch of samples (uses the entire batch, not just [0])
+                pending_samples.extend(next(self.truncated_resample_iterator))
+
+            # Try to encode samples from pending_samples until we have enough valid ones
+            while pending_samples and len(valid_samples) < required_count:
+                data = pending_samples.pop(0)
+                try:
+                    remove_response(data['messages'])
+                    template.encode(data)
+                    # Encoding succeeded, add to valid samples
+                    valid_samples.append(data)
+                except Exception as e:
+                    # Encoding failed, skip this sample
+                    logger.info(f'Encoding failed for one sample; will resample. {e}')
+
+        if len(valid_samples) < required_count:
+            raise RuntimeError(
+                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
+                f'Only collected {len(valid_samples)} valid samples. '
+                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
+
+        return valid_samples[:required_count]

@@ -17,7 +17,8 @@ megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
-    --cached_dataset './qwen3_cached_dataset' \
+    --cached_dataset './qwen3_cached_dataset/train' \
+    --cached_val_dataset './qwen3_cached_dataset/val' \
     --train_type lora \
     --lora_rank 32 \
     --lora_alpha 64 \

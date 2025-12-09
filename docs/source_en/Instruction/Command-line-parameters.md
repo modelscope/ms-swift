@@ -55,9 +55,10 @@ The command-line arguments will be introduced in four categories: basic argument
   - Subset: This parameter is only effective when the dataset is a dataset ID or a folder. If subsets were specified during registration and only one exists, that subset is selected by default; otherwise, the default subset `'default'` is used. You can select multiple subsets using `/`, e.g., `<dataset_id>:subset1/subset2`. You can also use `'all'` to select all registered subsets, e.g., `<dataset_id>:all`. See an example of registration [here](https://modelscope.cn/datasets/swift/garbage_competition).
   - Sampling count: By default, the full dataset is used. You can sample the dataset by specifying `#sample_count`. If the sample count is less than the total number of samples, random sampling without replacement is performed. If the sample count exceeds the total, the dataset is repeated `sample_count // total_samples` times, with an additional `sample_count % total_samples` samples randomly sampled. Note: For streaming datasets (`--streaming true`), only sequential sampling is performed. If `--dataset_shuffle false` is set, non-streaming datasets also use sequential sampling.
 - 🔥val_dataset: A list of validation dataset IDs or paths. Default is `[]`.
-- 🔥cached_dataset: Use cached dataset (generated using `swift export --to_cached_dataset true ...` command) to avoid GPU time consumed by the tokenization process during large dataset training/inference. Default is `[]`. For examples, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
+- 🔥cached_dataset: Use cached datasets (generated with the command `swift export --to_cached_dataset true ...`) to avoid GPU time being occupied by tokenization during training/inference on large datasets. This parameter is used to set the folder path(s) of cached training datasets, and defaults to `[]`. For examples, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
   - Note: In "ms-swift>=3.11", cached_dataset only stores an additional length field in the dataset (to avoid storage pressure) and filters out data samples that would cause errors. During training/inference, the `--max_length` parameter is supported for filtering/truncating excessively long data and the `--packing` parameter is supported. The actual data preprocessing process occurs synchronously during training and overlaps with the training process, which does not affect training speed.
   - cached_dataset is compatible between `ms-swift` and `Megatron-SWIFT`, and supports pt/sft/infer/rlhf (requires "ms-swift>=3.11").
+- cached_val_dataset: Folder path(s) for cached validation datasets, default is `[]`.
 - 🔥split_dataset_ratio: The ratio for splitting a validation set from the training set when `val_dataset` is not specified. Default is `0.`, meaning no splitting occurs.
   - Note: In "ms-swift<3.6", the default value was `0.01`.
 - data_seed: Random seed for dataset operations. Default is `42`.
@@ -90,7 +91,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥system: Custom system message field. Accepts either a string or a **path to a .txt file**. Default is `None`, using the default system message defined in the registered template.
   - Note: In terms of priority, the `system` field from the dataset takes precedence, followed by `--system`, and finally the `default_system` set in the registered template.
 - 🔥max_length: Maximum token length after `tokenizer.encode` for a single data sample (to prevent OOM during training). Samples exceeding this limit are handled according to `truncation_strategy`. Default is `None`, meaning it's set to the model’s maximum supported sequence length (`max_model_len`).
-  - In PPO, GRPO, and inference scenarios, `max_length` refers to `max_prompt_length`.
+  - In PPO, GRPO, GKD and inference scenarios, `max_length` refers to `max_prompt_length`.
 - truncation_strategy: How to handle samples whose tokens exceed `max_length`. Supports 'delete', 'left', 'right', and 'split', which represent deleting, left truncation, right truncation, and splitting into multiple data samples, respectively. The default is 'delete'.
   - Note: `--truncation_strategy split` is only supported during pretraining, i.e., in `swift/megatron pt` scenarios, and requires "ms-swift>=3.11". This strategy will split oversized fields into multiple data samples to avoid token waste. (This feature is not compatible with cached_dataset)
   - Note: For multimodal models, if `truncation_strategy` is set to `'left'` or `'right'` during training, **ms-swift preserves all image tokens and other modality-specific tokens**, which may lead to OOM.
@@ -526,6 +527,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
   - Note: You can perform inference on the dataset using the teacher model in advance (accelerated by inference engines such as vLLM, SGLang, or lmdeploy), and set `seq_kd` to False during training. Alternatively, you can set `seq_kd` to True, which will use the teacher model to generate sequences during training (ensuring different generated data across multiple epochs, but at a slower efficiency).
 - offload_teacher_model: Whether to offload the teacher model to save GPU memory. If set to True, the teacher model will be loaded only during generate/logps computation. Default: False.
+- truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
   - Log vLLM rollout results only.
@@ -576,7 +578,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
-- truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
+- truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
@@ -631,6 +633,7 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - log_entropy: Logs the entropy values during training. The default is False. For more information, refer to the [documentation](./GRPO/GetStarted/GRPO.md#logged-metrics).
 - rollout_importance_sampling_mode: Training-inference mismatch correction mode. Options are `token_truncate`, `token_mask`, `sequence_truncate`, `sequence_mask`. Default is None (disabled). For details, refer to the [documentation](./GRPO/AdvancedResearch/training_inference_mismatch.md).
 - rollout_importance_sampling_threshold: Threshold for importance sampling weights, used for truncating or masking extreme weights. Default is 2.0.
+- log_rollout_offpolicy_metrics: Whether to log training-inference mismatch diagnostic metrics (KL, PPL, χ², etc.) when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set, metrics are always logged. Default is False.
 
 
 ##### Reward function parameters
@@ -731,7 +734,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
 - to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset). For more information, please refer to cached_dataset.
-  - Note: cached_dataset requires the training set and validation set to be distinguished in advance. You can specify the validation set content through `--split_dataset_ratio` or `--val_dataset`.
+  - Note: You can specify the validation set content through `--split_dataset_ratio` or `--val_dataset`.
 - template_mode: Used to support the `cached_dataset` feature for `swift rlhf` training. This parameter only takes effect when `--to_cached_dataset true` is set. Available options include: 'train', 'rlhf', and 'kto'. Among them, `swift pt/sft` uses 'train', `swift rlhf --rlhf_type kto` uses 'kto', and other rlhf algorithms use 'rlhf'. Note: Currently, 'gkd', 'ppo', and 'grpo' algorithms do not support the `cached_dataset` feature. Default is 'train'.
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.

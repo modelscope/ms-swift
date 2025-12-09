@@ -154,14 +154,15 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
                 public_lengths = torch.cat([public_lengths, public_lengths], dim=0)
 
-                seq_len = per_token_logps.size(1)
-                text_position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
+                # Use loss_mask to compute position within completion
+                # cumsum gives position within completion (1-indexed), subtract 1 to get 0-indexed
+                completion_position_ids = (loss_mask.cumsum(dim=1) - 1) * loss_mask
 
-                ld_mask = text_position_ids < public_lengths.unsqueeze(1)
-                mask = text_position_ids < completion_lengths.unsqueeze(1)
-
-                front_mask = (ld_mask & mask).float()
-                rear_mask = (~ld_mask & mask).float()
+                ld_mask = completion_position_ids < public_lengths.unsqueeze(1)
+                # front_mask: positions within public_lengths (shared prefix)
+                # rear_mask: positions beyond public_lengths (length-dependent suffix)
+                front_mask = (ld_mask & loss_mask).float()
+                rear_mask = (~ld_mask & loss_mask).float()
                 front_logps = (per_token_logps * front_mask).sum(dim=1)
                 rear_logps = (per_token_logps * rear_mask).sum(dim=1)
 

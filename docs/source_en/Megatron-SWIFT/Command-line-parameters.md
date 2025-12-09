@@ -35,7 +35,8 @@
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: This parameter defaults to False during RLHF training or when `task_type` is not equal to 'causal_lm'.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
-  - **Note: The recommended `flash_attn` version is 2.7.4.post1/2.8.1**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`.
+  - **Note: The recommended `flash_attn` version is 2.7.4.post1/2.8.1**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`. For the ViT part of a multimodal model to use FlashAttention-3, please set `--attn_impl flash_attention_3`.
+  - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
   - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
@@ -136,7 +137,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - log_throughput: Log the theoretical throughput per GPU. Defaults to False.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
-- tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
+- tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
 - no_log_learning_rate_to_tensorboard: Do not log learning rate to TensorBoard. Default is False.
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
@@ -158,6 +159,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
 - fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 - fp8_param_gather: Keep the compute parameter in FP8 (do not use any other intermediate dtype) and perform the parameter all-gather in FP8 format. Default is False.
+  - Tips: Set this to True if you want to export weights in FP8 format; otherwise, set it to False.
 
 
 **Mixed Precision Parameters**:
@@ -408,6 +410,9 @@ In addition to inheriting the training parameters, the following parameters are 
 - delta: Bilateral GRPO upper bound clipping value from the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291). If set, it is recommended to be greater than 1 + epsilon. Default is None.
 - importance_sampling_level: Controls importance sampling ratio calculation. Options are `token` and `sequence`. In `token` mode, the original log probability ratio for each token is preserved. In `sequence` mode, the log probability ratios of all valid tokens in the sequence are averaged. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level calculation to stabilize training. Default is `token`.
 - scale_rewards: Specifies the reward scaling strategy. Options include `group` (scale by within-group standard deviation), `batch` (scale by batch-wide standard deviation), and `none` (no scaling). In ms-swift < 3.10, this parameter is boolean, where `true` corresponds to `group` and `false` corresponds to `none`. The default value is bound to `advantage_estimator`: `grpo` corresponds to `group`, `rloo` corresponds to `none`, and `reinforce_plus_plus` corresponds to `batch`.
+- rollout_importance_sampling_mode: Training-inference mismatch correction mode. Options are `token_truncate`, `token_mask`, `sequence_truncate`, `sequence_mask`. Default is None (disabled). For details, refer to the [documentation](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md).
+- rollout_importance_sampling_threshold: Threshold for importance sampling weights, used for truncating or masking extreme weights. Default is 2.0.
+- log_rollout_offpolicy_metrics: Whether to log training-inference mismatch diagnostic metrics (KL, PPL, χ², etc.) when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set, metrics are always logged. Default is False.
 
 Built-in reward function parameters refer to the [documentation](../Instruction/Command-line-parameters.md#reward-function-parameters).
 

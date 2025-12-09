@@ -66,6 +66,9 @@ class PeftTuner(Tuner):
         safe_serialization: bool = True,
         **kwargs,
     ) -> None:
+        if isinstance(model, PeftModel):
+            if 'selected_adapters' not in kwargs:
+                kwargs['selected_adapters'] = ['default']
         model.save_pretrained(save_directory, safe_serialization=safe_serialization, **kwargs)
 
     @staticmethod

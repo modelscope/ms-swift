@@ -69,6 +69,10 @@ class RLHFMegatronArgumentsMixin:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_disable_cascade_attn: bool = False
+    vllm_max_num_seqs: Optional[int] = None
+    vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_engine_kwargs: Optional[Dict[str, Any]] = None
+
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
     offload_model: bool = False
@@ -117,6 +121,7 @@ class RLHFMegatronArgumentsMixin:
     # 'all': Apply IS correction to all tokens (default)
     # 'neg_adv': Only apply IS correction to tokens with negative advantage (advantage < 0)
     rollout_importance_sampling_scope: Literal['all', 'neg_adv'] = 'all'
+    log_rollout_offpolicy_metrics: bool = False
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
@@ -165,6 +170,9 @@ class RLHFMegatronArgumentsMixin:
             self._init_kto()
         if self.rlhf_type == 'grpo':
             self._init_grpo()
+            if self.vllm_limit_mm_per_prompt is not None:
+                self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+            self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def _init_grpo(self):
 
@@ -680,11 +688,15 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.12')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
+        if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
+                                                       or self.decoder_last_pipeline_num_layers is not None):
+            raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
+                             'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self._patch_megatron_timeout(self.distributed_timeout_minutes)

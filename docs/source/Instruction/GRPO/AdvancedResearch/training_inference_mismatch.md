@@ -187,6 +187,16 @@ ESS 值越大（接近1），表示重要性采样权重分布越均匀，样本
 
 ## 使用方式
 
+### 仅记录诊断指标
+
+如果只想监控训推不一致的程度，而不启用重要性采样校正，可以设置：
+
+```
+--log_rollout_offpolicy_metrics true
+```
+
+这将记录上述所有诊断指标（KL、PPL、χ² 等），但不会对损失函数进行任何修正。
+
 ### 启用重要性采样校正
 
 在GRPO训练中，设置以下参数启用校正机制：
@@ -196,6 +206,7 @@ ESS 值越大（接近1），表示重要性采样权重分布越均匀，样本
 --rollout_importance_sampling_threshold （默认为2）
 ```
 
+当设置了 `rollout_importance_sampling_mode` 时，诊断指标会自动记录，无需额外设置 `log_rollout_offpolicy_metrics`。
 
 参考资料
 

@@ -197,18 +197,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self._generate_and_score_completions(generation_batch)
         return inputs
 
-    @contextmanager
-    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
-        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
-        max_length = template.max_length
-        template.max_length = None
-        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
-        try:
-            with forward_ctx:
-                yield
-        finally:
-            template.max_length = max_length
-
     def _generate_completions(self, inputs: DataType) -> DataType:
         # add prompt ids and system prompts
         inputs = self._preprocess_inputs(inputs)
@@ -340,7 +328,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = [inp['messages'][-1]['content'] for inp in inputs]
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with patch_profiling_context(self, reward_func_name):
+            template = None if not hasattr(reward_model_plugin, 'template') else reward_model_plugin.template
+            with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
                 if self.enable_server_multi_turn:
@@ -1052,11 +1041,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
-        if inputs.get('rollout_per_token_logps') is not None and not self.disable_rollout_importance_sampling:
+        should_compute_rollout_metrics = (
+            self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
+
+        local_has_rollout_per_token_logps = inputs.get('rollout_per_token_logps') is not None
+        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps])
+
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
             rollout_per_token_logps = inputs['rollout_per_token_logps']
 
-            # Always compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
-            # This helps diagnose whether rollout correction is needed
+            # Compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
                                                                                  rollout_per_token_logps,
                                                                                  completion_mask)
@@ -1786,66 +1781,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
 
-    @patch_profiling_decorator
-    def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
-        """
-        Attempt to encode each input using the template. If encoding fails,
-        resample from a backup iterator until successful or until the maximum
-        number of retries is reached.
-
-        Args:
-            inputs (DataType): A list of input data samples, each containing a `messages` field.
-            n_try_fetch (int, optional): Maximum number of retries to fetch a new sample
-                when encoding fails. Defaults to 10.
-
-        Returns:
-            DataType: A list of successfully encoded input samples.
-
-        Raises:
-            RuntimeError: If encoding fails after `n_try_fetch` resampling attempts.
-        """
-        template = self.template
-        last_messages = None
-        last_valid_data = None
-
-        for i, data in enumerate(inputs):
-            # Skip samples with the same `messages` as the previous one.
-            # If the last sample was successfully encoded, reuse it.
-            if last_messages is not None and data['messages'] == last_messages:
-                if last_valid_data is not None:
-                    inputs[i] = last_valid_data
-                    continue
-
-            current_data = data
-            n_try = 0
-
-            while True:
-                try:
-                    # Attempt to encode the current sample.
-                    remove_response(current_data['messages'])
-                    template.encode(current_data)
-                    # If successful, store the result and update the last valid data.
-                    inputs[i] = current_data
-                    last_messages = current_data['messages']
-                    last_valid_data = current_data
-                    break
-
-                except Exception as e:
-                    # Encoding failed — attempt to resample a new input.
-                    logger.info(f'Encoding failed for one sample; resampling a new input. {e}')
-                    n_try += 1
-
-                    # Stop if the maximum retry limit is exceeded.
-                    if n_try > n_try_fetch:
-                        raise RuntimeError('Failed to obtain a valid sample after multiple attempts. '
-                                           'Consider increasing `max_length` or adjusting the '
-                                           '`truncation_strategy` to avoid excessive truncation.')
-
-                    # Fetch a new sample from the resampling iterator.
-                    current_data = next(self.truncated_resample_iterator)[0]
-
-        return inputs
-
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         mode = 'train' if self.model.training else 'eval'
         metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items()}  # average the metrics
@@ -2124,7 +2059,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+
         self.rollout_importance_sampling_scope = args.rollout_importance_sampling_scope
+        self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408

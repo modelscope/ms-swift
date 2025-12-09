@@ -1,3 +1,4 @@
+# mcore>=0.15
 # 8 * 80GiB 4s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 OMP_NUM_THREADS=14 \

@@ -1017,7 +1017,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = per_token_loss_func(outputs, labels)
 
         if trainer.args.chord_enable_phi_function:
-            per_token_probs = torch.exp(-chord_sft_loss)
+            per_token_probs = torch.exp(-chord_sft_loss.detach())
             phi = per_token_probs * (1 - per_token_probs)
             chord_sft_loss *= phi
 

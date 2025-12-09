@@ -5,6 +5,7 @@ import random
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
+from enum import Enum
 from typing import Dict, Optional, Union
 
 import torch
@@ -39,6 +40,12 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
+
+
+class DataSource(str, Enum):
+    STUDENT = 'student'  # On-policy: student model generates responses
+    TEACHER = 'teacher'  # Sequential KD: teacher model generates responses
+    DATASET = 'dataset'  # Off-policy: use dataset responses
 
 
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
@@ -95,6 +102,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
         self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
+        # Initialize resample data iterator for truncation_strategy 'raise'('delete')
+        if self.template.truncation_strategy == 'raise':
+            self._prepare_resample_data_iterator()
+
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
@@ -134,6 +145,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Get data source: DataSource.STUDENT, DataSource.TEACHER, or DataSource.DATASET
+        data_source = inputs.pop('_data_source', DataSource.DATASET)
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
@@ -237,8 +250,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             if self._trl_version_gte_0_24:
                 loss /= shifted_student_logits.shape[1]
-            # Add SFT loss if enabled (common for both paths)
-            if self.args.sft_alpha > 0:
+            # Add SFT loss if enabled (skip for student-generated responses)
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
@@ -286,6 +299,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         with patch_profiling_context(self, 'get_completions'):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
+                data_source = DataSource.STUDENT
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 if args.use_vllm:
                     processed_inputs = self._preprocess_inputs(inputs)
                     generated_inputs = self._fast_infer(processed_inputs)
@@ -296,7 +313,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         valid_completions = gather_object(completions)
                         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
                         self._logs['completion'].extend(valid_completions)
-                    inputs = self._prepare_batch_inputs(generated_inputs)
+                    with self._template_context(self.template):
+                        inputs = self._prepare_batch_inputs(generated_inputs)
                 else:
                     inputs = self._prepare_batch_inputs(inputs)
                     with unwrap_model_for_generation(
@@ -311,6 +329,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     inputs['labels'] = new_labels
 
             elif self.seq_kd:
+                # Sequential KD: teacher model generates responses
+                data_source = DataSource.TEACHER
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 inputs = self._prepare_batch_inputs(inputs)
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
                 with load_context, unwrap_model_for_generation(
@@ -324,7 +347,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 inputs['labels'] = new_labels
 
             else:
+                # Off-policy: use dataset responses
+                data_source = DataSource.DATASET
                 inputs = self._prepare_batch_inputs(inputs)
+
+            # Mark data source for downstream processing (e.g., conditional SFT loss)
+            inputs['_data_source'] = data_source
 
         with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
