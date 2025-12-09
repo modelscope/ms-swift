@@ -1,5 +1,5 @@
 NPROC_PER_NODE=2 \
-ASCEND_RT_VISIBLE_DEVICESVISIBLE_DEVICES=0,1 \
+ASCEND_RT_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --load_safetensors true \
