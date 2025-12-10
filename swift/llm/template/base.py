@@ -92,7 +92,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -538,7 +538,7 @@ class Template(ProcessorMixin):
             if chosen.channel is not None:
                 encoded['channel'] = chosen.channel
 
-            lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
+            lengths = []
             for key in list(encoded.keys()):
                 if encoded[key] is None:
                     encoded.pop(key)
@@ -549,10 +549,8 @@ class Template(ProcessorMixin):
                     elif isinstance(value, (tuple, list)):
                         lengths += value
             if return_length:
-                if self.task_type in {'reranker', 'generative_reranker'}:
-                    encoded['length'] = lengths
-                else:
-                    encoded['length'] = sum(lengths)
+                assert len(lengths) != 0, f'batched: {batched}'
+                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
             else:
                 encoded.pop('length', None)
             if return_template_inputs:
@@ -567,12 +565,10 @@ class Template(ProcessorMixin):
         length = []
         for r in row:
             keys.update(r.keys())
-            length.append(r['length'])
+            length.append(sum(r['length']) if isinstance(r['length'], list) else r['length'])
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
-            elif key == 'length':
-                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
