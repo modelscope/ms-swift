@@ -1469,6 +1469,7 @@ class GPTBridge:
                     model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
+        dist.barrier()  # Ensure all weights are saved completely
 
 
 class MultimodalGPTBridge(GPTBridge):
