@@ -230,12 +230,6 @@ Where:
 - $\pi_{\text{old}}$ preferentially uses `rollout_per_token_logps` (logprobs from rollout/behavior policy); if unavailable, falls back to `old_per_token_logps`
 - $\tau$ is the user-set threshold (`--off_policy_sequence_mask_delta`, default None = disabled)
 
-**Usage**
-
-```bash
---off_policy_sequence_mask_delta 0.5
-```
-
 ## References
 
 1. https://yingru.notion.site/When-Speed-Kills-Stability-Demystifying-RL-Collapse-from-the-Training-Inference-Mismatch-271211a558b7808d8b12d403fd15edda

@@ -230,11 +230,6 @@ $$
 - $\pi_{\text{old}}$ 优先使用 `rollout_per_token_logps`（rollout/行为策略的 logprobs），若不存在则使用 `old_per_token_logps`
 - $\tau$ 是用户设置的阈值（`--off_policy_sequence_mask_delta`，默认 None 表示关闭）
 
-**使用方式**
-
-```bash
---off_policy_sequence_mask_delta 0.5
-```
 
 参考资料
 
