@@ -208,8 +208,37 @@ ESS 值越大（接近1），表示重要性采样权重分布越均匀，样本
 
 当设置了 `rollout_importance_sampling_mode` 时，诊断指标会自动记录，无需额外设置 `log_rollout_offpolicy_metrics`。
 
+## Off-Policy Sequence Masking
+
+除了重要性采样校正外，还可以使用 **Off-Policy Sequence Masking** 技术来处理训推不一致问题。该技术来自 [DeepSeek-V3.2 论文](https://arxiv.org/abs/2512.02556)。
+
+### 原理
+
+Off-Policy Sequence Masking 的核心思想是：当当前策略相对于旧策略（rollout 或 old policy）发生较大偏移时，直接丢弃（mask）该序列，不参与损失计算。这种方法特别针对**优势为负的序列**，因为这些序列在策略偏移较大时更容易导致训练不稳定。
+
+具体来说，对于每个序列，计算：
+
+$$
+\delta_i = \frac{1}{|y_i|} \sum_{t=1}^{|y_i|} \bigl( \log \pi_{\text{old}}(y_{i,t}|x, y_{i,<t}) - \log \pi_\theta(y_{i,t}|x, y_{i,<t}) \bigr)
+$$
+
+当满足以下条件时，序列 $i$ 将被 mask 掉（平均只在 completion token 上计算，即 `completion_mask=1` 的位置）：
+1. $\delta_i > \tau$
+2. **且** $\hat{A}_i < 0$
+
+其中：
+- $\pi_{\text{old}}$ 优先使用 `rollout_per_token_logps`（rollout/行为策略的 logprobs），若不存在则使用 `old_per_token_logps`
+- $\tau$ 是用户设置的阈值（`--off_policy_sequence_mask_delta`，默认 None 表示关闭）
+
+**使用方式**
+
+```bash
+--off_policy_sequence_mask_delta 0.5
+```
+
 参考资料
 
 1. https://yingru.notion.site/When-Speed-Kills-Stability-Demystifying-RL-Collapse-from-the-Training-Inference-Mismatch-271211a558b7808d8b12d403fd15edda
 2. https://fengyao.notion.site/off-policy-rl
 3. https://github.com/volcengine/verl/blob/main/verl/trainer/ppo/rollout_corr_helper.py
+4. [DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models](https://arxiv.org/abs/2512.02556)

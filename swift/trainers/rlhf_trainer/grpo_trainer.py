@@ -1069,9 +1069,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
 
-                # Apply scope-based masking after metrics computation
-                rollout_is_weights = self._apply_rollout_is_scope(rollout_is_weights, advantages)
-
                 # Store IS weights for loss computation
                 inputs['rollout_is_weights'] = rollout_is_weights
             else:
@@ -1126,6 +1123,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if inputs.get('rollout_is_weights') is not None and self.rollout_importance_sampling_mode is not None:
             rollout_is_weights = inputs['rollout_is_weights']
             per_token_loss = per_token_loss * rollout_is_weights
+
+        # Apply off-policy sequence masking if enabled
+        # Mask out sequences where delta > threshold AND advantage < 0
+        if self.off_policy_sequence_mask_delta is not None:
+            rollout_per_token_logps = inputs.get('rollout_per_token_logps')
+            old_policy_per_token_logps = rollout_per_token_logps if rollout_per_token_logps is not None \
+                else old_per_token_logps
+            off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
+                                                                         completion_mask, advantages)
+            # Expand sequence mask to token level and apply to completion_mask
+            off_policy_seq_mask_expanded = off_policy_seq_mask.unsqueeze(-1).expand_as(completion_mask)
+            completion_mask = completion_mask & off_policy_seq_mask_expanded
 
         if self.loss_type in ['grpo', 'sapo']:
             # completion_mask is now always [batch_size, seq_len] after pad_back
@@ -2060,9 +2069,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
-
-        self.rollout_importance_sampling_scope = args.rollout_importance_sampling_scope
         self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
+
+        # Off-Policy Sequence Masking
+        self.off_policy_sequence_mask_delta = args.off_policy_sequence_mask_delta
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
@@ -2248,31 +2258,47 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return is_weights
 
-    def _apply_rollout_is_scope(self,
-                                is_weights: torch.Tensor,
-                                advantages: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def _compute_off_policy_sequence_mask(
+        self,
+        per_token_logps: torch.Tensor,
+        old_policy_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+        advantages: torch.Tensor,
+    ) -> torch.Tensor:
         """
-        Apply scope-based masking to IS weights.
+        Compute off-policy sequence mask to filter out sequences that deviate too much
+        from the old/rollout policy AND have negative advantage.
 
-        This is separated from _apply_rollout_importance_sampling to ensure
-        metrics computation uses raw IS weights without scope modification.
+        This implements the Off-Policy Sequence Masking technique from DeepSeek-V3.2
+        (https://arxiv.org/abs/2512.02556). The mask filters sequences where:
+        1. mean(old_policy_logps - current_logps) > off_policy_sequence_mask_delta
+        2. AND advantage < 0
 
         Args:
-            is_weights: Importance sampling weights, shape [B, T]
-            advantages: Advantage values per sample, shape [B]. Used when
-                rollout_importance_sampling_scope='neg_adv' to only apply
-                IS correction to samples with negative advantage.
+            per_token_logps: Log probs from current policy, shape [B, T]
+            old_policy_per_token_logps: Log probs from old/rollout policy, shape [B, T].
+                Uses rollout_per_token_logps if available, otherwise old_per_token_logps.
+            completion_mask: Boolean mask for completion tokens, shape [B, T]
+            advantages: Advantage values per sample, shape [B]
 
         Returns:
-            IS weights with scope-based masking applied
+            Sequence mask, shape [B], True = keep sequence, False = mask out
         """
-        if self.rollout_importance_sampling_scope == 'neg_adv' and advantages is not None:
-            # advantages shape: [B], is_weights shape: [B, T]
-            # For samples with advantage >= 0, set is_weights to 1.0 (no correction)
-            positive_advantage_mask = (advantages >= 0).unsqueeze(-1)  # [B, 1]
-            is_weights = torch.where(positive_advantage_mask, torch.ones_like(is_weights), is_weights)
+        # Compute per-token log ratio: log(π_old / π_current)
+        # Following DeepSeek-V3.2: positive delta means old policy assigns higher prob
+        log_ratio = old_policy_per_token_logps - per_token_logps
 
-        return is_weights
+        # Compute sequence-level mean of log ratio
+        seq_mean_log_ratio = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
+        # Mask condition: delta > threshold AND advantage < 0
+        # Keep sequences that do NOT meet this condition
+        exceeds_threshold = seq_mean_log_ratio > self.off_policy_sequence_mask_delta
+        negative_advantage = advantages < 0
+        should_mask = exceeds_threshold & negative_advantage
+
+        # Return mask: True = keep, False = mask out
+        return ~should_mask
 
     def _compute_rollout_offpolicy_metrics(
         self,
