@@ -607,6 +607,11 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
     log_rollout_offpolicy_metrics: bool = False  # Log off-policy metrics even when IS correction is disabled
+    # Off-Policy Sequence Masking: mask out sequences that deviate too much from rollout policy
+    # If set, compute mean(rollout_per_token_logps - per_token_logps) per sequence,
+    # and mask sequences where this delta > threshold AND advantage < 0
+    # Falls back to old_per_token_logps if rollout_per_token_logps is not available
+    off_policy_sequence_mask_delta: Optional[float] = None
 
 
 @dataclass
