@@ -81,7 +81,6 @@ class MegatronSft(SwiftSft):
                 images_dir = os.path.join(args.save, 'images')
                 logger.info(f'images_dir: {images_dir}')
                 plot_images(images_dir, args.tensorboard_dir)
-            dist.barrier()  # Ensure all weights are saved completely
 
 
 def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):

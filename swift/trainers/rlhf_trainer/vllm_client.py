@@ -43,7 +43,7 @@ class VLLMClient:
                  base_urls: Optional[List[str]] = None,
                  hosts: List[str] = ['0.0.0.0'],
                  server_ports: List[int] = [8000],
-                 group_ports: Union[int, List[int]] = 51216,
+                 group_ports: Optional[Union[int, List[int]]] = None,
                  connection_timeout: float = 240.0):
         if not is_vllm_available():
             raise ImportError('vLLM is not installed. Please install it with `pip install vllm`.')
@@ -65,6 +65,9 @@ class VLLMClient:
             self.hosts = hosts
 
         self.num_servers = len(self.base_urls)
+
+        if group_ports is None:
+            group_ports = [51216 + i for i in range(self.num_servers)]
 
         self.sessions = [requests.Session() for _ in range(self.num_servers)]
 

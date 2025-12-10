@@ -190,7 +190,7 @@ class RerankerTrainer(Trainer):
                     labels,
                     num_items_in_batch=num_items_in_batch,
                     trainer=self,
-                    attention_mask=inputs['attention_mask'])
+                    attention_mask=inputs.get('attention_mask'))
             else:
                 # Fallback to model's loss
                 loss = outputs.loss

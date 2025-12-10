@@ -102,6 +102,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
         self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
+        # Initialize resample data iterator for truncation_strategy 'raise'('delete')
+        if self.template.truncation_strategy == 'raise':
+            self._prepare_resample_data_iterator()
+
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
@@ -296,6 +300,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
                 data_source = DataSource.STUDENT
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 if args.use_vllm:
                     processed_inputs = self._preprocess_inputs(inputs)
                     generated_inputs = self._fast_infer(processed_inputs)
@@ -306,7 +313,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         valid_completions = gather_object(completions)
                         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
                         self._logs['completion'].extend(valid_completions)
-                    inputs = self._prepare_batch_inputs(generated_inputs)
+                    with self._template_context(self.template):
+                        inputs = self._prepare_batch_inputs(generated_inputs)
                 else:
                     inputs = self._prepare_batch_inputs(inputs)
                     with unwrap_model_for_generation(
@@ -323,6 +331,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             elif self.seq_kd:
                 # Sequential KD: teacher model generates responses
                 data_source = DataSource.TEACHER
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 inputs = self._prepare_batch_inputs(inputs)
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
                 with load_context, unwrap_model_for_generation(
