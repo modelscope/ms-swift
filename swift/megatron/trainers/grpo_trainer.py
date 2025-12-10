@@ -1269,7 +1269,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
 
                 # Compute IS-specific metrics
-                # Use raw IS weights before scope modification for accurate metrics
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
 
