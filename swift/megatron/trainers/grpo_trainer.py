@@ -1855,7 +1855,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         This implements the Off-Policy Sequence Masking technique from DeepSeek-V3.2
         (https://arxiv.org/abs/2512.02556). The mask filters sequences where:
-        1. mean(old_policy_logps - current_logps) > off_policy_sequence_mask_delta
+        1. mean(old_policy_logps - policy_logps) > off_policy_sequence_mask_delta
         2. AND advantage < 0
 
         Args:
