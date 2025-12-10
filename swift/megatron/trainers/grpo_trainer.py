@@ -2036,3 +2036,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
             ]
         }
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        config = {
+            'dynamic_sample': str(self.args.dynamic_sample),
+            'importance_sampling_level': str(self.args.importance_sampling_level),
+            'advantage_estimator': str(self.args.advantage_estimator),
+            'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
+            'rollout_importance_sampling':
+            'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
+            'loss_type': str(self.args.loss_type)
+        }
+        return config

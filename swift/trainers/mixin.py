@@ -74,6 +74,7 @@ class SwiftMixin:
             args.dataloader_num_workers = 1
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
+        self.template = template
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
@@ -99,7 +100,6 @@ class SwiftMixin:
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.template = template
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
@@ -163,6 +163,15 @@ class SwiftMixin:
         Returns:
             Dict[str, str]: Configuration parameters as key-value pairs.
         """
+        if self.__class__.__name__ == 'Seq2SeqTrainer':
+            if not self.template.use_chat_template:
+                return {
+                    'seq2seq_mode': 'pt',
+                }
+            else:
+                return {
+                    'seq2seq_mode': 'sft',
+                }
         return {}
 
     @property

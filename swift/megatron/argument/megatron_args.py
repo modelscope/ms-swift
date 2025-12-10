@@ -301,6 +301,7 @@ class MegatronTunerMixin:
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
+    check_model: bool = True
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
