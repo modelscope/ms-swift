@@ -988,18 +988,15 @@ class BaseMegatronTrainer(ABC):
     def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
         output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+        os.makedirs(output_dir, exist_ok=True)
         origin_save = args.save
         args.save = output_dir
         self._copy_args(output_dir)
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
-        if args.save_safetensors:
-            if args.no_save_optim and not save_peft_format:
-                model = []
-            with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
-                self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
-        else:
-            with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
-                self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+        if args.save_safetensors and args.no_save_optim and not save_peft_format:
+            model = []
+        with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
+            self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
         args.save = origin_save
         # safetensors
         if args.save_safetensors:
