@@ -68,12 +68,12 @@ class BaseMegatronTrainer(ABC):
         if args.check_model and hasattr(args, 'model_info') and hasattr(args.model_info, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
                 config_info = self._collect_config_info()
-                config_info = {
+                config_info.update({
                     'invoked_by': 'local_trainer',
                     'third_party': 'swift',
                     'trainer_class': self.__class__.__name__,
                     'trainer_backend': 'megatron',
-                }
+                })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
         def _get_mean_metric():
