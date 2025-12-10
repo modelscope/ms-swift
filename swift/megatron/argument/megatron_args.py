@@ -714,8 +714,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.position_embedding_type is None:
             self.position_embedding_type = 'rope'
-        if self.load_safetensors is None:
-            self.load_safetensors = self.load is None
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
         if self.adapters or self.adapter_load or self.ref_adapter_load:

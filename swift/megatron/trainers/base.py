@@ -413,8 +413,16 @@ class BaseMegatronTrainer(ABC):
         finally:
             optimizer._get_param_groups = _get_param_groups
 
-    @staticmethod
-    def _load_iteration(ckpt_dir: str):
+    def _load_iteration(self):
+        args = self.args
+        ckpt_dir = None
+        if args.train_type == 'full':
+            ckpt_dir = args.model
+        elif args.train_type == 'lora' and args.adapters:
+            ckpt_dir = args.adapters[0]
+        if ckpt_dir is None:
+            return 0, 0
+        logger.infer(f'checkpoint_dir: {ckpt_dir}')
         iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
         if not os.path.exists(iteration_path):
             return 0, 0
@@ -446,27 +454,26 @@ class BaseMegatronTrainer(ABC):
 
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
-            if args.load_safetensors:
+            if args.load is None:
                 self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.load_safetensors and args.train_type == 'lora':
-                for adapters, name in [(args.adapters, 'default'), (args.ref_adapters, 'ref_adapter')]:
-                    if adapters:
-                        assert len(adapters) == 1, 'Currently only support one adapter.'
-                        self.bridge.load_weights(model, adapters[0], is_peft_format=True, adapter_name=name)
+            if args.train_type == 'lora':
+                if args.adapters and args.adapter_load is None:
+                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
+                if args.ref_adapters and args.ref_adapter_load is None:
+                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(
+                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+
             self.peft_models.append(peft_model)
             return model
 
         self._init_multimodal_full()
-        if args.load_safetensors:
-            if not args.no_load_optim:
-                if args.train_type == 'full' and args.load is None:
-                    args.load = args.ckpt_dir
-                elif args.train_type == 'lora' and args.adapter_load is None:
-                    args.adapter_load = args.ckpt_dir
-            elif not args.finetune and args.ckpt_dir:
-                args.iteration, args.num_floating_point_operations_so_far = self._load_iteration(args.ckpt_dir)
+        # read iteration
+        if not args.finetune:
+            args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
         with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -971,30 +978,38 @@ class BaseMegatronTrainer(ABC):
                         # Unmerge to restore separate LoRA weights for training
                         module.unmerge()
 
+    @staticmethod
+    def _copy_args(output_dir):
+        if is_last_rank():
+            args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+            if os.path.exists(args_path):
+                shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+
     def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
-        if args.train_type == 'lora' and args.merge_lora:
-            self.merge_lora_adapters()
+        output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+        origin_save = args.save
+        args.save = output_dir
+        self._copy_args(output_dir)
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         if args.save_safetensors:
-            output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-            if is_last_rank():
-                args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-                if os.path.exists(args_path):
-                    shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
-            origin_save = args.save
-            args.save = output_dir
-            if args.no_save_optim:
+            if args.no_save_optim and not save_peft_format:
                 model = []
-            with adapter_state_dict_context(is_peft_format=save_peft_format):
+            with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
                 self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
-            args.save = origin_save
         else:
-            with adapter_state_dict_context(is_peft_format=save_peft_format):
+            with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
                 self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
-        if args.train_type == 'lora' and args.merge_lora:
-            self.unmerge_lora_adapters()
+        args.save = origin_save
+        # safetensors
+        if args.save_safetensors:
+            if args.train_type == 'lora' and args.merge_lora:
+                self.merge_lora_adapters()
+                output_dir = f'{output_dir}-merged'
+                self._copy_args(output_dir)
+            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
+            if args.train_type == 'lora' and args.merge_lora:
+                self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
         # support max_epochs
