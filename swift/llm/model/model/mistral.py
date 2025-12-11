@@ -186,7 +186,6 @@ def get_model_tokenizer_mistral_2506(model_dir: str,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):
-    from mistral_common.tokens.tokenizers.mistral import MistralTokenizer
     from transformers import Mistral3ForConditionalGeneration
     tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
     processor = AutoProcessor.from_pretrained(tokenizer_dir)
@@ -218,8 +217,7 @@ def get_model_tokenizer_mistral_2512(model_dir: str,
                                      load_model: bool = True,
                                      **kwargs):
     from transformers import Mistral3ForConditionalGeneration
-    tokenizer_dir = safe_snapshot_download(model_id_or_path=model_dir, download_model=False)
-    processor = AutoProcessor.from_pretrained(tokenizer_dir)
+    processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
