@@ -157,7 +157,10 @@ def prepare_model_template(args, **kwargs):
 
 
 def _select_dataset(dataset, max_length):
-    idxs = [i for i, length in enumerate(dataset['length']) if (max(length) if isinstance(length, list) else length) <= max_length]
+    idxs = [
+        i for i, length in enumerate(dataset['length'])
+        if (max(length) if isinstance(length, list) else length) <= max_length
+    ]
     new_dataset = dataset.select(idxs)
     if len(new_dataset) < len(dataset):
         logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(new_dataset)}')
