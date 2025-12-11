@@ -24,10 +24,10 @@ swift sft \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 6e-6 \
-    --gradient_accumulation_steps 2 \
+    --gradient_accumulation_steps 8 \
     --packing true \
     --padding_side left \
-    --eval_steps 200 \
+    --eval_steps 50 \
     --save_steps 200 \
     --logging_steps 5 \
     --max_length 8192 \

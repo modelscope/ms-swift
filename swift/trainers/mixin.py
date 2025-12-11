@@ -645,6 +645,7 @@ class SwiftMixin:
             model = self.model.model
         else:
             model = self.model
+        padding_side = self.template.padding_side
         if 'SentenceTransformer' in model.__class__.__name__:
 
             def forward_transformer(transformer, features: Dict[str, torch.Tensor],
@@ -685,18 +686,18 @@ class SwiftMixin:
                                 hasattr(module, 'forward_kwargs') and key in module.forward_kwargs)
                         }
                     output = module(input, **module_kwargs)
-                    if idx == 0 and self.args.padding_free:
-                        output = revert_padding_free(output, input, self.args.padding_side)
+                    if idx == 0 and self.template.padding_free:
+                        output = revert_padding_free(output, input, padding_side)
                     input = output
                 return {'last_hidden_state': input['sentence_embedding']}
 
             model.forward = MethodType(forward_sentence_transformer, model)
-        elif self.args.padding_free:
+        elif self.template.padding_free:
             if self.args.task_type == 'embedding':
                 llm_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
 
                 def revert_padding_free_hook(module, args, input, output):
-                    return revert_padding_free(output, input, self.args.padding_side)
+                    return revert_padding_free(output, input, padding_side)
 
                 llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
             elif self.args.task_type == 'seq_cls':
@@ -707,10 +708,10 @@ class SwiftMixin:
 
                     def inner_forward(*args, **kwargs):
                         output = llm_model.forward(*args, **kwargs)
-                        return revert_padding_free(output, kwargs, self.args.padding_side)
+                        return revert_padding_free(output, kwargs, padding_side)
 
                     return transformers_seq_cls_forward(
-                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
+                        model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
@@ -721,22 +722,22 @@ class SwiftMixin:
 
                     def inner_forward(*args, **kwargs):
                         output = llm_model.forward(*args, **kwargs)
-                        return revert_padding_free(output, kwargs, self.args.padding_side)
+                        return revert_padding_free(output, kwargs, padding_side)
 
                     padding_free_fn = getattr(model, 'padding_free_fn', None)
                     if callable(padding_free_fn):
                         output = inner_forward(*args, **kwargs)
-                        return padding_free_fn(output, kwargs, self.args.padding_side)
+                        return padding_free_fn(output, kwargs, padding_side)
 
                     return transformers_seq_cls_forward(
-                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
+                        model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
 
                 model.forward = MethodType(reranker_forward, model)
             elif self.args.task_type == 'generative_reranker':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
 
                 def revert_padding_free_hook(module, args, input, output):
-                    return revert_padding_free(output, input, self.args.padding_side)
+                    return revert_padding_free(output, input, padding_side)
 
                 llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
 

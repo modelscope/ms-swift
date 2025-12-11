@@ -244,14 +244,6 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
         local_repo_path (Optional[str]): Path to a local repository. Some models (e.g., deepseek-vl2) depend on a
             GitHub repo for loading. Using a local repo avoids network issues during 'git clone'. Defaults to None.
         galore_config (Optional[GaLoreConfig]): GaLore configuration. Defaults to None.
-        padding_side (Optional[str]): The padding side for training when batch_size >= 2. Can be 'left' or 'right'.
-            Defaults to 'right'.
-            Note: For inference with batch_size >= 2, only left padding is performed. PPO and GKD default to 'left'.
-        padding_free (Optional[bool]): Whether to flatten data within a batch to avoid padding, reducing VRAM usage
-            and speeding up training. Sequences within the same batch remain isolated. Defaults to False. Currently
-            supports CPT, SFT, DPO, GRPO, KTO, and GKD.
-            Note: It is recommended to use this with '--attn_impl flash_attn' and 'transformers>=4.44'. Compared to
-            packing, padding_free has no preprocessing overhead, but packing is faster and has more stable VRAM usage.
         task_type (Optional[str]): The type of task. Can be 'causal_lm', 'seq_cls', 'embedding', 'reranker', or
             'generative_reranker'. Defaults to 'causal_lm'. If set to 'seq_cls', you usually need to also set
             '--num_labels' and '--problem_type'.
@@ -264,8 +256,6 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
-    padding_side: Optional[str] = None
-    padding_free: Optional[bool] = None
     task_type: Optional[str] = None
     problem_type: Optional[str] = None
 
