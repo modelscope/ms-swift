@@ -566,7 +566,7 @@ class Template(ProcessorMixin):
         length = []
         for r in row:
             keys.update(r.keys())
-            length.append(sum(r['length']) if isinstance(r['length'], list) else r['length'])
+            length.append(r['length'])
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
