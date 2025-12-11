@@ -734,6 +734,18 @@ def patch_qwen_vl_utils(vision_process):
         backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
         if isinstance(backends, dict):
             backends['decord'] = _new_read_video_decord
+            _read_video_torchvision = getattr(vision_process, '_read_video_torchvision', None)
+            if _read_video_torchvision is not None:
+
+                def _new_read_video_torchvision(ele: dict):
+                    try:
+                        return _read_video_torchvision(ele)
+                    except Exception:
+                        from swift.llm import load_file  # base64
+                        ele['video'] = load_file(ele['video'])
+                        return _read_video_torchvision(ele)
+
+                backends['torchvision'] = _new_read_video_torchvision
         elif backends is None:  # keye_vl
             vision_process._read_video_decord = _new_read_video_decord
     vision_process._patch = True
