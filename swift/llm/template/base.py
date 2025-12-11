@@ -549,7 +549,8 @@ class Template(ProcessorMixin):
                     elif isinstance(value, (tuple, list)):
                         lengths += value
             if return_length:
-                assert len(lengths) != 0, f'batched: {batched}'
+                if not lengths:
+                    raise ValueError(f'lengths should not be empty. batched: {batched}')
                 encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
             else:
                 encoded.pop('length', None)
