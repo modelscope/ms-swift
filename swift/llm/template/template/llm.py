@@ -363,10 +363,10 @@ class GptTemplate(Template):
             elif not inputs.system.startswith('<|start|>'):
                 inputs.system = self._get_gpt_oss_prefix() + (
                     f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str):
-                if not message['content'].startswith('<|channel|>') and self.use_chat_template:
-                    message['content'] = '<|channel|>final<|message|>' + message['content']
+            for i, message in enumerate(messages):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if not message['content'].startswith('<|channel|>'):
+                        message['content'] = '<|channel|>final<|message|>' + message['content']
 
 
 @dataclass
