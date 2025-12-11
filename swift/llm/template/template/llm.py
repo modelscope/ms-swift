@@ -357,15 +357,16 @@ class GptTemplate(Template):
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
-        if inputs.system is None:
-            inputs.system = self._get_gpt_oss_prefix()
-        elif not inputs.system.startswith('<|start|>'):
-            inputs.system = self._get_gpt_oss_prefix() + (
-                f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str):
-                if not message['content'].startswith('<|channel|>'):
-                    message['content'] = '<|channel|>final<|message|>' + message['content']
+        if self.use_chat_template:
+            if inputs.system is None:
+                inputs.system = self._get_gpt_oss_prefix()
+            elif not inputs.system.startswith('<|start|>'):
+                inputs.system = self._get_gpt_oss_prefix() + (
+                    f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
+            for i, message in enumerate(messages):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if not message['content'].startswith('<|channel|>'):
+                        message['content'] = '<|channel|>final<|message|>' + message['content']
 
 
 @dataclass
