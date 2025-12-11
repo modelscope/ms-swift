@@ -575,7 +575,7 @@ def generative_reranker_loss(outputs,
 
     # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    last_valid_indices = get_last_valid_indices(attention_mask)
+    last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
     batch_indices = torch.arange(batch_size, device=logits.device)
     last_valid_logits = logits[batch_indices, last_valid_indices, :]
 
@@ -743,7 +743,7 @@ def listwise_generative_reranker_loss(outputs,
 
     # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    last_valid_indices = get_last_valid_indices(attention_mask)
+    last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
     batch_indices = torch.arange(batch_size, device=logits.device)
     last_valid_logits = logits[batch_indices, last_valid_indices, :]
 

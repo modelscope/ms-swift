@@ -107,6 +107,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
         self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
 
+        # Off-Policy Sequence Masking
+        self.off_policy_sequence_mask_delta = args.off_policy_sequence_mask_delta
+
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
         self.steps_per_generation = args.steps_per_generation
@@ -1338,6 +1341,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.beta != 0.0 and per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
+        # Apply off-policy sequence masking if enabled
+        # Mask out sequences where delta > threshold AND advantage < 0
+        if self.off_policy_sequence_mask_delta is not None:
+            old_policy_per_token_logps = rollout_per_token_logps if rollout_per_token_logps is not None \
+                else old_per_token_logps
+            off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
+                                                                         completion_mask, advantages)
+            # Expand sequence mask to token level and apply to completion_mask
+            off_policy_seq_mask_expanded = off_policy_seq_mask.unsqueeze(-1).expand_as(completion_mask)
+            completion_mask = completion_mask & off_policy_seq_mask_expanded
+
         if self.loss_type in ['grpo', 'sapo']:
             # Per-sample mean, then batch mean
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
@@ -1828,6 +1842,48 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return is_weights
 
+    def _compute_off_policy_sequence_mask(
+        self,
+        per_token_logps: torch.Tensor,
+        old_policy_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+        advantages: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute off-policy sequence mask to filter out sequences that deviate too much
+        from the old/rollout policy AND have negative advantage.
+
+        This implements the Off-Policy Sequence Masking technique from DeepSeek-V3.2
+        (https://arxiv.org/abs/2512.02556). The mask filters sequences where:
+        1. mean(old_policy_logps - policy_logps) > off_policy_sequence_mask_delta
+        2. AND advantage < 0
+
+        Args:
+            per_token_logps: Log probs from current policy, shape [batch_size, seq_len]
+            old_policy_per_token_logps: Log probs from old/rollout policy, shape [batch_size, seq_len].
+                Uses rollout_per_token_logps if available, otherwise old_per_token_logps.
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+            advantages: Advantage values per sample, shape [batch_size]
+
+        Returns:
+            Sequence mask, shape [batch_size], True = keep sequence, False = mask out
+        """
+        # Compute per-token log ratio: log(π_old / π_current)
+        # Following DeepSeek-V3.2: positive delta means old policy assigns higher prob
+        log_ratio = old_policy_per_token_logps - per_token_logps
+
+        # Compute sequence-level mean of log ratio
+        seq_mean_log_ratio = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
+        # Mask condition: delta > threshold AND advantage < 0
+        # Keep sequences that do NOT meet this condition
+        exceeds_threshold = seq_mean_log_ratio > self.off_policy_sequence_mask_delta
+        negative_advantage = advantages < 0
+        should_mask = exceeds_threshold & negative_advantage
+
+        # Return mask: True = keep, False = mask out
+        return ~should_mask
+
     def _compute_rollout_offpolicy_metrics(
         self,
         per_token_logps: torch.Tensor,
@@ -1980,3 +2036,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
             ]
         }
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        config = {
+            'dynamic_sample': str(self.args.dynamic_sample),
+            'importance_sampling_level': str(self.args.importance_sampling_level),
+            'advantage_estimator': str(self.args.advantage_estimator),
+            'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
+            'rollout_importance_sampling':
+            'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
+            'loss_type': str(self.args.loss_type)
+        }
+        return config
