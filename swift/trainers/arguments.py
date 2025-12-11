@@ -150,6 +150,8 @@ class TrainArgumentsMixin:
 
         def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
             hidden_states = hidden_states.contiguous()
+            for key in ['cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k']:
+                kwargs.pop(key, None)
             return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
 
         loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
