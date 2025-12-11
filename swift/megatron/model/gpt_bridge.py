@@ -692,13 +692,13 @@ class GPTBridge:
         is_expert = ep_rank is not None
         num_local_experts = 1
         hf_grouped = False
-        is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         args = self.args
         if is_expert:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
+        is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         if version.parse(
                 transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
             hf_grouped = False
