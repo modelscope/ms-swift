@@ -1,4 +1,5 @@
-# NPU Performance Data Collection
+# NPU
+## NPU Performance Data Collection
 
 NPU performance collection is conducted through the `torch_npu.profiler.profile` interface. To begin, create an instance of `torch_npu.profiler.profile`, then use the `start` and `stop` methods to control the performance data collection process. During this process, modifications to the dependent Megatron source code are required, specifically altering the `train` function in the `Megatron-LM/megatron/training/training.py` file. Below is an example of the collection process:
 
