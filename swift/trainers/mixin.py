@@ -711,7 +711,7 @@ class SwiftMixin:
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
                     return transformers_seq_cls_forward(
-                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
+                        lm_head_model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
