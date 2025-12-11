@@ -19,7 +19,7 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
+from swift.utils import get_dist_setting, get_last_valid_indices, get_logger, is_mp, is_mp_ddp, safe_ddp_context
 from swift.utils.torch_utils import (_get_max_memory, _sync_max_memory, get_cu_seqlens_from_position_ids,
                                      get_device_count, get_position_ids_from_cu_seqlens)
 from .utils import HfConfigFactory
@@ -206,7 +206,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
                 sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
             elif kwargs.get('attention_mask') is not None:
-                sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
+                sequence_lengths = get_last_valid_indices(kwargs['attention_mask'])
             else:
                 sequence_lengths = -1
         if isinstance(sequence_lengths, torch.Tensor):
