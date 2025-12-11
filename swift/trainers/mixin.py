@@ -701,6 +701,7 @@ class SwiftMixin:
                 llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
             elif self.args.task_type == 'seq_cls':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
 
                 @wraps(model.forward.__func__)
                 def seq_cls_forward(model, *args, **kwargs):
@@ -710,7 +711,7 @@ class SwiftMixin:
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
                     return transformers_seq_cls_forward(
-                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
+                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
