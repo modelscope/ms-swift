@@ -13,6 +13,7 @@ swift export \
     --output_dir ./seq_cls_cached_dataset
 
 
+# 18GiB
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
@@ -56,8 +57,4 @@ MAX_PIXELS=1003520 \
 swift infer \
     --adapters output/Qwen2.5-Omni-3B/vx-xxx/checkpoint-xxx \
     --load_data_args true \
-    --max_length 4096 \
-    --attn_impl flash_attn \
-    --stream true \
-    --temperature 0 \
-    --max_new_tokens 512
+    --attn_impl flash_attn
