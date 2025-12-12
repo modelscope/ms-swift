@@ -1029,6 +1029,7 @@ class BaseMegatronTrainer(ABC):
                 extra_args_provider=extra_args_provider,
                 args_defaults=args.extra_args)
 
+    # Code borrowed from NVIDIA/Megatron-LM
     def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):
         """Build dataloader given an input dataset."""
 
