@@ -7,12 +7,14 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
 from typing import Callable, Dict, List, Literal, Optional
 
 import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu
+from megatron.core.datasets.utils import Split
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
@@ -26,6 +28,8 @@ from megatron.training import (checkpointing, ft_integration, get_args, get_mode
                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
+from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+from megatron.training.dist_signal_handler import DistributedSignalHandler
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
@@ -1021,18 +1025,75 @@ class BaseMegatronTrainer(ABC):
                 extra_args_provider=extra_args_provider,
                 args_defaults=args.extra_args)
 
+    def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):
+        """Build dataloader given an input dataset."""
+
+        if dataset is None:
+            return None
+        args = get_args()
+
+        if hasattr(dataset, 'split'):
+            split = dataset.split
+        elif hasattr(dataset, 'index_split'):
+            split = dataset.index_split
+        else:
+            split = None
+
+        if split == Split.valid and args.full_validation:
+            batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=0,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
+        elif args.dataloader_type == 'single':
+            # Megatron sampler
+            batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
+        elif args.dataloader_type == 'cyclic':
+            batch_sampler = MegatronPretrainingRandomSampler(
+                dataset,
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+                data_sharding=args.data_sharding,
+            )
+        elif args.dataloader_type == 'external':
+            # External dataloaders are passed through. User is expected to provide a
+            # torch-compatible dataloader and define samplers, if needed.
+            return dataset
+        else:
+            raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
+
+        def worker_init_fn(_):
+            DistributedSignalHandler(args.exit_signal).__enter__()
+
+        maybe_worker_init_fn = (worker_init_fn if args.exit_signal_handler and args.num_workers > 0 else None)
+        # Torch dataloader.
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            persistent_workers=True if args.num_workers > 0 else False,
+            worker_init_fn=maybe_worker_init_fn,
+            collate_fn=data_collator,
+        )
+        return dataloader
+
     @contextmanager
     def patch_megatron_data_collator(self, data_collator):
         origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-
-        def build_pretraining_data_loader(*_args, **kwargs):
-            args = get_args()
-            res = origin_build_pretraining_data_loader(*_args, **kwargs)
-            if res is not None and args.dataloader_type != 'external':
-                res.collate_fn = data_collator
-            return res
-
-        training.build_pretraining_data_loader = build_pretraining_data_loader
+        training.build_pretraining_data_loader = partial(
+            self.build_pretraining_data_loader, data_collator=data_collator)
         try:
             yield
         finally:
