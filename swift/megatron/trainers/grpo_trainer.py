@@ -681,7 +681,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self.engine.engine.wake_up(**kwargs)
 
         # Step 2: Load model weights
-        if self._step != self._last_loaded_step:
+        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
             self._move_model_to_vllm()
             self._last_loaded_step = self._step
 
