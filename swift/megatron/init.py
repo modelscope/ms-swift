@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import inspect
 import logging
 import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from copy import copy, deepcopy
+from copy import copy
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -645,6 +646,25 @@ def _patch_build_train_valid_test_datasets():
     training.build_train_valid_test_datasets = build_train_valid_test_datasets
 
 
+def _patch__write_item():
+    import megatron.core
+    if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
+        return
+    # mcore 0.12
+    from megatron.core.dist_checkpointing.strategies import filesystem_async
+
+    _origin__write_item = filesystem_async._write_item
+    if 'serialization_format' in inspect.signature(_origin__write_item).parameters:
+        from torch.distributed.checkpoint.filesystem import SerializationFormat
+
+        def _write_item(self, *args, **kwargs):
+            if 'serialization_format' not in kwargs:
+                kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
+            return _origin__write_item(self, *args, **kwargs)
+
+        filesystem_async._write_item = _write_item
+
+
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
@@ -782,6 +802,7 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    _patch__write_item()
     _patch_megatron_tokenizer()
     _patch_mtp()
     logging.root.setLevel(logging_level)  # revert logger level
