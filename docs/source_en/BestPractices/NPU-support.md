@@ -38,6 +38,10 @@ pip install deepspeed
 # If you need the evaluation functionality, please install the following package
 pip install evalscope[opencompass]
 
+# If you need to use vllm-ascend for inference, please install the following packages
+pip install vllm==0.11.0
+pip install vllm-ascend==0.11.0rc3
+
 # If you need to use MindSpeed ​​(Megatron-LM), please install the following packages
 # 1. Obtain and switch Megatron-LM to core_v0.12.1
 git clone https://github.com/NVIDIA/Megatron-LM.git
@@ -244,20 +248,58 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 ```
 
 ## Deployment
-NPUs do not support using vllm for inference/acceleration during deployment, but can be deployed using native PyTorch.
 
-Original Model:
+### Deployment with native PyTorch
+
+Original model:
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
 ```
 
-After LoRA Fine-tuning:
+After LoRA fine-tuning:
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
 
 # Merge LoRA and deploy
 ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
+```
+
+### Deployment with vLLM-ascend
+
+Install via PyPI:
+```shell
+# Install vllm-project/vllm. The newest supported version is v0.11.0.
+pip install vllm==0.11.0
+
+# Install vllm-project/vllm-ascend from PyPI.
+pip install vllm-ascend==0.11.0rc3
+```
+
+Original model:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+```
+
+After LoRA fine-tuning:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --adapters xxx/checkpoint-xxx \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+
+# Merge LoRA and deploy
+ASCEND_RT_VISIBLE_DEVICES=0 swift export \
+    --adapters xx/checkpoint-xxx \
+    --merge_lora true
+
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model xxx/checkpoint-xxx-merged \
+    --infer_backend vllm \
+    --max_new_tokens 2048
 ```
 
 ## Current Support Status
