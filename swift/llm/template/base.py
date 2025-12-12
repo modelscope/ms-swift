@@ -1212,19 +1212,30 @@ class Template(ProcessorMixin):
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
-        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-            # For multi-modal models, images do not need to be pre processed here
-            # vllm/lmdeploy/sglang will handle the logic
-            encoded = Template._encode(self, inputs)
-            keys = ['images', 'audios', 'videos']
-            if self.mode == 'vllm':
-                keys.append('mm_processor_kwargs')
-            for key in keys:
-                value = getattr(inputs, key)
-                if value:
-                    encoded[key] = value
-        else:
-            encoded = self._encode(inputs)
+        # retry to avoid megatron getting stuck
+        i = 0
+        retry = 3
+        while True:
+            try:
+                if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+                    # For multi-modal models, images do not need to be pre processed here
+                    # vllm/lmdeploy/sglang will handle the logic
+                    encoded = Template._encode(self, inputs)
+                    keys = ['images', 'audios', 'videos']
+                    if self.mode == 'vllm':
+                        keys.append('mm_processor_kwargs')
+                    for key in keys:
+                        value = getattr(inputs, key)
+                        if value:
+                            encoded[key] = value
+                else:
+                    encoded = self._encode(inputs)
+            except Exception:
+                if i == retry:
+                    raise
+                i += 1
+            else:
+                break
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
