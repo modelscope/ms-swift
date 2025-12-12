@@ -7,6 +7,7 @@ megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --save_safetensors true \
     --load_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \

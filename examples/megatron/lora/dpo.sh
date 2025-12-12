@@ -7,6 +7,7 @@ megatron rlhf \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
     --load_from_cache_file true \
     --train_type lora \

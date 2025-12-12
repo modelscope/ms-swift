@@ -9,6 +9,7 @@ megatron sft \
     --Qwen Qwen/Qwen3-30B-A3B \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset 'swift/new_special_tokens' \
     --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
     --train_type lora \
