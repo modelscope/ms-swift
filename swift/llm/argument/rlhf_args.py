@@ -251,7 +251,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         TrainArguments.__post_init__(self)
         self._check_sequence_parallel()
         self._check_grpo()
-        self._external_vllm_warning()
         self._check_gkd()
 
         if self.loss_scale is None:
@@ -309,7 +308,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('cached_dataset is not supported for GRPO.')
         if self.use_vllm:
             set_default_ddp_config()
-        if self.async_generate or not self.use_vllm:
+        if self.async_generate or not self.use_vllm or self.vllm_mode == 'server':
             self.sleep_level = 0
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
@@ -353,16 +352,13 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
             return
-        if self.use_vllm:
-            # set vllm mode
-            if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
-                if self.vllm_mode != 'server':
-                    self.vllm_mode = 'server'
-                    logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
-            else:
-                if self.vllm_mode != 'colocate':
-                    self.vllm_mode = 'colocate'
-                    logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
+
+        if self.vllm_mode is not None and not self.use_vllm:
+            raise ValueError('vllm_mode is not supported when use_vllm is false')
+
+        if self.vllm_mode is None and self.use_vllm:
+            raise ValueError('vllm_mode is required when use_vllm is true')
+
         self._init_external_vllm()
 
         if self.vllm_mode == 'server':

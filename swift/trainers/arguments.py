@@ -423,7 +423,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
 
     # vllm
     use_vllm: bool = False
-    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+    vllm_mode: Optional[Literal['server', 'colocate']] = None
     # internal vllm (colocate)
     vllm_max_num_seqs: Optional[int] = None
     vllm_enable_prefix_caching: bool = True  # overwrite
