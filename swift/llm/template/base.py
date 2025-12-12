@@ -1211,12 +1211,12 @@ class Template(ProcessorMixin):
         return length
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
-        self._preprocess_inputs(inputs)
         # retry to avoid megatron getting stuck
         i = 0
         retry = 3
         while True:
             try:
+                self._preprocess_inputs(inputs)
                 if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
                     # For multi-modal models, images do not need to be pre processed here
                     # vllm/lmdeploy/sglang will handle the logic
@@ -1232,6 +1232,9 @@ class Template(ProcessorMixin):
                     encoded = self._encode(inputs)
             except Exception:
                 if i == retry:
+
+
+
                     raise
                 i += 1
             else:
