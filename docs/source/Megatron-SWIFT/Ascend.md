@@ -1,8 +1,8 @@
-# NPU
-## NPU Performance Data Collection
+# Ascend NPU
 
-NPU performance collection is conducted through the `torch_npu.profiler.profile` interface. To begin, create an instance of `torch_npu.profiler.profile`, then use the `start` and `stop` methods to control the performance data collection process. During this process, modifications to the dependent Megatron source code are required, specifically altering the `train` function in the `Megatron-LM/megatron/training/training.py` file. Below is an example of the collection process:
+## NPU 性能数据采集
 
+NPU性能采集通过`torch_npu.profiler.profile`接口进行采集，创建torch_npu.profiler.profile对象，通过start和stop接口控制采集性能数据，采集过程需要修改依赖的megatron源码，修改Megatron-LM/megatron/training/training.py文件中的train函数，采集示例如下：
 ```python
 import torch_npu
 ...
@@ -19,11 +19,11 @@ prof = torch_npu.profiler.profile(
         ],
     schedule=torch_npu.profiler.schedule(wait=0, warmup=0, active=1, repeat=1, skip_first=6),
     on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-    profile_memory=False, # Close the collection of memory information
-    with_stack=False,    # Close the collection of stack information
+    profile_memory=False, # 关闭采集内存信息
+    with_stack=False,    # 关闭采集堆栈信息
     experimental_config=experimental_config)
 prof.start()
-# megatron code
+# megatron 逻辑
 while iteration < args.train_iters:
   ...
   (
@@ -36,7 +36,7 @@ while iteration < args.train_iters:
         num_zeros_in_grad,
   ) = train_step(
             forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config, forward_backward_func)
-  # collect performance data
+  # 性能数据采集
   prof.step()
   ...
 prof.stop()
