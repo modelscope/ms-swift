@@ -180,6 +180,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # auto_tp
     deepspeed_autotp_size: Optional[int] = None
 
+    # fsdp
+    fsdp: Optional[str] = None
+
     # early_step
     early_stop_interval: Optional[int] = None
 
@@ -220,6 +223,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self._handle_pai_compat()
 
         self._init_deepspeed()
+        self._init_fsdp()
         self._init_device()
 
         if getattr(self, 'accelerator_config', None) is None:
@@ -263,6 +267,60 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
                 self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             logger.info(f'Using deepspeed: {self.deepspeed}')
+
+    def _init_fsdp(self):
+        """Initialize FSDP2 configuration.
+
+        Similar to DeepSpeed, supports preset configurations or custom config file path:
+        - fsdp2: FSDP2 basic configuration (requires torch>=2.4.0), similar to DeepSpeed zero3
+        - fsdp2_offload: FSDP2 with CPU offload, similar to DeepSpeed zero3_offload
+
+        You can also pass a path to a custom FSDP config JSON file.
+
+        Note: gradient_checkpointing uses swift's --gradient_checkpointing parameter.
+
+        Key parameters
+        - reshard_after_forward: Reshard parameters after forward pass to reduce memory (default: True)
+        - offload: Offload parameters to CPU (default: False for fsdp2, True for fsdp2_offload)
+        - use_orig_params: Use original parameters, required for LoRA (default: True for fsdp2)
+        - Mixed precision: Uses bf16/fp16 based on swift's --torch_dtype parameter
+
+        Usage:
+            swift sft --fsdp fsdp2 ...
+            swift sft --fsdp fsdp2_offload ...
+            swift sft --fsdp /path/to/custom_fsdp.json ...
+        """
+        if not self.fsdp:
+            return
+
+        if is_mp() and not self.use_ray:
+            raise ValueError('FSDP2 is not compatible with `device_map`. '
+                             f'n_gpu: {get_device_count()}, '
+                             f'local_world_size: {self.local_world_size}.')
+        if self.deepspeed:
+            raise ValueError('FSDP2 is not compatible with DeepSpeed.')
+        fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fsdp_config'))
+        fsdp_mapping = {name: f'{name}.json' for name in ['fsdp2', 'fsdp2_offload']}
+        fsdp_config_path = self.fsdp
+        for fsdp_name, fsdp_config in fsdp_mapping.items():
+            if self.fsdp == fsdp_name:
+                fsdp_config_path = os.path.join(fsdp_config_folder, fsdp_config)
+                break
+
+        fsdp_config_dict = json_parse_to_dict(fsdp_config_path)
+
+        # Extract fsdp string options (e.g., "full_shard auto_wrap offload")
+        fsdp_options = fsdp_config_dict.get('fsdp', 'full_shard auto_wrap')
+        self.fsdp = fsdp_options
+
+        # Extract fsdp_config dict
+        self.fsdp_config = fsdp_config_dict.get('fsdp_config', {})
+
+        # Set FSDP_VERSION environment variable for accelerate to recognize FSDP2
+        fsdp_version = self.fsdp_config.get('fsdp_version', 2)
+        os.environ['FSDP_VERSION'] = str(fsdp_version)
+
+        logger.info(f'Using FSDP2: fsdp={self.fsdp}, fsdp_config={self.fsdp_config}')
 
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():

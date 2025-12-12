@@ -1,18 +1,18 @@
 #!/bin/bash
-# FSDP2 LoRA Training Example
-# Similar to DeepSpeed zero3, but uses PyTorch native FSDP2
-# Memory: ~15GiB * 2 GPUs
+# FSDP2 LoRA Training with CPU Offload
+# Similar to DeepSpeed zero3_offload, but uses PyTorch native FSDP2
+# Memory: ~10GiB * 2 GPUs (with CPU offload)
 # Requires: torch>=2.4.0
 
 nproc_per_node=2
 
-# Basic FSDP2 training (similar to --deepspeed zero3)
+# FSDP2 with CPU offload (similar to --deepspeed zero3_offload)
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --fsdp fsdp2 \
+    --fsdp fsdp2_offload \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -36,3 +36,4 @@ swift sft \
     --dataloader_num_workers 4 \
     --model_author swift \
     --model_name swift-robot
+
