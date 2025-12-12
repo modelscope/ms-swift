@@ -53,7 +53,7 @@
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
-- no_data_sharding: 当`--dataloader_type cyclic`时生效，默认为False。该参数控制数据集随机的范围。若设置为False，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为True，则先对数据集进行随机，再进行分片（更好的随机效果）。
+- no_data_sharding: 当`--dataloader_type cyclic`时生效，默认为False。该参数控制数据集随机的范围。若设置为False，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为True，则先对数据集进行随机，再进行分片（更好的随机效果）。使用该参数需"ms-swift>=3.12"。
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制建议使用“基本参数”中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
 - 🔥megatron_extra_kwargs: 额外需要透传入megatron的其他参数，使用json传递。默认为None。
