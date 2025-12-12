@@ -1232,9 +1232,6 @@ class Template(ProcessorMixin):
                     encoded = self._encode(inputs)
             except Exception:
                 if i == retry:
-
-
-
                     raise
                 i += 1
             else:
