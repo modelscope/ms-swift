@@ -324,6 +324,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     max_shard_size: str = '5GB'
 
     # dataloader
+    train_dataloader_shuffle: bool = True
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10

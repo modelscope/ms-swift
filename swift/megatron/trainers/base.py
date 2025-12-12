@@ -1034,7 +1034,12 @@ class BaseMegatronTrainer(ABC):
 
         if dataset is None:
             return None
+
         args = get_args()
+        if args.dataloader_type == 'external':
+            # External dataloaders are passed through. User is expected to provide a
+            # torch-compatible dataloader and define samplers, if needed.
+            return dataset
 
         if hasattr(dataset, 'split'):
             split = dataset.split
@@ -1043,7 +1048,7 @@ class BaseMegatronTrainer(ABC):
         else:
             split = None
 
-        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation' and args.dataloader_type != 'external'
+        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation'
 
         if split == Split.valid and args.full_validation:
             batch_sampler = MegatronPretrainingSampler(
@@ -1053,7 +1058,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single' or is_val_dataset:
+        elif args.dataloader_type == 'single' or is_val_dataset or not args.train_dataloader_shuffle:
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1072,10 +1077,6 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_size=mpu.get_data_parallel_world_size(),
                 data_sharding=args.data_sharding,
             )
-        elif args.dataloader_type == 'external':
-            # External dataloaders are passed through. User is expected to provide a
-            # torch-compatible dataloader and define samplers, if needed.
-            return dataset
         else:
             raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
 
