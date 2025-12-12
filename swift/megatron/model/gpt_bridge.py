@@ -7,6 +7,7 @@ import megatron.core
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import transformers
 from megatron.core import mpu
 from megatron.training import get_args
 from packaging import version
@@ -696,6 +697,12 @@ class GPTBridge:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
+        # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
+        is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
+        if version.parse(
+                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+            hf_grouped = False
+            is_gate_up = False
         if to_mcore or hf_grouped:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
@@ -707,7 +714,7 @@ class GPTBridge:
                 mg_lora_B = mg_mlp.linear_fc1.lora_B[self._adapter_name]
                 mg_lora_B = [getattr(mg_lora_B, f'weight{i}')
                              for i in range(num_local_experts)] if is_expert else mg_lora_B.weight
-                if hasattr(hf_mlp, 'gate_up_proj'):
+                if is_gate_up:
                     if is_expert:
                         lora_A = torch.stack([
                             hf_state_dict[f'{i + ep_rank * num_local_experts}.gate_up_proj.lora_A.weight'].load()
@@ -760,7 +767,7 @@ class GPTBridge:
                     assert is_expert and not has_scale_inv, 'not support'  # TODO
                     fc1_bias = [getattr(mg_mlp.linear_fc1, f'bias{i}') for i in range(num_local_experts)]
                 gate_up_scale_inv = None
-                if hasattr(hf_mlp, 'gate_up_proj'):
+                if is_gate_up:
                     if is_expert:
                         if hf_grouped:
                             if 'gate_up_proj_blocks' in hf_state_dict:
@@ -876,7 +883,7 @@ class GPTBridge:
                 lora_B, _ = self._get_weight(
                     lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
                 if lora_A is not None:
-                    if hasattr(hf_mlp, 'gate_up_proj'):
+                    if is_gate_up:
                         self._peft_target_modules.update({'gate_up_proj'})
                         if is_expert:
                             for i in range(num_local_experts):
@@ -923,7 +930,7 @@ class GPTBridge:
                     gate_up_proj_bias, _ = self._get_weight(fc1_bias, 'linear_fc1.bias', is_expert=is_expert)
                 del fc1_weight
                 if gate_up_proj_weight is not None:
-                    if hasattr(hf_mlp, 'gate_up_proj'):
+                    if is_gate_up:
                         if is_expert:
                             if hf_grouped:
                                 gate_up_proj_weight = gate_up_proj_weight.transpose(1, 2)
@@ -1462,6 +1469,7 @@ class GPTBridge:
                     model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
+        dist.barrier()  # Ensure all weights are saved completely
 
 
 class MultimodalGPTBridge(GPTBridge):

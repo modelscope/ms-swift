@@ -82,7 +82,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
-    vllm_server_group_port: List[int] = field(default_factory=lambda: [51216])
+    vllm_server_group_port: Optional[List[int]] = None
 
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
@@ -117,6 +117,12 @@ class RLHFMegatronArgumentsMixin:
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0
+    log_rollout_offpolicy_metrics: bool = False
+    # Off-Policy Sequence Masking: mask out sequences that deviate too much from rollout policy
+    # If set, compute mean(rollout_per_token_logps - per_token_logps) per sequence,
+    # and mask sequences where this delta > threshold AND advantage < 0
+    # Falls back to old_per_token_logps if rollout_per_token_logps is not available
+    off_policy_sequence_mask_delta: Optional[float] = None
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
@@ -295,6 +301,7 @@ class MegatronTunerMixin:
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
+    check_model: bool = True
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
@@ -683,7 +690,7 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.12')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)

@@ -76,6 +76,7 @@ class SwiftMixin:
             args.dataloader_num_workers = 1
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
+        self.template = template
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
@@ -101,7 +102,6 @@ class SwiftMixin:
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
-        self.template = template
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
@@ -165,6 +165,15 @@ class SwiftMixin:
         Returns:
             Dict[str, str]: Configuration parameters as key-value pairs.
         """
+        if self.__class__.__name__ == 'Seq2SeqTrainer':
+            if not self.template.use_chat_template:
+                return {
+                    'seq2seq_mode': 'pt',
+                }
+            else:
+                return {
+                    'seq2seq_mode': 'sft',
+                }
         return {}
 
     @property
@@ -740,6 +749,7 @@ class SwiftMixin:
                 llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
             elif self.args.task_type == 'seq_cls':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
 
                 @wraps(model.forward.__func__)
                 def seq_cls_forward(model, *args, **kwargs):
@@ -749,11 +759,16 @@ class SwiftMixin:
                         return revert_padding_free(output, kwargs, self.args.padding_side)
 
                     return transformers_seq_cls_forward(
-                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
+                        lm_head_model,
+                        *args,
+                        origin_forward=inner_forward,
+                        padding_side=self.args.padding_side,
+                        **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
                 llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
 
                 @wraps(model.forward.__func__)
                 def reranker_forward(model, *args, **kwargs):
@@ -768,7 +783,11 @@ class SwiftMixin:
                         return padding_free_fn(output, kwargs, self.args.padding_side)
 
                     return transformers_seq_cls_forward(
-                        model, *args, origin_forward=inner_forward, padding_side=self.args.padding_side, **kwargs)
+                        lm_head_model,
+                        *args,
+                        origin_forward=inner_forward,
+                        padding_side=self.args.padding_side,
+                        **kwargs)
 
                 model.forward = MethodType(reranker_forward, model)
             elif self.args.task_type == 'generative_reranker':

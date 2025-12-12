@@ -47,7 +47,7 @@ git clone --branch core_r0.14.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
-# 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
+# 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
 # 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
 MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
 ```

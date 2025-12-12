@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
+import logging
 import os
 import shutil
 import time
@@ -28,13 +29,14 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
+from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
+from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
@@ -62,6 +64,17 @@ class BaseMegatronTrainer(ABC):
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
         self._patch_megatron()
+
+        if args.check_model and hasattr(args, 'model_info') and hasattr(args.model_info, 'model_dir'):
+            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
+                config_info = self._collect_config_info()
+                config_info.update({
+                    'invoked_by': 'local_trainer',
+                    'third_party': 'swift',
+                    'trainer_class': self.__class__.__name__,
+                    'trainer_backend': 'megatron',
+                })
+                check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
         def _get_mean_metric():
             return MeanMetric(nan_value=None, group=mpu.get_data_parallel_group(with_context_parallel=True))
@@ -950,7 +963,7 @@ class BaseMegatronTrainer(ABC):
                     shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
         else:
             with adapter_state_dict_context(is_peft_format=save_peft_format):
-                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
+                self._origin_save_checkpoint(iteration, *_args, **kwargs)
         if args.train_type == 'lora' and args.merge_lora:
             self.unmerge_lora_adapters()
 
@@ -1048,3 +1061,42 @@ class BaseMegatronTrainer(ABC):
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
         return self._prepare_batch(next(data_iterator), vp_stage)
+
+    @contextmanager
+    def _patch_timeout(self):
+        from modelscope.hub.api import HubApi
+        __init__ = HubApi.__init__
+
+        def __new_init__(self, *args, **kwargs):
+            timeout = kwargs.get('timeout')
+            if timeout is not None and timeout > 5:
+                kwargs['timeout'] = 5
+            __init__(self, *args, **kwargs)
+
+        HubApi.__init__ = __new_init__
+
+        try:
+            yield
+        finally:
+            HubApi.__init__ = __init__
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        """
+        Collects trainer-specific configuration details.
+
+        Subclasses can override this method to provide additional configuration
+        information for model compatibility verification.
+
+        Returns:
+            Dict[str, str]: Configuration parameters as key-value pairs.
+        """
+        if self.__class__.__name__ == 'MegatronTrainer':
+            if not self.template.use_chat_template:
+                return {
+                    'seq2seq_mode': 'pt',
+                }
+            else:
+                return {
+                    'seq2seq_mode': 'sft',
+                }
+        return {}

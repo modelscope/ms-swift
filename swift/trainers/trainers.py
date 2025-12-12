@@ -165,15 +165,20 @@ class RerankerTrainer(Trainer):
         logits = eval_prediction.predictions
         labels = eval_prediction.label_ids
 
-        if logits.ndim == 2 and logits.shape[1] > 1:
-            pad_token_id = self.tokenizer.pad_token_id
-            valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
-            last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
-            last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
-            logits = logits[np.arange(logits.shape[0]), last_valid_indices]
+        if self.template.padding_free:
+            logits = logits[:, -1]
+        else:
+            if logits.ndim == 2 and logits.shape[1] > 1:
+                pad_token_id = self.tokenizer.pad_token_id
+                valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
+                last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
+                last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
+                logits = logits[np.arange(logits.shape[0]), last_valid_indices]
         return calculate_reranker_metrics(logits, labels)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        if inputs.get('attention_mask') is None and self.template.padding_side != 'left':
+            raise ValueError('When using padding_free, padding_side must be set to "left".')
         # Check if we have a custom loss function
         if self.compute_loss_func is not None:
             # Get labels and compute outputs
@@ -190,7 +195,7 @@ class RerankerTrainer(Trainer):
                     labels,
                     num_items_in_batch=num_items_in_batch,
                     trainer=self,
-                    attention_mask=inputs['attention_mask'])
+                    attention_mask=inputs.get('attention_mask'))
             else:
                 # Fallback to model's loss
                 loss = outputs.loss

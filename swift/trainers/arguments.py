@@ -152,6 +152,8 @@ class TrainArgumentsMixin:
 
         def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
             hidden_states = hidden_states.contiguous()
+            for key in ['cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k']:
+                kwargs.pop(key, None)
             return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
 
         loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
@@ -435,7 +437,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
-    vllm_server_group_port: List[int] = field(default_factory=lambda: [51216])
+    vllm_server_group_port: Optional[List[int]] = None
     enable_flattened_weight_sync: bool = True
     async_generate: bool = False
 
@@ -536,6 +538,9 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             See the documentation for details.
         rollout_importance_sampling_threshold (float): The threshold for importance sampling weights, used to truncate
             or mask extreme weights. Defaults to 2.0.
+        log_rollout_offpolicy_metrics (bool): Whether to log rollout off-policy diagnostic metrics (KL, PPL, chi2, etc.)
+            when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set,
+            metrics are always logged regardless of this setting. Defaults to False.
     """
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
@@ -605,6 +610,12 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
+    log_rollout_offpolicy_metrics: bool = False  # Log off-policy metrics even when IS correction is disabled
+    # Off-Policy Sequence Masking: mask out sequences that deviate too much from rollout policy
+    # If set, compute mean(rollout_per_token_logps - per_token_logps) per sequence,
+    # and mask sequences where this delta > threshold AND advantage < 0
+    # Falls back to old_per_token_logps if rollout_per_token_logps is not available
+    off_policy_sequence_mask_delta: Optional[float] = None
 
 
 @dataclass
