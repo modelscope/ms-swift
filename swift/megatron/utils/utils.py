@@ -208,6 +208,8 @@ def adapter_state_dict_context(is_peft_format: bool = True):
 
     def generate_state_dict(args, model, *_args, **kwargs):
         state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
+        if 'model' not in state_dict:
+            return state_dict
         new_state_dict = {}
         state_dict_model = state_dict['model']
         for n, p in model[0].named_parameters():

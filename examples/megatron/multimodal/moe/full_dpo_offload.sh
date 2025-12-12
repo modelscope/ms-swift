@@ -4,7 +4,9 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load InternVL3_5-30B-A3B-mcore \
+    --model OpenGVLab/InternVL3_5-30B-A3B \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
     --train_type full \

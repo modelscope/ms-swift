@@ -25,7 +25,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             args.ref_model = args.ref_model or args.model
             for m in ref_models:
                 m = unwrap_model(m)
-                if args.load_safetensors:
+                if args.ref_load is None:
                     self.bridge.load_weights(m, args.ref_model)
                 m.requires_grad_(False).eval()
             if args.ref_load is None:

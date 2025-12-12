@@ -40,7 +40,7 @@ class MegatronSft(SwiftSft):
             if args.attention_backend != 'local':
                 # MindSpeed requires passing `use_flash_attn` to Megatron
                 # to enable flash attention on Ascend NPU.
-                self.args.use_flash_attn = True
+                args.use_flash_attn = True
             megatron_args = asdict(self.args)
             repatch(megatron_args)
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
@@ -49,7 +49,7 @@ class MegatronSft(SwiftSft):
         else:
             kwargs = {'load_model': False}
         with torch.device('meta'):
-            self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load_safetensors)
+            self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load is None)
         self._prepare_template()
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         args.save_args(args.save)

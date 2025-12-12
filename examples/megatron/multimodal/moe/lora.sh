@@ -3,7 +3,10 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load InternVL3_5-30B-A3B-mcore \
+    --model OpenGVLab/InternVL3_5-30B-A3B \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \

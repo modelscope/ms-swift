@@ -7,7 +7,9 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
-    --load Qwen3-VL-30B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'swift/VideoChatGPT:Generic#2000' \

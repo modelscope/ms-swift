@@ -4,7 +4,10 @@ NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \

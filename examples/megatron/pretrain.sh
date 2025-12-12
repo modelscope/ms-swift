@@ -3,7 +3,9 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron pt \
-    --load Qwen2.5-7B-mcore \
+    --model Qwen/Qwen2.5-7B \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset swift/chinese-c4 \
     --streaming true \
     --packing true \

@@ -9,7 +9,9 @@ MASTER_ADDR=127.0.0.1 \
 MASTER_PORT=29500 \
 NPROC_PER_NODE=4 \
 megatron sft \
-    --load Qwen2.5-14B-mcore \
+    --model Qwen/Qwen2.5-14B \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

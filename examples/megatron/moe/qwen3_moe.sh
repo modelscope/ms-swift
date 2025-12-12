@@ -7,7 +7,9 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

@@ -7,6 +7,7 @@ megatron sft \
     --model ZhipuAI/GLM-4.5-Air \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora true \
     --mtp_num_layers 1 \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --load_from_cache_file true \

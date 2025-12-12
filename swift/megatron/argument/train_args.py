@@ -47,7 +47,6 @@ class MegatronTrainArguments(MegatronBaseArguments):
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        if self.load is None and self.no_initialization and not self.load_safetensors:
-            raise ValueError('You did not pass `--load` or `--load_safetensors true` to read directly '
-                             'from safetensors weights, so you need to set `--no_initialization false` '
-                             'to allow the model to initialize weights properly.')
+        if self.load is None and self.model is None and self.no_initialization:
+            raise ValueError('You did not pass `--load/--model` to read weights, so you need to set '
+                             '`--no_initialization false` to allow the model to initialize weights properly.')

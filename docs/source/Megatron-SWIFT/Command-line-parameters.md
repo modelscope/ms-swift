@@ -84,9 +84,10 @@
   - 提示：你可以设置为一个很大的值来只保存最后一个检查点。
 - 🔥no_save_optim: 不保存optimizer，默认为False。在全参数训练时，可以显著降低存储时间。
 - 🔥no_save_rng: 不保存rng，默认为False。
-- 🔥load: 加载的checkpoint目录，默认None。
+- 🔥load: 加载的checkpoint目录，默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
   - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
-  - 对于断点续训的介绍，请查看`--finetune`参数的介绍。
+  - 注意：在"ms-swift>3.10"，支持直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
+  - `--model`与`--load`的区别：`--model`后加safetensors权重目录，`--load`后加mcore权重目录。`--model`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
   - 注意：断点续训时，设置`--no_load_optim false`读取优化器状态通常比`--no_load_optim true`不读取优化器状态消耗更大的显存资源。
 - 🔥no_load_rng: 不载入rng，默认为False。
@@ -267,8 +268,9 @@ lora训练：
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
 
 **Mcore-Bridge参数**
-- 🔥load_safetensors: 默认为False，是否直接从safetensors加载权重。
-- 🔥save_safetensors: 默认为False，是否直接保存成safetensors权重。注意，若该参数设置为True，则不会存储优化器权重、随机数状态等断点续训内容。
+- 🔥load_safetensors: 该参数在"ms-swift>=3.12"将失效（之前版本默认为False），将根据优先级加载权重：若`--load`不存在，则加载safetensors权重`--model`；`--adapters`和`--adapter_load`等同理。
+  - 注意：在"ms-swift>=3.12"，为保持shell脚本兼容性，该参数被保留，但不再发挥任何作用。
+- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。，该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。

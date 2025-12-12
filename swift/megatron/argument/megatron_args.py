@@ -311,8 +311,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # mcore-bridge
     model: Optional[str] = None
     model_type: Optional[str] = None
-    load_safetensors: bool = False
-    save_safetensors: bool = False
+    load_safetensors: Optional[bool] = None
+    save_safetensors: bool = True
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
