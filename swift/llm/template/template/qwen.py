@@ -587,7 +587,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
                 video = librosa.load(video, sr=self.sampling_rate)[0]
-                inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                if self.mode != 'vllm':
+                    inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                else:
+                    inputs.audios.insert(inputs.audio_idx, video)
+                    inputs.mm_processor_kwargs['use_audio_in_video'] = True
                 inputs.audio_idx += 1
                 if self.version == 'omni_v2_5':
                     return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
