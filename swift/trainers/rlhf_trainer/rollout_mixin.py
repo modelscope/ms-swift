@@ -367,7 +367,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         train_type = args.train_type
 
-        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done) or not self.rollout_enable_lora:
+        if train_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
@@ -726,7 +726,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 aggressive_empty_cache()
                 self.engine.engine.wake_up(**kwargs)
 
-        if self.state.global_step != self._last_loaded_step:
+        if self.state.global_step != self._last_loaded_step or args.sleep_level == 2:
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
