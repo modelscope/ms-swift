@@ -65,6 +65,7 @@
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
 - data_seed: 数据集随机种子，默认为42。
 - 🔥dataset_num_proc: 数据集预处理的进程数，默认为1。
+  - 提示：纯文本模型建议将该值开大加速预处理速度。而多模态模型不建议开太大，这可能导致更慢的预处理速度（多模态模型若出现cpu利用率100%，但是处理速度极慢的情况，建议额外设置`OMP_NUM_THREADS`环境变量）。
 - 🔥load_from_cache_file: 是否从缓存中加载数据集，默认为False。**建议在实际运行时设置为True，debug阶段设置为False**。你可以修改`MODELSCOPE_CACHE`环境变量控制缓存的路径。
   - 注意：该参数在"ms-swift<3.9"默认为True。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
