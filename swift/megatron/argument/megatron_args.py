@@ -60,7 +60,7 @@ class RLHFMegatronArgumentsMixin:
     top_p: float = 0.9
     repetition_penalty: float = 1.
     use_vllm: bool = True
-    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+    vllm_mode: Optional[Literal['server', 'colocate']] = None
 
     vllm_enable_prefix_caching: bool = True
     vllm_gpu_memory_utilization: float = 0.9
@@ -170,6 +170,7 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'kto':
             self._init_kto()
         if self.rlhf_type == 'grpo':
+            assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
             self._init_grpo()
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)

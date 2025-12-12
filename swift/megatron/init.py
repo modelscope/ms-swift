@@ -654,16 +654,15 @@ def _patch__write_item():
     from megatron.core.dist_checkpointing.strategies import filesystem_async
 
     _origin__write_item = filesystem_async._write_item
+    if 'serialization_format' in inspect.signature(_origin__write_item).parameters:
+        from torch.distributed.checkpoint.filesystem import SerializationFormat
 
-    def _write_item(self, *args, **kwargs):
-        if 'serialization_format' in inspect.signature(
-                _origin__write_item).parameters and 'serialization_format' not in kwargs:
-            from torch.distributed.checkpoint.filesystem import SerializationFormat
+        def _write_item(self, *args, **kwargs):
+            if 'serialization_format' not in kwargs:
+                kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
+            return _origin__write_item(self, *args, **kwargs)
 
-            kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
-        return _origin__write_item(self, *args, **kwargs)
-
-    filesystem_async._write_item = _write_item
+        filesystem_async._write_item = _write_item
 
 
 def _patch_mrope():
