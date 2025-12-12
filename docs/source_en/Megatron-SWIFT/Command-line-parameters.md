@@ -330,6 +330,10 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
 - problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Defaults to None. If the model is a reward_model or num_labels equals 1, this parameter is 'regression'; otherwise it is 'single_label_classification'.
 - 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epochs'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch. `save_retain_interval` can be set to an integer, indicating after how many epochs a checkpoint is retained.
+- train_dataloader_shuffle: Whether to shuffle the training dataloader, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially. Using this parameter requires "ms-swift>=3.11.2".
+- dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.11.2".
+- dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.11.2".
+- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.11.2".
 
 
 ## RLHF Parameters

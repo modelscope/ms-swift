@@ -1082,8 +1082,9 @@ class BaseMegatronTrainer(ABC):
             dataset,
             batch_sampler=batch_sampler,
             num_workers=args.num_workers,
-            pin_memory=True,
-            persistent_workers=True if args.num_workers > 0 else False,
+            pin_memory=args.dataloader_pin_memory,
+            persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
+            prefetch_factor=args.dataloader_prefetch_factor,
             worker_init_fn=maybe_worker_init_fn,
             collate_fn=data_collator,
         )
