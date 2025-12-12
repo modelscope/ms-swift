@@ -48,7 +48,7 @@
 - main_params_dtype: The dtype of main parameters when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'fp16'. Default is 'fp32'.
 - exp_avg_dtype: The dtype of exp_avg (i.e., the first moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
 - exp_avg_sq_dtype: The dtype of exp_avg_sq (i.e., the second moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
-- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
+- dataloader_type: Defaults to 'cyclic', which performs random shuffling. Options are 'single', 'cyclic', and 'external'. To use a non-random dataloader, set `--dataloader_type single`. If `--streaming` is enabled, set it to `external`.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: The interval for manually triggering garbage collection. Defaults to 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
@@ -330,10 +330,11 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
 - problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Defaults to None. If the model is a reward_model or num_labels equals 1, this parameter is 'regression'; otherwise it is 'single_label_classification'.
 - 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epochs'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch. `save_retain_interval` can be set to an integer, indicating after how many epochs a checkpoint is retained.
-- train_dataloader_shuffle: Whether to shuffle the training dataloader, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially. Using this parameter requires "ms-swift>=3.11.2".
-- dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.11.2".
-- dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.11.2".
-- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.11.2".
+- dataset_shuffle: Whether to perform random shuffling on the dataset. Defaults to True.
+  - Note: **Randomization in Megatron-SWIFT consists of two parts**: dataset-level shuffling, controlled by `dataset_shuffle`; and dataloader-level shuffling, controlled by `dataloader_type`.
+- dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
+- dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.122".
+- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.12".
 
 
 ## RLHF Parameters

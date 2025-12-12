@@ -28,7 +28,6 @@ from megatron.training import (checkpointing, ft_integration, get_args, get_mode
                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
-from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from megatron.training.dist_signal_handler import DistributedSignalHandler
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
@@ -45,6 +44,11 @@ from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
+
+try:
+    from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+except ImportError:
+    from megatron.legacy.data.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
