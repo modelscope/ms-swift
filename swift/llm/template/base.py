@@ -467,9 +467,11 @@ class Template(ProcessorMixin):
             anchor = inputs.chosen
             if len(anchor.messages) == 1:
                 # Ensure that load_data_args true runs through inference successfully
-                assistant_messages = (inputs.positive + inputs.negative)[0].messages
-                assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
-                anchor.messages = anchor.messages + assistant_messages
+                docs = inputs.positive + inputs.negative
+                if docs:
+                    assistant_messages = docs[0].messages
+                    assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
+                    anchor.messages = anchor.messages + assistant_messages
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
