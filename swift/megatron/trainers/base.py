@@ -1043,6 +1043,8 @@ class BaseMegatronTrainer(ABC):
         else:
             split = None
 
+        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation' and args.dataloader_type != 'external'
+
         if split == Split.valid and args.full_validation:
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1051,7 +1053,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single':
+        elif args.dataloader_type == 'single' or is_val_dataset:
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
