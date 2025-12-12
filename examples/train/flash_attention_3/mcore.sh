@@ -11,6 +11,7 @@ megatron sft \
     --model Qwen/Qwen3-30B-A3B-Base \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --train_type lora \

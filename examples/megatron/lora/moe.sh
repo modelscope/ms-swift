@@ -6,6 +6,7 @@ megatron sft \
     --model Qwen/Qwen3-30B-A3B \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:empty_think#600' \
     --loss_scale ignore_empty_think \

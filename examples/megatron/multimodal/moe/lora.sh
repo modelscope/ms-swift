@@ -6,6 +6,7 @@ megatron sft \
     --model OpenGVLab/InternVL3_5-30B-A3B \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \
