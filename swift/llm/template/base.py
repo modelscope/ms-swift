@@ -92,7 +92,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
