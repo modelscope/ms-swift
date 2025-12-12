@@ -63,7 +63,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: In "ms-swift<3.6", the default value was `0.01`.
 - data_seed: Random seed for dataset operations. Default is `42`.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing. Default is `1`.
-- 🔥load_from_cache_file: Whether to load the dataset from cache. Default is `False`. **Recommended to set to `True` during actual training and `False` during debugging**.
+- 🔥load_from_cache_file: Whether to load the dataset from cache. Default is `False`. **Recommended to set to `True` during actual training and `False` during debugging**. You can modify the `MODELSCOPE_CACHE` environment variable to control the cache path.
   - Note: Note: In "ms-swift<3.9", the default value was `True`.
 - dataset_shuffle: Whether to shuffle the training dataset. Default is `True`.
   - Note: **Shuffling in CPT/SFT involves two parts**: dataset-level shuffling (controlled by `dataset_shuffle`) and dataloader-level shuffling (controlled by `train_dataloader_shuffle`).

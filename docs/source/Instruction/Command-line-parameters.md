@@ -64,7 +64,7 @@
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
 - data_seed: 数据集随机种子，默认为42。
 - 🔥dataset_num_proc: 数据集预处理的进程数，默认为1。
-- 🔥load_from_cache_file: 是否从缓存中加载数据集，默认为False。**建议在实际运行时设置为True，debug阶段设置为False**。
+- 🔥load_from_cache_file: 是否从缓存中加载数据集，默认为False。**建议在实际运行时设置为True，debug阶段设置为False**。你可以修改`MODELSCOPE_CACHE`环境变量控制缓存的路径。
   - 注意：该参数在"ms-swift<3.9"默认为True。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**CPT/SFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
