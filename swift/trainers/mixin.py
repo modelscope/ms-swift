@@ -715,7 +715,7 @@ class SwiftMixin:
                         lm_head_model,
                         *args,
                         origin_forward=inner_forward,
-                        padding_side=self.args.padding_side,
+                        padding_side=padding_side,
                         **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
@@ -739,7 +739,7 @@ class SwiftMixin:
                         lm_head_model,
                         *args,
                         origin_forward=inner_forward,
-                        padding_side=self.args.padding_side,
+                        padding_side=padding_side,
                         **kwargs)
 
                 model.forward = MethodType(reranker_forward, model)
