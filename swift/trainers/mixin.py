@@ -936,8 +936,51 @@ class SwiftMixin:
         args = self.args
         logits = outputs.logits
         metrics = None
-        if getattr(args, 'loss_type', None) in {'generative_reranker', 'listwise_generative_reranker'} \
-                and logits is not None and logits.dim() == 3:
+        task_type = getattr(args, 'task_type', 'causal_lm')
+        problem_type = getattr(args, 'problem_type', 'single_label_classification')
+        if task_type == 'embedding':
+            return
+        elif task_type == 'seq_cls':
+            if problem_type == 'multi_label_classification':
+                # TODO: compat padding_free
+                preds = logits.sigmoid() > 0.5
+                metrics = {'acc': (labels == preds).all(dim=-1)}
+            elif problem_type == 'regression':
+                problem_type == 'regression'
+            else:
+                preds = logits.argmax(dim=-1)
+            metrics = compute_acc(preds, labels)
+
+        elif task_type == 'causal_lm':
+            preds = logits.argmax(dim=-1)
+            if self.template.sequence_parallel_size > 1:
+                from swift.trainers.sequence_parallel import sequence_parallel
+                # Gather preds and labels across the sp group
+                if isinstance(preds, np.ndarray):
+                    preds = torch.from_numpy(preds).to(get_current_device())
+                if isinstance(labels, np.ndarray):
+                    labels = torch.from_numpy(labels).to(get_current_device())
+                assert labels.shape[1] == preds.shape[1]
+
+                if sequence_parallel.rp_world_size > 1:
+                    position_ids = sequence_parallel.real_position_ids
+                    position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                else:
+                    position_ids = None
+                preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
+                labels_output = sequence_parallel.gather(labels, dim=1, position_ids=position_ids)
+                # roll back to fit compute_acc
+                labels_output = torch.roll(labels_output, shifts=1, dims=1)
+                preds = preds_output
+                labels = labels_output.int()
+
+            metrics = compute_acc(
+                preds,
+                labels,
+                acc_strategy=args.acc_strategy,
+                is_encoder_decoder=self.template.is_encoder_decoder,
+                cu_seqlens=cu_seqlens)
+        elif task_type == 'generative_reranker':
             tokenizer = getattr(self, 'processing_class', None)
             if tokenizer is None and getattr(self, 'template', None) is not None:
                 tokenizer = self.template.tokenizer
@@ -978,50 +1021,11 @@ class SwiftMixin:
                     acc_strategy=args.acc_strategy,
                     is_encoder_decoder=self.template.is_encoder_decoder,
                     cu_seqlens=cu_seqlens)
-        elif logits.dim() == 1 or (logits.dim() == 2 and logits.size(-1) == 1):
+        elif task_type == 'reranker':
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
             binary_preds = (logits > 0).long()
-            metrics = compute_acc(
-                binary_preds,
-                labels.long(),
-                acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.template.is_encoder_decoder,
-                cu_seqlens=cu_seqlens)
-        elif self.args.task_type == 'seq_cls' and self.args.problem_type == 'multi_label_classification':
-            # TODO: compat padding_free
-            preds = logits.sigmoid() > 0.5
-            metrics = {'acc': (labels == preds).all(dim=-1)}
-        else:
-            preds = logits.argmax(dim=-1)
-            if self.template.sequence_parallel_size > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
-                # Gather preds and labels across the sp group
-                if isinstance(preds, np.ndarray):
-                    preds = torch.from_numpy(preds).to(get_current_device())
-                if isinstance(labels, np.ndarray):
-                    labels = torch.from_numpy(labels).to(get_current_device())
-                assert labels.shape[1] == preds.shape[1]
-
-                if sequence_parallel.rp_world_size > 1:
-                    position_ids = sequence_parallel.real_position_ids
-                    position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-                else:
-                    position_ids = None
-                preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
-                labels_output = sequence_parallel.gather(labels, dim=1, position_ids=position_ids)
-                # roll back to fit compute_acc
-                labels_output = torch.roll(labels_output, shifts=1, dims=1)
-                preds = preds_output
-                labels = labels_output.int()
-
-            metrics = compute_acc(
-                preds,
-                labels,
-                acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.template.is_encoder_decoder,
-                cu_seqlens=cu_seqlens)
-
+            metrics = compute_acc(binary_preds, labels.long())
         if metrics:
             mode = 'train' if self.model.training else 'eval'
             for k, v in metrics.items():
