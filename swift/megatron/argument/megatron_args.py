@@ -323,7 +323,10 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
-    # streaming dataloader
+
+    # dataloader
+    train_dataloader_shuffle: bool = True
+    dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
 
@@ -582,6 +585,7 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
+    no_data_sharding: bool = False
 
     # extra_args for megatron
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
