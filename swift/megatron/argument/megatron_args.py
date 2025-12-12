@@ -583,6 +583,7 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
+    no_data_sharding: bool = False
 
     # extra_args for megatron
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
