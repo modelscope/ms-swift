@@ -248,7 +248,7 @@ Other important parameters:
 - dataloader_pin_memory: Default is `True`.
 - dataloader_persistent_workers: Default is `False`.
 - dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, set to 10.
-- train_dataloader_shuffle: Whether to shuffle the dataloader in CPT/SFT training. Default is `True`. Not effective for `IterableDataset`, which uses sequential loading.
+- train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
   - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
