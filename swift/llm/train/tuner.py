@@ -86,6 +86,35 @@ def apply_liger(model_type: str):
                           'by running `pip install -U liger-kernel`')
 
 
+def apply_cce(model_type: str):
+    try:
+        from cut_cross_entropy.transformers import cce_patch
+        from swift.llm import ModelType
+    except ImportError:
+        raise ImportError('Please upgrade cut-cross-entropy to apply cce kernels to this model '
+                          'by running `pip install -U cut-cross-entropy`')
+
+    model_type_map = {
+        ModelType.llama: 'llama',
+        ModelType.llama3: 'llama',
+        ModelType.llama3_1: 'llama',
+        ModelType.llama3_2: 'llama',
+        ModelType.mistral: 'mistral',
+        ModelType.phi3: 'phi3',
+        ModelType.gemma2: 'gemma2',
+        ModelType.qwen2: 'qwen2',
+        ModelType.qwen2_5: 'qwen2',
+    }
+
+    cce_model_type = model_type_map.get(model_type)
+    if cce_model_type:
+        cce_patch(cce_model_type)
+        return
+
+    supported_models = ', '.join(sorted(set(model_type_map.values())))
+    raise ValueError(f'Unsupported cce model_type: {model_type}. Supported types: {supported_models}')
+
+
 def get_multimodal_target_regex(
     model,
     *,
@@ -374,6 +403,9 @@ class TunerMixin:
         if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
+
+        if args.use_cce and 'use_cce' not in inspect.signature(TrainingArguments).parameters:
+            apply_cce(args.model_type)
 
         if args.is_adapter:
             if args.tuner_backend != 'unsloth' and args.train_type not in extra_tuners:
