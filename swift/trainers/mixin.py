@@ -713,11 +713,7 @@ class SwiftMixin:
                         return revert_padding_free(output, kwargs, padding_side)
 
                     return transformers_seq_cls_forward(
-                        lm_head_model,
-                        *args,
-                        origin_forward=inner_forward,
-                        padding_side=padding_side,
-                        **kwargs)
+                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
 
                 model.forward = MethodType(seq_cls_forward, model)
             elif self.args.task_type == 'reranker':
@@ -737,11 +733,7 @@ class SwiftMixin:
                         return padding_free_fn(output, kwargs, padding_side)
 
                     return transformers_seq_cls_forward(
-                        lm_head_model,
-                        *args,
-                        origin_forward=inner_forward,
-                        padding_side=padding_side,
-                        **kwargs)
+                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
 
                 model.forward = MethodType(reranker_forward, model)
             elif self.args.task_type == 'generative_reranker':
