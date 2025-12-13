@@ -6,7 +6,7 @@ swift export \
     --dataset 'tany0699/garbage265#20000' \
     --task_type seq_cls \
     --num_labels 265 \
-     --problem_type single_label_classification \
+    --problem_type single_label_classification \
     --split_dataset_ratio 0.01 \
     --dataset_num_proc 16 \
     --to_cached_dataset true \
