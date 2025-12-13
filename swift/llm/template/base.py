@@ -472,6 +472,9 @@ class Template(ProcessorMixin):
                     assistant_messages = docs[0].messages
                     assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
                     anchor.messages = anchor.messages + assistant_messages
+                    anchor.images = anchor.images + docs[0].images
+                    anchor.audios = anchor.audios + docs[0].audios
+                    anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
