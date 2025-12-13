@@ -190,7 +190,7 @@ class PackingDataset(Dataset):
             self.packed_idx, self.packed_length = obj_list[0]
 
     def create_packed_idx(self, rank, offset, lengths):
-        data = [(i + offset, length) for i, length in enumerate(lengths)]
+        data = [(i + offset, sum(length) if isinstance(length, list) else length) for i, length in enumerate(lengths)]
         i = 0
         input_data = []
         while True:
