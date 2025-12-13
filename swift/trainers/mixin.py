@@ -938,12 +938,11 @@ class SwiftMixin:
         positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1).tolist()
         positive_indices.append(labels.shape[0])
         preds = []
-        labels = [0] * (len(positive_indices) - 1)
         for i in range(len(positive_indices) - 1):
             start, end = positive_indices[i], positive_indices[i + 1]
             preds.append(logits[start:end].argmax())
         preds = torch.tensor(preds)
-        labels = torch.tensor(labels)
+        labels = torch.tensor([0] * (len(positive_indices) - 1))
         return preds, labels
 
     def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
