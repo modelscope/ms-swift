@@ -1,8 +1,6 @@
-nproc_per_node=2
-NPROC_PER_NODE=$nproc_per_node \
+NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 MAX_NEGATIVE_SAMPLES=1 \
-MAX_PIXELS=602112 \
 swift sft \
     --model JinaAI/jina-reranker-m0 \
     --task_type reranker \
