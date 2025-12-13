@@ -23,4 +23,5 @@ swift sft \
     --dataset_num_proc 8 \
     --learning_rate 6e-6 \
     --label_names labels \
+    --deepspeed zero2 \
     --dataloader_drop_last true
