@@ -21,6 +21,7 @@ import safetensors
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
@@ -932,6 +933,19 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
+    @staticmethod
+    def _get_listwise_reranker_preds(logits, labels):
+        positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1).tolist()
+        positive_indices.append(labels.shape[0])
+        preds = []
+        labels = [0] * (len(positive_indices) - 1)
+        for i in range(len(positive_indices) - 1):
+            start, end = positive_indices[i], positive_indices[i + 1]
+            preds.append(logits[start:end].argmax())
+        preds = torch.tensor(preds)
+        labels = torch.tensor(labels)
+        return preds, labels
+
     def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
         args = self.args
         logits = outputs.logits
@@ -1011,10 +1025,13 @@ class SwiftMixin:
                     # Fallback to original behavior if attention_mask is not available
                     positive_logits = logits[:, -1, positive_token_id]
                     negative_logits = logits[:, -1, negative_token_id]
-
-                binary_preds = (positive_logits > negative_logits).long()
+                if args.loss_type == 'listwise_generative_reranker':
+                    preds = (positive_logits > negative_logits).long()
+                else:
+                    logits = F.logsigmoid(positive_logits - negative_logits)
+                    preds, labels = self._get_listwise_reranker_preds(logits, labels)
                 metrics = compute_acc(
-                    binary_preds,
+                    preds,
                     labels.long(),
                     acc_strategy=args.acc_strategy,
                     is_encoder_decoder=self.template.is_encoder_decoder,
@@ -1023,15 +1040,7 @@ class SwiftMixin:
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
             if args.loss_type == 'listwise_reranker':
-                positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1).tolist()
-                positive_indices.append(labels.shape[0])
-                preds = []
-                labels = [0] * (len(positive_indices) - 1)
-                for i in range(len(positive_indices) - 1):
-                    start, end = positive_indices[i], positive_indices[i + 1]
-                    preds.append(logits[start:end].argmax())
-                preds = torch.tensor(preds)
-                labels = torch.tensor(labels)
+                preds, labels = self._get_listwise_reranker_preds(logits, labels)
             else:
                 preds = (logits > 0).long()
             metrics = compute_acc(preds, labels.long())
