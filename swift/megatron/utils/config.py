@@ -108,6 +108,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     layer_types = res.pop('layer_types', None)
     mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
+    window_size = res.pop('window_size', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
             'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
             'Qwen3VLMoeForConditionalGeneration'
@@ -150,7 +151,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['quick_geglu'] = True
         res['activation_func_clamp_value'] = 7
         res['glu_linear_offset'] = 1
-        res['window_size'] = f'{res["window_size"]},0'
+        res['window_size'] = f'{window_size},0'
         if layer_types is None:
             res['window_attn_skip_freq'] = '2'
         else:
