@@ -946,7 +946,7 @@ class SwiftMixin:
                 preds = logits.sigmoid() > 0.5
                 metrics = {'acc': (labels == preds).all(dim=-1)}
             elif problem_type == 'regression':
-                problem_type == 'regression'
+                return
             else:
                 preds = logits.argmax(dim=-1)
             metrics = compute_acc(preds, labels)
