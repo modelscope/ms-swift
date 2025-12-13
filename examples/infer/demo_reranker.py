@@ -22,4 +22,4 @@ if __name__ == '__main__':
         }])
 
     response = engine.infer([infer_request])[0]
-    print(response.choices[0].message.content)
+    print(f'scores: {response.choices[0].message.content}')
