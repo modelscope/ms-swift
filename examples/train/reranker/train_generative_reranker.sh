@@ -1,8 +1,8 @@
-nproc_per_node=4
 # 4*47G
 # losses: plugin/loss.py
 # only support --padding_side left
-NPROC_PER_NODE=$nproc_per_node \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
@@ -23,4 +23,5 @@ swift sft \
     --dataset_num_proc 8 \
     --learning_rate 6e-6 \
     --label_names labels \
+    --deepspeed zero2 \
     --dataloader_drop_last true
