@@ -15,7 +15,8 @@ if __name__ == '__main__':
                 'role':
                 'user',
                 'content':
-                'Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:What is the capital of China?'
+                'Instruct: Given a web search query, retrieve relevant passages that answer the query\n'
+                'Query:What is the capital of China?'
             },
         ]),
         InferRequest(messages=[
