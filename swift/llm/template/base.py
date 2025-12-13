@@ -1212,7 +1212,7 @@ class Template(ProcessorMixin):
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
         # retry to avoid megatron getting stuck
-        i = 0
+        i = 1
         retry = 3
         while True:
             try:
