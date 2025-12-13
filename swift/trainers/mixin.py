@@ -1026,10 +1026,10 @@ class SwiftMixin:
                     positive_logits = logits[:, -1, positive_token_id]
                     negative_logits = logits[:, -1, negative_token_id]
                 if args.loss_type == 'listwise_generative_reranker':
-                    preds = (positive_logits > negative_logits).long()
-                else:
                     logits = F.logsigmoid(positive_logits - negative_logits)
                     preds, labels = self._get_listwise_reranker_preds(logits, labels)
+                else:
+                    preds = (positive_logits > negative_logits).long()
                 metrics = compute_acc(
                     preds,
                     labels.long(),
