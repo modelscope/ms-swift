@@ -941,16 +941,14 @@ class SwiftMixin:
         if task_type == 'embedding':
             return
         elif task_type == 'seq_cls':
-            if problem_type == 'multi_label_classification':
-                # TODO: compat padding_free
+            if problem_type == 'regression':
+                return
+            elif problem_type == 'multi_label_classification':
                 preds = logits.sigmoid() > 0.5
                 metrics = {'acc': (labels == preds).all(dim=-1)}
-            elif problem_type == 'regression':
-                return
             else:
                 preds = logits.argmax(dim=-1)
-            metrics = compute_acc(preds, labels)
-
+                metrics = compute_acc(preds, labels)
         elif task_type == 'causal_lm':
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:
@@ -1024,8 +1022,19 @@ class SwiftMixin:
         elif task_type == 'reranker':
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
-            binary_preds = (logits > 0).long()
-            metrics = compute_acc(binary_preds, labels.long())
+            if args.loss_type == 'listwise_reranker':
+                positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1).tolist()
+                positive_indices.append(labels.shape[0])
+                preds = []
+                labels = [0] * (len(positive_indices) - 1)
+                for i in range(len(positive_indices) - 1):
+                    start, end = positive_indices[i], positive_indices[i + 1]
+                    preds.append(logits[start:end].argmax())
+                preds = torch.tensor(preds)
+                labels = torch.tensor(labels)
+            else:
+                preds = (logits > 0).long()
+            metrics = compute_acc(preds, labels.long())
         if metrics:
             mode = 'train' if self.model.training else 'eval'
             for k, v in metrics.items():
