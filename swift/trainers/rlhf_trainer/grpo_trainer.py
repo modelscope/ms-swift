@@ -2020,7 +2020,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'importance_sampling_level': str(self.importance_sampling_level),
             'advantage_estimator': str(self.advantage_estimator),
             'chord_sft_enabled': str(self.chord_sft_dataset is not None),
-            'offpolicy_sequence_mask': 'enable' if self.off_policy_sequence_mask_delta is not None else 'disable',
             'rollout_importance_sampling': 'enable' if self.rollout_importance_sampling_mode is not None else 'disable',
             'loss_type': str(self.loss_type),
         }

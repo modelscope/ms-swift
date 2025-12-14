@@ -1986,7 +1986,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'dynamic_sample': str(self.args.dynamic_sample),
             'importance_sampling_level': str(self.args.importance_sampling_level),
             'advantage_estimator': str(self.args.advantage_estimator),
-            'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
             'rollout_importance_sampling':
             'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
             'loss_type': str(self.args.loss_type)
