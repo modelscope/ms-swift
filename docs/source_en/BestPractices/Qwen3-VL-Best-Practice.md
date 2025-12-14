@@ -172,6 +172,7 @@ Qwen3-VL's bbox output uses normalized 1000 relative coordinates. You can use th
 
 ### Dense Models
 Below is a fine-tuning script for the `Qwen3-VL-4B-Instruct` model. We use mixed-modality data as a demo dataset; this example script has no practical value. Training memory usage is 2 * 21GiB, and training time is 12 minutes.
+- If you find the preprocessing time too long, you can remove `--packing`, or use [cached dataset](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
 
 ```shell
 # 2 * 21GiB
