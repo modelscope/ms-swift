@@ -155,7 +155,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
 
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self._comm.device)
 
         self._comm.broadcast(flatten_tensor, src=self.client_rank)
         self._comm.group.barrier()
