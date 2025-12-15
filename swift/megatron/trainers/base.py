@@ -42,13 +42,13 @@ from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
-from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
-                    get_swift_datasets_provider)
+from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
+                    get_packed_seq_params, get_swift_datasets_provider)
 
 try:
-    from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+    from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
 except ImportError:
-    from megatron.legacy.data.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+    from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -1059,9 +1059,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single' or is_val_dataset or not args.train_dataloader_shuffle:
-            if is_val_dataset:
-                consumed_samples = 0
+        elif args.dataloader_type == 'single':
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1071,6 +1069,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
         elif args.dataloader_type == 'cyclic':
+            shuffle = args.train_dataloader_shuffle and not is_val_dataset
             batch_sampler = MegatronPretrainingRandomSampler(
                 dataset,
                 total_samples=len(dataset),
@@ -1079,6 +1078,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
                 data_sharding=args.data_sharding,
+                shuffle=shuffle,
             )
         else:
             raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
