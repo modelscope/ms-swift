@@ -798,7 +798,10 @@ def _patch_unified_memory():
     load_inline = cpp_extension.load_inline
 
     def _new_load_inline(*args, **kwargs):
-        raise RuntimeError
+        name = kwargs.get('name')
+        if name == 'managed_alloc_runtime':
+            raise RuntimeError
+        return load_inline(*args, **kwargs)
 
     # not create unified memory mempool
     cpp_extension.load_inline = _new_load_inline
