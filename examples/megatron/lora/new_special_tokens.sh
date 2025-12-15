@@ -6,7 +6,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --Qwen Qwen/Qwen3-30B-A3B \
+    --model Qwen/Qwen3-30B-A3B \
     --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
