@@ -344,8 +344,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
-                reward_inputs = copy(inputs)
-                reward_inputs.pop('add_eos', None)
+                reward_inputs = [{k: v for k, v in inp.items() if k != 'add_eos'} for inp in inputs]
                 if self.enable_server_multi_turn:
                     trajectory_inputs = self._get_trajectory_inputs(inputs)
                     reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
