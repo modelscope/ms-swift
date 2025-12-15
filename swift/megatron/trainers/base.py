@@ -522,8 +522,19 @@ class BaseMegatronTrainer(ABC):
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
                    **kwargs):
         new_data_iterator = self._replace_data_iterator(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config, *args, **kwargs)
+        debugger_on = self.args.enable_msprobe
+        if debugger_on:
+            from msprobe.pytorch import PrecisionDebugger
+            debugger = PrecisionDebugger(config_path=self.args.msprobe_config, model=model)
+            debugger.start()
+        try:
+            origin_train_step_out =  self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
+                                           config, *args, **kwargs)
+        finally:
+            if debugger_on:
+                debugger.stop()
+                debugger.step()
+        return origin_train_step_out
 
     # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(
