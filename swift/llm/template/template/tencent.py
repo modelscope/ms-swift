@@ -42,7 +42,6 @@ class HunYuanVLTemplate(Template):
         images = inputs.images
         if images:
             image_inputs = processor.image_processor(images=images, return_tensors='pt')
-            image_inputs['pixel_values'] = image_inputs['pixel_values']
             image_grid_thw = image_inputs['image_grid_thw']
             merge_size = processor.image_processor.merge_size
 
@@ -58,6 +57,11 @@ class HunYuanVLTemplate(Template):
             encoded['pixel_values'] = image_inputs['pixel_values']
             encoded['image_grid_thw'] = image_grid_thw
 
+            input_ids = encoded['input_ids']
+            position_ids = torch.arange(len(input_ids))
+            position_ids_w = torch.arange(len(input_ids))
+            position_ids_h = torch.arange(len(input_ids))
+            position_ids_t = torch.arange(len(input_ids))
             image_tokens_cumsum = [0]
             for i in range(len(image_grid_thw)):
                 grid_h, grid_w = image_grid_thw[i][-2:]
@@ -65,12 +69,6 @@ class HunYuanVLTemplate(Template):
                 patch_w = grid_w // merge_size
                 num_image_tokens = patch_h * (patch_w + 1) + 2
                 image_tokens_cumsum.append(image_tokens_cumsum[-1] + int(num_image_tokens))
-
-                input_ids = encoded['input_ids']
-                position_ids = torch.arange(len(input_ids))
-                position_ids_w = torch.arange(len(input_ids))
-                position_ids_h = torch.arange(len(input_ids))
-                position_ids_t = torch.arange(len(input_ids))
                 image_token_pos_indices = torch.where(torch.tensor(input_ids) == self.image_token_id)
                 start_pos = image_token_pos_indices[0][image_tokens_cumsum[i]] + 1
                 replace_num = (patch_w + 1) * patch_h
@@ -81,12 +79,10 @@ class HunYuanVLTemplate(Template):
                     patch_h_list += [h] * (patch_w + 1)
                 position_ids_h[start_pos:start_pos + replace_num] = torch.tensor(patch_h_list, dtype=torch.int64)
                 position_ids_t[start_pos:start_pos + replace_num] = 0
-
-                position_ids = torch.stack([position_ids, position_ids_w, position_ids_h, position_ids_t]).unsqueeze(0)
-                encoded['position_ids'] = position_ids
-
-                attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
-                encoded['attention_mask'] = attention_mask
+            position_ids = torch.stack([position_ids, position_ids_w, position_ids_h, position_ids_t]).unsqueeze(0)
+            encoded['position_ids'] = position_ids
+            attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
+            encoded['attention_mask'] = attention_mask
         return encoded
 
 
