@@ -447,7 +447,7 @@ class MegatronPretrainingRandomSampler:
         else:
             full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
             full_bucket_offset = current_epoch_samples
-            idx_range = range(full_bucket_offset, full_bucket_size, self.data_parallel_size)
+            idx_range = range(full_bucket_offset + self.data_parallel_rank, full_bucket_size, self.data_parallel_size)
 
         batch = []
         # Last batch if not complete will be dropped.
