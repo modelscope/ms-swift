@@ -385,10 +385,11 @@ class Template(ProcessorMixin):
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
-        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
-        for k in list(encoded.keys()):
-            if k.startswith('prompt_') or k.endswith('answer_'):
-                encoded.pop(k, None)
+        if inputs.messages[-1]['role'] == 'assistant':
+            inputs.messages[-1]['content'] = None
+        prompt_encoded = self._encode_truncated(inputs)
+        for k, v in prompt_encoded.items():
+            encoded[f'prompt_{k}'] = v
         return encoded
 
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
@@ -1291,7 +1292,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder or self.mode == 'gkd':
+        if self.is_encoder_decoder:
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
