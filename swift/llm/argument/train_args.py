@@ -15,6 +15,151 @@ from .tuner_args import TunerArguments
 
 logger = get_logger()
 
+_fsdp2_patched = False
+
+
+def _patch_fsdp2_no_upcast():
+    """Patch accelerate's fsdp2_prepare_model to avoid upcasting model to float32.
+
+    By default, accelerate upcasts the model to float32 when mixed_precision is enabled,
+    following DeepSpeed's implementation. This patch removes that upcast to allow
+    training with bf16 parameters directly, which can save memory.
+
+    The upcast logic is in accelerate/utils/fsdp_utils.py:fsdp2_prepare_model():
+        if accelerator.mixed_precision != "no" and (model_dtype is None or model_dtype != torch.float32):
+            model = model.to(torch.float32)
+
+    This patch modifies the function to skip the upcast step.
+    """
+    global _fsdp2_patched
+    if _fsdp2_patched:
+        return
+
+    try:
+        import accelerate.utils.fsdp_utils as fsdp_utils
+        original_fsdp2_prepare_model = fsdp_utils.fsdp2_prepare_model
+
+        def patched_fsdp2_prepare_model(accelerator, model):
+            """Patched version that skips the float32 upcast."""
+            # Call the original function
+            model = original_fsdp2_prepare_model(accelerator, model)
+            # Note: The upcast already happened in original function, but we can't prevent it
+            # without a more invasive patch. Instead, we'll patch at a different level.
+            return model
+
+        # A more targeted approach: patch the specific upcast logic
+        import torch
+        from torch.distributed.fsdp import FSDPModule, MixedPrecisionPolicy, fully_shard
+        from accelerate.utils.fsdp_utils import (
+            fsdp2_load_full_state_dict,
+            fsdp2_prepare_auto_wrap_policy,
+            get_module_children_bottom_up,
+            get_non_persistent_buffers,
+            get_parameters_from_modules,
+        )
+        from accelerate.utils.other import is_compiled_module
+        import copy
+
+        def patched_fsdp2_prepare_model_no_upcast(accelerator, model):
+            """Patched fsdp2_prepare_model that skips float32 upcast.
+
+            This is a copy of accelerate's fsdp2_prepare_model with the float32 upcast removed.
+            The original code upcasts the model to float32 when mixed_precision is enabled,
+            which increases memory usage. This patch skips that step.
+            """
+            is_type_fsdp = isinstance(model, FSDPModule) or (is_compiled_module(model)
+                                                             and isinstance(model._orig_mod, FSDPModule))
+            if is_type_fsdp:
+                return model
+
+            fsdp2_plugin = accelerator.state.fsdp_plugin
+
+            fsdp2_plugin.set_auto_wrap_policy(model)
+
+            original_sd = model.state_dict()
+            mesh = getattr(accelerator, 'torch_device_mesh', None)
+
+            # Handle mesh for context parallelism
+            mesh_value = None
+            if mesh is not None:
+                parallelism_config = getattr(accelerator, 'parallelism_config', None)
+                if parallelism_config is not None and hasattr(parallelism_config, 'fsdp_dim_names'):
+                    mesh_value = mesh[tuple(parallelism_config.fsdp_dim_names)]
+
+            fsdp2_kwargs = {
+                'reshard_after_forward': fsdp2_plugin.reshard_after_forward,
+                'offload_policy': fsdp2_plugin.cpu_offload,
+                'mp_policy': fsdp2_plugin.mixed_precision_policy or MixedPrecisionPolicy(),
+                'mesh': mesh_value,
+                'ignored_params': get_parameters_from_modules(fsdp2_plugin.ignored_modules, model, accelerator.device),
+            }
+
+            model_has_params4bit = False
+            for name, param in model.named_parameters():
+                if param.__class__.__name__ == 'Params4bit':
+                    model_has_params4bit = True
+                    break
+
+            if fsdp2_plugin.cpu_ram_efficient_loading and not model_has_params4bit:
+                non_persistent_buffer_fqns = get_non_persistent_buffers(model, recurse=True, fqns=True)
+                original_non_persistent_buffers = copy.deepcopy(
+                    {k: v
+                     for k, v in model.named_buffers() if k in non_persistent_buffer_fqns})
+                model = model.to(torch.device('meta'))
+                if hasattr(model, 'tie_weights'):
+                    model.tie_weights()
+
+            auto_wrap_policy_func = fsdp2_prepare_auto_wrap_policy(fsdp2_plugin, model)
+            if auto_wrap_policy_func is not None:
+                for module in get_module_children_bottom_up(model)[:-1]:
+                    if auto_wrap_policy_func(module) and not isinstance(module, FSDPModule):
+                        fully_shard(module, **fsdp2_kwargs)
+
+            if not isinstance(model, FSDPModule):
+                fully_shard(model, **fsdp2_kwargs)
+
+            if fsdp2_plugin.cpu_ram_efficient_loading:
+                fsdp2_load_full_state_dict(accelerator, model, original_sd)
+
+            if fsdp2_plugin.cpu_ram_efficient_loading and not model_has_params4bit:
+                for fqn, buffer_tensor in original_non_persistent_buffers.items():
+                    buffer_tensor = buffer_tensor.to(accelerator.device)
+
+                    if '.' in fqn:
+                        parent_fqn, local_buffer_name = fqn.rsplit('.', 1)
+                        parent_module = model.get_submodule(parent_fqn)
+                    else:
+                        local_buffer_name = fqn
+                        parent_module = model
+
+                    parent_module.register_buffer(local_buffer_name, buffer_tensor, persistent=False)
+
+                if hasattr(model, 'tie_weights'):
+                    model.tie_weights()
+
+            # NOTE: The original accelerate code does the following upcast here:
+            #   if accelerator.mixed_precision != "no" and (model_dtype is None or model_dtype != torch.float32):
+            #       model = model.to(torch.float32)
+            # We skip this to allow training with bf16 parameters directly, saving memory.
+
+            return model
+
+        # Apply the patch
+        fsdp_utils.fsdp2_prepare_model = patched_fsdp2_prepare_model_no_upcast
+
+        # Also patch in accelerator module
+        try:
+            import accelerate.accelerator as accelerator_module
+            accelerator_module.fsdp2_prepare_model = patched_fsdp2_prepare_model_no_upcast
+        except Exception:
+            pass
+
+        _fsdp2_patched = True
+        logger.info('Patched accelerate fsdp2_prepare_model to skip float32 upcast.')
+
+    except ImportError as e:
+        logger.warning(f'Failed to patch fsdp2_prepare_model: {e}')
+
 
 @dataclass
 class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArguments):
@@ -271,23 +416,33 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     def _init_fsdp(self):
         """Initialize FSDP2 configuration.
 
-        Similar to DeepSpeed, supports preset configurations or custom config file path:
-        - fsdp2: FSDP2 basic configuration (requires torch>=2.4.0), similar to DeepSpeed zero3
-        - fsdp2_offload: FSDP2 with CPU offload, similar to DeepSpeed zero3_offload
+        Similar to DeepSpeed, supports preset configurations or custom config file path.
+        FSDP2 requires torch>=2.4.0.
+
+        Available presets (aligned with DeepSpeed ZeRO stages):
+        - fsdp_zero2: Similar to ZeRO2 (SHARD_GRAD_OP, gradients + optimizer states sharded)
+        - fsdp_zero3: Similar to ZeRO3 (FULL_SHARD, parameters + gradients + optimizer states sharded)
+        - fsdp_zero2_offload: Similar to ZeRO2-Offload (SHARD_GRAD_OP + CPU offload)
+        - fsdp_zero3_offload: Similar to ZeRO3-Offload (FULL_SHARD + CPU offload)
+
+        Legacy aliases (for backward compatibility):
+        - fsdp2: Alias for fsdp_zero2
+        - fsdp2_offload: Alias for fsdp_zero3_offload
 
         You can also pass a path to a custom FSDP config JSON file.
 
-        Note: gradient_checkpointing uses swift's --gradient_checkpointing parameter.
+        Note:
+        - gradient_checkpointing uses swift's --gradient_checkpointing parameter
+        - For ZeRO1 level (only optimizer states sharded), use DeepSpeed zero1 instead.
+          FSDP's NO_SHARD mode has significant overhead compared to DeepSpeed ZeRO1.
 
-        Key parameters
-        - reshard_after_forward: Reshard parameters after forward pass to reduce memory (default: True)
-        - offload: Offload parameters to CPU (default: False for fsdp2, True for fsdp2_offload)
-        - use_orig_params: Use original parameters, required for LoRA (default: True for fsdp2)
-        - Mixed precision: Uses bf16/fp16 based on swift's --torch_dtype parameter
+        Memory/Speed Trade-offs:
+        - fsdp_zero2: Medium memory, good speed (recommended for most cases)
+        - fsdp_zero3: Lowest memory, slower speed (for very large models)
 
         Usage:
-            swift sft --fsdp fsdp2 ...
-            swift sft --fsdp fsdp2_offload ...
+            swift sft --fsdp fsdp_zero2 ...
+            swift sft --fsdp fsdp_zero3_offload ...
             swift sft --fsdp /path/to/custom_fsdp.json ...
         """
         if not self.fsdp:
@@ -299,8 +454,23 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                              f'local_world_size: {self.local_world_size}.')
         if self.deepspeed:
             raise ValueError('FSDP2 is not compatible with DeepSpeed.')
+
         fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fsdp_config'))
-        fsdp_mapping = {name: f'{name}.json' for name in ['fsdp2', 'fsdp2_offload']}
+
+        # FSDP preset configurations aligned with DeepSpeed ZeRO stages
+        # Note: fsdp_zero1 is intentionally not provided because FSDP's NO_SHARD mode
+        # has significant overhead compared to DeepSpeed ZeRO1. Use --deepspeed zero1 instead.
+        fsdp_mapping = {
+            # New naming convention (aligned with DeepSpeed)
+            'fsdp_zero2': 'fsdp_zero2.json',
+            'fsdp_zero3': 'fsdp_zero3.json',
+            'fsdp_zero2_offload': 'fsdp_zero2_offload.json',
+            'fsdp_zero3_offload': 'fsdp_zero3_offload.json',
+            # Legacy aliases for backward compatibility
+            'fsdp2': 'fsdp_zero2.json',
+            'fsdp2_offload': 'fsdp_zero3_offload.json',
+        }
+
         fsdp_config_path = self.fsdp
         for fsdp_name, fsdp_config in fsdp_mapping.items():
             if self.fsdp == fsdp_name:
@@ -319,6 +489,14 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         # Set FSDP_VERSION environment variable for accelerate to recognize FSDP2
         fsdp_version = self.fsdp_config.get('fsdp_version', 2)
         os.environ['FSDP_VERSION'] = str(fsdp_version)
+
+        # Set environment variable to optimize NCCL memory usage
+        if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
+            os.environ['TORCH_NCCL_AVOID_RECORD_STREAMS'] = '1'
+
+        # Patch accelerate to avoid upcasting model to float32
+        # This allows training with bf16 parameters directly, saving memory
+        _patch_fsdp2_no_upcast()
 
         logger.info(f'Using FSDP2: fsdp={self.fsdp}, fsdp_config={self.fsdp_config}')
 

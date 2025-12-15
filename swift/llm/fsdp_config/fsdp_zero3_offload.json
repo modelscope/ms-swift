@@ -1,5 +1,5 @@
 {
-    "_description": "FSDP2 with CPU offload (alias for fsdp_zero3_offload)",
+    "_description": "FSDP2 configuration similar to DeepSpeed ZeRO3-Offload (full shard with CPU offload)",
     "_note": "FULL_SHARD with CPU offload for parameters, gradients and optimizer states",
     "_requires": "torch>=2.4.0 for FSDP2",
     "_memory": "Lowest GPU memory, uses CPU RAM extensively",

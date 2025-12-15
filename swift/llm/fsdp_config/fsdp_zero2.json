@@ -1,7 +1,8 @@
 {
-    "_description": "FSDP2 configuration (alias for fsdp_zero2)",
+    "_description": "FSDP2 configuration with SHARD_GRAD_OP strategy (similar intent to DeepSpeed ZeRO2)",
     "_note": "Note: accelerate will upcast model to float32 when mixed_precision is enabled. This is by design for maintaining master weights in fp32.",
     "_requires": "torch>=2.4.0 for FSDP2",
+    "_memory": "Shards gradients and optimizer states, parameters stay replicated",
 
     "fsdp": "shard_grad_op auto_wrap",
     "fsdp_config": {
@@ -9,6 +10,7 @@
         "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
         "cpu_ram_efficient_loading": true,
         "state_dict_type": "SHARDED_STATE_DICT",
-        "limit_all_gathers": true
+        "limit_all_gathers": true,
+        "backward_prefetch": "BACKWARD_PRE"
     }
 }
