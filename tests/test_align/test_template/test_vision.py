@@ -1127,7 +1127,7 @@ def test_mistral_2512_thinking():
     assert response1[:256] == response2[:256]
 
 
-def test_huanyuan_ocr():
+def test_hunyuan_ocr():
     pt_engine = PtEngine('Tencent-Hunyuan/HunyuanOCR')
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
     messages = [{
@@ -1226,4 +1226,4 @@ if __name__ == '__main__':
     # test_sensenova_si()
     # test_mistral_2512()
     # test_mistral_2512_thinking()
-    test_huanyuan_ocr()
+    test_hunyuan_ocr()

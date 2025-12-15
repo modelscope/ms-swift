@@ -24,7 +24,7 @@ register_model(
         MLLMModelType.hunyuan_ocr,
         [
             ModelGroup([
-                Model('Tencent-Hunyuan/HunyuanOCR', 'Tencent-Hunyuan/HunyuanOCR'),
+                Model('Tencent-Hunyuan/HunyuanOCR', 'tencent/HunyuanOCR'),
             ]),
         ],
         TemplateType.hunyuan_ocr,
