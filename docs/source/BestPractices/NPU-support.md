@@ -359,7 +359,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | ---------------------- |
 | Liger-kernel           |
 | 量化/QLoRA相关         |
-| Megatron相关           |
 | 使用sglang作为推理引擎 |
 
 
