@@ -25,8 +25,6 @@ class HunYuanVLTemplate(Template):
     image_token = '<｜hy_place▁holder▁no▁102｜>'
     image_placeholder = ['<｜hy_place▁holder▁no▁102｜>']
 
-    # placeholder_tokens = ['èĲ¥éĢłèī¯å¥½']
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -62,18 +60,18 @@ class HunYuanVLTemplate(Template):
 
             image_tokens_cumsum = [0]
             for i in range(len(image_grid_thw)):
-                grid_h, grid_w = image_grid_thw[i][-2:]  # image_grid_thw array [[]]
+                grid_h, grid_w = image_grid_thw[i][-2:]
                 patch_h = grid_h // merge_size
                 patch_w = grid_w // merge_size
                 num_image_tokens = patch_h * (patch_w + 1) + 2
                 image_tokens_cumsum.append(image_tokens_cumsum[-1] + int(num_image_tokens))
 
-                input_ids = encoded['input_ids']  # tensor[[]]
+                input_ids = encoded['input_ids']
                 position_ids = torch.arange(len(input_ids))
                 position_ids_w = torch.arange(len(input_ids))
                 position_ids_h = torch.arange(len(input_ids))
                 position_ids_t = torch.arange(len(input_ids))
-                image_token_pos_indices = torch.where(torch.tensor(input_ids) == self.image_token_id)  # tensor []
+                image_token_pos_indices = torch.where(torch.tensor(input_ids) == self.image_token_id)
                 start_pos = image_token_pos_indices[0][image_tokens_cumsum[i]] + 1
                 replace_num = (patch_w + 1) * patch_h
                 position_ids_w[start_pos:start_pos + replace_num] = torch.tensor(
@@ -87,7 +85,7 @@ class HunYuanVLTemplate(Template):
                 position_ids = torch.stack([position_ids, position_ids_w, position_ids_h, position_ids_t]).unsqueeze(0)
                 encoded['position_ids'] = position_ids
 
-                attention_mask = torch.tensor(input_ids).ne(processor.pad_id)  # pad_id 120002
+                attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
                 encoded['attention_mask'] = attention_mask
         return encoded
 
