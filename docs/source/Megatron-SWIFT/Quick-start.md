@@ -77,10 +77,12 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
+### 传统方式
+
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 多卡权重转换：将`CUDA_VISIBLE_DEVICES=0`删除即可使用多卡权重转换。
 - 转换精度测试：`--test_convert_precision true`将测试转换精度。在MoE大型模型的转换时，该参数所需时间较长，且需要更多的内存消耗，可酌情去除。
-- ms-swift支持了Mcore-Bridge来避免权重转换的额外耗时，请参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -154,6 +156,58 @@ swift infer \
 ```
 <<< who are you?
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
+```
+
+
+### Mcore-Bridge【推荐】
+
+在"ms-swift>=3.10"，支持了Mcore-Bridge，去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+
+训练脚本：
+```bash
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-5 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-6 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+我们对生成的safetensors格式权重进行推理：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 - 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。

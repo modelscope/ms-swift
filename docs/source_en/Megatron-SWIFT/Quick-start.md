@@ -77,10 +77,12 @@ Recommended Operating Environment:
 
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
+## Traditional Method
+
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - Multi-GPU weight conversion: Remove `CUDA_VISIBLE_DEVICES=0` to enable multi-GPU weight conversion.
 - Conversion precision test: `--test_convert_precision true` will test the conversion precision. For large MoE model conversions, this option takes longer and consumes more memory, so you may omit it as needed.
-- ms-swift supports Mcore-Bridge to avoid the extra time cost of weight conversion. Please refer to the [Mcore-Bridge documentation](./Mcore-Bridge.md).
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -157,6 +159,59 @@ The inference results are as follows:
 ```
 <<< who are you?
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
+```
+
+### Mcore-Bridge [Recommended]
+
+In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
+
+Training script:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-5 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-6 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+We perform inference on the generated safetensors format weights:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
