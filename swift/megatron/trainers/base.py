@@ -507,7 +507,6 @@ class BaseMegatronTrainer(ABC):
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                # TODO: check args.iteration, args.num_floating_point_operations_so_far
                 load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
         if args.adapter_load is not None:
             with adapter_state_dict_context():

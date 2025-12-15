@@ -31,8 +31,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                     self.bridge.load_weights(m, args.ref_model)
                 m.requires_grad_(False).eval()
             if args.ref_load:
-                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                    ref_models, None, None, load_arg='ref_load')
+                load_checkpoint(ref_models, None, None, load_arg='ref_load')
             self.ref_models = ref_models
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
