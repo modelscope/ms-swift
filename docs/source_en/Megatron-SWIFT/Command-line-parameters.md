@@ -287,8 +287,9 @@ LoRA Training:
 
 **Mcore-Bridge Parameters**
 
-- 🔥load_safetensors: Whether to load weights directly from safetensors. Default is None. If `--load` is not set, it will be set to True, otherwise False.
-- 🔥save_safetensors: Default is True, whether to save weights directly as safetensors. This parameter supports saving checkpoint resume training content such as optimizer weights and random number states in "ms-swift>=3.12", controlled by `--no_save_optim` and `--no_save_rng`.
+- 🔥load_safetensors: This parameter will become ineffective in "ms-swift>=3.12" (defaults to False in previous versions). Weights will be loaded based on priority: if `--load` does not exist, safetensors weights `--model` will be loaded; the same applies to `--adapters` and `--adapter_load`, etc.
+  - Note: In "ms-swift>=3.12", this parameter is retained for shell script compatibility but no longer has any effect.
+- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resume content such as optimizer weights and random number states (additionally storing mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`.
 - model: The model_id or model_path of safetensors weights. Default is None. Supports resume training from checkpoint using `--no_load_optim false --no_load_rng false`.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
@@ -352,9 +353,8 @@ In addition to inheriting the training parameters, the following parameters are 
 
 ### DPO Parameters
 
-- ref_load: The loading path for ref_model. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, which means it will be set to `load`. For "ms-swift>=3.12", it is recommended to use `--ref_model` to control the loading path of ref_model.
-- ref_adapter_load: The weight path for loading ref_adapter, default is None. If you want to use LoRA weights generated from SFT for DPO, please use "ms-swift>=3.8" and set `--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true` during training. For resume training from checkpoint in this scenario, set `--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`.
-  - Tip: For "ms-swift>=3.12", it is recommended to use `--ref_adapters` to control the loading path of ref_adapters, for example: `--adapters sft_ckpt --ref_adapters sft_ckpt --finetune true`, `--adapters rlhf_ckpt --ref_adapters sft_ckpt --finetune true`.
+- ref_load: The loading path for the reference model. This must be provided when using DPO/GRPO/KTO algorithms with full-parameter training. Defaults to `None`, which means it will be set to the same value as `load`.
+- ref_adapter_load: The path to load the ref_adapter weights, default is `None`. If you want to use LoRA weights generated from SFT for DPO, please use "ms-swift>=3.8" and set `--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true` during training. For resuming training from a checkpoint in this scenario, set `--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`.
 - beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
 - 🔥rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
   - **Note**: In "ms-swift<3.8", the default value was `1.`. Starting from "ms-swift>=3.8", the default has been changed to `None`.
