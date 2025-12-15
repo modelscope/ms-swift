@@ -1339,8 +1339,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Aggregate entropy
         if entropy_logs:
             # Directly update entropy logs
-            self._logs['entropy'].extend(entropy_logs)
             aggregated_metrics['entropy'] = {
+                'entropy_logs': entropy_logs,
                 'entropy_mean': sum(s['mean'] for s in entropy_stats) / len(entropy_stats),
                 'entropy_max': max(s['max'] for s in entropy_stats),
                 'entropy_min': min(s['min'] for s in entropy_stats)
