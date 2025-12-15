@@ -314,7 +314,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥save_strategy: 保存策略，可选项为'steps'和'epochs'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
-- train_dataloader_shuffle: 是否对train_dataloader使用随机，该参数需"ms-swift>=3.12"。
+- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
   - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
 - dataloader_pin_memory: 默认为True。使用该参数需"ms-swift>=3.12"。
 - dataloader_persistent_workers: 默认为True。使用该参数需"ms-swift>=3.12"。
