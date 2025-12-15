@@ -91,6 +91,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         """Initialize rollout generation parameters"""
         args = self.args
         self.num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
+        self.num_generations_eval = getattr(args, 'num_generations_eval', None) or self.num_generations
         self.temperature = args.temperature
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization

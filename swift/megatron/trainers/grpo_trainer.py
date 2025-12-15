@@ -75,6 +75,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.device = get_current_device()
         # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
+        self.num_generations_eval = args.num_generations_eval or self.num_generations
         self.beta = args.beta
         self.temperature = args.temperature
         self.loss_type = args.loss_type
@@ -935,8 +936,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self._metrics[mode]['kl'].append(kl_values.nanmean().item())
             rewards = rewards - self.beta * kl_values
 
-        grouped_rewards = rewards.view(-1, self.num_generations)
-        K = self.num_generations
+        # Use num_generations_eval in eval mode
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+        grouped_rewards = rewards.view(-1, num_generations)
+        K = num_generations
 
         # Compute group statistics
         group_rewards_mean = grouped_rewards.mean(dim=1)
@@ -949,7 +952,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # RLOO: Leave-One-Out baseline
             # A_i = r_i - mean(r_j for j != i)
             # = r_i * K/(K-1) - mean_all * K/(K-1)
-            advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+            # Edge case: when K=1 (e.g., num_generations_eval=1), fall back to simple advantage
+            if K > 1:
+                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+            else:
+                advantages = rewards - group_rewards_mean
         else:  # 'grpo' or 'reinforce_plus_plus'
             # Both use group mean as baseline
             advantages = rewards - group_rewards_mean
@@ -959,11 +966,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # REINFORCE++: Use std of advantages (not rewards)
             if self.scale_rewards == 'batch':
                 # Global whitening: std computed on advantages
-                advantages_std = advantages.std().expand_as(advantages)
+                if advantages.numel() > 1:
+                    advantages_std = advantages.std().expand_as(advantages)
+                else:  # edge case: num_generations_eval=batch_size=1
+                    advantages_std = torch.zeros_like(advantages)
             elif self.scale_rewards == 'group':
                 # Group-level whitening on advantages
                 advantages_grouped = advantages.view(-1, K)
-                advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                if K > 1:
+                    advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                else:  # edge case: num_generations_eval=1
+                    advantages_std = torch.zeros_like(advantages)
             else:  # 'none'
                 advantages_std = None
             if advantages_std is not None:
@@ -972,10 +985,16 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # GRPO/RLOO: Use std of original rewards
             if self.scale_rewards == 'batch':
                 # Global batch-level normalization
-                rewards_std = rewards.std().expand_as(rewards)
+                if rewards.numel() > 1:
+                    rewards_std = rewards.std().expand_as(rewards)
+                else:  # edge case: num_generations_eval=batch_size=1
+                    rewards_std = torch.zeros_like(rewards)
             elif self.scale_rewards == 'group':
                 # Group-level normalization (default)
-                rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                if K > 1:
+                    rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                else:  # edge case: num_generations_eval=1
+                    rewards_std = torch.zeros_like(rewards)
             else:  # 'none'
                 rewards_std = None
             if rewards_std is not None:
@@ -983,16 +1002,23 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
-            # rewards: [prompt_batch_size, self.num_generations]
-            # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
-            group_rewards = rewards.view(-1, self.num_generations)
+            # rewards: [prompt_batch_size, num_generations]
+            # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
+            group_rewards = rewards.view(-1, num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             # Compute std based on scale_rewards setting for logging
             if self.scale_rewards in ['group', 'none']:
-                rewards_std = group_rewards.std(-1).mean().item()
+                # Handle edge case when num_generations_eval=1
+                if num_generations > 1:
+                    rewards_std = group_rewards.std(-1).mean().item()
+                else:
+                    rewards_std = 0.0
             elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item()
-            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
+            if num_generations > 1:
+                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+            else:
+                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
 
             self._metrics[mode]['reward'].append(rewards_mean)
             self._metrics[mode]['reward_std'].append(rewards_std)
@@ -1044,8 +1070,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Compute reward std for the entire global batch
             # We need to compute std on the gathered data to get a global mask
             global_rewards = (global_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-            grouped_rewards = global_rewards.view(-1, self.num_generations)
-            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            mode = 'train' if self.unwrapped_models[0].training else 'eval'
+            num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+            grouped_rewards = global_rewards.view(-1, num_generations)
+            # Handle edge case when num_generations=1
+            if num_generations > 1:
+                group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(num_generations)
+            else:
+                group_rewards_std = torch.zeros_like(global_rewards)
             global_valid_mask = (group_rewards_std > 0)
 
             # Filter valid samples based on std > 0
@@ -1664,14 +1696,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return inputs
 
     def get_num_iters_per_step(self):
-        if hasattr(self, '_num_iters_per_step'):
-            return self._num_iters_per_step
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        cache_key = f'_num_iters_per_step_{mode}'
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
         # each rollout DP group will generate generation_batch_size / dp_size completions
         dp_size = mpu.get_data_parallel_world_size()
         completions_to_rollout = self.generation_batch_size // dp_size
         # completions will be repeated num_generations times after
         # so we need to divide num_iters_per_step by num_generations to get prompt batch size
-        prompts_to_rollout = completions_to_rollout // self.num_generations
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+        prompts_to_rollout = completions_to_rollout // num_generations
         # every iter will generate micro_batch_size prompts
         num_iters_per_step = prompts_to_rollout // self.micro_batch_size
         assert num_iters_per_step > 0, (
@@ -1679,17 +1714,19 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             f'This means no prompts will be generated'
             f'generation_batch_size={self.generation_batch_size}, '
             f'data_parallel_world_size={mpu.get_data_parallel_world_size()}, '
-            f'num_generations={self.num_generations}, '
+            f'num_generations={num_generations}, '
             f'micro_batch_size={self.micro_batch_size}. '
             'Please adjust these parameters so that '
             'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
-        self._num_iters_per_step = num_iters_per_step
+        setattr(self, cache_key, num_iters_per_step)
         return num_iters_per_step
 
     def get_local_rollout_batch(self, batch):
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         # repeat num_generations times
         rollout_group = self._get_rollout_group()
-        global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
+        global_rollout_batch = [deepcopy(item) for item in batch for _ in range(num_generations)]
         # get local rollout data
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
