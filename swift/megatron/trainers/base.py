@@ -450,7 +450,7 @@ class BaseMegatronTrainer(ABC):
         with open(iteration_path, 'r') as f:
             iteration = f.read()
 
-        common_path = os.path.join(ckpt_dir, f'iter_{5:07d}', 'common.pt')
+        common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')
         if not os.path.exists(common_path):
             return iteration, 0
 
@@ -507,8 +507,8 @@ class BaseMegatronTrainer(ABC):
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                    model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
+                # TODO: check args.iteration, args.num_floating_point_operations_so_far
+                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
@@ -1024,6 +1024,7 @@ class BaseMegatronTrainer(ABC):
             if args.train_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
                 output_dir = f'{output_dir}-merged'
+                os.makedirs(output_dir, exist_ok=True)
                 self._copy_args(output_dir)
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
             if args.train_type == 'lora' and args.merge_lora:
