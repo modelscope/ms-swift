@@ -1060,6 +1060,8 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
         elif args.dataloader_type == 'single' or is_val_dataset or not args.train_dataloader_shuffle:
+            if is_val_dataset:
+                consumed_samples = 0
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1092,7 +1094,7 @@ class BaseMegatronTrainer(ABC):
             num_workers=args.num_workers,
             pin_memory=args.dataloader_pin_memory,
             persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
-            prefetch_factor=args.dataloader_prefetch_factor,
+            prefetch_factor=args.dataloader_prefetch_factor if args.num_workers > 0 else None,
             worker_init_fn=maybe_worker_init_fn,
             collate_fn=data_collator,
         )
