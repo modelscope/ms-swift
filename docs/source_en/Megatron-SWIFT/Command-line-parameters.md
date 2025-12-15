@@ -90,6 +90,9 @@
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: The directory of the checkpoint to load. Default is None. This parameter is no longer recommended for explicit use in "ms-swift >= 3.12". Refer to the [mcore-bridge documentation](./Mcore-Bridge.md) and use `--model` instead.
+  - Note: If you did not use the `swift export` provided by ms-swift for weight conversion, you need to additionally set `--model <hf-repo>` to load the `config.json` configuration file.
+  - Note: In "ms-swift>3.10", direct loading and saving of safetensors weights is supported, refer to [mcore-bridge documentation](./Mcore-Bridge.md).
+  - The difference between `--model` and `--load`: `--model/--adapters/--ref_model/--ref_adapters` are followed by safetensors weight directories, while `--load/--adapter_load/--ref_load/--ref_adapter_load` are followed by mcore weight directories. `--model/--adapters` do not support loading checkpoint resume states, so in "ms-swift>=3.12", if you set `--no_save_optim false`, mcore weight format will be additionally saved for checkpoint resumption, and you need to use `--load/--adapter_load` to load the checkpoint resume state.
 - 🔥no_load_optim: Do not load optimizer, default is False.
   - Note: When resuming training from a checkpoint, setting `--no_load_optim false` (i.e., loading the optimizer state) typically consumes significantly more GPU memory than setting `--no_load_optim true` (i.e., skipping the optimizer state).
 - 🔥no_load_rng: Do not load RNG, default is False.

@@ -88,7 +88,7 @@
 - 🔥load: 加载的checkpoint目录，默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
   - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
   - 注意：在"ms-swift>3.10"，支持直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
-  - `--model`与`--load`的区别：`--model`后加safetensors权重目录，`--load`后加mcore权重目录。`--model`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训。
+  - `--model`与`--load`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--load/--adapter_load/--ref_load/--ref_adapter_load`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--load/--adapter_load`来加载断点续训的状态。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
   - 注意：断点续训时，设置`--no_load_optim false`读取优化器状态通常比`--no_load_optim true`不读取优化器状态消耗更大的显存资源。
 - 🔥no_load_rng: 不载入rng，默认为False。
