@@ -233,6 +233,7 @@ class MLLMTemplateType:
     mistral_2512 = 'mistral_2512'
     mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
+    hunyuan_ocr = 'hunyuan_ocr'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
