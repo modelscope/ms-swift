@@ -44,6 +44,7 @@ class RLHFMegatronArgumentsMixin:
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
     num_generations: int = 8
+    num_generations_eval: Optional[int] = None
     max_completion_length: int = 512
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'

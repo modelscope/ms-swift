@@ -386,6 +386,7 @@ In addition to inheriting the training parameters, the following parameters are 
 - steps_per_generation: Number of optimization steps per generation round, i.e., the ratio of sampling batch size to global_batch_size. Default is 1.
 - generation_batch_size: Sampling batch size, must be a multiple of global_batch_size. Default equals global_batch_size * steps_per_generation.
 - num_generations: Number of samples per prompt, the G value in the paper, default is 8.
+- num_generations_eval: Number of generations to sample during evaluation. This allows using fewer generations during evaluation to save computation. If `None`, uses the value of `num_generations`. Default is None.
 - reward_funcs: GRPO algorithm reward functions. Options include `accuracy`, `format`, `cosine`, `repetition`, and `soft_overlong`. See swift/plugin/orm.py. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. Must match the total number of reward functions and reward models. Default is None, meaning all rewards have equal weights of `1.0`.
   - Tip: If GRPO training includes `--reward_model`, it is added at the end of the reward functions.

@@ -361,6 +361,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - steps_per_generation：每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
 - generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
 - num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
+- num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。

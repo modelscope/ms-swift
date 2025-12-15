@@ -105,7 +105,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
-                self.accelerator.num_processes // self.args.num_generations
+                self.accelerator.num_processes // self.num_generations_eval
             assert len(self.eval_dataset) >= total_eval_batch_size, (
                 f'eval_dataset size {len(self.eval_dataset)} is smaller than '
                 f'total_eval_batch_size {total_eval_batch_size}. '
@@ -153,6 +153,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
+        self._current_train_step_time = 0.0
 
     def _get_train_sampler(self, train_dataset=None):
         if self.template.sequence_parallel_size > 1:
@@ -390,16 +391,24 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
-            # rewards: [prompt_batch_size, self.num_generations]
-            # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
+            # rewards: [prompt_batch_size, num_generations]
+            # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
             mode = 'train' if self.model.training else 'eval'
-            group_rewards = rewards.view(-1, self.num_generations)
+            num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+            group_rewards = rewards.view(-1, num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             if self.scale_rewards in ['group', 'none']:
-                rewards_std = group_rewards.std(-1).mean().item()
+                # Handle edge case when num_generations_eval=1
+                if num_generations > 1:
+                    rewards_std = group_rewards.std(-1).mean().item()
+                else:
+                    rewards_std = 0.0
             elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item()
-            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
+            if num_generations > 1:
+                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+            else:
+                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
 
             self._metrics[mode]['reward'].append(rewards_mean)
             self._metrics[mode]['reward_std'].append(rewards_std)
@@ -439,9 +448,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # --------------------------------------------------
         # Case 1: Default grouped mode
         # --------------------------------------------------
+        mode = 'train' if self.model.training else 'eval'
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         if not self.dynamic_num_samples:
-            grouped_rewards = rewards.view(-1, self.num_generations)
-            K = self.num_generations
+            grouped_rewards = rewards.view(-1, num_generations)
+            K = num_generations
 
             # Compute group statistics
             group_rewards_mean = grouped_rewards.mean(dim=1)
@@ -454,7 +465,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # RLOO: Leave-One-Out baseline
                 # A_i = r_i - mean(r_j for j != i)
                 # = r_i * K/(K-1) - mean_all * K/(K-1)
-                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+                # Edge case: when K=1 (e.g., num_generations_eval=1), fall back to simple advantage
+                if K > 1:
+                    advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+                else:
+                    advantages = rewards - group_rewards_mean
             else:  # 'grpo' or 'reinforce_plus_plus'
                 # Both use group mean as baseline
                 advantages = rewards - group_rewards_mean
@@ -465,11 +480,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.scale_rewards == 'batch':
                     # Global whitening: std computed on advantages
                     # Note: advantages.mean() is mathematically 0, no need to subtract
-                    advantages_std = advantages.std().expand_as(advantages)
+                    if advantages.numel() > 1:
+                        advantages_std = advantages.std().expand_as(advantages)
+                    else:  # edge case: num_generations_eval=batch_size=1
+                        advantages_std = torch.zeros_like(advantages)
                 elif self.scale_rewards == 'group':
                     # Group-level whitening on advantages
                     advantages_grouped = advantages.view(-1, K)
-                    advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                    if K > 1:
+                        advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                    else:  # edge case: num_generations_eval=1
+                        advantages_std = torch.zeros_like(advantages)
                 else:  # 'none'
                     advantages_std = None
                 if advantages_std is not None:
@@ -477,9 +498,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:  # 'grpo' or 'rloo'
                 # GRPO/RLOO: Use std of original rewards
                 if self.scale_rewards == 'batch':
-                    rewards_std = rewards.std().expand_as(rewards)
+                    if rewards.numel() > 1:
+                        rewards_std = rewards.std().expand_as(rewards)
+                    else:  # edge case: num_generations_eval=batch_size=1
+                        rewards_std = torch.zeros_like(rewards)
                 elif self.scale_rewards == 'group':
-                    rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                    if K > 1:
+                        rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                    else:  # edge case: num_generations_eval=1
+                        rewards_std = torch.zeros_like(rewards)
                 else:  # 'none'
                     rewards_std = None
                 if rewards_std is not None:
@@ -534,7 +561,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     idx_tensor = torch.tensor(idxs, device=device)
                     r_group = unique_rewards[idx_tensor]
                     # A_i = r_i * K/(K-1) - mean * K/(K-1)
-                    request_advantages[idx_tensor] = (r_group * K / (K - 1) - r_group.mean() * K / (K - 1))
+                    # Edge case: when K=1, fall back to simple advantage
+                    if K > 1:
+                        request_advantages[idx_tensor] = (r_group * K / (K - 1) - r_group.mean() * K / (K - 1))
+                    else:
+                        request_advantages[idx_tensor] = r_group - r_group.mean()
             else:  # 'grpo' or 'reinforce_plus_plus'
                 # Both use group mean as baseline
                 request_advantages = unique_rewards - prompt_means
@@ -545,7 +576,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.scale_rewards == 'batch':
                     # Global whitening: std computed on advantages
                     # Note: advantages.mean() is mathematically 0, no need to subtract
-                    advantages_std = request_advantages.std()
+                    if request_advantages.numel() > 1:
+                        advantages_std = request_advantages.std()
+                    else:
+                        advantages_std = torch.tensor(0.0, device=device)
                     prompt_stds = torch.full_like(request_advantages, advantages_std)
                 elif self.scale_rewards == 'group':
                     # Group-level whitening on advantages
@@ -553,7 +587,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for pid, idxs in prompt_to_indices.items():
                         idx_tensor = torch.tensor(idxs, device=device)
                         adv_group = request_advantages[idx_tensor]
-                        prompt_stds[idx_tensor] = adv_group.std()
+                        # Edge case: when group size is 1
+                        prompt_stds[idx_tensor] = adv_group.std() if len(idxs) > 1 else 0.0
                 else:  # 'none'
                     prompt_stds = None
                 if prompt_stds is not None:
@@ -561,14 +596,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:  # 'grpo' or 'rloo'
                 # GRPO/RLOO: Use std of original rewards
                 if self.scale_rewards == 'batch':
-                    rewards_std = unique_rewards.std()
+                    if unique_rewards.numel() > 1:
+                        rewards_std = unique_rewards.std()
+                    else:
+                        rewards_std = torch.tensor(0.0, device=device)
                     prompt_stds = torch.full_like(unique_rewards, rewards_std)
                 elif self.scale_rewards == 'group':
                     prompt_stds = torch.zeros(len(unique_rewards), device=device)
                     for pid, idxs in prompt_to_indices.items():
                         idx_tensor = torch.tensor(idxs, device=device)
                         r_group = unique_rewards[idx_tensor]
-                        prompt_stds[idx_tensor] = r_group.std()
+                        # Edge case: when group size is 1
+                        prompt_stds[idx_tensor] = r_group.std() if len(idxs) > 1 else 0.0
                 else:  # 'none'
                     prompt_stds = None
                 if prompt_stds is not None:
@@ -644,9 +683,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
 
+        mode = 'train' if self.model.training else 'eval'
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         if not self.dynamic_num_samples:
-            grouped_rewards = rewards.view(-1, self.num_generations)
-            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            grouped_rewards = rewards.view(-1, num_generations)
+            # Handle edge case when num_generations_eval=1
+            if num_generations > 1:
+                group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(num_generations)
+            else:
+                group_rewards_std = torch.zeros_like(rewards)
             return group_rewards_std
         else:
             prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
@@ -665,7 +710,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for pid, idxs in prompt_to_indices.items():
                 idx_tensor = torch.tensor(idxs, device=device)
                 r_group = unique_rewards[idx_tensor]
-                prompt_stds[idx_tensor] = r_group.std()
+                # Edge case: when group size is 1
+                prompt_stds[idx_tensor] = r_group.std() if len(idxs) > 1 else 0.0
             rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
             indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
             rewards_std = prompt_stds[indices_in_unique]
@@ -2500,3 +2546,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
             ]
         }
+
+    def _get_eval_sampler(self, eval_dataset):
+        return RepeatSampler(
+            data_source=eval_dataset,
+            mini_repeat_count=self.num_generations_eval,
+            seed=self.args.seed,
+        )
