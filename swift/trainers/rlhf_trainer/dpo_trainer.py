@@ -183,4 +183,5 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         with self.template.forward_context(self.model, inputs):
+            inputs = self._prepare_inputs(inputs)
             return super().prediction_step(model, inputs, *args, **kwargs)
