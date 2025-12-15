@@ -1059,7 +1059,9 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single':
+        elif args.dataloader_type == 'single' or is_val_dataset:
+            if is_val_dataset:
+                consumed_samples = 0
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1069,7 +1071,6 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
         elif args.dataloader_type == 'cyclic':
-            shuffle = args.train_dataloader_shuffle and not is_val_dataset
             batch_sampler = MegatronPretrainingRandomSampler(
                 dataset,
                 total_samples=len(dataset),
@@ -1078,7 +1079,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
                 data_sharding=args.data_sharding,
-                shuffle=shuffle,
+                shuffle=args.train_dataloader_shuffle,
             )
         else:
             raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
