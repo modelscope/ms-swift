@@ -174,6 +174,7 @@ Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swi
 ### Dense模型
 
 以下提供对`Qwen3-VL-4B-Instruct`模型的微调脚本，我们使用混合模态数据作为Demo数据集，该示例脚本仅作为演示用途。训练显存为2 * 21GiB，训练时间为12分钟。
+- 若觉得预处理时间太长，你可以将`--packing`去除，或者使用[cached dataset](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset)。
 
 ```shell
 # 2 * 21GiB

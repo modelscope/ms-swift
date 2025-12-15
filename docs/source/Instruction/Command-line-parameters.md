@@ -12,6 +12,7 @@
 - 🔥tuner_backend: 可选为'peft'，'unsloth'。默认为'peft'。
 - 🔥train_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。
 - 🔥adapters: 用于指定adapter的id/path的list，默认为`[]`。该参数通常用于推理/部署命令，例如：`swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`。该参数偶尔也用于断点续训，该参数与`resume_from_checkpoint`的区别在于，**该参数只读取adapter权重**，而不加载优化器和随机种子，并不跳过已训练的数据集部分。
+  - `--model`与`--adapters`的区别：`--model`后接完整权重的目录路径，内包含model/tokenizer/config等完整权重信息，例如`model.safetensors`。`--adapters`后接增量adapter权重目录路径的列表，内涵adapter的增量权重信息，例如`adapter_model.safetensors`。
 - external_plugins: 外部`plugin.py`文件列表，这些文件会被注册进plugin模块中（即对该模块进行`import`），例子请参见[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)。默认为`[]`。
 - seed: 全局随机种子，默认为42。
   - 注意：该随机种子与控制数据集随机的`data_seed`互不影响。
@@ -58,13 +59,14 @@
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
 - 🔥cached_dataset: 使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练/推理时，tokenize过程占用gpu时间。该参数用于设置缓存训练数据集文件夹路径，默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset)。
   - 提示：在"ms-swift>=3.11"，cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。
-  - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf（需"ms-swift>=3.11"）。
+  - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf（需"ms-swift>=3.11"），使用`--template_mode`设置训练类型；在"ms-swift>=3.12"，支持embedding/reranker/seq_cls任务，使用`--task_type`设置任务类型。
 - cached_val_dataset: 缓存验证数据集的文件夹路径，默认为`[]`。
 - 🔥split_dataset_ratio: 不指定val_dataset时从训练集拆分验证集的比例，默认为0.，即不从训练集切分验证集。
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
 - data_seed: 数据集随机种子，默认为42。
 - 🔥dataset_num_proc: 数据集预处理的进程数，默认为1。
-- 🔥load_from_cache_file: 是否从缓存中加载数据集，默认为False。**建议在实际运行时设置为True，debug阶段设置为False**。
+  - 提示：纯文本模型建议将该值开大加速预处理速度。而多模态模型不建议开太大，这可能导致更慢的预处理速度（多模态模型若出现cpu利用率100%，但是处理速度极慢的情况，建议额外设置`OMP_NUM_THREADS`环境变量）。
+- 🔥load_from_cache_file: 是否从缓存中加载数据集，默认为False。**建议在实际运行时设置为True，debug阶段设置为False**。你可以修改`MODELSCOPE_CACHE`环境变量控制缓存的路径。
   - 注意：该参数在"ms-swift<3.9"默认为True。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**CPT/SFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
@@ -244,7 +246,7 @@ gradient_checkpointing: true
 - dataloader_pin_memory: 默认为True。
 - dataloader_persistent_workers: 默认为False。
 - dataloader_prefetch_factor: 默认为None，若`dataloader_num_workers>0`，设置为10。
-- train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效。IterableDataset采用顺序的方式读取。
+- train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效（即对流式数据集失效）。IterableDataset采用顺序的方式读取。
 - 🔥neftune_noise_alpha: neftune添加的噪声系数。默认为0，通常可以设置为5、10、15。
 - 🔥use_liger_kernel: 是否启用[Liger](https://github.com/linkedin/Liger-Kernel)内核加速训练并减少显存消耗。默认为False。示例shell参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger)。
   - 注意：liger_kernel不支持device_map，请使用DDP/DeepSpeed进行多卡训练。liger_kernel目前只支持`task_type='causal_lm'`。
@@ -454,6 +456,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - 🔥create_checkpoint_symlink: 额外创建checkpoint软链接，方便书写自动化训练脚本。best_model和last_model的软链接路径分别为f'{output_dir}/best'和f'{output_dir}/last'。
 - 🔥packing: 将不同长度的数据样本打包成统一长度的样本，实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attn_impl flash_attn` 时，可确保packed样本内的不同序列之间相互独立，互不可见。该参数默认为`False`，目前支持 CPT/SFT/DPO/KTO/GKD。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+  - "ms-swift>=3.12"新支持了embedding/reranker/seq_cls任务的packing。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。

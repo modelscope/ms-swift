@@ -92,7 +92,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -465,6 +465,16 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
+            # Ensure that load_data_args true runs through inference successfully
+            # if len(anchor.messages) == 1:
+            #     docs = inputs.positive + inputs.negative
+            #     if docs:
+            #         assistant_messages = docs[0].messages
+            #         assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
+            #         anchor.messages = anchor.messages + assistant_messages
+            #         anchor.images = anchor.images + docs[0].images
+            #         anchor.audios = anchor.audios + docs[0].audios
+            #         anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
@@ -538,7 +548,7 @@ class Template(ProcessorMixin):
             if chosen.channel is not None:
                 encoded['channel'] = chosen.channel
 
-            lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
+            lengths = []
             for key in list(encoded.keys()):
                 if encoded[key] is None:
                     encoded.pop(key)
@@ -549,10 +559,9 @@ class Template(ProcessorMixin):
                     elif isinstance(value, (tuple, list)):
                         lengths += value
             if return_length:
-                if self.task_type in {'reranker', 'generative_reranker'}:
-                    encoded['length'] = lengths
-                else:
-                    encoded['length'] = sum(lengths)
+                if not lengths:
+                    raise ValueError(f'lengths should not be empty. batched: {batched}')
+                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
             else:
                 encoded.pop('length', None)
             if return_template_inputs:
@@ -571,8 +580,6 @@ class Template(ProcessorMixin):
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
-            elif key == 'length':
-                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
@@ -1211,20 +1218,31 @@ class Template(ProcessorMixin):
         return length
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
-        self._preprocess_inputs(inputs)
-        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-            # For multi-modal models, images do not need to be pre processed here
-            # vllm/lmdeploy/sglang will handle the logic
-            encoded = Template._encode(self, inputs)
-            keys = ['images', 'audios', 'videos']
-            if self.mode == 'vllm':
-                keys.append('mm_processor_kwargs')
-            for key in keys:
-                value = getattr(inputs, key)
-                if value:
-                    encoded[key] = value
-        else:
-            encoded = self._encode(inputs)
+        # retry to avoid megatron getting stuck
+        i = 1
+        retry = 3
+        while True:
+            try:
+                self._preprocess_inputs(inputs)
+                if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+                    # For multi-modal models, images do not need to be pre processed here
+                    # vllm/lmdeploy/sglang will handle the logic
+                    encoded = Template._encode(self, inputs)
+                    keys = ['images', 'audios', 'videos']
+                    if self.mode == 'vllm':
+                        keys.append('mm_processor_kwargs')
+                    for key in keys:
+                        value = getattr(inputs, key)
+                        if value:
+                            encoded[key] = value
+                else:
+                    encoded = self._encode(inputs)
+            except Exception:
+                if i == retry:
+                    raise
+                i += 1
+            else:
+                break
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
