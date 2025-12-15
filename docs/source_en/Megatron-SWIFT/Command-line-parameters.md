@@ -331,7 +331,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epochs'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch. `save_retain_interval` can be set to an integer, indicating after how many epochs a checkpoint is retained.
 - dataset_shuffle: Whether to perform random shuffling on the dataset. Defaults to True.
 - Note: **Randomization in Megatron-SWIFT consists of two parts**: dataset-level shuffling, controlled by `dataset_shuffle`; and train_dataloader-level shuffling, controlled by `train_dataloader_shuffle`.
-- train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Requires "ms-swift>=3.12".
+- train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Default is True. Requires "ms-swift>=3.12".
   - In "ms-swift>3.12", val_dataset will no longer be shuffled.
 - dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
 - dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.12".
