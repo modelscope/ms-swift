@@ -111,6 +111,9 @@ class GRPOArguments(GRPOArgumentsMixin):
         num_generations  (int): The number of completions to generate for each prompt. This corresponds to the G value
             in the GRPO paper. The total generation batch size (e.g., `generation_batch_size` or `steps_per_generation
             * per_device_batch_size * num_processes`) must be divisible by this number. Defaults to 8.
+        num_generations_eval (Optional[int]): Number of generations to sample during evaluation. This allows
+            using fewer generations during evaluation to save computation. If `None`, uses the value of
+            `num_generations`. Defaults to None.
         reward_funcs (List[str]): A list of reward function names to use for the GRPO algorithm. Available built-in
             options include 'accuracy', 'format', 'cosine', 'repetition', and 'soft_overlong'
             (see swift/plugin/orm.py). Custom reward functions can also be defined. Defaults to an empty list.
