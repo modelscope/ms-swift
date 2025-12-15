@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import importlib.metadata
 import inspect
 import logging
 import os
@@ -789,11 +790,32 @@ def _patch_mrope():
     rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
+def _patch_unified_memory():
+    mcore_015 = version.parse(importlib.metadata.version('megatron-core')) >= version.parse('0.15.0rc0')
+    if not mcore_015:
+        return
+    from torch.utils import cpp_extension
+    load_inline = cpp_extension.load_inline
+
+    def _new_load_inline(*args, **kwargs):
+        raise RuntimeError
+
+    # not create unified memory mempool
+    cpp_extension.load_inline = _new_load_inline
+    try:
+        from megatron.core.inference import unified_memory
+    except Exception:
+        pass
+    finally:
+        cpp_extension.load_inline = load_inline
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_unified_memory()
     _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
