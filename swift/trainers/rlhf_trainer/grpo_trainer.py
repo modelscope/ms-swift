@@ -332,15 +332,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
+                reward_inputs = [{k: v for k, v in inp.items() if k != 'add_eos'} for inp in inputs]
                 if self.enable_server_multi_turn:
                     trajectory_inputs = self._get_trajectory_inputs(inputs)
                     reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
                 if isinstance(reward_func, nn.Module):
-                    output_reward_func = reward_model_plugin(inputs=inputs, **reward_kwargs)
+                    output_reward_func = reward_model_plugin(inputs=reward_inputs, **reward_kwargs)
                 # reward function
                 else:
                     # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                    reward_kwargs.update(RowPreprocessor.rows_to_batched(inputs))
+                    reward_kwargs.update(RowPreprocessor.rows_to_batched(reward_inputs))
                     output_reward_func = reward_func(completions, **reward_kwargs)
                 output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
@@ -348,6 +349,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
+            reward_kwargs.pop('trainer_state')
             row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
