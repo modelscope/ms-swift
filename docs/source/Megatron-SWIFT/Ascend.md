@@ -1,5 +1,7 @@
 # Ascend NPU
 
+关于Megatron-SWIFT在Ascend NPU上的环境准备，请参考[NPU最佳实践](../BestPractices/NPU-support.md)。
+
 ## NPU 性能数据采集
 
 NPU性能采集通过`torch_npu.profiler.profile`接口进行采集，创建torch_npu.profiler.profile对象，通过start和stop接口控制采集性能数据，采集过程需要修改依赖的megatron源码，修改Megatron-LM/megatron/training/training.py文件中的train函数，采集示例如下：
