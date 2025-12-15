@@ -53,7 +53,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                 for m in self.peft_models:
                     m.set_adapter('ref_adapter')
             yield ref_models
-            if has_ref_adapater:
+            if has_ref_adapter:
                 for m in self.peft_models:
                     m.set_adapter('default')
 
