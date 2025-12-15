@@ -815,12 +815,13 @@ class TextCapsReRankPreprocessor(RowPreprocessor):
         positive = row['response'][0]
         negatives: List[str] = []
         if self._responses_pool:
-            candidates = [s for s in self._responses_pool if isinstance(s, str) and s not in row['response']]
-            if candidates:
-                k = min(self.negatives_per_sample, len(candidates))
-                # Use numpy RandomState from base class for deterministic sampling
-                idxs = self.random_state.choice(len(candidates), size=k, replace=False).tolist()
-                negatives = [candidates[i] for i in idxs]
+            idxs = self.random_state.permutation(len(self._responses_pool))
+            for i in idxs:
+                s = self._responses_pool[i]
+                if s not in row['response']:
+                    negatives.append(s)
+                if len(negatives) >= self.negatives_per_sample:
+                    break
         return {
             'messages': [{
                 'role': 'user',

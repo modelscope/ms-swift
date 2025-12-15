@@ -1,17 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
+import logging
 import os
 import shutil
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
 from typing import Callable, Dict, List, Literal, Optional
 
 import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu
+from megatron.core.datasets.utils import Split
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
@@ -25,20 +28,27 @@ from megatron.training import (checkpointing, ft_integration, get_args, get_mode
                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
+from megatron.training.dist_signal_handler import DistributedSignalHandler
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
+from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger
+from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     get_swift_datasets_provider)
+
+try:
+    from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+except ImportError:
+    from megatron.legacy.data.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -62,6 +72,17 @@ class BaseMegatronTrainer(ABC):
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
         self._patch_megatron()
+
+        if args.check_model and hasattr(args, 'model_info') and hasattr(args.model_info, 'model_dir'):
+            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
+                config_info = self._collect_config_info()
+                config_info.update({
+                    'invoked_by': 'local_trainer',
+                    'third_party': 'swift',
+                    'trainer_class': self.__class__.__name__,
+                    'trainer_backend': 'megatron',
+                })
+                check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
         def _get_mean_metric():
             return MeanMetric(nan_value=None, group=mpu.get_data_parallel_group(with_context_parallel=True))
@@ -950,7 +971,7 @@ class BaseMegatronTrainer(ABC):
                     shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
         else:
             with adapter_state_dict_context(is_peft_format=save_peft_format):
-                return self._origin_save_checkpoint(iteration, *_args, **kwargs)
+                self._origin_save_checkpoint(iteration, *_args, **kwargs)
         if args.train_type == 'lora' and args.merge_lora:
             self.unmerge_lora_adapters()
 
@@ -1008,18 +1029,80 @@ class BaseMegatronTrainer(ABC):
                 extra_args_provider=extra_args_provider,
                 args_defaults=args.extra_args)
 
+    # Code borrowed from NVIDIA/Megatron-LM
+    def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):
+        """Build dataloader given an input dataset."""
+
+        if dataset is None:
+            return None
+
+        args = get_args()
+        if args.dataloader_type == 'external':
+            # External dataloaders are passed through. User is expected to provide a
+            # torch-compatible dataloader and define samplers, if needed.
+            return dataset
+
+        if hasattr(dataset, 'split'):
+            split = dataset.split
+        elif hasattr(dataset, 'index_split'):
+            split = dataset.index_split
+        else:
+            split = None
+
+        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation'
+
+        if split == Split.valid and args.full_validation:
+            batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=0,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
+        elif args.dataloader_type == 'single' or is_val_dataset or not args.train_dataloader_shuffle:
+            # Megatron sampler
+            batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
+        elif args.dataloader_type == 'cyclic':
+            batch_sampler = MegatronPretrainingRandomSampler(
+                dataset,
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=args.micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+                data_sharding=args.data_sharding,
+            )
+        else:
+            raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
+
+        def worker_init_fn(_):
+            DistributedSignalHandler(args.exit_signal).__enter__()
+
+        maybe_worker_init_fn = (worker_init_fn if args.exit_signal_handler and args.num_workers > 0 else None)
+        # Torch dataloader.
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=args.num_workers,
+            pin_memory=args.dataloader_pin_memory,
+            persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
+            prefetch_factor=args.dataloader_prefetch_factor,
+            worker_init_fn=maybe_worker_init_fn,
+            collate_fn=data_collator,
+        )
+        return dataloader
+
     @contextmanager
     def patch_megatron_data_collator(self, data_collator):
         origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-
-        def build_pretraining_data_loader(*_args, **kwargs):
-            args = get_args()
-            res = origin_build_pretraining_data_loader(*_args, **kwargs)
-            if res is not None and args.dataloader_type != 'external':
-                res.collate_fn = data_collator
-            return res
-
-        training.build_pretraining_data_loader = build_pretraining_data_loader
+        training.build_pretraining_data_loader = partial(
+            self.build_pretraining_data_loader, data_collator=data_collator)
         try:
             yield
         finally:
@@ -1048,3 +1131,42 @@ class BaseMegatronTrainer(ABC):
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
         return self._prepare_batch(next(data_iterator), vp_stage)
+
+    @contextmanager
+    def _patch_timeout(self):
+        from modelscope.hub.api import HubApi
+        __init__ = HubApi.__init__
+
+        def __new_init__(self, *args, **kwargs):
+            timeout = kwargs.get('timeout')
+            if timeout is not None and timeout > 5:
+                kwargs['timeout'] = 5
+            __init__(self, *args, **kwargs)
+
+        HubApi.__init__ = __new_init__
+
+        try:
+            yield
+        finally:
+            HubApi.__init__ = __init__
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        """
+        Collects trainer-specific configuration details.
+
+        Subclasses can override this method to provide additional configuration
+        information for model compatibility verification.
+
+        Returns:
+            Dict[str, str]: Configuration parameters as key-value pairs.
+        """
+        if self.__class__.__name__ == 'MegatronTrainer':
+            if not self.template.use_chat_template:
+                return {
+                    'seq2seq_mode': 'pt',
+                }
+            else:
+                return {
+                    'seq2seq_mode': 'sft',
+                }
+        return {}

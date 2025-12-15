@@ -187,6 +187,16 @@ A larger ESS value (closer to 1) indicates more uniform importance sampling weig
 
 ## Usage
 
+### Logging Diagnostic Metrics Only
+
+If you only want to monitor the degree of training-inference mismatch without enabling importance sampling correction, you can set:
+
+```
+--log_rollout_offpolicy_metrics true
+```
+
+This will log all diagnostic metrics (KL, PPL, χ², etc.) without modifying the loss function.
+
 ### Enabling Importance Sampling Correction
 
 Enable the correction mechanism with the following parameters:
@@ -196,9 +206,33 @@ Enable the correction mechanism with the following parameters:
 --rollout_importance_sampling_threshold (default 2)
 ```
 
+When `rollout_importance_sampling_mode` is set, diagnostic metrics are automatically logged without needing to set `log_rollout_offpolicy_metrics`.
+
+## Off-Policy Sequence Masking
+
+In addition to importance sampling correction, you can use **Off-Policy Sequence Masking** to address training-inference mismatch. This technique comes from the [DeepSeek-V3.2 paper](https://arxiv.org/abs/2512.02556).
+
+### Principle
+
+The core idea of Off-Policy Sequence Masking is: when the current policy deviates significantly from the old policy (rollout or old policy), directly discard (mask) that sequence from loss computation. This approach specifically targets **sequences with negative advantage**, as these are more likely to cause training instability when policy shift is large.
+
+Specifically, for each sequence, compute:
+
+$$
+\delta_i = \frac{1}{|y_i|} \sum_{t=1}^{|y_i|} \bigl( \log \pi_{\text{old}}(y_{i,t}|x, y_{i,<t}) - \log \pi_\theta(y_{i,t}|x, y_{i,<t}) \bigr)
+$$
+
+Sequence $i$ will be masked when the following conditions are met (mean taken over completion tokens, i.e., where `completion_mask=1`):
+1. $\delta_i > \tau$
+2. **AND** $\hat{A}_i < 0$
+
+Where:
+- $\pi_{\text{old}}$ preferentially uses `rollout_per_token_logps` (logprobs from rollout/behavior policy); if unavailable, falls back to `old_per_token_logps`
+- $\tau$ is the user-set threshold (`--off_policy_sequence_mask_delta`, default None = disabled)
 
 ## References
 
 1. https://yingru.notion.site/When-Speed-Kills-Stability-Demystifying-RL-Collapse-from-the-Training-Inference-Mismatch-271211a558b7808d8b12d403fd15edda
 2. https://fengyao.notion.site/off-policy-rl
 3. https://github.com/volcengine/verl/blob/main/verl/trainer/ppo/rollout_corr_helper.py
+4. [DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models](https://arxiv.org/abs/2512.02556)

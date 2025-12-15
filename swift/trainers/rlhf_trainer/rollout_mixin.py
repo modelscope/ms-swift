@@ -367,7 +367,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         train_type = args.train_type
 
-        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done) or not self.rollout_enable_lora:
+        if train_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
@@ -726,7 +726,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 aggressive_empty_cache()
                 self.engine.engine.wake_up(**kwargs)
 
-        if self.state.global_step != self._last_loaded_step:
+        if self.state.global_step != self._last_loaded_step or args.sleep_level == 2:
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
@@ -1265,3 +1265,103 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if template is not None:
                 template.padding_free = original_padding_free
                 template.sequence_parallel_size = original_sequence_parallel_size
+
+    @contextmanager
+    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
+        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
+        max_length = template.max_length
+        template.max_length = None
+        forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
+        try:
+            with forward_ctx:
+                yield
+        finally:
+            template.max_length = max_length
+
+    def _prepare_resample_data_iterator(self):
+        """Initialize resample data iterator for truncation_strategy 'raise'('delete').
+
+        When truncation_strategy is 'raise'(delete), encoding may fail for some samples due to
+        exceeding max_length. This iterator provides backup samples for resampling.
+        """
+
+        def cyclic_iter(iterable):
+            while True:
+                for x in iterable:
+                    yield x
+
+        @contextmanager
+        def seed_context():
+            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+            seed = self.args.seed
+            self.args.seed = seed + 1
+            yield
+            self.args.seed = seed
+
+        with seed_context():
+            self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+    @patch_profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until we have enough valid samples.
+
+        This method handles two cases:
+        1. Prompt length exceeds max_length
+        2. Encoding failures (e.g., multimodal data processing errors)
+
+        This implementation uses a pending_samples buffer to accumulate valid samples
+        from each resample batch, avoiding waste when per_device_train_batch_size > 1.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            max_resample_rounds (int, optional): Maximum number of resample rounds.
+                Each round processes samples from pending_samples buffer. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples with the same length as inputs.
+
+        Raises:
+            RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
+        """
+        assert getattr(self, 'truncated_resample_iterator',
+                       None) is not None, 'Resample data iterator is not initialized'
+
+        template = self.template
+        required_count = len(inputs)
+        valid_samples = []
+
+        # Buffer for samples waiting to be validated
+        pending_samples = list(inputs)
+
+        for _ in range(max_resample_rounds + 1):
+            # Calculate how many more samples we need
+            still_needed = required_count - len(valid_samples)
+            if still_needed <= 0:
+                break
+
+            # Ensure pending_samples has enough samples to try
+            while len(pending_samples) < still_needed:
+                # Fetch a new batch of samples (uses the entire batch, not just [0])
+                pending_samples.extend(next(self.truncated_resample_iterator))
+
+            # Try to encode samples from pending_samples until we have enough valid ones
+            while pending_samples and len(valid_samples) < required_count:
+                data = pending_samples.pop(0)
+                try:
+                    remove_response(data['messages'])
+                    template.encode(data)
+                    # Encoding succeeded, add to valid samples
+                    valid_samples.append(data)
+                except Exception as e:
+                    # Encoding failed, skip this sample
+                    logger.info(f'Encoding failed for one sample; will resample. {e}')
+
+        if len(valid_samples) < required_count:
+            raise RuntimeError(
+                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
+                f'Only collected {len(valid_samples)} valid samples. '
+                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
+
+        return valid_samples[:required_count]
