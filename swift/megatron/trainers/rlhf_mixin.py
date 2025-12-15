@@ -40,19 +40,20 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
     def null_ref_context(self):
         args = get_args()
         contexts = []
+        has_ref_adapter = bool(args.ref_adapter_load or args.ref_adapters)
         if args.train_type == 'full':
             ref_models = self.ref_models
         else:
-            if args.ref_adapter_load is None:
+            if not has_ref_adapter:
                 for m in self.peft_models:
                     contexts.append(m.disable_adapter())
             ref_models = self.unwrapped_models
         with ContextManagers(contexts):
-            if args.ref_adapter_load:
+            if has_ref_adapter:
                 for m in self.peft_models:
                     m.set_adapter('ref_adapter')
             yield ref_models
-            if args.ref_adapter_load:
+            if has_ref_adapater:
                 for m in self.peft_models:
                     m.set_adapter('default')
 
