@@ -58,7 +58,7 @@ def test_moe():
 def test_convert():
     from swift.llm import export_main, ExportArguments
     export_main(ExportArguments(
-        mcore_adapters=['megatron_output/vx-xxx'],
+        mcore_adapters=['megatron_output/vx-xxx/checkpoint-xxx'],
         to_hf=True,
         test_convert_precision=True,
     ))
