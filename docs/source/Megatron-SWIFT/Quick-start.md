@@ -136,10 +136,10 @@ megatron sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --test_convert_precision true
 ```
 
@@ -147,7 +147,7 @@ swift export \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
