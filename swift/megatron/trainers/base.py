@@ -443,12 +443,12 @@ class BaseMegatronTrainer(ABC):
             ckpt_dir = args.adapters[0]
         if ckpt_dir is None:
             return 0, 0
-        logger.infer(f'checkpoint_dir: {ckpt_dir}')
+        logger.info(f'checkpoint_dir: {ckpt_dir}')
         iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
         if not os.path.exists(iteration_path):
             return 0, 0
         with open(iteration_path, 'r') as f:
-            iteration = f.read()
+            iteration = int(f.read())
 
         common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')
         if not os.path.exists(common_path):
@@ -1015,7 +1015,6 @@ class BaseMegatronTrainer(ABC):
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
         merge_lora = args.train_type == 'lora' and args.merge_lora
         if args.save_safetensors and args.no_save_optim and not merge_lora:
-            # merge-lora
             model = []
         with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
             self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
