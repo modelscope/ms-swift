@@ -17,7 +17,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
-from swift.utils import get_logger, get_n_params_grads
+from swift.utils import get_logger, get_n_params_grads, is_master
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
 from .utils import (convert_hf_config, forward_step_helper, get_padding_to, patch_load_base_checkpoint,
@@ -334,11 +334,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         bridge = megatron_model_meta.bridge_cls()
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir)
-        args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
-        if os.path.exists(args_path):
-            shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
-        else:
-            args.save_args(args.output_dir)
+        if is_master():
+            args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
+            if os.path.exists(args_path):
+                shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
+            else:
+                args.save_args(args.output_dir)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             hf_model, template = prepare_model_template(args, model=args.output_dir)
