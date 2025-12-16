@@ -156,7 +156,10 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 )
                 lora_a.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         else:
-            out_features = self.out_features * self.tp_size
+            if is_torch_npu_available():
+                out_features = self.out_features
+            else:
+                out_features = self.out_features * self.tp_size
             if self.is_grouped:
                 lora_a = TEGroupedLinear(
                     num_gemms=self.base_layer.num_gemms,
