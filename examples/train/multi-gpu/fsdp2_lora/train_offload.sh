@@ -36,4 +36,3 @@ swift sft \
     --dataloader_num_workers 4 \
     --model_author swift \
     --model_name swift-robot
-

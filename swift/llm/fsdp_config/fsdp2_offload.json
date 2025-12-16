@@ -1,8 +1,16 @@
 {
-    "_description": "FSDP2 with CPU offload (alias for fsdp_zero3_offload)",
-    "_note": "FULL_SHARD with CPU offload for parameters, gradients and optimizer states",
-    "_requires": "torch>=2.4.0 for FSDP2",
-    "_memory": "Lowest GPU memory, uses CPU RAM extensively",
+    "_description": "FSDP2 with CPU offloading for memory-constrained training",
+    "_requires": "torch>=2.4.0",
+    "_note": "Use this when GPU memory is limited. Parameters, gradients, and optimizer states are offloaded to CPU RAM when not in use. Training is slower but allows larger models. NOTE: When using FSDP2, do NOT use --gradient_checkpointing, use activation_checkpointing in fsdp_config instead.",
+
+    "_param_docs": {
+        "fsdp": "FSDP strategy string. 'full_shard' enables ZeRO-3 style sharding. 'offload' enables CPU offloading via CPUOffloadPolicy.",
+        "fsdp_version": "FSDP version. Use 2 for PyTorch native FSDP2 which provides better memory efficiency and native LoRA support.",
+        "auto_wrap_policy": "'TRANSFORMER_BASED_WRAP' automatically wraps transformer layers defined in model._no_split_modules.",
+        "cpu_ram_efficient_loading": "If true, only rank 0 loads model weights initially, reducing peak CPU RAM usage.",
+        "state_dict_type": "'SHARDED_STATE_DICT' saves checkpoints without gathering full state, avoiding memory spikes.",
+        "activation_checkpointing": "Use FSDP's native activation checkpointing instead of gradient_checkpointing. This is the correct way to save memory with FSDP."
+    },
 
     "fsdp": "full_shard auto_wrap offload",
     "fsdp_config": {
@@ -10,8 +18,6 @@
         "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
         "cpu_ram_efficient_loading": true,
         "state_dict_type": "SHARDED_STATE_DICT",
-        "limit_all_gathers": true,
-        "backward_prefetch": "BACKWARD_PRE",
-        "forward_prefetch": true
+        "activation_checkpointing": true
     }
 }

@@ -35,8 +35,8 @@ from swift.utils.torch_utils import get_current_device
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
-                    get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
-                    patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
+                    get_even_process_data, get_fsdp_version, get_gather_if_zero3_context, patch_lora_merge,
+                    patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
                     set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -80,6 +80,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                  *_args,
                  **kwargs):
         super().__init__(model, ref_model, *_args, **kwargs)
+        fsdp_version = get_fsdp_version(self.accelerator)
+        self._is_fsdp2 = fsdp_version == 2 and self.is_fsdp_enabled
+        if fsdp_version == 1 and self.is_fsdp_enabled:
+            raise NotImplementedError('FSDP1 is not supported. Please use FSDP2 (fsdp_version=2) instead. '
+                                      'Set fsdp_version: 2 in your FSDP config or use --fsdp_config fsdp2.json')
 
     def prepare_rollout(self):
         self._prepare_rollout_params()
@@ -382,15 +387,30 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _move_adapter_to_vllm(self):
         """Transfer LoRA adapter weights to vLLM engine"""
         lora_params = OrderedDict()
+        gather_if_zero3 = get_gather_if_zero3_context(self)
+
         for i, parameter_group in enumerate(self.parameter_groups):
-            parameters = [
-                parameter for name, parameter in self.model.named_parameters()
-                if not parameter_group or name in parameter_group
-            ]
-            gather_if_zero3 = get_gather_if_zero3_context(self)
+            # For non-FSDP2, need to gather parameters; FSDP2 uses DTensor
+            if not self._is_fsdp2:
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+            else:
+                parameters = []
+
             with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
-                assert len(parameters) == len(parameter_group)
-                state_dict = {name: p for p, name in zip(parameters, parameter_group)}
+                if not self._is_fsdp2:
+                    assert len(parameters) == len(parameter_group)
+                    state_dict = {name: p for p, name in zip(parameters, parameter_group)}
+                else:
+                    # For FSDP2, get state_dict directly (returns DTensor)
+                    state_dict = {
+                        k: v
+                        for k, v in self.model.state_dict().items()
+                        if k in parameter_group or k.removeprefix('base_model.model.') in parameter_group
+                    }
+
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
@@ -443,6 +463,42 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             llm_model.load_weights(state_dict.items())
         del state_dict
 
+    def _fix_param_name_to_vllm(self, name: str, extra_prefixes: Optional[List[str]] = None) -> str:
+        extra_prefixes = extra_prefixes or []
+        prefixes = ['_checkpoint_wrapped_module.'] + extra_prefixes
+        for prefix in prefixes:
+            name = name.replace(prefix, '')
+        return name
+
+    def _process_state_dict_for_vllm(self, state_dict: Dict[str, Any], is_peft: bool) -> Dict[str, Any]:
+        """Process state dict for vLLM: clean names, filter adapter layers, convert DTensor."""
+        processed = {}
+        for name, param in state_dict.items():
+            # Clean up parameter name for PEFT models
+            clean_name = name.removeprefix('base_model.model.').replace('.base_layer', '')
+
+            # Skip PEFT adapter layers (they don't exist in vLLM and are merged already)
+            if is_peft and self.model.prefix in clean_name:
+                continue
+
+            # Skip original_module entries when modules_to_save is used
+            if 'original_module' in clean_name:
+                continue
+
+            # Fix checkpoint wrapper prefixes
+            clean_name = self._fix_param_name_to_vllm(clean_name)
+            clean_name = clean_name.replace('modules_to_save.default.', '')
+
+            # Convert DTensor to regular Tensor if needed (FSDP2)
+            if hasattr(param, 'full_tensor'):
+                if param.is_cpu:
+                    param = param.to(torch.device('cuda'))
+                param = param.full_tensor()
+
+            processed[clean_name] = param
+
+        return processed
+
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine"""
         gather_if_zero3 = get_gather_if_zero3_context(self)
@@ -450,10 +506,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            parameters = [
-                parameter for name, parameter in self.model.named_parameters()
-                if not parameter_group or name in parameter_group
-            ]
+
+            # For non-FSDP2, need to gather parameters
+            if not self._is_fsdp2:
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+            else:
+                parameters = []
 
             context_manager = patch_lora_merge(self.model, parameter_group) if is_peft else nullcontext()
 
@@ -461,20 +522,21 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 if is_peft and self.should_merge_adapter:
                     self.model.merge_adapter()
 
-                state_dict = self.model.state_dict()
+                # Get state dict (DTensor for FSDP2, regular Tensor otherwise)
+                raw_state_dict = self.model.state_dict()
 
-                if is_peft:
-                    prefix_removed = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
-                    state_dict = prefix_removed if self.rollout_enable_lora else {
-                        k.replace('.base_layer', ''): v
-                        for k, v in prefix_removed.items()
-                    }
-                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
-                    state_dict = {
-                        k.replace('modules_to_save.default.', ''): v
-                        for k, v in state_dict.items() if 'original_module' not in k
+                # Filter by parameter_group if specified
+                if parameter_group:
+                    raw_state_dict = {
+                        k: v
+                        for k, v in raw_state_dict.items()
+                        if k in parameter_group or k.removeprefix('base_model.model.') in parameter_group
                     }
 
+                # Process: clean names, filter adapters, convert DTensor
+                state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft)
+
+                # Filter by parameter_group_no_lora if needed
                 if parameter_group_no_lora:
                     if is_peft:
                         parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
@@ -484,6 +546,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     assert len(state_dict) > 0 and all(
                         [state.shape != torch.Size([0]) for state in state_dict.values()])
 
+                # Use _load_state_dict_to_vllm for flattened batch transfer
                 self._load_state_dict_to_vllm(state_dict)
 
                 if is_peft and self.should_merge_adapter:
@@ -994,12 +1057,27 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     @torch.no_grad()
     def offload_model(self, model):
+        # FSDP2: simple .cpu() is sufficient
+        if self._is_fsdp2:
+            model.cpu()
+            torch.cuda.empty_cache()
+            return
+
+        # Default: iterate over parameters
         for param in model.parameters():
             param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+        torch.cuda.empty_cache()
 
     @torch.no_grad()
     def load_model(self, model):
         device = get_current_device()
+
+        # FSDP2: simple .to(device) is sufficient
+        if self._is_fsdp2:
+            model.to(device)
+            return
+
+        # Default: iterate over parameters
         for param in model.parameters():
             param.data = param.data.to(device, non_blocking=True)
 

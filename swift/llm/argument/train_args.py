@@ -416,33 +416,22 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     def _init_fsdp(self):
         """Initialize FSDP2 configuration.
 
-        Similar to DeepSpeed, supports preset configurations or custom config file path.
+        Supports preset configurations or custom config file path.
         FSDP2 requires torch>=2.4.0.
 
-        Available presets (aligned with DeepSpeed ZeRO stages):
-        - fsdp_zero2: Similar to ZeRO2 (SHARD_GRAD_OP, gradients + optimizer states sharded)
-        - fsdp_zero3: Similar to ZeRO3 (FULL_SHARD, parameters + gradients + optimizer states sharded)
-        - fsdp_zero2_offload: Similar to ZeRO2-Offload (SHARD_GRAD_OP + CPU offload)
-        - fsdp_zero3_offload: Similar to ZeRO3-Offload (FULL_SHARD + CPU offload)
-
-        Legacy aliases (for backward compatibility):
-        - fsdp2: Alias for fsdp_zero2
-        - fsdp2_offload: Alias for fsdp_zero3_offload
+        Available presets:
+        - fsdp2: ZeRO-3 style (FULL_SHARD, params + grads + optimizer sharded)
+        - fsdp2_offload: ZeRO-3 style with CPU offload
 
         You can also pass a path to a custom FSDP config JSON file.
 
         Note:
+        - Only FSDP2 is supported. FSDP1 is deprecated.
         - gradient_checkpointing uses swift's --gradient_checkpointing parameter
-        - For ZeRO1 level (only optimizer states sharded), use DeepSpeed zero1 instead.
-          FSDP's NO_SHARD mode has significant overhead compared to DeepSpeed ZeRO1.
-
-        Memory/Speed Trade-offs:
-        - fsdp_zero2: Medium memory, good speed (recommended for most cases)
-        - fsdp_zero3: Lowest memory, slower speed (for very large models)
 
         Usage:
-            swift sft --fsdp fsdp_zero2 ...
-            swift sft --fsdp fsdp_zero3_offload ...
+            swift sft --fsdp fsdp2 ...
+            swift sft --fsdp fsdp2_offload ...
             swift sft --fsdp /path/to/custom_fsdp.json ...
         """
         if not self.fsdp:
@@ -457,18 +446,11 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
         fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fsdp_config'))
 
-        # FSDP preset configurations aligned with DeepSpeed ZeRO stages
-        # Note: fsdp_zero1 is intentionally not provided because FSDP's NO_SHARD mode
-        # has significant overhead compared to DeepSpeed ZeRO1. Use --deepspeed zero1 instead.
+        # FSDP2 preset configurations
+        # Note: Only FSDP2 is supported. FSDP1 is deprecated.
         fsdp_mapping = {
-            # New naming convention (aligned with DeepSpeed)
-            'fsdp_zero2': 'fsdp_zero2.json',
-            'fsdp_zero3': 'fsdp_zero3.json',
-            'fsdp_zero2_offload': 'fsdp_zero2_offload.json',
-            'fsdp_zero3_offload': 'fsdp_zero3_offload.json',
-            # Legacy aliases for backward compatibility
-            'fsdp2': 'fsdp_zero2.json',
-            'fsdp2_offload': 'fsdp_zero3_offload.json',
+            'fsdp2': 'fsdp2.json',  # ZeRO-3 style (FULL_SHARD)
+            'fsdp2_offload': 'fsdp2_offload.json',  # ZeRO-3 style with CPU offload
         }
 
         fsdp_config_path = self.fsdp

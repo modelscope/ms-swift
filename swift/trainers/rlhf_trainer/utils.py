@@ -772,6 +772,29 @@ def get_gather_if_zero3_context(trainer, is_zero3: Optional[bool] = None):
     return gather_if_zero3
 
 
+def get_fsdp_version(accelerator) -> int:
+    """Get FSDP version from accelerator state. Returns 0 if FSDP is not enabled."""
+    fsdp_plugin = getattr(accelerator.state, 'fsdp_plugin', None)
+    if fsdp_plugin is None:
+        return 0
+    return getattr(fsdp_plugin, 'fsdp_version', 1)
+
+
+def is_fsdp2_model(model) -> bool:
+    """Check if model is wrapped with FSDP2 (FSDPModule)."""
+    try:
+        from torch.distributed.fsdp import FSDPModule
+        return isinstance(model, FSDPModule)
+    except ImportError:
+        return False
+
+
+def is_fsdp1_model(model) -> bool:
+    """Check if model is wrapped with FSDP1."""
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    return isinstance(model, FSDP) and not is_fsdp2_model(model)
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
