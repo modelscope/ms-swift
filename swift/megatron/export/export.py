@@ -67,6 +67,7 @@ class MegatronExport(SwiftPipeline):
                 shutil.copy(args_path, os.path.join(args.save, 'args.json'))
         else:
             args.save_args(args.save)
+        logger.info(f'Successfully saved HF model weights in `{args.save}`.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 if save_peft_format:

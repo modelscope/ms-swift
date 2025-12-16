@@ -332,6 +332,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         bridge = megatron_model_meta.bridge_cls()
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir)
+        args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
+        if os.path.exists(args_path):
+            if is_last_rank():
+                shutil.copy(args_path, os.path.join(args.save, 'args.json'))
+        else:
+            args.save_args(args.save)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             hf_model, template = prepare_model_template(args, model=args.output_dir)
