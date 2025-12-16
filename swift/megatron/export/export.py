@@ -114,13 +114,18 @@ class MegatronExport(SwiftPipeline):
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
         logger.info('Successfully transferred HF model weights to MG model.')
+        # hf_model does not support loading args.adapter_load, so test_convert_precision cannot be performed
+        support_convert_precision = args.adapter_load is None
         if args.test_convert_precision:
-            with disable_safe_ddp_context_use_barrier():
-                device_map = args.device_map or 'auto'
-                hf_model, template = prepare_model_template(
-                    args, device_map=device_map) if is_last_rank() else (None, template)
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
-            dist.barrier()
+            if support_convert_precision:
+                with disable_safe_ddp_context_use_barrier():
+                    device_map = args.device_map or 'auto'
+                    hf_model, template = prepare_model_template(
+                        args, device_map=device_map) if is_last_rank() else (None, template)
+                test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+                dist.barrier()
+            else:
+                logger.warning('Skip test_convert_precision because `--adapter_load` is specified.')
         args.save_args(args.save)
         logger.info('Saving the model...')
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
