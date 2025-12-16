@@ -21,7 +21,7 @@ from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
-from .utils import peft_config_to_dict
+from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 
 if is_vllm_available():
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
@@ -53,7 +53,8 @@ class VLLMClient:
             self.hosts = []
             for url in base_urls:
                 parsed_url = urlparse(url)
-                host = socket.gethostbyname(parsed_url.hostname)
+                # Use resolve_hostname instead of gethostbyname for IPv6 support
+                host = resolve_hostname(parsed_url.hostname)
                 scheme = parsed_url.scheme or 'http'
                 base_url_i = f'{scheme}://{parsed_url.netloc}{parsed_url.path}'
                 self.base_urls.append(base_url_i)
@@ -61,7 +62,8 @@ class VLLMClient:
         else:
             if len(hosts) != len(server_ports):
                 raise ValueError('host and server_port must have same length when lists are provided')
-            self.base_urls = [f'http://{h}:{p}' for h, p in zip(hosts, server_ports)]
+            # Format IPv6 addresses correctly in URLs (wrap with brackets)
+            self.base_urls = [f'http://{format_host_for_url(h)}:{p}' for h, p in zip(hosts, server_ports)]
             self.hosts = hosts
 
         self.num_servers = len(self.base_urls)
@@ -201,10 +203,12 @@ class VLLMClient:
                     client_device_uuid = '42'
                 kwargs['client_device_uuid'] = client_device_uuid
 
+            # Use '::' for IPv6 hosts, '0.0.0.0' for IPv4 hosts
+            bind_host = '::' if is_valid_ipv6_address(self.hosts[i]) else '0.0.0.0'
             response = self.sessions[i].post(
                 f'{self.base_urls[i]}/init_communicator/',
                 json={
-                    'host': '0.0.0.0',
+                    'host': bind_host,
                     'port': self.group_ports[i],
                     'world_size': world_size,
                     **kwargs
