@@ -1020,6 +1020,7 @@ class BaseMegatronTrainer(ABC):
         args.save = origin_save
         # safetensors
         if args.save_safetensors:
+            # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.train_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
                 output_dir = f'{output_dir}-merged'
