@@ -24,8 +24,6 @@ pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer_engine[pytorch]
-# 或使用以下方式安装
-# pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
 # 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--no_gradient_accumulation_fusion true`即可。
@@ -48,8 +46,8 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
-# 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
+# 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.10/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L118
+MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）

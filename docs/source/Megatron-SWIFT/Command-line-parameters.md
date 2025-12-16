@@ -34,7 +34,7 @@
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
   - 注意：该参数在rlhf训练或者`task_type`不等于'causal_lm'时，默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
-  - **注意：推荐flash_attn版本：2.7.4.post1/2.8.1**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
+  - **注意：推荐flash_attn版本：2.8.3**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4, GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
@@ -314,7 +314,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥save_strategy: 保存策略，可选项为'steps'和'epochs'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
-- train_dataloader_shuffle: 是否对train_dataloader使用随机，该参数需"ms-swift>=3.12"。
+- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
   - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
 - dataloader_pin_memory: 默认为True。使用该参数需"ms-swift>=3.12"。
 - dataloader_persistent_workers: 默认为True。使用该参数需"ms-swift>=3.12"。
@@ -359,6 +359,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - steps_per_generation：每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
 - generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
 - num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
+- num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
