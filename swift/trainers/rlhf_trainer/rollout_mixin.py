@@ -1267,16 +1267,24 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template.sequence_parallel_size = original_sequence_parallel_size
 
     @contextmanager
-    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
-        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
-        max_length = template.max_length
-        template.max_length = None
+    def _template_context(self,
+                          template: Template,
+                          inputs: Optional['DataType'] = None,
+                          max_length: Optional[int] = None,
+                          mode: Optional[str] = None):
+        original_max_length = template.max_length
+        original_mode = template.mode
+        template.max_length = max_length
+        if mode is not None:
+            template.set_mode(mode)
         forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
         try:
             with forward_ctx:
                 yield
         finally:
-            template.max_length = max_length
+            template.max_length = original_max_length
+            if mode is not None:
+                template.set_mode(original_mode)
 
     def _prepare_resample_data_iterator(self):
         """Initialize resample data iterator for truncation_strategy 'raise'('delete').
