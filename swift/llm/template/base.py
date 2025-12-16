@@ -127,7 +127,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+                           'train', 'rlhf', 'kto'] = 'pt'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
@@ -383,14 +383,6 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
-    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._encode_truncated(inputs)
-        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
-        for k in list(encoded.keys()):
-            if k.startswith('prompt_') or k.endswith('answer_'):
-                encoded.pop(k, None)
-        return encoded
-
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -521,8 +513,6 @@ class Template(ProcessorMixin):
                 encoded = self._rlhf_encode(inputs)
             elif self.mode == 'kto':
                 encoded = self._kto_encode(inputs)
-            elif self.mode == 'gkd':
-                encoded = self._gkd_encode(chosen)
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -637,7 +627,7 @@ class Template(ProcessorMixin):
     @contextmanager
     def generate_context(self):
         origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+        if self.mode in {'train', 'rlhf', 'kto'}:
             self.set_mode('pt')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
@@ -1291,7 +1281,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder or self.mode == 'gkd':
+        if self.is_encoder_decoder:
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
@@ -1414,7 +1404,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto', 'gkd']) -> None:
+    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1467,8 +1457,6 @@ class Template(ProcessorMixin):
                 res = self._rlhf_data_collator(batch, padding_to=padding_to)
             elif self.mode == 'kto':
                 res = self._kto_data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'gkd':
-                res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
@@ -1561,15 +1549,6 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
-        return res
-
-    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = self._data_collator(batch, padding_to=padding_to)
-        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
-        if prompts_batch:
-            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-            res['prompts'] = prompts_res.pop('input_ids')
-            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
         return res
 
     def _embedding_data_collator(self,
