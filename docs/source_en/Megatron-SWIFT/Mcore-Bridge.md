@@ -202,7 +202,7 @@ swift infer \
 
 Tip: If you encounter GPU OOM issues during weight synchronization with vLLM, you can set `--offload_bridge true` to offload intermediate tensors to the CPU and reduce GPU memory usage.
 
-## Export and Conversion Precision Testing
+## `megatron export` and Conversion Accuracy Testing
 
 In addition to supporting safetensors conversion and saving during training, Mcore-Bridge also supports the `megatron export` command for standalone weight export. `megatron export` supports conversion precision testing during weight conversion, which is very helpful for verifying accuracy when integrating new models. Typically, models already integrated into Megatron-SWIFT will not have precision misalignment issues, so you can confidently set `--test_convert_precision false`.
 - Note: For multimodal models, please focus on the `mean_diff (with loss)` field. The `mean_diff` may show a large difference because it includes image tokens, and loss is not calculated for that portion.
@@ -247,8 +247,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
+    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -263,8 +263,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-mcore \
+    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -280,8 +280,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-merged \
+    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \
     --tensor_model_parallel_size 2 \

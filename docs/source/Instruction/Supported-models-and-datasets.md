@@ -7,6 +7,7 @@
 - Model Type: 模型类型
 - Default Template: 默认对话模板
 - Requires: 使用该模型的额外依赖
+- Support Megatron: 是否支持Megatron-SWIFT训练
 - Tags: 模型的tags
 
 
