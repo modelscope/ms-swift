@@ -118,7 +118,6 @@ def patch_stateless_process_group_for_ipv6():
         return
 
     from torch.distributed import TCPStore
-    from vllm.distributed import utils as vllm_dist_utils
     from vllm.distributed.utils import StatelessProcessGroup
 
     # Save original method for fallback
@@ -180,7 +179,6 @@ def patch_stateless_process_group_for_ipv6():
 
     # Apply the monkey patch to vLLM
     StatelessProcessGroup.create = _patched_stateless_pg_create
-    vllm_dist_utils.StatelessProcessGroup.create = _patched_stateless_pg_create
 
     _ipv6_patch_applied = True
 
