@@ -222,6 +222,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
+            # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
+            vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
+            load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
             engine = GRPOVllmEngine(
                 model.model_dir,
                 model.model_info.torch_dtype,
@@ -237,11 +240,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 max_model_len=args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=args.vllm_disable_cascade_attn,
-                load_format='dummy',
+                load_format=load_format,
                 mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
-                engine_kwargs=self.args.vllm_engine_kwargs,
+                engine_kwargs=vllm_engine_kwargs,
                 logprobs_mode=logprobs_mode,
                 **lora_kwargs,
             )
