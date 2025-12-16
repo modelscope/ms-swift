@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
+from collections import OrderedDict
 from functools import partial
 from typing import Any, Dict
 
@@ -83,6 +84,24 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     if model is not None:
         func_list = ['generate', 'forward']
         use_submodel_func(model, 'language_model', func_list)
+
+    all_hooks = OrderedDict()
+    hooks_with_kwargs = OrderedDict()
+
+    def append_hooks(sub_module, inc_id=0):
+        for id, hook in sub_module._forward_hooks.items():
+            hook.id = inc_id
+            all_hooks[inc_id] = hook
+            sub_module._forward_hooks[inc_id] = hook
+            if id in sub_module._forward_hooks_with_kwargs:
+                hooks_with_kwargs[inc_id] = sub_module._forward_hooks_with_kwargs[id]
+            inc_id += 1
+        return inc_id
+
+    inc_id = append_hooks(model.language_model)
+    append_hooks(model, inc_id)
+    model._forward_hooks = all_hooks
+    model._forward_hooks_with_kwargs = hooks_with_kwargs
     return model, processor
 
 
