@@ -77,7 +77,7 @@ Recommended Operating Environment:
 
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
-## Traditional Method
+### Traditional Method
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - Multi-GPU weight conversion: Remove `CUDA_VISIBLE_DEVICES=0` to enable multi-GPU weight conversion.
@@ -162,7 +162,7 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-## Mcore-Bridge [Recommended]
+### Mcore-Bridge [Recommended]
 
 In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
 
