@@ -289,7 +289,7 @@ LoRA Training:
 
 - 🔥load_safetensors: This parameter will become ineffective in "ms-swift>=3.12" (defaults to False in previous versions). Weights will be loaded based on priority: if `--load` does not exist, safetensors weights `--model` will be loaded; the same applies to `--adapters` and `--adapter_load`, etc.
   - Note: In "ms-swift>=3.12", this parameter is retained for shell script compatibility but no longer has any effect.
-- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resume content such as optimizer weights and random number states (additionally storing mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`.
+- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resume content such as optimizer weights and random number states (additionally storing mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`. When resuming from checkpoint, use the `--load/--adapter_load` parameter to load mcore format weights.
 - model: The model_id or model_path of safetensors weights. Default is None. Supports resume training from checkpoint using `--no_load_optim false --no_load_rng false`.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.

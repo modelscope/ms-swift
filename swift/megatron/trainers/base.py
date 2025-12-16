@@ -1013,21 +1013,20 @@ class BaseMegatronTrainer(ABC):
         args.save = output_dir
         self._copy_args(output_dir)
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
-        merge_lora = args.train_type == 'lora' and args.merge_lora
-        if args.save_safetensors and args.no_save_optim and not merge_lora:
+        if args.save_safetensors and args.no_save_optim:
             model = []
         with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
             self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
         args.save = origin_save
         # safetensors
         if args.save_safetensors:
-            if merge_lora:
+            if args.train_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
                 self._copy_args(output_dir)
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-            if merge_lora:
+            if args.train_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
