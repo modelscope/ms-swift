@@ -101,7 +101,7 @@ megatron export \
 #     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_hf true \
 #     --torch_dtype bfloat16 \
-#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-/checkpoint-xxx-hf \
+#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
 #     --test_convert_precision true
 ```
 
@@ -139,10 +139,10 @@ megatron export \
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_mcore true \
 #     --torch_dtype bfloat16 \
-#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
 #     --test_convert_precision true
 ```
 

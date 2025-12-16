@@ -98,7 +98,7 @@ megatron export \
 #     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_hf true \
 #     --torch_dtype bfloat16 \
-#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-/checkpoint-xxx-hf \
+#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
 #     --test_convert_precision true
 ```
 - 注意：`--adapter_load/--mcore_adapters`文件夹中包含`args.json`文件，转换过程会读取文件中`--model/--mcore_model`以及LoRA相关的参数信息。`swift export`暂不支持LoRA增量权重的转换。`megatron export`你可以使用`--merge_lora`参数控制是否进行权重合并。
@@ -131,10 +131,10 @@ megatron export \
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_mcore true \
 #     --torch_dtype bfloat16 \
-#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+#     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
 #     --test_convert_precision true
 ```
 
