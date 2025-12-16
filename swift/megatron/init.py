@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
 from tqdm import tqdm
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import git_clone_github
 from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
@@ -791,6 +792,9 @@ def _patch_mrope():
 
 
 def _patch_unified_memory():
+    if is_torch_npu_available():
+        return
+
     mcore_015 = version.parse(importlib.metadata.version('megatron-core')) >= version.parse('0.15.0rc0')
     if not mcore_015:
         return
