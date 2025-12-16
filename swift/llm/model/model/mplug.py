@@ -90,9 +90,7 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
 
     def append_hooks(sub_module, inc_id=0):
         for id, hook in sub_module._forward_hooks.items():
-            hook.id = inc_id
             all_hooks[inc_id] = hook
-            sub_module._forward_hooks[inc_id] = hook
             if id in sub_module._forward_hooks_with_kwargs:
                 hooks_with_kwargs[inc_id] = sub_module._forward_hooks_with_kwargs[id]
             inc_id += 1
