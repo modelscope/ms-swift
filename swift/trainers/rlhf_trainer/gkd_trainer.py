@@ -376,7 +376,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             else:
                 # Off-policy: use dataset responses, encode full messages
                 data_source = DataSource.DATASET
-                total_length = self.template.max_length + self.template.max_completion_length
+                total_length = self.template.max_length + self.max_completion_length
                 with self._template_context(self.template, max_length=total_length):
                     encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
 
