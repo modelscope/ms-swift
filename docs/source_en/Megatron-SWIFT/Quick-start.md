@@ -162,7 +162,7 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-### Mcore-Bridge [Recommended]
+## Mcore-Bridge [Recommended]
 
 In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
 
