@@ -246,6 +246,7 @@ register_model(
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6'],
         tags=['vision'],
+        ignore_patterns=[],
     ))
 
 register_model(
@@ -264,4 +265,5 @@ register_model(
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6'],
         tags=['vision'],
+        ignore_patterns=[],
     ))
