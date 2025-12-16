@@ -1432,6 +1432,8 @@ class GPTBridge:
             if is_peft_format:
                 from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
+                if args.task_type == 'seq_cls':
+                    peft_config.task_type = 'SEQ_CLS'
                 if args.is_multimodal and 'all-linear' in args.target_modules:
                     peft_config.target_modules = get_multimodal_target_regex(
                         self.hf_model,
