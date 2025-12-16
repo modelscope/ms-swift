@@ -175,11 +175,11 @@ def prepare_adapter(model):
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
     if args.ref_adapter_load or args.ref_adapters:
-        lora_config = deepcopy(lora_config)
-        lora_config.inference_mode = True
-        with _patch_deepcopy():
-            model.add_adapter('ref_adapter', lora_config)
+        model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
+        for n, p in model.named_parameters():
+            if '.ref_adapter.' in n:
+                p.requires_grad = False
     return model
 
 
