@@ -113,8 +113,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When encode_prompt_only=True, inputs['input_ids'] already contains only the prompt part.
         """
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
-        # Generate output with respect to the prompt only
-        # inputs['input_ids'] is already the prompt when encode_prompt_only=True
         prompt_input_ids = inputs['input_ids']
         model_inputs = {k: v for k, v in inputs.items() if k != 'labels'}
         model_inputs.pop('position_ids', None)
@@ -127,9 +125,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         with self.template.generate_context():
             if self.model.model_meta.is_multimodal:
                 _, model_inputs = self.template.pre_forward_hook(model, None, model_inputs)
-            # Remove flash attention related params that are only for forward, not generate
-            # for key in ['cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k']:
-            #     model_inputs.pop(key, None)
             generated_outputs = model.generate(
                 **model_inputs, generation_config=generation_config, return_dict_in_generate=True, **kwargs)
         # Get the generated token IDs
