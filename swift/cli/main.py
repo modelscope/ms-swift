@@ -100,7 +100,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     torchrun_args = get_torchrun_args()
     prepare_config_args(argv)
     python_cmd = sys.executable
-    if torchrun_args is None or (not is_megatron and (method_name not in {'pt', 'sft', 'rlhf', 'infer'})):
+    if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
