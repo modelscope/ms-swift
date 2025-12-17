@@ -167,7 +167,9 @@ class TrainArgumentsMixin:
 
     def _init_cce(self):
         if self.use_cce:
-            assert is_cce_available(), 'use_cce requires cut-cross-entropy, try `pip install cut-cross-entropy`'
+            assert is_cce_available(), ('use_cce requires cut-cross-entropy, try '
+                                        '`pip install "cut-cross-entropy[transformers] @ '
+                                        'git+https://github.com/axolotl-ai-cloud/ml-cross-entropy.git@f643b88"`')
 
     def __post_init__(self):
         if is_mp() and self.use_liger_kernel:

@@ -3,7 +3,7 @@
 # Not using use_cce: 16.24G
 
 # Install CCE dependency
-pip install "cut-cross-entropy @ git+https://github.com/w1ida/ml-cross-entropy.git"
+pip install "cut-cross-entropy[transformers] @ git+https://github.com/axolotl-ai-cloud/ml-cross-entropy.git@f643b88"
 
 # Run ms-swift (example)
 swift sft \
