@@ -402,7 +402,7 @@ class Template(ProcessorMixin):
 
             _all_negative_keys = set()
             for idx, negative in enumerate(inputs.negative):
-                _tmp_negative_keys = set()
+                _tmp_negative_keys = set()  # used to fill in missing keys
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     negative_key = f'negative_{key}'
@@ -1562,7 +1562,7 @@ class Template(ProcessorMixin):
                 new_batch += [b]
             else:
                 keys = [key for key in b.keys() if 'negative' in key]
-                max_neg = None
+                max_neg = None  # number of negative samples
                 for key in keys:
                     value_list = b[key]
                     suffix = key[len('negative_'):]
