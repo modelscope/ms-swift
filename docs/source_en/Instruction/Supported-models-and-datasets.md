@@ -7,6 +7,7 @@ The table below introduces the models integrated with ms-swift:
 - Model Type: Type of the model
 - Default Template: Default chat template
 - Requires: Additional dependencies required to use the model
+- Support Megatron: Whether Megatron-SWIFT training is supported
 - Tags: Tags associated with the model
 
 

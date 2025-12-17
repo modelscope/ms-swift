@@ -8,17 +8,6 @@ ms-swift引入了Megatron的并行技术来加速多模态大模型的训练。�
 
 这里介绍使用2卡80GiB A100对Qwen2.5-VL-7B-Instruct模型进行Latex-OCR的微调，分别使用全参数和LoRA的方式，以下最佳实践可以在10分钟内完成。
 
-首先，我们需要将HF格式的权重转为Megatron格式：
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --to_mcore true \
-    --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-VL-7B-Instruct-mcore \
-    --test_convert_precision true
-```
-
 ### Full
 
 全参数训练脚本如下：
@@ -29,7 +18,9 @@ NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --tensor_model_parallel_size 2 \
@@ -60,17 +51,6 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-将全参数保存的Megatron格式权重转为HF格式：
-- 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --mcore_model megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
-    --test_convert_precision true
-```
 
 ### LoRA
 
@@ -82,7 +62,10 @@ NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \
@@ -117,24 +100,13 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-将LoRA保存的增量权重进行Merge-LoRA并转为HF格式：
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --mcore_adapters megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
-    --test_convert_precision true
-```
-
 
 最后，我们使用生成的HF格式权重对验证集进行推理：
 ```shell
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
+    --adapters megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx/checkpoint-xxx \
     --attn_impl flash_attn \
     --stream true \
     --load_data_args true \
@@ -160,16 +132,18 @@ swift infer \
 
 ## Moe模型
 
-Moe模型的模型转换步骤和Dense模型一致（请参考Dense进行修改），这里介绍 OpenGVLab/InternVL3_5-30B-A3B-mcore 模型LoRA微调的训练脚本。
-- 在MoE模型的转换时，`--test_convert_precision true`转换精度测试所需时间较长，可酌情去除。
 
+训练脚本：
 ```bash
 # 2 * 43GiB, 8s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load InternVL3_5-30B-A3B-mcore \
+    --model OpenGVLab/InternVL3_5-30B-A3B \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \
@@ -214,7 +188,7 @@ megatron sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/InternVL3_5-30B-A3B/vx-xxx-hf \
+    --adapters megatron_output/InternVL3_5-30B-A3B/vx-xxx/checkpoint-xxx \
     --attn_impl flash_attn \
     --stream true \
     --load_data_args true \

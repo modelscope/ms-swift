@@ -8,17 +8,6 @@ For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./
 
 This section demonstrates fine-tuning the Qwen2.5-VL-7B-Instruct model on the LaTeX-OCR task using two 80GiB A100 GPUs, with both full-parameter fine-tuning and LoRA. The best practices described below can be completed within 10 minutes.
 
-First, we need to convert the model weights from Hugging Face format to Megatron format:
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --to_mcore true \
-    --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-VL-7B-Instruct-mcore \
-    --test_convert_precision true
-```
-
 ### Full
 
 The full-parameter training script is as follows:
@@ -29,7 +18,9 @@ NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --tensor_model_parallel_size 2 \
@@ -60,19 +51,6 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-Convert Megatron-format weights saved with full parameters to Hugging Face format:
-
-- Note: `--mcore_model` should point to the parent directory of `iter_xxx`. By default, the checkpoint specified in `latest_checkpointed_iteration.txt` will be used.
-
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --mcore_model megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
-    --test_convert_precision true
-```
 
 ### LoRA
 
@@ -84,7 +62,10 @@ NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \
@@ -119,24 +100,12 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-Merge the LoRA-saved incremental weights and convert them to Hugging Face format:
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift export \
-    --mcore_adapters megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
-    --test_convert_precision true
-```
-
-
 Finally, we use the generated Hugging Face format weights to perform inference on the validation set:
 ```shell
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
+    --adapters megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx/checkpoint-xxx \
     --attn_impl flash_attn \
     --stream true \
     --load_data_args true \
@@ -161,17 +130,17 @@ The inference results are as follows:
 
 ## MoE Model
 
-The model conversion steps for MoE models are the same as those for Dense models (please refer to the Dense model section for modifications). Below is the training script for LoRA fine-tuning of the OpenGVLab/InternVL3_5-30B-A3B-mcore model.
-
-- During MoE model conversion, the precision test via `--test_convert_precision true` takes a long time; consider removing it as appropriate.
-
+Training script:
 ```bash
 # 2 * 43GiB, 8s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load InternVL3_5-30B-A3B-mcore \
+    --model OpenGVLab/InternVL3_5-30B-A3B \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
     --train_type lora \
@@ -216,7 +185,7 @@ After training is completed, we use the generated Hugging Face format weights to
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/InternVL3_5-30B-A3B/vx-xxx-hf \
+    --adapters megatron_output/InternVL3_5-30B-A3B/vx-xxx/checkpoint-xxx \
     --attn_impl flash_attn \
     --stream true \
     --load_data_args true \

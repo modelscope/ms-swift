@@ -3,7 +3,10 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --train_type lora \
     --dataset AI-ModelScope/function-calling-chatml#10000 \
     --load_from_cache_file true \
