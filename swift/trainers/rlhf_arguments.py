@@ -110,13 +110,15 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
                 f'prompt ({self.num_generations}). Given the current effective train batch size, the valid values for '
                 f'the number of generations are: {possible_values}.')
         if self.eval_strategy != 'no':
+            # Use num_generations_eval if set, otherwise fall back to num_generations
+            num_generations_eval = self.num_generations_eval or self.num_generations
             global_eval_batch_size = self.per_device_eval_batch_size * num_processes
             possible_values = [
-                n_gen for n_gen in range(2, global_eval_batch_size + 1) if (global_eval_batch_size) % n_gen == 0
+                n_gen for n_gen in range(1, global_eval_batch_size + 1) if (global_eval_batch_size) % n_gen == 0
             ]
-            if self.num_generations not in possible_values:
+            if num_generations_eval not in possible_values:
                 raise ValueError(
                     f'The global eval batch size ({num_processes} x {self.per_device_eval_batch_size}) must be '
-                    f'evenly divisible by the number of generations per prompt ({self.num_generations}). Given the '
+                    f'evenly divisible by the number of generations for eval ({num_generations_eval}). Given the '
                     'current global eval batch size, the valid values for the number of generations are: '
                     f'{possible_values}.')

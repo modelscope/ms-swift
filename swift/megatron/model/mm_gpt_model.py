@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from typing import Optional
 
 import megatron.core
 import torch
@@ -39,6 +40,8 @@ class MultimodalGPTModel(MegatronModule):
         args = get_args()
         self.megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
         self.visual = None
+        if args.mtp_num_layers:
+            raise ValueError('MTP currently does not support multimodal models.')
         if pre_process and self.megatron_model_meta.visual_cls is not None:
             self.visual = self.megatron_model_meta.visual_cls(config)
 

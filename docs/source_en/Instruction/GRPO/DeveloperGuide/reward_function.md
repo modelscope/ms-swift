@@ -1,6 +1,8 @@
 # Reward Function
 ## Custom Reward Function
-The reward function takes as arguments (via kwargs) the model-generated completions, other columns from the dataset, and the training state, and calculates a reward score. The [trainer state]() includes information such as the current training step.
+The reward function takes as arguments (via kwargs) the model-generated completions, other columns from the dataset, and the training state, and calculates a reward score. The [trainer state](https://huggingface.co/docs/transformers/main/main_classes/callback#transformers.TrainerState) includes information such as the current training step.
+
+> If you are using the Megatron backend, use self._step to get the current training step.
 
 Note: The columns related to model input (such as query and response) are converted to the messages key. The original assistant response in the dataset will be discarded, so please use extra columns if you wish to retain it.
 The relevant column names for processing can be found in the [document](../../../Customization/Custom-dataset.md#Query-Response)

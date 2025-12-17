@@ -307,7 +307,11 @@ class Qwen2VLTemplate(Template):
             if self.version == 'v3':
                 kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
-            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
+            video_inputs = {'video': video}
+            if isinstance(video, list):  # image list
+                from qwen_vl_utils import vision_process
+                video_inputs['sample_fps'] = vision_process.FPS
+            video, video_kwargs = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
             if self.version == 'v2_5':
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
                 tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
@@ -583,7 +587,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
                 video = librosa.load(video, sr=self.sampling_rate)[0]
-                inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                if self.mode != 'vllm':
+                    inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                else:
+                    inputs.audios.insert(inputs.audio_idx, video)
+                    inputs.mm_processor_kwargs['use_audio_in_video'] = True
                 inputs.audio_idx += 1
                 if self.version == 'omni_v2_5':
                     return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']

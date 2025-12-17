@@ -22,6 +22,8 @@ class RolloutScheduler(ABC):
                  *args,
                  **kwargs):
         self.infer_engine = infer_engine
+        # Tokenizer can be passed explicitly (e.g., in colocate mode where infer_engine may be None)
+        self._tokenizer = kwargs.get('tokenizer', None)
         self.max_turns = max_turns
 
     async def async_infer(self,
@@ -131,6 +133,15 @@ class RolloutScheduler(ABC):
     def engine(self):
         return self.infer_engine
 
+    @property
+    def tokenizer(self):
+        """Get tokenizer, prioritizing explicitly passed tokenizer over infer_engine's tokenizer."""
+        if self._tokenizer is not None:
+            return self._tokenizer
+        if self.infer_engine is not None:
+            return self.infer_engine.tokenizer
+        return None
+
 
 class MultiTurnScheduler(RolloutScheduler, ABC):
     """
@@ -219,6 +230,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         rollout_infos = {}
         total_response_ids = []
         total_response_loss_mask = []
+        total_rollout_logprobs = []
         while True:
             messages = current_request.messages
             if current_turn == 1 or not messages[-1]['content']:
@@ -247,12 +259,45 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 should_stop = should_stop or (current_turn >= self.max_turns)
 
             if should_stop:
+                # Collect final turn's data
+                current_logprobs = self._extract_logprobs_from_choice(response_choice)
+                final_token_ids = response_choice.token_ids
+
                 if is_continuation and total_response_ids:
-                    # for continuation and total_response_ids is not empty
-                    # we need to extend the last turn's response_token_ids and response_loss_mask
-                    total_response_ids[-1].extend(response_choice.token_ids)
+                    # For continuation, extend the last turn's data
+                    total_response_ids[-1].extend(final_token_ids)
                     if total_response_loss_mask:
-                        total_response_loss_mask[-1].extend([1] * len(response_choice.token_ids))
+                        total_response_loss_mask[-1].extend([1] * len(final_token_ids))
+                    if total_rollout_logprobs and current_logprobs:
+                        total_rollout_logprobs[-1].extend(current_logprobs)
+                elif not total_response_ids:
+                    # First turn stopped immediately - need to initialize with final response data
+                    if final_token_ids:
+                        total_response_ids = [list(final_token_ids)]
+                        total_response_loss_mask = [[1] * len(final_token_ids)]
+                    if current_logprobs:
+                        total_rollout_logprobs = [current_logprobs]
+
+                # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
+                # clear them to disable rollout importance sampling correction (which requires complete logprobs)
+                # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
+                # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1
+                final_rollout_logprobs = total_rollout_logprobs
+                if total_rollout_logprobs:
+                    total_logprob_count = sum(len(turn_lps) for turn_lps in total_rollout_logprobs)
+                    if total_response_loss_mask:
+                        # Check if the number of logprobs matches the number of loss_mask=1 tokens
+                        total_loss_mask_1_count = sum(sum(mask) for mask in total_response_loss_mask)
+                        if total_loss_mask_1_count != total_logprob_count:
+                            # Incomplete logprobs, clear them
+                            final_rollout_logprobs = []
+                    else:
+                        if total_response_ids:
+                            total_response_id_count = sum(len(turn_ids) for turn_ids in total_response_ids)
+                            if total_response_id_count != total_logprob_count:
+                                final_rollout_logprobs = []
+                        else:
+                            final_rollout_logprobs = []
 
                 return RolloutOutput(
                     response=response,
@@ -262,6 +307,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     rollout_infos={
                         **rollout_infos, 'num_turns': current_turn
                     },
+                    rollout_logprobs=final_rollout_logprobs,
                 )
 
             # Prepare next turn
@@ -291,6 +337,18 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 # If you need to keep all step-wise details, switch to append or merge instead.
                 rollout_infos.update(ret['rollout_infos'])
 
+            # Track rollout_logprobs for rollout importance sampling correction
+            # Prefer step's returned logprobs (which may be modified/truncated) over raw response_choice logprobs
+            if 'rollout_logprobs' in ret and ret['rollout_logprobs']:
+                current_logprobs = ret['rollout_logprobs']
+            else:
+                current_logprobs = self._extract_logprobs_from_choice(response_choice)
+            if current_logprobs:
+                if is_continuation and total_rollout_logprobs:
+                    total_rollout_logprobs[-1].extend(current_logprobs)
+                else:
+                    total_rollout_logprobs.append(current_logprobs)
+
             if current_request.messages[-1]['role'] == 'assistant':
                 # Add a dummy response to allow engine to continue generating
                 current_request.messages.append({'role': 'assistant', 'content': None})
@@ -310,8 +368,11 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         Returns:
             Dict[str, Any]: A dictionary containing inference results with the following structure:
                 - infer_request (required): Main inference request object
-                - response_token_ids (Optional[List[List[int]]]): Token IDs of responses for each rollout turn
-                - response_loss_scale (Optional[List[List[int]]]): Loss scaling factors for responses in each rollout turn # noqa
+                - response_token_ids (Optional[List[int]]): Token IDs of response for current rollout turn
+                - response_loss_mask (Optional[List[int]]): Loss mask for response tokens (same length as response_token_ids) # noqa
+                - rollout_logprobs (Optional[List[float]]): Log probabilities for response tokens.
+                    If not provided, will be extracted from response_choice.logprobs as fallback.
+                    Useful when modifying response content (e.g., adding prompts) to avoid logprob misalignment.
                 - rollout_infos (Optional[Dict[str, Any]]): Additional metadata (must be serializable)
 
         """
@@ -347,6 +408,22 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             return True
         return False
 
+    @staticmethod
+    def _extract_logprobs_from_choice(response_choice: 'ChatCompletionResponseChoice') -> List[float]:
+        """Extract logprobs list from response choice for rollout importance sampling.
+
+        Args:
+            response_choice: The response choice containing logprobs
+
+        Returns:
+            List of logprob values, or empty list if not available
+        """
+        if response_choice.logprobs is None:
+            return []
+        if 'content' in response_choice.logprobs:
+            return [item['logprob'] for item in response_choice.logprobs['content']]
+        return []
+
 
 class ThinkingModelTipsScheduler(MultiTurnScheduler):
     """
@@ -361,9 +438,15 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
 
     The scheduler will automatically inject a tip prompt if the answer is incorrect, encouraging the model to recheck its reasoning. # noqa
     """
-    from .orm import MathAccuracy
-    tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-    acc_func = MathAccuracy()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        acc_func = kwargs.get('acc_function', None)
+        if acc_func is None:
+            from .orm import MathAccuracy
+            acc_func = MathAccuracy()
+        self.acc_func = acc_func
+        self.tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> List['RolloutOutput']:
@@ -507,6 +590,15 @@ class MathTipsScheduler(MultiTurnScheduler):
         from .orm import MathAccuracy
         super().__init__(*args, **kwargs)
         self.acc_func = kwargs.get('acc_function', MathAccuracy())
+        # Cache the tokenized tips_prompt length for loss mask computation
+        self._tips_token_ids = None
+
+    def _get_tips_token_ids(self, tokenizer) -> List[int]:
+        """Get tokenized tips_prompt (cached for efficiency)."""
+        if self._tips_token_ids is None:
+            # Tokenize without special tokens to get the raw token ids
+            self._tips_token_ids = tokenizer.encode(self.tips_prompt, add_special_tokens=False)
+        return self._tips_token_ids
 
     def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
                        current_turn: int) -> bool:
@@ -525,11 +617,55 @@ class MathTipsScheduler(MultiTurnScheduler):
     def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
              current_turn: int) -> Dict:
         completion = response_choice.message.content
+        response_token_ids = list(response_choice.token_ids) if response_choice.token_ids else []
+
+        # Extract logprobs from response_choice before any truncation
+        rollout_logprobs = self._extract_logprobs_from_choice(response_choice)
+
+        # Truncate completion at <answer> or </think> tags
+        truncate_idx = len(completion)
         if '<answer>' in completion:
-            completion = completion[:completion.index('<answer>')]
+            truncate_idx = min(truncate_idx, completion.index('<answer>'))
         if '</think>' in completion:
-            completion = completion[:completion.index('</think>')]
+            truncate_idx = min(truncate_idx, completion.index('</think>'))
+
+        if truncate_idx < len(completion):
+            # Need to truncate token_ids and logprobs as well
+            truncated_completion = completion[:truncate_idx]
+            if response_token_ids and self.tokenizer is not None:
+                # Find the token index corresponding to the truncation point
+                # by decoding progressively until we reach or exceed the truncation point
+                token_truncate_idx = len(response_token_ids)
+                for i in range(1, len(response_token_ids) + 1):
+                    decoded = self.tokenizer.decode(response_token_ids[:i], skip_special_tokens=False)
+                    if len(decoded) >= truncate_idx:
+                        token_truncate_idx = i
+                        break
+                response_token_ids = response_token_ids[:token_truncate_idx]
+                # Truncate logprobs to match
+                if rollout_logprobs:
+                    rollout_logprobs = rollout_logprobs[:token_truncate_idx]
+            completion = truncated_completion
+
+        # Add tips_prompt
         completion += self.tips_prompt
+
+        # Compute loss_mask for tips tokens
+        # Note: rollout_logprobs should NOT include tips tokens because:
+        # 1. Tips tokens have loss_mask=0, so their labels will be -100
+        # 2. completion_mask = (labels != -100), so tips tokens won't be in completion_mask
+        # 3. rollout_logprobs must align with completion_mask, not response_token_ids
+        if response_token_ids and self.tokenizer is not None:
+            tips_token_ids = self._get_tips_token_ids(self.tokenizer)
+            # Loss mask: original tokens = 1, tips tokens = 0
+            response_loss_mask = [1] * len(response_token_ids) + [0] * len(tips_token_ids)
+            # Append tips token ids to response
+            response_token_ids = response_token_ids + tips_token_ids
+            # Do NOT extend rollout_logprobs for tips tokens - they are masked out in completion_mask
+        else:
+            response_loss_mask = []
+
+        # Update messages
         if infer_request.messages[-1]['role'] == 'assistant':
             if not infer_request.messages[-1]['content']:
                 # Multi-turn continuation: pop the dummy input we add in last turn
@@ -538,7 +674,13 @@ class MathTipsScheduler(MultiTurnScheduler):
         else:
             infer_request.messages.append({'role': 'assistant', 'content': completion})
 
-        return {'infer_request': infer_request}
+        result = {'infer_request': infer_request}
+        if response_token_ids:
+            result['response_token_ids'] = response_token_ids
+            result['response_loss_mask'] = response_loss_mask
+            if rollout_logprobs:
+                result['rollout_logprobs'] = rollout_logprobs
+        return result
 
 
 class GYMScheduler(RolloutScheduler):

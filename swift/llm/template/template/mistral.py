@@ -158,10 +158,45 @@ class Mistral2506Template(Mistral2503Template):
         return system_prompt.format(name=model_name, today=today, yesterday=yesterday)
 
     def _swift_encode(self, inputs: StdTemplateInputs):
-        if inputs.system is None:
+        if inputs.system is None and self.use_chat_template:
             inputs.system = self._get_mistral_system()
         return super()._swift_encode(inputs)
 
 
 register_template(
     Mistral3TemplateMeta(MLLMTemplateType.mistral_2506, default_system=None, template_cls=Mistral2506Template))
+
+
+class Mistral2512Template(Mistral2506Template):
+
+    def _get_mistral_system(self):
+        model_dir = self.model_info.model_dir
+        file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
+        with open(file_path, 'r') as file:
+            system_prompt = file.read()
+        today = datetime.today().strftime('%Y-%m-%d')
+        yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+        return system_prompt.format(today=today, yesterday=yesterday)
+
+
+register_template(
+    Mistral3TemplateMeta(
+        MLLMTemplateType.mistral_2512, default_system=None, template_cls=Mistral2512Template, agent_template='mistral'))
+
+
+class Mistral2512ThinkingTemplate(Mistral2506Template):
+
+    def _get_mistral_system(self):
+        model_dir = self.model_info.model_dir
+        file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
+        with open(file_path, 'r') as file:
+            system_prompt = file.read()
+        return system_prompt
+
+
+register_template(
+    Mistral3TemplateMeta(
+        MLLMTemplateType.mistral_2512_thinking,
+        default_system=None,
+        template_cls=Mistral2512ThinkingTemplate,
+        agent_template='mistral'))

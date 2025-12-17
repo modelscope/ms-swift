@@ -157,7 +157,10 @@ def prepare_model_template(args, **kwargs):
 
 
 def _select_dataset(dataset, max_length):
-    idxs = [i for i, length in enumerate(dataset['length']) if length <= max_length]
+    idxs = [
+        i for i, length in enumerate(dataset['length'])
+        if (max(length) if isinstance(length, list) else length) <= max_length
+    ]
     new_dataset = dataset.select(idxs)
     if len(new_dataset) < len(dataset):
         logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(new_dataset)}')
@@ -166,10 +169,8 @@ def _select_dataset(dataset, max_length):
 
 def get_cached_dataset(args):
     train_datasets, val_datasets = [], []
-    for cached_dataset in args.cached_dataset:
-        train_path = os.path.join(cached_dataset, 'train')
-        val_path = os.path.join(cached_dataset, 'val')
+    for train_path in args.cached_dataset:
         train_datasets.append(_select_dataset(load_from_disk(train_path), args.max_length))
-        if os.path.exists(val_path):
-            val_datasets.append(_select_dataset(load_from_disk(val_path), args.max_length))
+    for val_path in args.cached_val_dataset:
+        val_datasets.append(_select_dataset(load_from_disk(val_path), args.max_length))
     return train_datasets, val_datasets

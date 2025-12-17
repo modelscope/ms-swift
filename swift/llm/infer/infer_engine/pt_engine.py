@@ -61,6 +61,7 @@ class PtEngine(InferEngine):
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
+            reranker_use_activation: bool = True,
             **kwargs):
         download_model = kwargs.pop('download_model', True)
         self.model, self.processor = get_model_tokenizer(
@@ -78,7 +79,7 @@ class PtEngine(InferEngine):
             task_type=task_type,
             model_kwargs=model_kwargs,
             **kwargs)
-        self.reranker_use_activation = kwargs.pop('reranker_use_activation', True)
+        self.reranker_use_activation = reranker_use_activation
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
             adapters = [adapters]
@@ -351,16 +352,14 @@ class PtEngine(InferEngine):
                 batch_scores = logits[:, -1, :]
                 true_vector = batch_scores[:, token_true_id]
                 false_vector = batch_scores[:, token_false_id]
-                batch_scores = torch.stack([false_vector, true_vector], dim=1)
+                batch_scores = torch.stack([false_vector, true_vector], dim=1).float()
                 batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
                 preds = batch_scores[:, 1].exp()
             else:
-                preds = logits
+                preds = logits.float()
                 if self.reranker_use_activation:
                     preds = F.sigmoid(preds)
             preds = preds.tolist()
-            if not isinstance(preds[0], list):
-                preds = [preds]
             logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported task_type: {template.task_type}')
@@ -371,9 +370,7 @@ class PtEngine(InferEngine):
             if template.task_type == 'embedding':
                 res.append(
                     EmbeddingResponse(
-                        model=self.model_name,
-                        usage=usage_info,
-                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
+                        model=self.model_name, usage=usage_info, data=[EmbeddingResponseData(embedding=pred.tolist())]))
             else:
                 choices = [
                     ChatCompletionResponseChoice(
@@ -426,7 +423,7 @@ class PtEngine(InferEngine):
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response, template)
-                token_ids = template.skip_stop_tokens(generate_ids) if request_config.return_details else None
+                token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,

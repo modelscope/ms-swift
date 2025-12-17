@@ -815,12 +815,13 @@ class TextCapsReRankPreprocessor(RowPreprocessor):
         positive = row['response'][0]
         negatives: List[str] = []
         if self._responses_pool:
-            candidates = [s for s in self._responses_pool if isinstance(s, str) and s not in row['response']]
-            if candidates:
-                k = min(self.negatives_per_sample, len(candidates))
-                # Use numpy RandomState from base class for deterministic sampling
-                idxs = self.random_state.choice(len(candidates), size=k, replace=False).tolist()
-                negatives = [candidates[i] for i in idxs]
+            idxs = self.random_state.permutation(len(self._responses_pool))
+            for i in idxs:
+                s = self._responses_pool[i]
+                if s not in row['response']:
+                    negatives.append(s)
+                if len(negatives) >= self.negatives_per_sample:
+                    break
         return {
             'messages': [{
                 'role': 'user',
@@ -1325,3 +1326,22 @@ register_dataset(
         preprocess_func=Voc2007MultilabelPreprocessor(columns={'webp': 'images'}),
         tags=['multilabel', 'multi-modal'],
     ))
+
+
+class Geometry3KPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['solution'] = row['response']
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        hf_dataset_id='hiyouga/geometry3k',
+        subsets=[
+            SubsetDataset('train', split=['train']),
+            SubsetDataset('validation', split=['validation']),
+            SubsetDataset('test', split=['test']),
+        ],
+        preprocess_func=Geometry3KPreprocessor(),
+        tags=['multi-modal', 'en', 'math']))

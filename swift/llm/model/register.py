@@ -254,6 +254,25 @@ def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
         logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
 
 
+def _set_property(model, key):
+    if not hasattr(model, 'model'):
+        return
+    text_model = model.model
+    if not hasattr(text_model, key):
+        return
+
+    def _value(self):
+        return getattr(text_model, key)
+
+    setattr(model.__class__, key, property(_value))
+
+
+def _compat_transformers5(model, model_meta):
+    if model_meta.is_multimodal:
+        for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
+            _set_property(model, key)
+
+
 def get_model_tokenizer_from_local(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -380,7 +399,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         if leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             deepspeed_set_z3_leaf_modules(model, leaf_modules)
-
+    if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+        _compat_transformers5(model, model_meta)
     return model, tokenizer
 
 
@@ -585,6 +605,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     max_model_len = HfConfigFactory.get_max_model_len(config)
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
     is_moe_model = HfConfigFactory.is_moe_model(config)
+    is_multimodal = HfConfigFactory.is_multimodal(config)
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
@@ -609,6 +630,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         quant_info.get('quant_bits'),
         rope_scaling=rope_scaling,
         is_moe_model=is_moe_model,
+        is_multimodal=is_multimodal,
     )
     return res
 
@@ -645,9 +667,13 @@ def get_model_info_meta(
     if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
-        model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
-        logger.info(f'Temporarily create model_meta: {model_meta}')
-
+        if model_info.is_multimodal:
+            raise ValueError(f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
+                             'Please refer to the documentation and specify an appropriate `model_type` manually: '
+                             'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
+        else:
+            model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
+            logger.info(f'Temporarily create model_meta: {model_meta}')
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')

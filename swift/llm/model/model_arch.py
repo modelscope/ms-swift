@@ -85,6 +85,7 @@ class MLLMModelArch:
 
     midashenglm = 'midashenglm'
     step_audio2_mini = 'step_audio2_mini'
+    hunyuan_vl = 'hunyuan_vl'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -560,7 +561,7 @@ register_model_arch(
             'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
             'thinker.visual.merger_list'
         ],
-        generator=['talker', 'token2wav'],
+        generator=['talker', 'code2wav'],
     ))
 
 register_model_arch(
@@ -720,6 +721,14 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.visual.merger',
         vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.hunyuan_vl,
+        language_model='model',
+        aligner='vit.perceive',
+        vision_tower='vit',
     ))
 
 

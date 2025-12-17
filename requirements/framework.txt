@@ -9,7 +9,7 @@ dacite
 datasets>=3.0,<4.0
 einops
 fastapi
-gradio>=3.40.0
+gradio>=3.40.0,<6.0
 importlib_metadata
 jieba
 json_repair

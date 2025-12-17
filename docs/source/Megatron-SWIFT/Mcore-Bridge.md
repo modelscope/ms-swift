@@ -190,7 +190,9 @@ swift infer \
     --stream true
 ```
 
-## 导出与转换精度测试
+提示：如果在vLLM权重更新期间遇到 GPU OOM 问题，您可以设置 `--offload_bridge true` 将张量卸载到 CPU 并减少 GPU 内存使用量。
+
+## `megatron export` 与 转换精度测试
 
 Mcore-Bridge除了支持在训练中进行safetensors的转换和保存，也支持了`megatron export`命令用于单独的权重导出。`megatron export`支持在权重转换时，对转换精度进行测试，这在接入新模型时验证接入准确性很有帮助。通常，Megatron-SWIFT已经接入的模型不会出现精度不对齐的情况，你可以放心设置`--test_convert_precision false`。
 - 提示：多模态模型请关注`mean_diff (with loss)`字段，`mean_diff`因包含图像tokens且该部分不计算损失，有较大的diff。
@@ -233,8 +235,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
+    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -249,8 +251,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-mcore \
+    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -266,8 +268,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-merged \
+    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \
     --tensor_model_parallel_size 2 \

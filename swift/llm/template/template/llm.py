@@ -77,6 +77,8 @@ class Qwen3EmbTemplate(Template):
         if inputs.system is not None:
             inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
             inputs.system = None
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
         return inputs
 
 
@@ -345,6 +347,7 @@ register_template(
 
 
 class GptTemplate(Template):
+    support_padding_free = False
 
     def _get_gpt_oss_prefix(self):
         today = datetime.now().strftime('%Y-%m-%d')
@@ -356,15 +359,16 @@ class GptTemplate(Template):
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
-        if inputs.system is None:
-            inputs.system = self._get_gpt_oss_prefix()
-        elif not inputs.system.startswith('<|start|>'):
-            inputs.system = self._get_gpt_oss_prefix() + (
-                f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str):
-                if not message['content'].startswith('<|channel|>'):
-                    message['content'] = '<|channel|>final<|message|>' + message['content']
+        if self.use_chat_template:
+            if inputs.system is None:
+                inputs.system = self._get_gpt_oss_prefix()
+            elif not inputs.system.startswith('<|start|>'):
+                inputs.system = self._get_gpt_oss_prefix() + (
+                    f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
+            for i, message in enumerate(messages):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if not message['content'].startswith('<|channel|>'):
+                        message['content'] = '<|channel|>final<|message|>' + message['content']
 
 
 @dataclass

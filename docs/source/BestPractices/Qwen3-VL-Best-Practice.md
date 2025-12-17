@@ -174,6 +174,7 @@ Qwen3-VL的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swi
 ### Dense模型
 
 以下提供对`Qwen3-VL-4B-Instruct`模型的微调脚本，我们使用混合模态数据作为Demo数据集，该示例脚本仅作为演示用途。训练显存为2 * 21GiB，训练时间为12分钟。
+- 若觉得预处理时间太长，你可以将`--packing`去除，或者使用[cached dataset](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset)。
 
 ```shell
 # 2 * 21GiB
@@ -253,15 +254,6 @@ swift infer \
 
 关于 Megatron-SWIFT 的环境安装，请参考[Megatron-SWIFT文档](../Megatron-SWIFT/Quick-start.md)。Megatron-SWIFT 与 ms-swift 共用 template 和 dataset 模块，因此前面介绍的自定义数据集格式和模型特有环境变量依旧生效。
 
-HF格式权重转为Megatron格式：
-```shell
-CUDA_VISIBLE_DEVICES=0,1 \
-swift export \
-    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --to_mcore true \
-    --torch_dtype bfloat16 \
-    --output_dir Qwen3-VL-30B-A3B-Instruct-mcore
-```
 
 微调脚本如下，训练技巧与并行技术的调整参考[Megatron-SWIFT文档](../Megatron-SWIFT/Quick-start.md#训练技巧)。
 ```shell
@@ -274,14 +266,16 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
-    --load Qwen3-VL-30B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 4 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -308,23 +302,8 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --moe_expert_capacity_factor 2 \
-    --optimizer_cpu_offload true \
-    --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.2 \
     --attention_backend flash
 ```
-
-Megatron格式权重转为Hf格式：
-```shell
-CUDA_VISIBLE_DEVICES=0,1 \
-swift export \
-    --mcore_model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx \
-    --to_hf true \
-    --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf
-```
-- 若要调整使用对应迭代次数（iter）的权重，请修改`megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx`目录下的`latest_checkpointed_iteration.txt`文件。
-
 
 训练结束后，我们使用以下脚本对验证集进行推理：
 ```shell
@@ -334,7 +313,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 swift infer \
-    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true \
     --max_new_tokens 2048 \
     --load_data_args true

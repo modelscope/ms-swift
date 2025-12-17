@@ -332,9 +332,9 @@ swift rlhf \
 
 Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/KTO/RM for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/GRPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
-For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
+For environment setup, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 
 We will use Alibaba Cloud DLC to launch training. The training environment consists of two nodes equipped with 8x 80GiB A800 GPUs each. For more information on multi-node launching, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node).
 
@@ -344,7 +344,9 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

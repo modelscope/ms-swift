@@ -6,7 +6,9 @@ from typing import Any, Dict, Tuple, Union
 import pandas as pd
 import torch
 import torch.nn as nn
+import trl
 from accelerate.utils import gather_object
+from packaging import version
 from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
 from trl.trainer.utils import print_rich_table
@@ -33,6 +35,10 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         except ImportError:
             self.maybe_activation_offload_context = nullcontext()
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
+        if version.parse(trl.__version__) >= version.parse('0.24'):
+            # During evaluation, Trainer calls compute_loss() only if can_return_loss is True and label_names is empty.
+            self.can_return_loss = True
+            self.label_names = []
 
     def compute_loss(self,
                      model: Union[PreTrainedModel, nn.Module],

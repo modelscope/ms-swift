@@ -5,6 +5,7 @@ import random
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
+from enum import Enum
 from typing import Dict, Optional, Union
 
 import torch
@@ -39,6 +40,12 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
+
+
+class DataSource(str, Enum):
+    STUDENT = 'student'  # On-policy: student model generates responses
+    TEACHER = 'teacher'  # Sequential KD: teacher model generates responses
+    DATASET = 'dataset'  # Off-policy: use dataset responses
 
 
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
@@ -95,14 +102,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.maybe_activation_offload_context = nullcontext()
         self._trl_version_gte_0_24 = version.parse(trl.__version__) >= version.parse('0.24')
 
+        # Initialize resample data iterator for truncation_strategy 'raise'('delete')
+        if self.template.truncation_strategy == 'raise':
+            self._prepare_resample_data_iterator()
+
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
+        """Generate on-policy outputs using the model.
+
+        When encode_prompt_only=True, inputs['input_ids'] already contains only the prompt part.
+        """
         assert not self.template.padding_free, 'generate not support padding_free/packing.'
-        # Generate output with respect to the prompt only
-        model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
-        model_inputs['input_ids'] = inputs['prompts']
-        model_inputs.update({k[len('prompt_'):]: v for k, v in inputs.items() if k.startswith('prompt_')})
+        prompt_input_ids = inputs['input_ids']
+        model_inputs = {k: v for k, v in inputs.items() if k != 'labels'}
         model_inputs.pop('position_ids', None)
+        model_inputs.pop('text_position_ids', None)
         kwargs = {}
         base_model = self.template.get_base_model(model)
         parameters = inspect.signature(base_model.generate).parameters
@@ -116,11 +130,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Get the generated token IDs
         generated_tokens = generated_outputs.sequences
         if not self.template.skip_prompt:
-            generated_tokens = torch.concat([inputs['prompts'], generated_tokens], dim=1)
+            generated_tokens = torch.concat([prompt_input_ids, generated_tokens], dim=1)
         # Calculate new attention mask
         new_attention_mask = torch.ones_like(generated_tokens)
         new_labels = generated_tokens.clone()
-        new_labels[:, :inputs['prompts'].shape[1]] = -100
+        new_labels[:, :prompt_input_ids.shape[1]] = -100
 
         # If there's pad_token_id, set attention mask to 0 for padding tokens
         if pad_token_id is not None:
@@ -134,6 +148,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Get data source: DataSource.STUDENT, DataSource.TEACHER, or DataSource.DATASET
+        data_source = inputs.pop('_data_source', DataSource.DATASET)
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
@@ -237,8 +253,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             if self._trl_version_gte_0_24:
                 loss /= shifted_student_logits.shape[1]
-            # Add SFT loss if enabled (common for both paths)
-            if self.args.sft_alpha > 0:
+            # Add SFT loss if enabled (skip for student-generated responses)
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
@@ -250,20 +266,37 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         else:
             return loss
 
-    def _prepare_batch_inputs(self, inputs: list) -> Dict[str, torch.Tensor]:
+    def _prepare_batch_inputs(self, inputs: list, encode_prompt_only: bool = False) -> Dict[str, torch.Tensor]:
+        """Prepare batch inputs for training.
+
+        Args:
+            inputs: List of input data dictionaries
+            encode_prompt_only: If True, only encode the prompt part (for on-policy/seq_kd generation).
+                               If False, encode the full messages including response (for offline dataset).
+        """
+        from swift.llm import to_device
+        from .utils import replace_assistant_response_with_ids
+
         template = self.template
         batch_encoded_inputs = []
 
-        for data in inputs:
-            if 'response_token_ids' in data and data['response_token_ids']:
-                from .utils import replace_assistant_response_with_ids
-                data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
+        # Use 'pt' mode for prompt-only encoding, 'train' mode for full encoding
+        mode = 'pt' if encode_prompt_only else 'train'
+        with self._template_context(template, mode=mode):
+            for data in inputs:
+                if 'response_token_ids' in data and data['response_token_ids']:
+                    data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
 
-            encoded = template.encode(data, return_length=True)
-            batch_encoded_inputs.append(encoded)
+                if encode_prompt_only:
+                    # Remove response content for prompt-only encoding
+                    messages = data.get('messages', [])
+                    if messages and messages[-1].get('role') == 'assistant':
+                        messages[-1]['content'] = None
 
-        from swift.llm import to_device
-        batch_encoded = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                encoded = template.encode(data, return_length=True)
+                batch_encoded_inputs.append(encoded)
+
+            batch_encoded = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
         return batch_encoded
 
@@ -286,6 +319,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         with patch_profiling_context(self, 'get_completions'):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
+                data_source = DataSource.STUDENT
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
                 if args.use_vllm:
                     processed_inputs = self._preprocess_inputs(inputs)
                     generated_inputs = self._fast_infer(processed_inputs)
@@ -296,44 +333,65 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         valid_completions = gather_object(completions)
                         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
                         self._logs['completion'].extend(valid_completions)
-                    inputs = self._prepare_batch_inputs(generated_inputs)
+                    with self._template_context(self.template):
+                        # vLLM already generated response, encode full messages
+                        encoded_inputs = self._prepare_batch_inputs(generated_inputs, encode_prompt_only=False)
                 else:
-                    inputs = self._prepare_batch_inputs(inputs)
+                    # Need prompt-only encoding for on-policy generation
+                    encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=True)
                     with unwrap_model_for_generation(
                             model, self.accelerator,
                             gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
                         unwrapped_model.eval()
                         new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
-                            unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+                            unwrapped_model, encoded_inputs, self.generation_config, self.processing_class.pad_token_id)
                         unwrapped_model.train()
-                    inputs['input_ids'] = new_input_ids
-                    inputs['attention_mask'] = new_attention_mask
-                    inputs['labels'] = new_labels
+                    # override with generated inputs
+                    encoded_inputs['input_ids'] = new_input_ids
+                    encoded_inputs['attention_mask'] = new_attention_mask
+                    encoded_inputs['labels'] = new_labels
 
             elif self.seq_kd:
-                inputs = self._prepare_batch_inputs(inputs)
+                # Sequential KD: teacher model generates responses
+                data_source = DataSource.TEACHER
+
+                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
+                if self.template.truncation_strategy == 'raise':
+                    inputs = self.resample_encode_failed_inputs(inputs)
+                # Need prompt-only encoding for teacher generation
+                encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=True)
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
                 with load_context, unwrap_model_for_generation(
                         self.teacher_model,
                         self.accelerator,
                         gather_deepspeed3_params=self.teacher_ds3_gather_for_generation) as unwrapped_model:
+                    unwrapped_model.eval()
                     new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
-                        unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
-                inputs['input_ids'] = new_input_ids
-                inputs['attention_mask'] = new_attention_mask
-                inputs['labels'] = new_labels
+                        unwrapped_model, encoded_inputs, self.generation_config, self.processing_class.pad_token_id)
+                # override with generated inputs
+                encoded_inputs['input_ids'] = new_input_ids
+                encoded_inputs['attention_mask'] = new_attention_mask
+                encoded_inputs['labels'] = new_labels
 
             else:
-                inputs = self._prepare_batch_inputs(inputs)
+                # Off-policy: use dataset responses, encode full messages
+                data_source = DataSource.DATASET
+                total_length = self.template.max_length + self.max_completion_length
+                with self._template_context(self.template, max_length=total_length):
+                    encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
 
-        with self.template.forward_context(self.model, inputs):
-            loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
+            # Mark data source for downstream processing (e.g., conditional SFT loss)
+            encoded_inputs['_data_source'] = data_source
+
+        with self.template.forward_context(self.model, encoded_inputs):
+            loss = HFSFTTrainer.training_step(self, model, encoded_inputs, num_items_in_batch)
         return loss
 
     def prediction_step(self, model, inputs, *args, **kwargs):
-        inputs = self._prepare_batch_inputs(inputs)
-        with self.template.forward_context(self.model, inputs):
-            return super().prediction_step(model, inputs, *args, **kwargs)
+        # Prediction uses full messages
+        encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
+        with self.template.forward_context(self.model, encoded_inputs):
+            return super().prediction_step(model, encoded_inputs, *args, **kwargs)
 
     @contextmanager
     def offload_context(self):

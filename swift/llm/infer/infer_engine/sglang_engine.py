@@ -48,6 +48,10 @@ class SglangEngine(InferEngine):
         kv_cache_dtype: str = 'auto',
         enable_dp_attention: bool = False,
         disable_custom_all_reduce: bool = True,
+        speculative_algorithm: Optional[str] = None,
+        speculative_num_steps: Optional[int] = None,
+        speculative_eagle_topk: Optional[int] = None,
+        speculative_num_draft_tokens: Optional[int] = None,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
@@ -88,6 +92,10 @@ class SglangEngine(InferEngine):
             kv_cache_dtype=kv_cache_dtype,
             enable_dp_attention=enable_dp_attention,
             disable_custom_all_reduce=disable_custom_all_reduce,
+            speculative_algorithm=speculative_algorithm,
+            speculative_num_steps=speculative_num_steps,
+            speculative_eagle_topk=speculative_eagle_topk,
+            speculative_num_draft_tokens=speculative_num_draft_tokens,
             log_level=log_level,
             skip_tokenizer_init=True,
             trust_remote_code=True,
@@ -98,6 +106,8 @@ class SglangEngine(InferEngine):
             self.server_args.is_embedding = True
         self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
+        if speculative_num_draft_tokens is not None:
+            self.max_tokens_offset = -speculative_num_draft_tokens
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
@@ -139,7 +149,7 @@ class SglangEngine(InferEngine):
         if template.template_meta.response_prefix:
             response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
-        token_ids = template.skip_stop_tokens(output['output_ids']) if return_details else None
+        token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),

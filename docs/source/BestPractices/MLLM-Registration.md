@@ -6,7 +6,7 @@
 ## 环境准备
 ```shell
 # 避免未来出现与文档的不兼容情况
-pip install "ms-swift>=3.9,<3.10"
+pip install "ms-swift>=3.10.2,<3.11"
 
 pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 ```
@@ -33,7 +33,7 @@ register_model_arch(
         # `freeze_llm`, `freeze_vit`, `freeze_aligner`将根据下面的值来决定其行为。
         # 例如：全参数训练，若设置`freeze_vit=True`，将冻结以`thinker.audio_tower`和`thinker.visual`为前缀的模型层的参数。
         # LoRA训练，若设置`freeze_vit=False`，将额外为以`thinker.audio_tower`和`thinker.visual`为前缀的Linear层添加LoRA。
-        language_model='thinker.model',
+        language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # generator的部分将永远不进行训练或处于冻结状态。
