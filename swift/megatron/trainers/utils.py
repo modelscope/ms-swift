@@ -39,9 +39,10 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
         step_batch_size = args.micro_batch_size * data_parallel_size
         # To avoid errors caused by the validation set being insufficient to complete a single step.
         if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
-            args.eval_iters = 0
             val_dataset = None
-        if val_dataset is not None:
+        if val_dataset is None:
+            args.eval_iters = 0
+        else:
             val_dataset.dataset_type = 'validation'
         return train_dataset, val_dataset, None
 
