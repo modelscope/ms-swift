@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -726,6 +726,66 @@ class SwiftMixin:
 
                 llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
 
+    def _gather_sequence_parallel_outputs(self,
+                                          outputs,
+                                          inputs: Optional[Dict[str, Any]] = None,
+                                          tensor_keys: Optional[Tuple[str, ...]] = None):
+        """
+        Gather split tensors produced by sequence parallel training so that downstream
+        components (loss, metrics, etc.) can operate on full-length sequences.
+        """
+        from swift.trainers.sequence_parallel import sequence_parallel
+
+        tensor_keys = tensor_keys or ('logits', 'last_hidden_state', 'hidden_states')
+
+        position_ids = None
+        if inputs:
+            position_ids = inputs.get('text_position_ids')
+            if position_ids is None:
+                position_ids = inputs.get('position_ids')
+        if position_ids is None:
+            position_ids = sequence_parallel.real_position_ids
+
+        if sequence_parallel.rp_world_size and sequence_parallel.rp_world_size > 1 and position_ids is None:
+            # Ring-parallel requires real position ids to restore order; skip if unavailable.
+            return outputs
+
+        def _gather_tensor(tensor: torch.Tensor):
+            if tensor is None or not isinstance(tensor, torch.Tensor) or tensor.dim() < 2:
+                return tensor
+            from swift.trainers.sequence_parallel.utils import GatherTensor
+            return GatherTensor.apply(tensor, 1, position_ids)
+
+        def _get_value(container, key):
+            if container is None:
+                return None
+            if isinstance(container, dict):
+                return container.get(key)
+            return getattr(container, key, None)
+
+        def _set_value(container, key, value):
+            if container is None or value is None:
+                return
+            if isinstance(container, dict):
+                container[key] = value
+            elif hasattr(container, key):
+                setattr(container, key, value)
+
+        for key in tensor_keys:
+            tensor = _get_value(outputs, key)
+            if tensor is None:
+                continue
+            if isinstance(tensor, (list, tuple)):
+                gathered = [
+                    _gather_tensor(t) if isinstance(t, torch.Tensor) else t for t in tensor
+                ]
+                tensor = type(tensor)(gathered) if isinstance(tensor, tuple) else gathered
+            else:
+                tensor = _gather_tensor(tensor)
+            _set_value(outputs, key, tensor)
+
+        return outputs
+
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -1118,7 +1178,7 @@ class DataLoaderMixin:
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = self.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = partial(
-                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=sequence_parallel.dp_rank)
 
             return DataLoaderShard(dataset, device=self.accelerator.device, **dataloader_params)
         else:

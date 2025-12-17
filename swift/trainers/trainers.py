@@ -119,6 +119,21 @@ class RerankerTrainer(Trainer):
             self.preprocess_logits_for_metrics = None
         self.gather_function = gather_for_unpadded_tensors
 
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            # Avoid splitting labels because reranker labels are per-sample, not per-token.
+            # We temporarily remove labels from inputs, call sequence_parallel.prepare_inputs, then restore them.
+            # This ensures text_position_ids and input_ids are correctly cached/split without corrupting labels.
+            labels = inputs.pop('labels', None)
+            try:
+                sequence_parallel.prepare_inputs(inputs)
+            finally:
+                if labels is not None:
+                    inputs['labels'] = labels
+        return inputs
+
     def _preprocess_generative_reranker_logits(self, logits, labels):
         """
         Preprocess logits for generative reranker to reduce memory usage.
@@ -182,6 +197,8 @@ class RerankerTrainer(Trainer):
                 labels = inputs.pop('labels')
 
             outputs = model(**inputs)
+            if self.template.sequence_parallel_size > 1:
+                outputs = self._gather_sequence_parallel_outputs(outputs, inputs)
 
             if labels is not None:
                 # Call custom loss function
