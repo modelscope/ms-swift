@@ -6,7 +6,7 @@ The table below introduces the models integrated with ms-swift:
 - HF Model ID: Hugging Face Model ID
 - Model Type: Type of the model
 - Default Template: Default chat template
-- Requires: Additional dependencies required to use the model
+- Requires: Additional dependencies required to use the model. **(If you encounter transformers version mismatch issues during training, you can check the `transformers_version` field in the model's `config.json` file)**
 - Support Megatron: Whether Megatron-SWIFT training is supported
 - Tags: Tags associated with the model
 
