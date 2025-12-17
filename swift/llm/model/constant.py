@@ -141,6 +141,7 @@ class LLMModelType:
     gemma_emb = 'gemma_emb'
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
+    mimo_v2 = 'mimo_v2'
 
 
 class BertModelType:

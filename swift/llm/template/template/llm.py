@@ -411,3 +411,11 @@ register_template(
         suffix=['<|endoftext|>'],
         response_prefix='<think>\n',
     ))
+
+
+register_template(
+    ChatmlTemplateMeta(
+        LLMTemplateType.mimo_v2,
+        default_system='You are MiMo, a helpful AI assistant engineered by Xiaomi.',
+        response_prefix='<think></think>',
+    ))

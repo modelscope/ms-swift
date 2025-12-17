@@ -647,6 +647,8 @@ The table below introduces the models integrated with ms-swift:
 |[PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking](https://modelscope.cn/models/PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking)|ernie_thinking|ernie_thinking|-|&#x2714;|-|[baidu/ERNIE-4.5-21B-A3B-Thinking](https://huggingface.co/baidu/ERNIE-4.5-21B-A3B-Thinking)|
 |[meituan-longcat/LongCat-Flash-Chat](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat)|
 |[meituan-longcat/LongCat-Flash-Chat-FP8](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat-FP8)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat-FP8](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat-FP8)|
+|[XiaomiMiMo/MiMo-V2-Flash](https://modelscope.cn/models/XiaomiMiMo/MiMo-V2-Flash)|mimo_v2|mimo_v2|-|&#x2718;|-|[XiaomiMiMo/MiMo-V2-Flash](https://huggingface.co/XiaomiMiMo/MiMo-V2-Flash)|
+|[XiaomiMiMo/MiMo-V2-Flash-Base](https://modelscope.cn/models/XiaomiMiMo/MiMo-V2-Flash-Base)|mimo_v2|mimo_v2|-|&#x2718;|-|[XiaomiMiMo/MiMo-V2-Flash-Base](https://huggingface.co/XiaomiMiMo/MiMo-V2-Flash-Base)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy|transformers>=4.48|&#x2718;|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
@@ -1053,8 +1055,8 @@ The table below introduces the models integrated with ms-swift:
 |[mistralai/Ministral-3-8B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-8B-Reasoning-2512)|mistral_2512_thinking|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-8B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-8B-Reasoning-2512)|
 |[mistralai/Ministral-3-14B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-14B-Reasoning-2512)|mistral_2512_thinking|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-14B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-14B-Reasoning-2512)|
 |[PaddlePaddle/PaddleOCR-VL](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL)|paddle_ocr|paddle_ocr|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL)|
+|[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0|-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
-|[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|vision|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 
 
 ## Datasets
