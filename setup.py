@@ -136,10 +136,11 @@ if __name__ == '__main__':
         long_description_content_type='text/markdown',
         author='DAMO ModelScope teams',
         author_email='contact@modelscope.cn',
-        keywords='python, petl, efficient tuners',
-        url='https://github.com/modelscope/swift',
+        keywords=["transformers", "LLM", "lora", "megatron", "grpo", "sft"],
+        url='https://github.com/modelscope/ms-swift',
         package_dir={"": "src"},
         packages=find_packages('src'),
+        python_requires=">=3.8.0",
         classifiers=[
             'Development Status :: 4 - Beta',
             'License :: OSI Approved :: Apache Software License',
