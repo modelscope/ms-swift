@@ -1,5 +1,11 @@
 # 16 * 64GiB Ascend A3
 # Modified from https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_vl/mcore_full.sh
+export TASK_QUEUE_ENABLE=2
+export COMBINED_ENABLE=1
+export CPU_AFFINITY_CONF=1
+export MULTI_STREAM_MEMORY_REUSE=2
+export TORCH_HCCL_ZERO_COPY=1
+
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 MULTI_STREAM_MEMORY_REUSE=2 \
 OMP_NUM_THREADS=14 \
