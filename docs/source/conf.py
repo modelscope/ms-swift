@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 project = 'swift'
 copyright = '2022-2025, Alibaba ModelScope'
 author = 'ModelScope Authors'
-version_file = '../../swift/version.py'
+version_file = '../../src/swift/version.py'
 html_theme = 'sphinx_rtd_theme'
 language = 'zh_CN'
 
