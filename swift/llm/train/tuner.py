@@ -142,6 +142,9 @@ def apply_cce(model_type: str):
         ModelType.qwen3_next_thinking: 'qwen3_next',
         ModelType.qwen3_vl: 'qwen3_vl',
         ModelType.qwen3_moe_vl: 'qwen3_vl_moe',
+        # deepseek family
+        ModelType.deepseek_r1: 'deepseek_v3',
+        ModelType.deepseek_v3_1: 'deepseek_v3',
     }
 
     cce_model_type = model_type_map.get(model_type)
