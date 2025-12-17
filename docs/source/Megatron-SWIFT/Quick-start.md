@@ -24,8 +24,6 @@ pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer_engine[pytorch]
-# 或使用以下方式安装
-# pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
 # 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--no_gradient_accumulation_fusion true`即可。
@@ -34,7 +32,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.15.0
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
@@ -42,21 +40,21 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
 export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
-# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.14.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.14.0)）。
-git clone --branch core_r0.14.0 https://github.com/NVIDIA/Megatron-LM.git
+# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.15.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.15.0)）。
+git clone --branch core_r0.15.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
-# 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn==2.7.4.post1" --no-build-isolation
+# 注意：请勿安装高于transformer_engine限制的最高版本：https://github.com/NVIDIA/TransformerEngine/blob/release_v2.10/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L118
+MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
 ```
 
 推荐运行环境：
@@ -65,11 +63,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.7.1/2.8.0       |                    |
-| transformer_engine    | >=2.3       |          |                  |
+| transformer_engine    | >=2.3       |   2.10.0    |                  |
 | apex |   |  0.1 | |
-| megatron_core    |   >=0.12,<0.16    | 0.14      |                  |
-| flash_attn    |        | 2.8.1/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.1      |                    |
+| megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
+| flash_attn    |        | 2.8.3/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.57.3      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
@@ -79,10 +77,12 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
+### 传统方式
+
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 多卡权重转换：将`CUDA_VISIBLE_DEVICES=0`删除即可使用多卡权重转换。
 - 转换精度测试：`--test_convert_precision true`将测试转换精度。在MoE大型模型的转换时，该参数所需时间较长，且需要更多的内存消耗，可酌情去除。
-- ms-swift支持了Mcore-Bridge来避免权重转换的额外耗时，请参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -101,6 +101,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-7B-Instruct-mcore \
+    --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -135,10 +136,10 @@ megatron sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --test_convert_precision true
 ```
 
@@ -146,7 +147,7 @@ swift export \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
@@ -156,6 +157,58 @@ swift infer \
 ```
 <<< who are you?
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
+```
+
+
+### Mcore-Bridge【推荐】
+
+在"ms-swift>=3.10"，支持了Mcore-Bridge，去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+
+训练脚本：
+```bash
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-5 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-6 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+我们对生成的safetensors格式权重进行推理：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 - 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。

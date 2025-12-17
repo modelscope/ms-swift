@@ -76,7 +76,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(module, model_meta=model_meta)
+    llm_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
 
     found = False
     for lm_head in lm_heads:
@@ -156,7 +156,8 @@ def get_lm_head_model(model, model_meta=None, lm_heads=None):
     if isinstance(model, PeftModel):
         model = model.model
     model_meta = model_meta or model.model_meta
-    lm_heads = lm_heads or ['lm_head']
+    if lm_heads is None:
+        lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
     prefix_list = []
     if llm_prefix_list:

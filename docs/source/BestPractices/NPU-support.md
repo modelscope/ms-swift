@@ -40,6 +40,10 @@ pip install deepspeed
 # 如果需要使用 evaluation 功能，请安装以下包
 pip install evalscope[opencompass]
 
+# 如果需要使用 vllm-ascend 进行推理，请安装以下包
+pip install vllm==0.11.0
+pip install vllm-ascend==0.11.0rc3
+
 # 如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖
 # 1. 获取并切换 Megatron-LM 至 core_v0.12.1 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
@@ -261,7 +265,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## 部署
 
-NPU不支持使用vllm进行推理/部署加速, 但是可以使用原生pytorch进行部署.
+### 使用原生pytorch进行部署
 
 原始模型:
 
@@ -277,6 +281,42 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new
 # merge-lora并推理
 ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
+```
+
+### 使用vLLM-ascend进行部署
+使用pypi进行安装：
+```shell
+# Install vllm-project/vllm. The newest supported version is v0.11.0.
+pip install vllm==0.11.0
+
+# Install vllm-project/vllm-ascend from pypi.
+pip install vllm-ascend==0.11.0rc3
+```
+原始模型：
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+```
+
+LoRA微调后:
+
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --adapters xxx/checkpoint-xxx \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+
+# merge-lora并推理
+ASCEND_RT_VISIBLE_DEVICES=0 swift export \
+    --adapters xx/checkpoint-xxx \
+    --merge_lora true
+
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model xxx/checkpoint-xxx-merged \
+    --infer_backend vllm \
+    --max_new_tokens 2048
 ```
 
 ## 支持现状
@@ -319,7 +359,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | ---------------------- |
 | Liger-kernel           |
 | 量化/QLoRA相关         |
-| Megatron相关           |
 | 使用sglang作为推理引擎 |
 
 

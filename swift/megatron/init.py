@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import importlib.metadata
+import inspect
 import logging
 import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from copy import copy, deepcopy
+from copy import copy
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -15,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
 from tqdm import tqdm
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import git_clone_github
 from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
@@ -645,6 +648,25 @@ def _patch_build_train_valid_test_datasets():
     training.build_train_valid_test_datasets = build_train_valid_test_datasets
 
 
+def _patch__write_item():
+    import megatron.core
+    if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
+        return
+    # mcore 0.12
+    from megatron.core.dist_checkpointing.strategies import filesystem_async
+
+    _origin__write_item = filesystem_async._write_item
+    if 'serialization_format' in inspect.signature(_origin__write_item).parameters:
+        from torch.distributed.checkpoint.filesystem import SerializationFormat
+
+        def _write_item(self, *args, **kwargs):
+            if 'serialization_format' not in kwargs:
+                kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
+            return _origin__write_item(self, *args, **kwargs)
+
+        filesystem_async._write_item = _write_item
+
+
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
@@ -769,11 +791,38 @@ def _patch_mrope():
     rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
+def _patch_unified_memory():
+    if is_torch_npu_available():
+        return
+
+    mcore_015 = version.parse(importlib.metadata.version('megatron-core')) >= version.parse('0.15.0rc0')
+    if not mcore_015:
+        return
+    from torch.utils import cpp_extension
+    load_inline = cpp_extension.load_inline
+
+    def _new_load_inline(*args, **kwargs):
+        name = kwargs.get('name')
+        if name == 'managed_alloc_runtime':
+            raise RuntimeError
+        return load_inline(*args, **kwargs)
+
+    # not create unified memory mempool
+    cpp_extension.load_inline = _new_load_inline
+    try:
+        from megatron.core.inference import unified_memory
+    except Exception:
+        pass
+    finally:
+        cpp_extension.load_inline = load_inline
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_unified_memory()
     _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
@@ -782,6 +831,7 @@ def _patch_megatron():
     _patch_compile_helpers()
     _patch_build_train_valid_test_datasets()
     _patch_mrope()
+    _patch__write_item()
     _patch_megatron_tokenizer()
     _patch_mtp()
     logging.root.setLevel(logging_level)  # revert logger level
@@ -812,7 +862,7 @@ def init_megatron_env() -> None:
         # TODO: Synchronization issues may occur in DDP scenarios
         # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.14.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.15.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])

@@ -35,7 +35,7 @@
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: This parameter defaults to False during RLHF training or when `task_type` is not equal to 'causal_lm'.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
-  - **Note: The recommended `flash_attn` version is 2.7.4.post1/2.8.1**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`. For the ViT part of a multimodal model to use FlashAttention-3, please set `--attn_impl flash_attention_3`.
+  - **Note: The recommended `flash_attn` version is 2.8.3**. In versions of `ms-swift` prior to 3.7, the default value for this parameter is `'auto'`. For the ViT part of a multimodal model to use FlashAttention-3, please set `--attn_impl flash_attention_3`.
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
   - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
@@ -48,12 +48,13 @@
 - main_params_dtype: The dtype of main parameters when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'fp16'. Default is 'fp32'.
 - exp_avg_dtype: The dtype of exp_avg (i.e., the first moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
 - exp_avg_sq_dtype: The dtype of exp_avg_sq (i.e., the second moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
-- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
+- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to 'external'.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: The interval for manually triggering garbage collection. Defaults to 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
   - Note: If `--streaming true` is set, it will be set to 1.
+- no_data_sharding: Takes effect on train_dataloader when `--train_dataloader_shuffle true` is set. Defaults to False. This parameter controls the scope of dataset shuffling. If set to False, the dataset is first sharded, then each shard is shuffled independently (slightly more memory efficient); if set to True, the dataset is shuffled globally first, then sharded (better randomization). Requires "ms-swift>=3.12".
 - seq_length: Defaults to `None`, which means it will be set to `max_length`. To limit the sequence length of the dataset, it is recommended to use the `--max_length` argument under "Basic Parameters" instead; this parameter does not need to be set explicitly.
 - use_cpu_initialization: Initialize weights on the CPU. Defaults to `False`. This option is used during weight conversion between Hugging Face (HF) and MCore formats. The value typically does not need to be modified.
 - 🔥megatron_extra_kwargs: Additional arguments to be passed through directly to Megatron, provided as a JSON string. Defaults to `None`.
@@ -88,9 +89,10 @@
   - Tip: You can set it to a very large value to only save the final checkpoint.
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
-- 🔥load: Directory of the checkpoint to load, default is None.
+- 🔥load: The directory of the checkpoint to load. Default is None. For details on resuming training from a checkpoint, please refer to the description of the `--finetune` argument.
   - Note: If you did not convert the weights with ms-swift’s `swift export`, you must also specify `--model <hf-repo>` so that the `config.json` configuration file can be loaded.
-  - For details on resuming training from a checkpoint, please refer to the description of the `--finetune` argument.
+  - Note: In "ms-swift>3.10", direct loading and saving of safetensors weights is supported, refer to [mcore-bridge documentation](./Mcore-Bridge.md).
+  - The difference between `--model` and `--load`: `--model/--adapters/--ref_model/--ref_adapters` are followed by safetensors weight directories, while `--load/--adapter_load/--ref_load/--ref_adapter_load` are followed by mcore weight directories. `--model/--adapters` do not support loading checkpoint resume states, so in "ms-swift>=3.12", if you set `--no_save_optim false`, mcore weight format will be additionally saved for checkpoint resumption, and you need to use `--load/--adapter_load` to load the checkpoint resume state.
 - 🔥no_load_optim: Do not load optimizer, default is False.
   - Note: When resuming training from a checkpoint, setting `--no_load_optim false` (i.e., loading the optimizer state) typically consumes significantly more GPU memory than setting `--no_load_optim true` (i.e., skipping the optimizer state).
 - 🔥no_load_rng: Do not load RNG, default is False.
@@ -285,9 +287,10 @@ LoRA Training:
 
 **Mcore-Bridge Parameters**
 
-- 🔥load_safetensors: Defaults to False. Whether to load weights directly from safetensors.
-- 🔥save_safetensors: Defaults to False. Whether to save directly as safetensors weights. Note: if this parameter is set to True, optimizer weights, random number states, and other checkpoint resumption contents will not be stored.
-- model: The model_id or model_path of safetensors weights. Defaults to None.
+- 🔥load_safetensors: This parameter will become ineffective in "ms-swift>=3.12" (defaults to False in previous versions). Weights will be loaded based on priority: if `--load` does not exist, safetensors weights `--model` will be loaded; the same applies to `--adapters` and `--adapter_load`, etc.
+  - Note: In "ms-swift>=3.12", this parameter is retained for shell script compatibility but no longer has any effect.
+- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resume content such as optimizer weights and random number states (additionally storing mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`. When resuming from checkpoint, use the `--load/--adapter_load` parameter to load mcore format weights.
+- model: The model_id or model_path of safetensors weights. Default is None. Supports resume training from checkpoint using `--no_load_optim false --no_load_rng false`.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
 - ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, set to `--model`.
@@ -330,6 +333,13 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
 - problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Defaults to None. If the model is a reward_model or num_labels equals 1, this parameter is 'regression'; otherwise it is 'single_label_classification'.
 - 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epochs'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch. `save_retain_interval` can be set to an integer, indicating after how many epochs a checkpoint is retained.
+- dataset_shuffle: Whether to perform random shuffling on the dataset. Defaults to True.
+- Note: **Randomization in Megatron-SWIFT consists of two parts**: dataset-level shuffling, controlled by `dataset_shuffle`; and train_dataloader-level shuffling, controlled by `train_dataloader_shuffle`.
+- train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Default is True. Requires "ms-swift>=3.12".
+  - In "ms-swift>3.12", val_dataset will no longer be shuffled.
+- dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
+- dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.12".
+- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.12".
 
 
 ## RLHF Parameters
@@ -376,6 +386,7 @@ In addition to inheriting the training parameters, the following parameters are 
 - steps_per_generation: Number of optimization steps per generation round, i.e., the ratio of sampling batch size to global_batch_size. Default is 1.
 - generation_batch_size: Sampling batch size, must be a multiple of global_batch_size. Default equals global_batch_size * steps_per_generation.
 - num_generations: Number of samples per prompt, the G value in the paper, default is 8.
+- num_generations_eval: Number of generations to sample during evaluation. This allows using fewer generations during evaluation to save computation. If `None`, uses the value of `num_generations`. Default is None.
 - reward_funcs: GRPO algorithm reward functions. Options include `accuracy`, `format`, `cosine`, `repetition`, and `soft_overlong`. See swift/plugin/orm.py. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. Must match the total number of reward functions and reward models. Default is None, meaning all rewards have equal weights of `1.0`.
   - Tip: If GRPO training includes `--reward_model`, it is added at the end of the reward functions.

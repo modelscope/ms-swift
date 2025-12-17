@@ -22,6 +22,11 @@ from swift.llm import to_device
 from swift.utils import get_logger
 from swift.utils.torch_utils import empty_cache, get_current_device
 
+try:
+    from megatron.training.datasets.data_samplers import RandomSeedDataset
+except ImportError:
+    from megatron.legacy.data.data_samplers import RandomSeedDataset
+
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
@@ -36,6 +41,8 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
         if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
             args.eval_iters = 0
             val_dataset = None
+        if val_dataset is not None:
+            val_dataset.dataset_type = 'validation'
         return train_dataset, val_dataset, None
 
     return swift_datasets_provider
@@ -372,3 +379,81 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
         logger.info_once(log_msg, hash_id=prefix)
     else:
         logger.info(log_msg)
+
+
+# Code borrowed from megatron-lm
+class MegatronPretrainingRandomSampler:
+
+    def __init__(self,
+                 dataset,
+                 total_samples,
+                 consumed_samples,
+                 micro_batch_size,
+                 data_parallel_rank,
+                 data_parallel_size,
+                 data_sharding,
+                 shuffle: bool = True):
+        # Keep a copy of input params for later use.
+        self.dataset = dataset
+        self.total_samples = total_samples
+        self.consumed_samples = consumed_samples
+        self.micro_batch_size = micro_batch_size
+        self.data_parallel_rank = data_parallel_rank
+        self.data_parallel_size = data_parallel_size
+        self.data_sharding = data_sharding
+        self.shuffle = shuffle
+        self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size
+        self.last_batch_size = self.total_samples % self.micro_batch_times_data_parallel_size
+
+        # Sanity checks.
+        assert self.total_samples > 0, 'no sample to consume: {}'.format(self.total_samples)
+        assert self.micro_batch_size > 0
+        assert data_parallel_size > 0
+        assert self.data_parallel_rank < data_parallel_size, (
+            'data_parallel_rank should be smaller than data size: {}, '
+            '{}'.format(self.data_parallel_rank, data_parallel_size))
+
+    def __len__(self):
+        return self.total_samples
+
+    def __iter__(self):
+        active_total_samples = self.total_samples - self.last_batch_size
+        self.epoch = self.consumed_samples // active_total_samples
+        current_epoch_samples = self.consumed_samples % active_total_samples
+        assert current_epoch_samples % self.micro_batch_times_data_parallel_size == 0
+
+        if isinstance(self.dataset, RandomSeedDataset):
+            self.dataset.set_epoch(self.epoch)
+
+        if self.shuffle:
+            # data sharding and random sampling
+            if self.data_sharding:
+                bucket_size = (self.total_samples // self.micro_batch_times_data_parallel_size) * self.micro_batch_size
+                bucket_offset = current_epoch_samples // self.data_parallel_size
+                start_idx = self.data_parallel_rank * bucket_size
+
+                g = torch.Generator()
+                g.manual_seed(self.epoch)
+                random_idx = torch.randperm(bucket_size, generator=g).tolist()
+                idx_range = [start_idx + x for x in random_idx[bucket_offset:]]
+            else:
+                full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
+                full_bucket_offset = current_epoch_samples
+                g = torch.Generator()
+                g.manual_seed(self.epoch)
+                idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
+                idx_range_active = idx_range_total[full_bucket_offset:]
+                idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
+        else:
+            full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
+            full_bucket_offset = current_epoch_samples
+            idx_range = range(full_bucket_offset + self.data_parallel_rank, full_bucket_size, self.data_parallel_size)
+
+        batch = []
+        # Last batch if not complete will be dropped.
+        for idx in idx_range:
+            batch.append(idx)
+            if len(batch) == self.micro_batch_size:
+                self.consumed_samples += self.micro_batch_times_data_parallel_size
+                yield batch
+                batch = []

@@ -77,6 +77,8 @@ class Qwen3EmbTemplate(Template):
         if inputs.system is not None:
             inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
             inputs.system = None
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
         return inputs
 
 

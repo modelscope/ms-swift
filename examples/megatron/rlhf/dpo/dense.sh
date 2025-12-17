@@ -4,7 +4,9 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

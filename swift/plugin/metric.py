@@ -165,7 +165,7 @@ def compute_acc(preds,
         return {}
 
     masks = labels != -100
-    if acc_strategy == 'token' or preds.ndim == 1:
+    if acc_strategy == 'token' or preds.ndim == 1:  # 'single_label_classification'
         acc_list = (preds[masks] == labels[masks]).tolist()
     else:
         acc_list = []

@@ -92,7 +92,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -127,7 +127,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+                           'train', 'rlhf', 'kto'] = 'pt'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
@@ -383,14 +383,6 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
-    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._encode_truncated(inputs)
-        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
-        for k in list(encoded.keys()):
-            if k.startswith('prompt_') or k.endswith('answer_'):
-                encoded.pop(k, None)
-        return encoded
-
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -410,7 +402,7 @@ class Template(ProcessorMixin):
 
             _all_negative_keys = set()
             for idx, negative in enumerate(inputs.negative):
-                _tmp_negative_keys = set()
+                _tmp_negative_keys = set()  # used to fill in missing keys
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     negative_key = f'negative_{key}'
@@ -465,6 +457,16 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
+            # Ensure that load_data_args true runs through inference successfully
+            # if len(anchor.messages) == 1:
+            #     docs = inputs.positive + inputs.negative
+            #     if docs:
+            #         assistant_messages = docs[0].messages
+            #         assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
+            #         anchor.messages = anchor.messages + assistant_messages
+            #         anchor.images = anchor.images + docs[0].images
+            #         anchor.audios = anchor.audios + docs[0].audios
+            #         anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
@@ -511,8 +513,6 @@ class Template(ProcessorMixin):
                 encoded = self._rlhf_encode(inputs)
             elif self.mode == 'kto':
                 encoded = self._kto_encode(inputs)
-            elif self.mode == 'gkd':
-                encoded = self._gkd_encode(chosen)
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -538,7 +538,7 @@ class Template(ProcessorMixin):
             if chosen.channel is not None:
                 encoded['channel'] = chosen.channel
 
-            lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
+            lengths = []
             for key in list(encoded.keys()):
                 if encoded[key] is None:
                     encoded.pop(key)
@@ -549,10 +549,9 @@ class Template(ProcessorMixin):
                     elif isinstance(value, (tuple, list)):
                         lengths += value
             if return_length:
-                if self.task_type in {'reranker', 'generative_reranker'}:
-                    encoded['length'] = lengths
-                else:
-                    encoded['length'] = sum(lengths)
+                if not lengths:
+                    raise ValueError(f'lengths should not be empty. batched: {batched}')
+                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
             else:
                 encoded.pop('length', None)
             if return_template_inputs:
@@ -571,8 +570,6 @@ class Template(ProcessorMixin):
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
-            elif key == 'length':
-                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
@@ -630,7 +627,7 @@ class Template(ProcessorMixin):
     @contextmanager
     def generate_context(self):
         origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+        if self.mode in {'train', 'rlhf', 'kto'}:
             self.set_mode('pt')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
@@ -1211,20 +1208,31 @@ class Template(ProcessorMixin):
         return length
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
-        self._preprocess_inputs(inputs)
-        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-            # For multi-modal models, images do not need to be pre processed here
-            # vllm/lmdeploy/sglang will handle the logic
-            encoded = Template._encode(self, inputs)
-            keys = ['images', 'audios', 'videos']
-            if self.mode == 'vllm':
-                keys.append('mm_processor_kwargs')
-            for key in keys:
-                value = getattr(inputs, key)
-                if value:
-                    encoded[key] = value
-        else:
-            encoded = self._encode(inputs)
+        # retry to avoid megatron getting stuck
+        i = 1
+        retry = 3
+        while True:
+            try:
+                self._preprocess_inputs(inputs)
+                if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+                    # For multi-modal models, images do not need to be pre processed here
+                    # vllm/lmdeploy/sglang will handle the logic
+                    encoded = Template._encode(self, inputs)
+                    keys = ['images', 'audios', 'videos']
+                    if self.mode == 'vllm':
+                        keys.append('mm_processor_kwargs')
+                    for key in keys:
+                        value = getattr(inputs, key)
+                        if value:
+                            encoded[key] = value
+                else:
+                    encoded = self._encode(inputs)
+            except Exception:
+                if i == retry:
+                    raise
+                i += 1
+            else:
+                break
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
@@ -1273,7 +1281,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder or self.mode == 'gkd':
+        if self.is_encoder_decoder:
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
@@ -1396,7 +1404,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto', 'gkd']) -> None:
+    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1449,8 +1457,6 @@ class Template(ProcessorMixin):
                 res = self._rlhf_data_collator(batch, padding_to=padding_to)
             elif self.mode == 'kto':
                 res = self._kto_data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'gkd':
-                res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
@@ -1545,15 +1551,6 @@ class Template(ProcessorMixin):
             res['label'] = label
         return res
 
-    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = self._data_collator(batch, padding_to=padding_to)
-        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
-        if prompts_batch:
-            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-            res['prompts'] = prompts_res.pop('input_ids')
-            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
-        return res
-
     def _embedding_data_collator(self,
                                  batch: List[Dict[str, Any]],
                                  *,
@@ -1565,7 +1562,7 @@ class Template(ProcessorMixin):
                 new_batch += [b]
             else:
                 keys = [key for key in b.keys() if 'negative' in key]
-                max_neg = None
+                max_neg = None  # number of negative samples
                 for key in keys:
                     value_list = b[key]
                     suffix = key[len('negative_'):]
