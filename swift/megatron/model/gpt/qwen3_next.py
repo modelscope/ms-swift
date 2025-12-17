@@ -57,15 +57,11 @@ except ImportError:
 
 logger = get_logger()
 
-
-
-
 class Qwen3NextRMSNorm(torch.nn.Module):
     """
     Zero-Centered RMSNorm for Qwen3-Next.
     Uses (1 + weight) scaling to match HuggingFace implementation exactly.
     This eliminates the need for +1/-1 offset during weight conversion.
-    
     Interface matches TENorm for compatibility with Megatron-Core build_module.
     """
 
