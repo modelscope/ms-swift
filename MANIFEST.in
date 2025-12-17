@@ -1,5 +1,1 @@
-recursive-include src/swift/utils *.py
-recursive-include src/swift/llm/dataset/data *.*
-recursive-include src/swift/llm/ds_config *.json
 recursive-include requirements *.txt
-recursive-include src/swift/plugin/loss_scale/config *.json
