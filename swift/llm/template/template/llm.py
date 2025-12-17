@@ -412,7 +412,6 @@ register_template(
         response_prefix='<think>\n',
     ))
 
-
 register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.mimo_v2,
