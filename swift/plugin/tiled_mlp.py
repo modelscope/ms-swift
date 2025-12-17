@@ -18,10 +18,10 @@ from swift.utils import get_logger
 
 logger = get_logger()
 
-
 # ============================================================================
 # FSDP2 Compatible TiledMLP Implementation
 # ============================================================================
+
 
 class GradientAccumulator:
     """Gradient accumulator for TiledMLP (FSDP2 compatible)"""
@@ -45,6 +45,7 @@ class GradientAccumulator:
         self._remove_hooks()
 
         def create_hook(param):
+
             def hook(grad):
                 with self.lock:
                     grad_to_accum_dtype = grad.to(self.grad_accumulation_dtype)
@@ -93,7 +94,7 @@ class TiledMLPFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grads):
         fn = ctx.fn
-        (x,) = ctx.saved_tensors
+        (x, ) = ctx.saved_tensors
         self = ctx.self
         shards = ctx.shards
         compute_params = ctx.compute_params
@@ -144,11 +145,11 @@ class TiledMLPFunction(torch.autograd.Function):
 class TiledSwiGLUMLP(nn.Module):
     """
     Memory-efficient SwiGLU MLP using tiled computation for FSDP2.
-    
+
     This module combines SwiGLU activation with tiled processing to handle
     very long sequences efficiently. The forward pass is recomputed during
     backward to save memory.
-    
+
     Args:
         config: Model configuration with hidden_size and intermediate_size attributes
         num_shards: Number of shards to split the sequence. If None, automatically
@@ -176,7 +177,7 @@ class TiledSwiGLUMLP(nn.Module):
     def forward(self, x):
         """
         Forward pass with tiled computation.
-        
+
         Args:
             x: Input tensor of shape [batch_size, seq_len, hidden_size]
                or [seq_len, hidden_size]
@@ -200,6 +201,7 @@ class TiledSwiGLUMLP(nn.Module):
 # ============================================================================
 # Environment Detection Functions
 # ============================================================================
+
 
 def is_fsdp2_enabled() -> bool:
     """Check if FSDP2 is enabled via accelerate config."""
@@ -251,7 +253,7 @@ def is_deepspeed_enabled() -> bool:
 def get_tiled_mlp_mode() -> str:
     """
     Determine which tiled MLP implementation to use.
-    
+
     Returns:
         'fsdp2': Use custom TiledSwiGLUMLP implementation
         'liger': Use liger_kernel's LigerTiledSwiGLUMLP
@@ -272,8 +274,10 @@ def get_tiled_mlp_mode() -> str:
 
 # Supported model types for tiled MLP
 SUPPORTED_MODEL_TYPES = {
-    'qwen2', 'qwen2_5',
-    'qwen3', 'qwen3_vl',
+    'qwen2',
+    'qwen2_5',
+    'qwen3',
+    'qwen3_vl',
 }
 
 
@@ -298,25 +302,23 @@ def _get_mlp_class_for_model(model_type: str) -> str:
 def apply_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
     """
     Apply tiled MLP replacement before model instantiation.
-    
+
     This function should be called BEFORE loading the model to replace
     the MLP class in the transformers module.
-    
+
     Args:
         model_type: The model type (e.g., 'llama', 'qwen2')
         num_shards: Number of shards for tiled computation
-        
+
     Raises:
         ValueError: If FSDP1 is detected (not compatible)
     """
     mode = get_tiled_mlp_mode()
-    
+
     if mode == 'error':
-        raise ValueError(
-            'Tiled MLP is not compatible with FSDP1. '
-            'Please use FSDP2 (set fsdp_version: 2 in accelerate config) or DeepSpeed.'
-        )
-    
+        raise ValueError('Tiled MLP is not compatible with FSDP1. '
+                         'Please use FSDP2 (set fsdp_version: 2 in accelerate config) or DeepSpeed.')
+
     if mode == 'fsdp2':
         _apply_custom_tiled_mlp(model_type, num_shards)
     elif mode == 'liger':
@@ -331,21 +333,18 @@ def _apply_custom_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
     # Get the transformers module for this model
     model_module = _get_transformers_module(model_type)
     if model_module is None:
-        raise ValueError(
-            f'Tiled MLP: Could not find transformers module for model_type={model_type}. '
-            f'Supported model types: {SUPPORTED_MODEL_TYPES}'
-        )
+        raise ValueError(f'Tiled MLP: Could not find transformers module for model_type={model_type}. '
+                         f'Supported model types: {SUPPORTED_MODEL_TYPES}')
 
     # Check if MLP class exists in the module
     original_mlp_class = getattr(model_module, mlp_class_name, None)
     if original_mlp_class is None:
-        raise ValueError(
-            f'Tiled MLP: Could not find {mlp_class_name} in {model_module.__name__}. '
-            f'model_type={model_type} may not be supported.'
-        )
+        raise ValueError(f'Tiled MLP: Could not find {mlp_class_name} in {model_module.__name__}. '
+                         f'model_type={model_type} may not be supported.')
 
     # Create a wrapper class that uses TiledSwiGLUMLP
     class TiledMLPWrapper(TiledSwiGLUMLP):
+
         def __init__(self, config, **kwargs):
             super().__init__(config, num_shards=num_shards)
 
@@ -359,31 +358,26 @@ def _apply_liger_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
     try:
         from liger_kernel.transformers.tiled_mlp import LigerTiledSwiGLUMLP
     except ImportError:
-        raise ImportError(
-            'Tiled MLP: liger_kernel not installed or LigerTiledSwiGLUMLP not available. '
-            'Please install liger-kernel: pip install liger-kernel'
-        )
+        raise ImportError('Tiled MLP: liger_kernel not installed or LigerTiledSwiGLUMLP not available. '
+                          'Please install liger-kernel: pip install liger-kernel')
 
     num_shards = num_shards or 4
     mlp_class_name = _get_mlp_class_for_model(model_type)
 
     model_module = _get_transformers_module(model_type)
     if model_module is None:
-        raise ValueError(
-            f'Tiled MLP: Could not find transformers module for model_type={model_type}. '
-            f'Supported model types: {SUPPORTED_MODEL_TYPES}'
-        )
+        raise ValueError(f'Tiled MLP: Could not find transformers module for model_type={model_type}. '
+                         f'Supported model types: {SUPPORTED_MODEL_TYPES}')
 
     # Check if MLP class exists in the module
     original_mlp_class = getattr(model_module, mlp_class_name, None)
     if original_mlp_class is None:
-        raise ValueError(
-            f'Tiled MLP: Could not find {mlp_class_name} in {model_module.__name__}. '
-            f'model_type={model_type} may not be supported.'
-        )
+        raise ValueError(f'Tiled MLP: Could not find {mlp_class_name} in {model_module.__name__}. '
+                         f'model_type={model_type} may not be supported.')
 
     # Create a wrapper class
     class LigerTiledMLPWrapper(LigerTiledSwiGLUMLP):
+
         def __init__(self, config, **kwargs):
             super().__init__(config, num_shards=num_shards)
 
