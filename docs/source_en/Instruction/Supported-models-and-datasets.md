@@ -1053,8 +1053,8 @@ The table below introduces the models integrated with ms-swift:
 |[mistralai/Ministral-3-8B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-8B-Reasoning-2512)|mistral_2512_thinking|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-8B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-8B-Reasoning-2512)|
 |[mistralai/Ministral-3-14B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-14B-Reasoning-2512)|mistral_2512_thinking|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-14B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-14B-Reasoning-2512)|
 |[PaddlePaddle/PaddleOCR-VL](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL)|paddle_ocr|paddle_ocr|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL)|
+|[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0|-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
-|[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|vision|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 
 
 ## Datasets
