@@ -481,13 +481,11 @@ def retry_decorator(retry=3):
             i = 1
             while True:
                 try:
-                    res = func(*args, **kwargs)
+                    return func(*args, **kwargs)
                 except Exception:
                     if i == retry:
                         raise
                     i += 1
-                else:
-                    break
 
         return new_func
 
