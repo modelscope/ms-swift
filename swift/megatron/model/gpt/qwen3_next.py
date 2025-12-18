@@ -57,6 +57,7 @@ except ImportError:
 
 logger = get_logger()
 
+
 class Qwen3NextRMSNorm(torch.nn.Module):
     """
     Zero-Centered RMSNorm for Qwen3-Next.
