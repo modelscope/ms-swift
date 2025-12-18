@@ -49,7 +49,7 @@ megatron sft \
 # If not using the MTP module, please remove the speculative-related parameters.
 # CUDA_VISIBLE_DEVICES=0,1,2,3 \
 # swift infer \
-#     --model megatron_output/GLM-4.5-Air/vx-xxx/checkpoint-xxx \
+#     --model megatron_output/GLM-4.5-Air/vx-xxx/checkpoint-xxx-merged \
 #     --sglang_tp_size 4 \
 #     --infer_backend sglang \
 #     --load_data_args true \

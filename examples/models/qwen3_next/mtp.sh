@@ -47,7 +47,7 @@ megatron sft \
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3 \
 # swift infer \
-#     --model megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx \
+#     --model megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx-merged \
 #     --vllm_tensor_parallel_size 4 \
 #     --infer_backend vllm \
 #     --vllm_max_model_len 8192 \
