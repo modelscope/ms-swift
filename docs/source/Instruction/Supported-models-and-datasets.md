@@ -6,7 +6,7 @@
 - HF Model ID: HuggingFace模型id
 - Model Type: 模型类型
 - Default Template: 默认对话模板
-- Requires: 使用该模型的额外依赖
+- Requires: 使用该模型的额外依赖（**如果训练时遇到transformers版本不匹配的问题，你可以查看模型`config.json`文件中的`transformers_version`字段**）
 - Support Megatron: 是否支持Megatron-SWIFT训练
 - Tags: 模型的tags
 

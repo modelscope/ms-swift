@@ -26,6 +26,7 @@ class MegatronModelMeta:
     get_transformer_layer_spec: Optional[Callable] = None
     model_provider: Callable[[], nn.Module] = model_provider_func
     visual_cls: Optional[Type[nn.Module]] = None
+    get_mtp_block_spec: Optional[Callable] = None
 
     extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 
