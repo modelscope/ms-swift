@@ -7,7 +7,7 @@ import torch
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec, get_gpt_mtp_block_spec
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -522,6 +522,16 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     return block_spec
 
 
+def get_qwen3_next_mtp_block_spec(*args, **kwargs):
+    mtp_block_spec = get_gpt_mtp_block_spec(*args, **kwargs)
+    if mtp_block_spec is not None:
+        for layer_spec in mtp_block_spec.layer_specs:
+            layer_spec.submodules.enorm = Qwen3NextRMSNorm
+            layer_spec.submodules.hnorm = Qwen3NextRMSNorm
+            layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
+    return mtp_block_spec
+
+
 class Qwen3NextBridge(GPTBridge):
     hf_mtp_prefix = 'mtp.layers'
 
@@ -556,5 +566,6 @@ register_megatron_model(
             ModelType.qwen3_next_thinking,
         ],
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
+        get_mtp_block_spec=get_qwen3_next_mtp_block_spec,
         bridge_cls=Qwen3NextBridge,
     ))
