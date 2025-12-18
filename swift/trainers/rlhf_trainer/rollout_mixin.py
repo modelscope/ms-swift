@@ -399,10 +399,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             else:
                 parameters = []
 
-            # For FSDP2, need to unshard before merge_adapter() can work correctly
-            fsdp2_unshard = unshard_fsdp2_model(self.model) if self._is_fsdp2 else nullcontext()
-
-            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group), fsdp2_unshard:
+            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                 if not self._is_fsdp2:
                     assert len(parameters) == len(parameter_group)
                     state_dict = {name: p for p, name in zip(parameters, parameter_group)}
@@ -473,7 +470,15 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         return name
 
     def _process_state_dict_for_vllm(self, state_dict: Dict[str, Any], is_peft: bool) -> Dict[str, Any]:
-        """Process state dict for vLLM: clean names, filter adapter layers, convert DTensor."""
+        """Process state dict for vLLM: clean names, filter adapter layers, convert DTensor.
+
+        Args:
+            state_dict: Raw state dict from model (already merged if PEFT)
+            is_peft: Whether the model is a PEFT model
+
+        Returns:
+            Processed state dict ready for vLLM
+        """
         processed = {}
         for name, param in state_dict.items():
             # Clean up parameter name for PEFT models
@@ -505,59 +510,74 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         return processed
 
-    def _move_full_model_to_vllm(self):
-        """Transfer full model weights to vLLM engine"""
+    def _get_merged_state_dict_for_vllm(self, parameter_group=None, parameter_group_no_lora=None):
+        """Get merged state dict ready for vLLM synchronization.
+
+        1. Gather parameters if needed (DeepSpeed Zero3)
+        2. Merge adapters in-place
+        3. Collect param.data (with full_tensor for FSDP2)
+        4. Unmerge adapters
+
+        Args:
+            parameter_group: Optional parameter group to filter
+            parameter_group_no_lora: Optional parameter group without LoRA names
+
+        Returns:
+            State dict with LoRA merged, ready for vLLM
+        """
+        is_peft = is_peft_model(self.model)
         gather_if_zero3 = get_gather_if_zero3_context(self)
+
+        # Prepare parameters for gather (DeepSpeed Zero3 only)
+        parameters = [] if self._is_fsdp2 else list(self.model.parameters())
+
+        raw_state_dict = {}
+        with gather_if_zero3(parameters):
+            # Merge adapters in-place (works for both: DeepSpeed has regular Tensor, FSDP2 has all DTensor)
+            if is_peft:
+                with patch_lora_merge(self.model, parameter_group):
+                    self.model.merge_adapter()
+
+            try:
+                for name, param in self.model.named_parameters():
+                    if parameter_group and name not in parameter_group:
+                        continue
+                    if self._is_fsdp2:
+                        data = param.full_tensor() if hasattr(param, 'full_tensor') else param.data
+                    else:
+                        data = param.data
+                    raw_state_dict[name] = data.clone()
+            finally:
+                if is_peft:
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
+
+        # Process: clean names, filter adapters
+        state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft)
+
+        # Filter by parameter_group_no_lora
+        if parameter_group_no_lora:
+            if is_peft:
+                parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+            state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+
+        if is_peft:
+            assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
+
+        return state_dict
+
+    def _move_full_model_to_vllm(self):
+        """Transfer full model weights to vLLM engine."""
         is_peft = is_peft_model(self.model)
 
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
-            # For non-FSDP2, need to gather parameters
-            if not self._is_fsdp2:
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-            else:
-                parameters = []
+            # Get merged state dict (handles DeepSpeed/FSDP1/FSDP2 differences internally)
+            state_dict = self._get_merged_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
 
-            context_manager = patch_lora_merge(self.model, parameter_group) if is_peft else nullcontext()
-
-            with gather_if_zero3(parameters), context_manager:
-                if is_peft and self.should_merge_adapter:
-                    self.model.merge_adapter()
-
-                # Get state dict (DTensor for FSDP2, regular Tensor otherwise)
-                raw_state_dict = self.model.state_dict()
-
-                # Filter by parameter_group if specified
-                if parameter_group:
-                    raw_state_dict = {
-                        k: v
-                        for k, v in raw_state_dict.items()
-                        if k in parameter_group or k.removeprefix('base_model.model.') in parameter_group
-                    }
-
-                # Process: clean names, filter adapters, convert DTensor
-                state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft)
-
-                # Filter by parameter_group_no_lora if needed
-                if parameter_group_no_lora:
-                    if is_peft:
-                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-
-                if is_peft:
-                    assert len(state_dict) > 0 and all(
-                        [state.shape != torch.Size([0]) for state in state_dict.values()])
-
-                # Use _load_state_dict_to_vllm for flattened batch transfer
-                self._load_state_dict_to_vllm(state_dict)
-
-                if is_peft and self.should_merge_adapter:
-                    with patch_lora_unmerge(self.model):
-                        self.model.unmerge_adapter()
+            # Transfer to vLLM
+            self._load_state_dict_to_vllm(state_dict)
 
         if is_peft:
             self.base_sync_done = True
