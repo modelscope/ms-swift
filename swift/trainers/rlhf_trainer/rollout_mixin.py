@@ -399,7 +399,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             else:
                 parameters = []
 
-            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+            # For FSDP2, need to unshard before merge_adapter() can work correctly
+            fsdp2_unshard = unshard_fsdp2_model(self.model) if self._is_fsdp2 else nullcontext()
+
+            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group), fsdp2_unshard:
                 if not self._is_fsdp2:
                     assert len(parameters) == len(parameter_group)
                     state_dict = {name: p for p, name in zip(parameters, parameter_group)}
@@ -474,7 +477,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         processed = {}
         for name, param in state_dict.items():
             # Clean up parameter name for PEFT models
-            clean_name = name.removeprefix('base_model.model.').replace('.base_layer', '')
+            clean_name = name.removeprefix('base_model.model.')
+            # Only remove .base_layer when vLLM LoRA is disabled
+            # When vLLM LoRA is enabled, the model params have .base_layer suffix
+            if not self.rollout_enable_lora:
+                clean_name = clean_name.replace('.base_layer', '')
 
             # Skip PEFT adapter layers (they don't exist in vLLM and are merged already)
             if is_peft and self.model.prefix in clean_name:
