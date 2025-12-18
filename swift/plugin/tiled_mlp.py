@@ -2,9 +2,9 @@
 """
 Tiled MLP implementation for memory-efficient training.
 
-This module provides a tiled MLP implementation that is compatible with FSDP2.
 - FSDP2: Uses custom TiledMLP implementation (this file)
 - DeepSpeed/Single GPU: Uses liger_kernel's LigerTiledSwiGLUMLP
+- DeepSpeed/Single NPU: Uses LigerTiledSwiGLUMLP with native PyTorch _mlp_forward
 - FSDP1: Raises error (not compatible)
 """
 import os
@@ -17,6 +17,23 @@ import torch.nn as nn
 from swift.utils import get_logger
 
 logger = get_logger()
+
+# ============================================================================
+# NPU Detection
+# ============================================================================
+
+IS_NPU = False
+try:
+    import torch_npu  # noqa: F401
+    IS_NPU = torch.npu.is_available()
+except ImportError:
+    pass
+
+
+def is_npu_available() -> bool:
+    """Check if NPU is available."""
+    return IS_NPU
+
 
 # ============================================================================
 # FSDP2 Compatible TiledMLP Implementation
@@ -354,7 +371,12 @@ def _apply_custom_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
 
 
 def _apply_liger_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
-    """Apply liger_kernel's tiled MLP implementation."""
+    """
+    Apply liger_kernel's tiled MLP implementation.
+
+    For NPU: Uses a subclass with native PyTorch _mlp_forward to replace
+    LigerSiLUMulFunction (Triton kernel) which is not compatible with NPU.
+    """
     try:
         from liger_kernel.transformers.tiled_mlp import LigerTiledSwiGLUMLP
     except ImportError:
@@ -375,14 +397,35 @@ def _apply_liger_tiled_mlp(model_type: str, num_shards: Optional[int] = None):
         raise ValueError(f'Tiled MLP: Could not find {mlp_class_name} in {model_module.__name__}. '
                          f'model_type={model_type} may not be supported.')
 
-    # Create a wrapper class
-    class LigerTiledMLPWrapper(LigerTiledSwiGLUMLP):
+    if is_npu_available():
+        # NPU: Use subclass with native PyTorch _mlp_forward
+        # LigerSiLUMulFunction (Triton kernel) is not compatible with NPU
+        class NPULigerTiledMLPWrapper(LigerTiledSwiGLUMLP):
+            """LigerTiledSwiGLUMLP with native PyTorch _mlp_forward for NPU."""
 
-        def __init__(self, config, **kwargs):
-            super().__init__(config, num_shards=num_shards)
+            def __init__(self, config, **kwargs):
+                super().__init__(config, num_shards=num_shards)
+                self.act = nn.SiLU()  # Add activation for native implementation
 
-    setattr(model_module, mlp_class_name, LigerTiledMLPWrapper)
-    logger.info(f'Tiled MLP: Replaced {mlp_class_name} with LigerTiledSwiGLUMLP (liger mode, num_shards={num_shards})')
+            def _mlp_forward(self, module, x):
+                """Native PyTorch implementation replacing LigerSiLUMulFunction."""
+                gate = module.gate_proj(x)
+                up = module.up_proj(x)
+                return module.down_proj(self.act(gate) * up)
+
+        setattr(model_module, mlp_class_name, NPULigerTiledMLPWrapper)
+        logger.info(f'Tiled MLP: Replaced {mlp_class_name} with NPULigerTiledSwiGLUMLP '
+                    f'(liger mode + NPU native PyTorch, num_shards={num_shards})')
+    else:
+        # GPU: Use original Liger kernel
+        class LigerTiledMLPWrapper(LigerTiledSwiGLUMLP):
+
+            def __init__(self, config, **kwargs):
+                super().__init__(config, num_shards=num_shards)
+
+        setattr(model_module, mlp_class_name, LigerTiledMLPWrapper)
+        logger.info(f'Tiled MLP: Replaced {mlp_class_name} with LigerTiledSwiGLUMLP '
+                    f'(liger mode, num_shards={num_shards})')
 
 
 def _get_transformers_module(model_type: str):
