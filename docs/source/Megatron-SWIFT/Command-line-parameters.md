@@ -127,6 +127,10 @@
 - microbatch_group_size_per_virtual_pipeline_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
 - 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如："E|(t|)*3,m|m||L"。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
   - 该参数通常在异构GPU集群上使用。
+- use_megatron_fsdp: 在 DDP 中使用 Megatron FSDP。默认为False。
+- use_torch_fsdp2: 使用 torch FSDP2 实现（推荐使用`--use_megatron_fsdp`）。
+- data_parallel_sharding_strategy: 数据并行的分片策略。可选为'no_shard', 'optim', 'optim_grads', 'optim_grads_params'，默认为'no_shard'。
+
 
 **日志参数**:
 - log_params_norm: 记录参数的norm。默认为False。

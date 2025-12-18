@@ -132,6 +132,10 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - microbatch_group_size_per_virtual_pipeline_stage: Number of consecutive microbatches processed by each virtual pipeline stage. Default is `None`, which equals `pipeline_model_parallel_size`.
 - 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: "E|(t|)*3,m|m||L". Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
   - This parameter is typically used on heterogeneous GPU clusters.
+- use_megatron_fsdp: Use Megatron FSDP in DDP. Defaults to False.
+- use_torch_fsdp2: Use torch FSDP2 implementation (recommend using `--use_megatron_fsdp` instead).
+- data_parallel_sharding_strategy: Sharding strategy for data parallelism. Options are 'no_shard', 'optim', 'optim_grads', 'optim_grads_params'. Defaults to 'no_shard'.
+
 
 **Logging Parameters**:
 

@@ -474,6 +474,10 @@ class MegatronArguments(ExtraMegatronArguments):
     num_virtual_stages_per_pipeline_rank: Optional[int] = None
     microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
+    # fsdp
+    use_megatron_fsdp: bool = False
+    use_torch_fsdp2: bool = False
+    data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads', 'optim_grads_params'] = 'no_shard'
 
     # model
     num_layers: Optional[int] = None
