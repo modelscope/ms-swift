@@ -11,7 +11,7 @@ pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 pip install "ms-swift>=3.9.1"
 # pip install "vllm>=0.11.0"  # 若使用vllm推理后端进行推理
 ```
-
+- 关于训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
 
 ## 推理
 
