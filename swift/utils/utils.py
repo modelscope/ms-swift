@@ -471,3 +471,24 @@ def get_modules_to_not_convert(model):
                                                          or any(n.startswith(prefix) for prefix in prefix_list)):
             res.append(n)
     return res if res else None
+
+
+def retry_decorator(retry=3):
+
+    def _retry(func):
+
+        def new_func(*args, **kwargs):
+            i = 1
+            while True:
+                try:
+                    res = func(*args, **kwargs)
+                except Exception:
+                    if i == retry:
+                        raise
+                    i += 1
+                else:
+                    break
+
+        return new_func
+
+    return _retry
