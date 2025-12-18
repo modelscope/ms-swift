@@ -15,6 +15,7 @@
     "fsdp": "full_shard auto_wrap offload",
     "fsdp_config": {
         "fsdp_version": 2,
+        "reshard_after_forward": true,
         "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
         "cpu_ram_efficient_loading": true,
         "state_dict_type": "SHARDED_STATE_DICT",

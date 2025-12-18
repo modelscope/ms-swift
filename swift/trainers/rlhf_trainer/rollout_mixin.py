@@ -35,8 +35,8 @@ from swift.utils.torch_utils import get_current_device
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
-                    get_even_process_data, get_fsdp_version, get_gather_if_zero3_context, patch_lora_merge,
-                    patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
+                    get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
                     set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -80,11 +80,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                  *_args,
                  **kwargs):
         super().__init__(model, ref_model, *_args, **kwargs)
-        fsdp_version = get_fsdp_version(self.accelerator)
-        self._is_fsdp2 = fsdp_version == 2 and self.is_fsdp_enabled
-        if fsdp_version == 1 and self.is_fsdp_enabled:
+        # Use accelerator.is_fsdp2 for FSDP2 detection (set by accelerate)
+        self._is_fsdp2 = getattr(self.accelerator, 'is_fsdp2', False)
+        # Check for FSDP1 (legacy) and raise error
+        if self.is_fsdp_enabled and not self._is_fsdp2:
             raise NotImplementedError('FSDP1 is not supported. Please use FSDP2 (fsdp_version=2) instead. '
-                                      'Set fsdp_version: 2 in your FSDP config or use --fsdp_config fsdp2.json')
+                                      'Set fsdp_version: 2 in your FSDP config or use --fsdp fsdp2')
 
     def prepare_rollout(self):
         self._prepare_rollout_params()
