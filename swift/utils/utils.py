@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -477,6 +478,7 @@ def retry_decorator(retry=3):
 
     def _retry(func):
 
+        @wraps(func)
         def new_func(*args, **kwargs):
             i = 1
             while True:
