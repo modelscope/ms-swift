@@ -391,7 +391,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
         for i, parameter_group in enumerate(self.parameter_groups):
-            # For non-FSDP2, need to gather parameters; FSDP2 uses DTensor
             if not self._is_fsdp2:
                 parameters = [
                     parameter for name, parameter in self.model.named_parameters()
@@ -405,7 +404,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     assert len(parameters) == len(parameter_group)
                     state_dict = {name: p for p, name in zip(parameters, parameter_group)}
                 else:
-                    # For FSDP2, get state_dict directly (returns DTensor)
                     state_dict = {
                         k: v
                         for k, v in self.model.state_dict().items()

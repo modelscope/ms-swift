@@ -1,18 +1,12 @@
-#!/bin/bash
-# FSDP2 LoRA Training Example
-# Similar to DeepSpeed zero3, but uses PyTorch native FSDP2
-# Memory: ~15GiB * 2 GPUs
-# Requires: torch>=2.4.0
-
+# 14.7GiB * 2
+# NOTE: for swift>=3.12, you can use --fsdp fsdp2 instead of accelerate launch
 nproc_per_node=2
 
-# Basic FSDP2 training (similar to --deepspeed zero3)
 CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=$nproc_per_node \
-swift sft \
+accelerate launch --config_file "./examples/train/multi-gpu/fsdp2_lora/fsdp2.json" \
+    swift/cli/sft.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --fsdp fsdp2 \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -21,7 +15,7 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --weight_decay 0.1 \
     --target_modules all-linear \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
