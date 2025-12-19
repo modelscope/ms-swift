@@ -7,5 +7,6 @@ swift infer \
     --val_dataset speech_asr/speech_asr_aishell1_trainsets:validation#1000 \
     --vllm_gpu_memory_utilization 0.9 \
     --vllm_max_model_len 8192 \
+    --vllm_engine_kwargs '{"attention_config": {"backend": "FLASH_ATTN"}}' \
     --max_new_tokens 2048 \
     --vllm_limit_mm_per_prompt '{"audio": 5}'
