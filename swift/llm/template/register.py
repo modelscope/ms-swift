@@ -50,6 +50,7 @@ def get_template(
         agent_template=agent_template,
         norm_bbox=norm_bbox,
         use_chat_template=use_chat_template,
+        enable_thinking=enable_thinking,
         remove_unused_columns=remove_unused_columns,
         # train
         padding_free=padding_free,
