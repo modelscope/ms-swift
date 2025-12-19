@@ -543,13 +543,16 @@ class InitModelStrategy:
                 init_func(param)
 
 
-def patch_conv3d():
+def _patch_conv3d():
 
     def forward(self, x):
+        N = x.shape[0]
         K = self.kernel_size
         x = x.unfold(2, K[0], K[0]).unfold(3, K[1], K[1]).unfold(4, K[2], K[2])
+        D_out, H_out, W_out = x.shape[2:5]
         x = x.permute(0, 2, 3, 4, 1, 5, 6, 7).reshape(-1, self.in_channels * K[0] * K[1] * K[2])
         x = F.linear(x, self.weight.view(self.out_channels, -1), self.bias)
+        x = x.view(N, D_out, H_out, W_out, self.out_channels).permute(0, 4, 1, 2, 3)
         return x
 
     nn.Conv3d.forward = forward
@@ -557,4 +560,4 @@ def patch_conv3d():
 
 
 if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
-    patch_conv3d()
+    _patch_conv3d()
