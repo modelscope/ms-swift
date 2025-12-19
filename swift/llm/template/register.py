@@ -27,6 +27,7 @@ def get_template(
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,
     use_chat_template: bool = True,
+    enable_thinking: Optional[bool] = None,
     remove_unused_columns: bool = True,
     # train
     padding_free: bool = False,

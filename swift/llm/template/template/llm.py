@@ -409,5 +409,5 @@ register_template(
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
         chat_sep=[],
         suffix=['<|endoftext|>'],
-        response_prefix='<think>\n',
+        enable_thinking=True,
     ))

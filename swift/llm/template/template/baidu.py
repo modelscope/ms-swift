@@ -11,7 +11,6 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -26,7 +25,7 @@ class ERNIETemplateMeta(TemplateMeta):
 register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
 
-class ErnieThinkingTemplate(ThinkingTemplate):
+class ErnieThinkingTemplate(Template):
 
     def _swift_prepare_inputs(self, inputs) -> None:
         super()._swift_prepare_inputs(inputs)
@@ -54,7 +53,7 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
         default_factory=lambda: ['<|im_start|>user\n'
                                  '{{QUERY}}<|im_end|>\n\n'
                                  '<|im_start|>assistant\n'])
-    response_prefix: Optional[str] = '<think>\n'
+    enable_thinking: bool = True
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n\n'])
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: [
@@ -173,6 +172,7 @@ register_template(ERNIETemplateMeta(MLLMTemplateType.paddle_ocr, template_cls=Pa
 
 class ERNIE_VLTemplate(Template):
     placeholder_tokens = ['<|IMAGE_PLACEHOLDER|>']
+    thinking_prefix = '<think>'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -242,14 +242,19 @@ class ERNIE_VLTemplate(Template):
         return super().generate(model, *args, **kwargs)
 
 
-register_template(
-    ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, response_prefix='<think>'))
+register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate))
 
 ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
                    'framework.')
+
+
+class ERNIE_VL_ThinkingTemplate(ERNIE_VLTemplate):
+    thinking_prefix = '\n<think>\n'
+
+
 register_template(
     ERNIETemplateMeta(
         MLLMTemplateType.ernie_vl_thinking,
         template_cls=ERNIE_VLTemplate,
-        response_prefix='\n<think>\n',
+        enable_thinking=True,
         default_system=ERNIE_VL_SYSTEM))

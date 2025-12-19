@@ -530,9 +530,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
             return False
 
         template = self.infer_engine.default_template
-        from swift.llm.template.template.utils import ThinkingTemplate
-
-        return isinstance(template, ThinkingTemplate)
+        return template.enable_thinking
 
     def _build_messages(self, original_messages: 'Messages') -> 'Messages':
         """

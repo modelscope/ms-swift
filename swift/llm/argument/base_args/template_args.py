@@ -93,6 +93,7 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     use_chat_template: Optional[bool] = None
+    enable_thinking: Optional[bool] = None
     # train
     padding_free: bool = False
     padding_side: Literal['left', 'right', None] = None

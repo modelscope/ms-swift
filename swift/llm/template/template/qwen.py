@@ -23,7 +23,7 @@ from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
 @dataclass
@@ -51,13 +51,11 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
-register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
+register_template(QwenTemplateMeta(LLMTemplateType.qwq, default_system=None))
 
 
-class Qwen3Template(ThinkingTemplate):
-    no_think_prefix = '<think>\n\n</think>\n\n'
+class Qwen3Template(Template):
+    no_thinking_prefix = '<think>\n\n</think>\n\n'
 
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
@@ -86,19 +84,16 @@ register_template(
         default_system=None,
         template_cls=Qwen3Template,
         prompt=[QWEN3_GUARD_TEMPLATE],
-        response_prefix='<think>\n\n</think>\n\n'))
+    ))
 
-register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
-        template_cls=ThinkingTemplate))
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, enable_thinking=True))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template='qwen3_coder'))
 
 
-class Qwen3RerankerTemplate(Template):
+class Qwen3RerankerTemplate(Qwen3Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
@@ -132,10 +127,7 @@ qwen3_reranker_system = (
 
 register_template(
     QwenTemplateMeta(
-        LLMTemplateType.qwen3_reranker,
-        default_system=qwen3_reranker_system,
-        response_prefix='<think>\n\n</think>\n\n',
-        template_cls=Qwen3RerankerTemplate))
+        LLMTemplateType.qwen3_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3RerankerTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
@@ -823,7 +815,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
-class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
+class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
     version = 'omni_v3'
     norm_bbox = 'norm1000'
     placeholder_tokens = ['<|image_pad|>', '<|audio_pad|>', '<|video_pad|>']
@@ -942,7 +934,7 @@ register_template(QwenTemplateMeta(
 ))
 
 
-class Ovis2_5Template(ThinkingTemplate):
+class Ovis2_5Template(Template):
     use_model = True
     skip_prompt = False
     support_padding_free = True

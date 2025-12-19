@@ -54,6 +54,12 @@ class Template(ProcessorMixin):
     norm_bbox = 'norm1000'
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
+    # enable_thinking
+    thinking_prefix = '<think>\n'
+    no_thinking_prefix = ''
+    # During encoding, historical thinking content will be removed.
+    # This parameter represents the prefix for the historical part.
+    history_thinking_prefix = ''
 
     is_encoder_decoder = False
 
@@ -69,6 +75,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
+        enable_thinking: Optional[bool] = None,
         remove_unused_columns: bool = True,
         # only for train
         padding_free: bool = False,
@@ -107,9 +114,12 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
+        if enable_thinking is None:
+            enable_thinking = template_meta.enable_thinking
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
+        self.enable_thinking = enable_thinking
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
@@ -1025,6 +1035,27 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
+    def _add_no_thinking_prefix(self, inputs) -> None:
+        messages = inputs.messages
+        if self.no_thinking_prefix and self.use_chat_template:
+            for message in messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if not message['content'].startswith(('<think>', self.no_thinking_prefix)):
+                        # During multi-turn SFT training/validation:
+                        # If the message has no <think> block and does not start with the no_thinking_prefix,
+                        # prepend the no_thinking_prefix to the content.
+                        message['content'] = self.no_thinking_prefix + message['content']
+
+    def _remove_history_thinking_content(self, inputs) -> None:
+        messages = inputs.messages
+        # Only during inference or training, and only if the loss_scale is set to 'last_round',
+        # will the previous 'think' entries be deleted.
+        if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
+            for i, message in enumerate(messages):
+                # Delete the content before '</think>' in all assistant turns except the last round.
+                if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                    message['content'] = self.history_thinking_prefix + message['content'].split('</think>')[-1].strip()
+
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """
         Preprocesses the list of messages in the input by merging and formatting consecutive messages
@@ -1070,6 +1101,9 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         self._swift_prepare_inputs(inputs)
+        if self.enable_thinking:
+            self._remove_history_thinking_content(inputs)
+            self._add_no_thinking_prefix(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)

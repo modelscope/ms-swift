@@ -305,7 +305,6 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         return res
 
 
-# enable_thinking: response_prefix='<think>\n',
 register_template(ChatmlTemplateMeta(
     MLLMTemplateType.minicpmv4_5,
     template_cls=MiniCPMV4_5Template,

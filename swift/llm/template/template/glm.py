@@ -11,7 +11,6 @@ from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -35,7 +34,7 @@ class GLM4Template(Template):
         return response.lstrip('\n')
 
 
-class GLM4_0414Template(ThinkingTemplate, GLM4Template):
+class GLM4_0414Template(GLM4Template):
     pass
 
 
@@ -251,9 +250,9 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Templa
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
 
-class GLM4_5Template(ThinkingTemplate):
-    no_think_prefix = '<think></think>\n'
-    history_think_prefix = '<think></think>\n'
+class GLM4_5Template(Template):
+    no_thinking_prefix = '<think></think>\n'
+    history_thinking_prefix = '<think></think>\n'
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         for message in inputs.messages:
