@@ -631,11 +631,6 @@ class SwiftMixin:
             parameters = list(parameters)
             grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
 
-            # For FSDP2, grad_norm is a DTensor with _NormPartial placement.
-            # Call full_tensor() to get the properly reduced global norm.
-            if hasattr(grad_norm, 'full_tensor'):
-                grad_norm = grad_norm.full_tensor()
-
             if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
                 for p in parameters:
                     p.grad = None
