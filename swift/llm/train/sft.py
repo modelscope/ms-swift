@@ -265,6 +265,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='default')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
+        from swift.plugin import ActivationCpuOffloadCallBack
         args = self.args
         callbacks = []
         if args.lisa_activated_layers > 0:
@@ -275,6 +276,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 model=self.model)
             lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
             callbacks.append(lisa_callback)
+        if self.args.activation_cpu_offload:
+            callbacks.append(ActivationCpuOffloadCallBack())
 
         if args.is_adapter and args.train_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))

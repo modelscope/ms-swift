@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
+    from swift.plugin.activation_cpu_offload import ActivationCpuOffloadCallBack
 
 else:
     _import_structure = {
@@ -34,6 +35,8 @@ else:
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],
+        'activation_cpu_offload': ['ActivationCpuOffloadCallBack'],
+        
     }
 
     import sys

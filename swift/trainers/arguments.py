@@ -141,6 +141,8 @@ class TrainArgumentsMixin:
 
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
+    activation_cpu_offload:bool =False
+    
 
     @staticmethod
     def _patch_liger_kernel():
