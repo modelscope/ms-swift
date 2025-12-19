@@ -6,10 +6,12 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
+import torch.nn.functional as F
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
 from transformers import PretrainedConfig
+from transformers.utils import strtobool
 
 from swift.hub import get_hub
 from swift.llm import to_device
@@ -539,3 +541,20 @@ class InitModelStrategy:
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
                 init_func(param)
+
+
+def patch_conv3d():
+
+    def forward(self, x):
+        K = self.kernel_size
+        x = x.unfold(2, K[0], K[0]).unfold(3, K[1], K[1]).unfold(4, K[2], K[2])
+        x = x.permute(0, 2, 3, 4, 1, 5, 6, 7).reshape(-1, self.in_channels * K[0] * K[1] * K[2])
+        x = F.linear(x, self.weight.view(self.out_channels, -1), self.bias)
+        return x
+
+    nn.Conv3d.forward = forward
+    logger.info('Conv3d patched successfully')
+
+
+if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
+    patch_conv3d()
