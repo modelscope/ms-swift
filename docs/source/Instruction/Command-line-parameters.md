@@ -104,6 +104,7 @@
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
+- enable_thinking: 是否启动thinking模式，该模式下会在训练和推理时，自动特定于模型的思考前缀，例如`'<think>\n\n'`，并将历史思考内容进行删除。默认为False。
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。

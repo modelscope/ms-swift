@@ -104,6 +104,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
   - Note: `swift pt` defaults to `False`, using the generation template. This setting provides good **compatibility with multimodal models**.
+- enable_thinking: Whether to enable thinking mode. When enabled, model-specific thinking prefixes (e.g., `'<think>\n\n'`) will be automatically added during training and inference, and historical thinking content will be removed. Defaults to False.
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
