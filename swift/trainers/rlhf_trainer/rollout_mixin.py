@@ -80,9 +80,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                  *_args,
                  **kwargs):
         super().__init__(model, ref_model, *_args, **kwargs)
-        # Use accelerator.is_fsdp2 for FSDP2 detection (set by accelerate)
         self._is_fsdp2 = getattr(self.accelerator, 'is_fsdp2', False)
-        # Check for FSDP1 (legacy) and raise error
         if self.is_fsdp_enabled and not self._is_fsdp2:
             raise NotImplementedError('FSDP1 is not supported. Please use FSDP2 (fsdp_version=2) instead. '
                                       'Set fsdp_version: 2 in your FSDP config or use --fsdp fsdp2')
@@ -548,7 +546,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if weight_key not in state_dict:
                 continue
 
-            # Get active adapter
             active_adapter = module.active_adapter
             if isinstance(active_adapter, list):
                 active_adapter = active_adapter[0] if active_adapter else 'default'
@@ -567,11 +564,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             lora_B = state_dict[lora_b_key]
             scaling = module.scaling[active_adapter]
 
-            # Track LoRA keys to remove later
             lora_keys.add(lora_a_key)
             lora_keys.add(lora_b_key)
 
-            # Compute delta weight (same as PEFT's get_delta_weight)
             base_weight = state_dict[weight_key]
             delta_weight = (lora_B @ lora_A) * scaling
             merged[weight_key] = base_weight + delta_weight.to(base_weight.dtype)
@@ -665,11 +660,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
-
-            # Get merged state dict (handles DeepSpeed/FSDP1/FSDP2 differences internally)
             state_dict = self._get_merged_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-
-            # Transfer to vLLM
             self._load_state_dict_to_vllm(state_dict)
 
         if is_peft:
