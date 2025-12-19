@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
     from .tiled_mlp import (TiledSwiGLUMLP, apply_tiled_mlp, is_fsdp2_enabled, is_fsdp1_enabled, get_tiled_mlp_mode)
+    from swift.plugin.activation_cpu_offload import ActivationCpuOffloadCallBack
 
 else:
     _import_structure = {
@@ -35,8 +36,6 @@ else:
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],
-        'tiled_mlp':
-        ['TiledSwiGLUMLP', 'apply_tiled_mlp', 'is_fsdp2_enabled', 'is_fsdp1_enabled', 'get_tiled_mlp_mode'],
     }
 
     import sys
