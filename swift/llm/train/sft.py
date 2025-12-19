@@ -278,6 +278,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback, GracefulExitCallBack
         from swift.utils import ShutdownManager
+        from swift.plugin import ActivationCpuOffloadCallBack
         args = self.args
         callbacks = []
         if args.lisa_activated_layers > 0:
@@ -291,6 +292,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if args.elastic:
             graceful_exit_callback = GracefulExitCallBack()
             callbacks.append(graceful_exit_callback)
+        if self.args.activation_cpu_offload:
+            callbacks.append(ActivationCpuOffloadCallBack())
+
         if args.is_adapter and args.train_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))
         callbacks += extra_callbacks

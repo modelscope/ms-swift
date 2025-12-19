@@ -155,6 +155,7 @@ class TrainArgumentsMixin:
     use_flash_ckpt: bool = False
     # elastic
     elastic: bool = False
+    activation_cpu_offload: bool = False
 
     @staticmethod
     def _patch_liger_kernel():
