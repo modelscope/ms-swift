@@ -411,15 +411,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     }
 
                 peft_config = self.model.peft_config.get('default', None)
-                self.model.merge_adapter()
+                if not self._is_fsdp2:
+                    self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
                 cur_lora_params = {
                     name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
                     for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
-                with patch_lora_unmerge(self.model):
-                    self.model.unmerge_adapter()
+                if not self._is_fsdp2:
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
                 del cur_lora_params
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
@@ -469,12 +471,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             name = name.replace(prefix, '')
         return name
 
-    def _process_state_dict_for_vllm(self, state_dict: Dict[str, Any], is_peft: bool) -> Dict[str, Any]:
+    def _process_state_dict_for_vllm(self,
+                                     state_dict: Dict[str, Any],
+                                     is_peft: bool,
+                                     keep_lora_weights: bool = False) -> Dict[str, Any]:
         """Process state dict for vLLM: clean names, filter adapter layers, convert DTensor.
 
         Args:
-            state_dict: Raw state dict from model (already merged if PEFT)
+            state_dict: Raw state dict from model
             is_peft: Whether the model is a PEFT model
+            keep_lora_weights: If True, keep LoRA weights for later tensor-level merge (FSDP2)
 
         Returns:
             Processed state dict ready for vLLM
@@ -488,8 +494,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if not self.rollout_enable_lora:
                 clean_name = clean_name.replace('.base_layer', '')
 
-            # Skip PEFT adapter layers (they don't exist in vLLM and are merged already)
-            if is_peft and self.model.prefix in clean_name:
+            # Skip PEFT adapter layers (unless we need to keep them for later merge)
+            if is_peft and not keep_lora_weights and self.model.prefix in clean_name:
                 continue
 
             # Skip original_module entries when modules_to_save is used
@@ -509,6 +515,78 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             processed[clean_name] = param
 
         return processed
+
+    def _merge_lora_into_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Merge LoRA weights into base weights at tensor level.
+
+        This is needed for FSDP2 where PEFT's merge_adapter()/unmerge_adapter() don't work
+        correctly with DTensor - unmerge fails to properly restore original weights.
+
+        Args:
+            state_dict: State dict with base weights and LoRA weights (already converted from DTensor)
+
+        Returns:
+            State dict with LoRA weights merged into base weights, adapter keys removed
+        """
+        from peft.tuners.lora import LoraLayer
+
+        merged = {}
+        lora_keys = set()
+
+        # Find all LoRA modules and compute delta weights
+        for name, module in self.model.named_modules():
+            if not isinstance(module, LoraLayer):
+                continue
+
+            # Get the base layer key in state_dict
+            base_name = name.removeprefix('base_model.model.')
+            if not self.rollout_enable_lora:
+                base_name = base_name.replace('.base_layer', '')
+            base_name = self._fix_param_name_to_vllm(base_name)
+            weight_key = f'{base_name}.weight'
+
+            if weight_key not in state_dict:
+                continue
+
+            # Get active adapter
+            active_adapter = module.active_adapter
+            if isinstance(active_adapter, list):
+                active_adapter = active_adapter[0] if active_adapter else 'default'
+
+            if active_adapter not in module.lora_A:
+                continue
+
+            # Get LoRA weights from state_dict (already converted from DTensor)
+            lora_a_key = f'{base_name}.lora_A.{active_adapter}.weight'
+            lora_b_key = f'{base_name}.lora_B.{active_adapter}.weight'
+
+            if lora_a_key not in state_dict or lora_b_key not in state_dict:
+                continue
+
+            lora_A = state_dict[lora_a_key]
+            lora_B = state_dict[lora_b_key]
+            scaling = module.scaling[active_adapter]
+
+            # Track LoRA keys to remove later
+            lora_keys.add(lora_a_key)
+            lora_keys.add(lora_b_key)
+
+            # Compute delta weight (same as PEFT's get_delta_weight)
+            base_weight = state_dict[weight_key]
+            delta_weight = (lora_B @ lora_A) * scaling
+            merged[weight_key] = base_weight + delta_weight.to(base_weight.dtype)
+
+        # Copy non-LoRA keys and non-merged base weights
+        for key, value in state_dict.items():
+            if key in lora_keys:
+                continue  # Skip LoRA adapter weights
+            if key in merged:
+                continue  # Already merged
+            if self.model.prefix in key:
+                continue  # Skip other adapter keys
+            merged[key] = value
+
+        return merged
 
     def _get_merged_state_dict_for_vllm(self, parameter_group=None, parameter_group_no_lora=None):
         """Get merged state dict ready for vLLM synchronization.
@@ -533,27 +611,42 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         raw_state_dict = {}
         with gather_if_zero3(parameters):
-            # Merge adapters in-place (works for both: DeepSpeed has regular Tensor, FSDP2 has all DTensor)
-            if is_peft:
+            # DeepSpeed: use merge_adapter() + param.data (works correctly)
+            # FSDP2: skip merge_adapter() (unmerge doesn't work correctly with DTensor)
+            if is_peft and not self._is_fsdp2:
                 with patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
 
             try:
-                for name, param in self.model.named_parameters():
-                    if parameter_group and name not in parameter_group:
-                        continue
-                    if self._is_fsdp2:
-                        data = param.full_tensor() if hasattr(param, 'full_tensor') else param.data
-                    else:
-                        data = param.data
-                    raw_state_dict[name] = data.clone()
+                if self._is_fsdp2:
+                    # FSDP2: must use state_dict() (named_parameters returns sharded values)
+                    # Keep LoRA weights for tensor-level merge later
+                    for name, param in self.model.state_dict().items():
+                        if parameter_group and name not in parameter_group:
+                            continue
+                        if hasattr(param, 'full_tensor'):
+                            if param.is_cpu:
+                                param = param.to(torch.device('cuda'))
+                            param = param.full_tensor()
+                        raw_state_dict[name] = param.clone()
+                else:
+                    # DeepSpeed: use named_parameters + param.data
+                    for name, param in self.model.named_parameters():
+                        if parameter_group and name not in parameter_group:
+                            continue
+                        raw_state_dict[name] = param.data.clone()
             finally:
-                if is_peft:
+                if is_peft and not self._is_fsdp2:
                     with patch_lora_unmerge(self.model):
                         self.model.unmerge_adapter()
 
-        # Process: clean names, filter adapters
-        state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft)
+        # Process: clean names, filter adapters (keep LoRA for FSDP2 to merge at tensor level)
+        state_dict = self._process_state_dict_for_vllm(
+            raw_state_dict, is_peft, keep_lora_weights=self._is_fsdp2 and is_peft)
+
+        # FSDP2 + LoRA: merge at tensor level (avoids issues with merge/unmerge on DTensor)
+        if self._is_fsdp2 and is_peft:
+            state_dict = self._merge_lora_into_state_dict(state_dict)
 
         # Filter by parameter_group_no_lora
         if parameter_group_no_lora:
@@ -977,21 +1070,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             else:
                 assert all(isinstance(r, ChatCompletionResponse) for r in res)
                 return [RolloutOutput(response=r) for r in res]
-
-    @property
-    def should_merge_adapter(self):
-        """Determine whether the LoRA adapter should be merged"""
-        args = self.args
-
-        assert args.train_type != 'full', 'Full-parameter training should not merge adapter'
-
-        if not self.rollout_enable_lora:
-            return True
-
-        if args.resume_from_checkpoint:
-            return True
-
-        return False
 
     @staticmethod
     def _extract_logprobs_from_choice(response_choice) -> List[float]:

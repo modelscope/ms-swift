@@ -830,63 +830,6 @@ def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
     return model
 
 
-@contextmanager
-def unshard_fsdp2_model(model):
-    """Context manager to unshard all FSDP2 modules for full parameter access.
-
-    FSDP2 models have sharded parameters (DTensor). Operations like merge_adapter()
-    require full (unsharded) parameters to work correctly. This context manager
-    unshards all FSDP2 modules recursively, executes the block, then reshards.
-
-    Args:
-        model: The model to unshard. Can be FSDP2-wrapped or not.
-
-    Yields:
-        None. Parameters are unsharded within the context.
-
-    Example:
-        with unshard_fsdp2_model(self.model):
-            self.model.merge_adapter()
-            state_dict = self.model.state_dict()
-    """
-    try:
-        from torch.distributed.fsdp import FSDPModule
-    except ImportError:
-        # FSDP2 not available, just yield
-        yield
-        return
-
-    # Collect all FSDP2 modules (they need to be unsharded)
-    fsdp_modules = []
-    unshard_handles = []
-
-    for module in model.modules():
-        if isinstance(module, FSDPModule):
-            fsdp_modules.append(module)
-
-    if not fsdp_modules:
-        # No FSDP2 modules, just yield
-        yield
-        return
-
-    try:
-        # Unshard all FSDP2 modules (non-recursive, so we need to do all of them)
-        for fsdp_module in fsdp_modules:
-            handle = fsdp_module.unshard(async_op=True)
-            if handle is not None:
-                unshard_handles.append(handle)
-
-        # Wait for all unshard operations to complete
-        for handle in unshard_handles:
-            handle.wait()
-
-        yield
-    finally:
-        # Reshard all FSDP2 modules
-        for fsdp_module in fsdp_modules:
-            fsdp_module.reshard()
-
-
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
