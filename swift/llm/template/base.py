@@ -112,8 +112,7 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        if response_prefix is not None:
-            template_meta.response_prefix = response_prefix
+        self._response_prefix = response_prefix
         if enable_thinking is None:
             enable_thinking = template_meta.enable_thinking
 
@@ -147,6 +146,13 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    @property
+    def response_prefix(self):
+        if self._response_prefix is not None:
+            return self._response_prefix
+        else:
+            return self.thinking_prefix if self.enable_thinking else self.no_thinking_prefix
+
     def init_env_args(self):
         if self.model_meta.is_multimodal:
             self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
@@ -167,7 +173,7 @@ class Template(ProcessorMixin):
             self.max_length = self.model_info.max_model_len
         logger.info(f'default_system: {repr(self.template_meta.default_system)}')
         logger.info(f'max_length: {self.max_length}')
-        logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')
+        logger.info(f'response_prefix: {repr(self.response_prefix)}')
         logger.info(f'agent_template: {self._agent_template}')
         if self.model_meta.is_multimodal:
             logger.info(f'norm_bbox: {self.norm_bbox}')
@@ -627,8 +633,8 @@ class Template(ProcessorMixin):
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
         response = self.tokenizer.decode(generate_ids, **kwargs)
-        if first_token and self.template_meta.response_prefix:
-            response = self.template_meta.response_prefix + response
+        if first_token and self.response_prefix:
+            response = self.response_prefix + response
         return response
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
@@ -1018,6 +1024,8 @@ class Template(ProcessorMixin):
             kwargs['tools'] = inputs.tools
         if 'thinking_budget' in inputs.extra_kwargs:
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
+        if self.enable_thinking:
+            kwargs['enable_thinking'] = self.enable_thinking
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0

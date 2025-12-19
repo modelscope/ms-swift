@@ -10,7 +10,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingWithAnswerTemplate
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
     TemplateMeta(
@@ -334,6 +334,9 @@ register_template(
         suffix=['<|eos|>'],
     ))
 
+class HunyuanTemplate(Template):
+    with_answer = True
+
 register_template(
     TemplateMeta(
         LLMTemplateType.hunyuan,
@@ -342,7 +345,7 @@ register_template(
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
         chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
         suffix=['<｜hy_place▁holder▁no▁2｜>'],
-        template_cls=ThinkingWithAnswerTemplate,
+        template_cls=HunyuanTemplate,
         agent_template='hunyuan_hermes'))
 
 
