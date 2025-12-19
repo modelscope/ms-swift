@@ -540,6 +540,32 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     return outputs
 
 
+def gather_sequence_parallel_outputs(
+    outputs: Dict[str, Any],
+    inputs: Optional[Dict[str, Any]] = None,
+    tensor_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+        Gather split tensors produced by sequence parallel training so that downstream
+        components (loss, metrics, etc.) can operate on full-length sequences.
+        """
+    from swift.trainers.sequence_parallel import sequence_parallel
+
+    tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
+
+    position_ids = None
+
+    if sequence_parallel.rp_world_size and sequence_parallel.rp_world_size > 1:
+        position_ids = sequence_parallel.real_position_ids
+        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+
+    for key in tensor_keys:
+        if key in outputs:
+            outputs[key] = sequence_parallel.gather(outputs[key], dim=1, position_ids=position_ids)
+
+    return outputs
+
+
 @contextmanager
 def patch_attach_align_device_hook_on_blocks():
     from accelerate import big_modeling

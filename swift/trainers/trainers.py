@@ -202,8 +202,6 @@ class RerankerTrainer(Trainer):
                 labels = inputs.pop('labels')
 
             outputs = model(**inputs)
-            if self.template.sequence_parallel_size > 1:
-                outputs = self._gather_sequence_parallel_outputs(outputs, inputs)
 
             if labels is not None:
                 # Call custom loss function
