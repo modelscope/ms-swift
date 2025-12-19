@@ -8,7 +8,7 @@ pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 pip install "ms-swift>=3.9.1"
 # pip install "vllm>=0.11.0"  # If using the vLLM inference backend for inference
 ```
-- About slow training: When using PyTorch 2.9, you may encounter slow training issues with the conv3d operator. Please try using PyTorch 2.8 as a workaround. For more information, refer to [this issue](https://github.com/pytorch/pytorch/issues/166122).
+- About slow training: When using PyTorch 2.9, you may encounter slow training issues with the conv3d operator. Please try using PyTorch 2.8 as a workaround. For more information, refer to [this issue](https://github.com/pytorch/pytorch/issues/166122). In ms-swift>=3.11.2, you can work around this issue by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).
 - About video data training hangs: Using the decord backend for video reading may cause the training process to hang, see [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend instead. For details, refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
 
 
