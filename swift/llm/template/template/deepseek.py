@@ -406,7 +406,7 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
 class DeepseekV3_1Template(Template):
     thinking_prefix = '<think>'
-    no_thinking_prefix = '</think>'
+    non_thinking_prefix = '</think>'
     history_thinking_prefix = '</think>'
 
 

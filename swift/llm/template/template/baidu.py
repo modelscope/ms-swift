@@ -53,7 +53,6 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
         default_factory=lambda: ['<|im_start|>user\n'
                                  '{{QUERY}}<|im_end|>\n\n'
                                  '<|im_start|>assistant\n'])
-    enable_thinking: bool = True
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n\n'])
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: [
@@ -67,7 +66,8 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
     ])
 
 
-register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate))
+register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate,
+                                            enable_thinking=True))
 
 
 class PaddleOCRTemplate(Template):

@@ -104,7 +104,9 @@
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
-- enable_thinking: 是否启动thinking模式，该模式下会在训练和推理时，自动特定于模型的思考前缀，例如`'<think>\n\n'`，并将历史思考内容进行删除。默认为False。
+- enable_thinking: 是否启动thinking模式。默认为None (ms-swift>=3.12)。推理时，该参数的默认值由注册template时设置的enable_thinking决定：若enable_thinking为False，则增加非思考前缀，例如Qwen3-8B混合思考模型增加前缀`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为True，则增加思考前缀，例如`<think>\n`。在训练时，该参数的默认值根据模型类型确定（思考模型为True，非思考模型为False）：若enable_thinking为True，对最后一轮不以思考标记开头`<think>`的数据样本增加非思考前缀。例如Qwen3-8B混合思考模型，额外增加`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为False，则不对数据样本做此修改。
+  - 注意：训练时，loss_scale以last_round开头，则只对最后一轮做此修改；若不以last_round开头，例如为'default'，则对每一轮数据做此修改。
+  - 注意：对于思考模型（思考/混合思考），我们会在推理和训练时，对历史的思考内容进行删除。若训练时的loss_scale不以last_round开头，例如为'default'，则不对历史的思考内容进行删除。
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。

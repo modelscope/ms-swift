@@ -56,7 +56,7 @@ class Template(ProcessorMixin):
     support_padding_free = None
     # enable_thinking
     thinking_prefix = '<think>\n'
-    no_thinking_prefix = ''
+    non_thinking_prefix = ''
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
     history_thinking_prefix = ''
@@ -151,7 +151,7 @@ class Template(ProcessorMixin):
         if self._response_prefix is not None:
             return self._response_prefix
         else:
-            return self.thinking_prefix if self.enable_thinking else self.no_thinking_prefix
+            return self.thinking_prefix if self.enable_thinking else self.non_thinking_prefix
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -1044,22 +1044,22 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
-    def _add_no_thinking_prefix(self, inputs) -> None:
+    def _add_non_thinking_prefix(self, inputs) -> None:
         messages = inputs.messages
-        if self.no_thinking_prefix and self.use_chat_template:
+        if self.non_thinking_prefix and self.use_chat_template:
             for message in messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith(('<think>', self.no_thinking_prefix)):
+                    if not message['content'].startswith(('<think>', self.non_thinking_prefix)):
                         # During multi-turn SFT training/validation:
-                        # If the message has no <think> block and does not start with the no_thinking_prefix,
-                        # prepend the no_thinking_prefix to the content.
-                        message['content'] = self.no_thinking_prefix + message['content']
+                        # If the message has no <think> block and does not start with the non_thinking_prefix,
+                        # prepend the non_thinking_prefix to the content.
+                        message['content'] = self.non_thinking_prefix + message['content']
 
     def _remove_history_thinking_content(self, inputs) -> None:
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
-        if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
+        if not self.is_training or self.loss_scale.name.startswith('last_round'):
             for i, message in enumerate(messages):
                 # Delete the content before '</think>' in all assistant turns except the last round.
                 if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
@@ -1091,7 +1091,7 @@ class Template(ProcessorMixin):
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool':
+            if pre_role == 'assistant' and role == 'tool' and self.template_backend == 'swift':
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
@@ -1109,10 +1109,10 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
-        self._swift_prepare_inputs(inputs)
+        if self.is_thinking:
+            self._remove_history_thinking(inputs)
         if self.enable_thinking:
-            self._remove_history_thinking_content(inputs)
-            self._add_no_thinking_prefix(inputs)
+            self._add_non_thinking_prefix(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)
@@ -1310,6 +1310,7 @@ class Template(ProcessorMixin):
                 and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
+        self._swift_prepare_inputs(inputs)
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}

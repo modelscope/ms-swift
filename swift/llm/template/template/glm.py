@@ -251,7 +251,7 @@ register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=
 
 
 class GLM4_5Template(Template):
-    no_thinking_prefix = '<think></think>\n'
+    non_thinking_prefix = '<think></think>\n'
     history_thinking_prefix = '<think></think>\n'
 
     def _jinja_encode(self, inputs: StdTemplateInputs):

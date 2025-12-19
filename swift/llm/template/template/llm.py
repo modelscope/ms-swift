@@ -334,8 +334,10 @@ register_template(
         suffix=['<|eos|>'],
     ))
 
+
 class HunyuanTemplate(Template):
     with_answer = True
+
 
 register_template(
     TemplateMeta(
