@@ -345,7 +345,6 @@ class InternvlhfTemplate(Internvl2Template):
 
 
 class InternS1Template(InternvlhfTemplate):
-    thinking_prefix = '<think>'
     InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
                                       'You approach problems through systematic thinking and rigorous reasoning. '
                                       'Your response should reflect deep understanding and precise logical thinking, '
@@ -359,6 +358,12 @@ class InternS1Template(InternvlhfTemplate):
         return super()._swift_encode(inputs)
 
 
-register_template(ChatmlTemplateMeta(MLLMTemplateType.interns1, template_cls=InternS1Template))
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.interns1,
+        template_cls=InternS1Template,
+        is_thinking=True,
+        thinking_prefix='<think>',
+    ))
 
 register_template(ChatmlTemplateMeta(MLLMTemplateType.internvl_hf, template_cls=InternvlhfTemplate))

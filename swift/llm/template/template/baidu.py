@@ -66,8 +66,8 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
     ])
 
 
-register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate,
-                                            enable_thinking=True))
+register_template(
+    ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate, is_thinking=True))
 
 
 class PaddleOCRTemplate(Template):
@@ -172,7 +172,6 @@ register_template(ERNIETemplateMeta(MLLMTemplateType.paddle_ocr, template_cls=Pa
 
 class ERNIE_VLTemplate(Template):
     placeholder_tokens = ['<|IMAGE_PLACEHOLDER|>']
-    thinking_prefix = '<think>'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -242,19 +241,17 @@ class ERNIE_VLTemplate(Template):
         return super().generate(model, *args, **kwargs)
 
 
-register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate))
+register_template(
+    ERNIETemplateMeta(
+        MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, is_thinking=True, thinking_prefix='<think>'))
 
 ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
                    'framework.')
-
-
-class ERNIE_VL_ThinkingTemplate(ERNIE_VLTemplate):
-    thinking_prefix = '\n<think>\n'
-
 
 register_template(
     ERNIETemplateMeta(
         MLLMTemplateType.ernie_vl_thinking,
         template_cls=ERNIE_VLTemplate,
-        enable_thinking=True,
+        is_thinking=True,
+        thinking_prefix='\n<think>\n',
         default_system=ERNIE_VL_SYSTEM))

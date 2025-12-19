@@ -68,6 +68,9 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
 @dataclass
 class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
     agent_template: str = 'glm4_5'
+    is_thinking: bool = True
+    non_thinking_prefix: str = '<think></think>\n'
+    history_thinking_prefix: str = '<think></think>\n'
 
 
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
@@ -251,8 +254,6 @@ register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=
 
 
 class GLM4_5Template(Template):
-    non_thinking_prefix = '<think></think>\n'
-    history_thinking_prefix = '<think></think>\n'
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         for message in inputs.messages:
@@ -350,7 +351,7 @@ class GLM4_5VTemplate(GLM4_5Template):
         return res
 
 
-register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'

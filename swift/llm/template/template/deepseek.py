@@ -403,18 +403,16 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
-
-class DeepseekV3_1Template(Template):
-    thinking_prefix = '<think>'
-    non_thinking_prefix = '</think>'
-    history_thinking_prefix = '</think>'
-
-
-register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, enable_thinking=True))
+register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True))
 
 register_template(
     DeepseekV2_5TemplateMeta(
-        LLMTemplateType.deepseek_v3_1, template_cls=DeepseekV3_1Template, agent_template='deepseek_v3_1'))
+        LLMTemplateType.deepseek_v3_1,
+        agent_template='deepseek_v3_1',
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):

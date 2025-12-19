@@ -128,5 +128,5 @@ register_template(
         chat_sep=['[e~[\n'],
         suffix=['[e~['],
         default_system='You are a helpful assistant.',
-        enable_thinking=True,
+        is_thinking=True,
     ))

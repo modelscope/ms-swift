@@ -51,14 +51,16 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwq, default_system=None))
+register_template(QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True))
 
 
-class Qwen3Template(Template):
-    non_thinking_prefix = '<think>\n\n</think>\n\n'
+@dataclass
+class Qwen3MixedTemplateMeta(QwenTemplateMeta):
+    is_thinking: bool = True
+    non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
+register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, default_system=None))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'
@@ -79,21 +81,20 @@ QWEN3_GUARD_TEMPLATE = (
     '<|im_end|>\n<|im_start|>assistant\n')
 
 register_template(
-    QwenTemplateMeta(
+    Qwen3MixedTemplateMeta(
         LLMTemplateType.qwen3_guard,
         default_system=None,
-        template_cls=Qwen3Template,
         prompt=[QWEN3_GUARD_TEMPLATE],
     ))
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, enable_thinking=True))
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template='qwen3_coder'))
 
 
-class Qwen3RerankerTemplate(Qwen3Template):
+class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
@@ -126,7 +127,7 @@ qwen3_reranker_system = (
     'Note that the answer can only be \"yes\" or \"no\".')
 
 register_template(
-    QwenTemplateMeta(
+    Qwen3MixedTemplateMeta(
         LLMTemplateType.qwen3_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3RerankerTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))

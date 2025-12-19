@@ -54,12 +54,6 @@ class Template(ProcessorMixin):
     norm_bbox = 'norm1000'
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
-    # enable_thinking
-    thinking_prefix = '<think>\n'
-    non_thinking_prefix = ''
-    # During encoding, historical thinking content will be removed.
-    # This parameter represents the prefix for the historical part.
-    history_thinking_prefix = ''
 
     is_encoder_decoder = False
 
