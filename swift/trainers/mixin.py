@@ -879,17 +879,6 @@ class SwiftMixin:
         self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
         with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches(
         ), self._patch_deepspeed_load_checkpoint():
-            if self.is_deepspeed_enabled and self.args.deepspeed['elasticity']:
-                from deepspeed.elasticity import compute_elastic_config
-                from deepspeed.git_version_info import version as __version__
-                final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
-                    ds_config=self.accelerator.deepspeed_plugin.deepspeed_config,
-                    target_deepspeed_version=__version__,
-                    world_size=dist.get_world_size(),
-                )
-                gradient_accu_steps = final_batch_size // (micro_batch_size * dist.get_world_size())
-                self.args.per_device_train_batch_size = micro_batch_size
-                self.args.gradient_accumulation_steps = gradient_accu_steps
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         self.args.gradient_checkpointing = gradient_checkpointing  # recover
@@ -1265,10 +1254,6 @@ class DataLoaderMixin:
                 args.deepspeed['tensor_parallel']['autotp_size']
                 if args.deepspeed and 'tensor_parallel' in args.deepspeed else 1,
             }
-            if self.is_deepspeed_enabled and args.deepspeed['elasticity']:
-                # override _train_batch_size because when it was resumed from checkpoint,
-                # the _train_batch_size would be set by :self._train_batch_size = state.train_batch_size
-                self._train_batch_size = self.args.per_device_train_batch_size * max(1, self.args.n_gpu)
 
             if hasattr(train_dataset, '__len__'):
                 batch_sampler = BatchSamplerShard(

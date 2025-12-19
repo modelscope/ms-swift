@@ -262,19 +262,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
                 self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
                 self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
-            if self.elastic:
-                self.deepspeed['checkpoint'] = {'load_universal': True}
-                if 'elasticity' not in self.deepspeed:
-                    self.deepspeed['elasticity'] = {
-                        'ignore_non_elastic_batch_info': True,
-                        'enabled': True,
-                        'max_train_batch_size': 8,
-                        'micro_batch_sizes': [4, 2],
-                        'min_gpus': 1,
-                        'max_gpus': 4,
-                        'min_time': 20,
-                        'version': 0.1
-                    }
 
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
