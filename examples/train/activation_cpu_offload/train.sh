@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "./examples/train/activation_cpu_offload/fsdp2.json" \
     swift/cli/sft.py \
     --model 'Qwen/Qwen3-0.6B' \
@@ -9,7 +9,7 @@ accelerate launch --config_file "./examples/train/activation_cpu_offload/fsdp2.j
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 2 \
-    --gradient_checkpointing false \
+    --gradient_checkpointing false \ // no need to checkpoint activations when offloading to CPU
     --max_length 1200 \
     --num_train_epochs 2 \
     --eval_strategy no \
@@ -23,4 +23,3 @@ accelerate launch --config_file "./examples/train/activation_cpu_offload/fsdp2.j
     --attn_impl 'flash_attention_2' \
     --packing true \
     --activation_cpu_offload true
- 

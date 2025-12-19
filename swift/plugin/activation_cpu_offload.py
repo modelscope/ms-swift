@@ -1,40 +1,42 @@
 """Functionality for CPU offloading of tensors saved for backward pass."""
 from __future__ import annotations
-from contextlib import nullcontext
-from typing import Any, Dict, Optional
-import os
-from typing import Optional
-import torch
-
 import functools
 import logging
 import os
-from typing import Any, Optional
+from contextlib import nullcontext
+from typing import Any, Dict, Optional
 
 import torch
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP,FSDPModule as FSDP2
+from torch.distributed.fsdp import FSDPModule as FSDP2
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from transformers import TrainerCallback
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
+
 from swift.utils import get_logger
 
-logger=get_logger()
+logger = get_logger()
 logger.setLevel(logging.WARNING)
 
-__all__ = ["get_cpu_offload_context"]
+__all__ = ['get_cpu_offload_context']
 
 CPUOffloadEnabled = False
+
+
 def is_torch_npu_available() -> bool:
     """Check the availability of NPU"""
     try:
-        if hasattr(torch, "npu") and callable(getattr(torch.npu, "is_available", None)):
+        if hasattr(torch, 'npu') and callable(getattr(torch.npu, 'is_available', None)):
             return torch.npu.is_available()
         return False
     except ImportError:
         return False
 
+
 is_cuda_available = torch.cuda.is_available()
 is_npu_available = is_torch_npu_available()
+
+
 def is_cpu_offload_enabled() -> bool:
     """Check if CPU offloading is currently enabled."""
     return CPUOffloadEnabled
@@ -52,13 +54,16 @@ def get_device_name() -> str:
         device
     """
     if is_cuda_available:
-        device = "cuda"
+        device = 'cuda'
     elif is_npu_available:
-        device = "npu"
+        device = 'npu'
     else:
-        device = "cpu"
+        device = 'cpu'
     return device
+
+
 class FSDPParameterFilter:
+
     def __init__(self):
         self.model_parameters_storage = set()
 
@@ -70,6 +75,8 @@ class FSDPParameterFilter:
         for p in model.parameters():
             new_storage.add(p.data.untyped_storage().data_ptr())
         self.model_parameters_storage = new_storage
+
+
 def get_torch_device() -> any:
     """Return the corresponding torch attribute based on the device type string.
     Returns:
@@ -128,16 +135,14 @@ class OffloadHandler:
     def tensor_push(self, tensor: torch.Tensor, **kwargs) -> Any:
         """Tensor push."""
         raise NotImplementedError(
-            "`tensor_push is not implented in OffloadHandler class. Inherit this class and implement your "
-            "custom tensor_push."
-        )
+            '`tensor_push is not implented in OffloadHandler class. Inherit this class and implement your '
+            'custom tensor_push.')
 
     def tensor_pop(self, tensor_tag: Any, **kwargs):
         """Tensor pop."""
         raise NotImplementedError(
-            "`tensor_pop is not implented in OffloadHandler class. Inherit this class and implement your "
-            "custom tensor_pop."
-        )
+            '`tensor_pop is not implented in OffloadHandler class. Inherit this class and implement your '
+            'custom tensor_pop.')
 
 
 class GroupCommitFunction(torch.autograd.Function):
@@ -209,7 +214,7 @@ class SynchronizedGroupOffloadHandler(OffloadHandler):
             src_tensor.size(),
             dtype=src_tensor.dtype,
             layout=src_tensor.layout,
-            device="cpu",
+            device='cpu',
             pin_memory=pin_memory,
         )
         cpu_backup.copy_(src_tensor, non_blocking=True)
@@ -258,10 +263,10 @@ class AsyncDoubleBufferGroupOffloadHandler(SynchronizedGroupOffloadHandler):
     with prefetch are implemented."""
 
     def __init__(
-        self,
-        num_offload_group,  # must be <= actual number of groups (number of commits)
-        num_model_group,
-        tensor_need_offloading_checker=(lambda t: True),
+            self,
+            num_offload_group,  # must be <= actual number of groups (number of commits)
+            num_model_group,
+            tensor_need_offloading_checker=(lambda t: True),
     ) -> None:
         super().__init__(
             num_offload_group=num_offload_group,
@@ -305,7 +310,7 @@ class AsyncDoubleBufferGroupOffloadHandler(SynchronizedGroupOffloadHandler):
             tensor_tag = (self.current_group, self.tensor_count_current_group)
             self.tensor_count_current_group += 1
 
-            assert  tensor_tag not in self.tensor_tag_to_state
+            assert tensor_tag not in self.tensor_tag_to_state
             self.tensor_tag_to_state[tensor_tag] = tensor
 
             if self.current_group < self.num_offload_group:
@@ -397,7 +402,7 @@ class AsyncDoubleBufferGroupOffloadHandler(SynchronizedGroupOffloadHandler):
             for tensor_label, state in self.tensor_tag_to_state.items():
                 group_id, _ = tensor_label
                 if group_id == group_to_reload and not isinstance(state, torch.Tensor):
-                    assert isinstance(state, tuple), f"{group_id} {state}"
+                    assert isinstance(state, tuple), f'{group_id} {state}'
                     key, shape = state
                     recovered_tensor = offload_mapping[key].view(shape)
                     self.tensor_tag_to_state[tensor_label] = recovered_tensor
@@ -427,9 +432,9 @@ class AsyncDoubleBufferGroupOffloadHandler(SynchronizedGroupOffloadHandler):
             self.offloaded_group_count = 0
 
 
-def get_activation_offload_context(
-    num_layers: int = 1, model_layers: int = 1, tensor_need_offloading_checker=(lambda t: True)
-):
+def get_activation_offload_context(num_layers: int = 1,
+                                   model_layers: int = 1,
+                                   tensor_need_offloading_checker=(lambda t: True)):
     cpu_offload_handler = AsyncDoubleBufferGroupOffloadHandler(
         num_offload_group=num_layers,
         num_model_group=model_layers,
@@ -445,9 +450,8 @@ def get_activation_offload_context(
     )
 
 
-
-
 class ActivationHandler:
+
     def __init__(self, offload_ctx, sync_func, tensor_filter, enable_ckpt):
         self._offload_ctx = offload_ctx
         self._sync_func = sync_func
@@ -478,11 +482,11 @@ class ActivationHandler:
         return tuple(flat_args), tuple(kwarg_keys)
 
     def _unpack_kwargs(self, flat_args, kwarg_keys):
-        assert len(kwarg_keys) <= len(flat_args), f"too many keys {len(kwarg_keys)} vs. {len(flat_args)}"
+        assert len(kwarg_keys) <= len(flat_args), f'too many keys {len(kwarg_keys)} vs. {len(flat_args)}'
         if len(kwarg_keys) == 0:
             return flat_args, {}
-        args = flat_args[: -len(kwarg_keys)]
-        kwargs = dict(zip(kwarg_keys, flat_args[-len(kwarg_keys) :], strict=True))
+        args = flat_args[:-len(kwarg_keys)]
+        kwargs = dict(zip(kwarg_keys, flat_args[-len(kwarg_keys):], strict=True))
         return args, kwargs
 
     def _ckpt_forward(self, forward_method, *args, **kwargs):
@@ -515,7 +519,7 @@ class ActivationHandler:
         binded_tensor = self._sync_func(binded_tensor)
         final_ret = binded_tensor
         if isinstance(ret, tuple):
-            final_ret = (final_ret,) + ret[1:]
+            final_ret = (final_ret, ) + ret[1:]
         return final_ret
 
     def wrap_module_forward_method(self, module):
@@ -529,7 +533,8 @@ class ActivationHandler:
             out = handler.forward(model_self, orig_method, *args, **kwargs)
             handler.post_forward(model_self)
             return out
-         #普通方法绑定为module 的方法，因此完成了原始module.forward的包裹
+
+        #普通方法绑定为module 的方法，因此完成了原始module.forward的包裹
         module.forward = wrapped_method.__get__(module, type(module))
 
 
@@ -554,7 +559,7 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
 
     """
 
-    assert strategy == "fsdp" or strategy == "fsdp2", "activation offloading only supports fsdp strategy"
+    assert strategy == 'fsdp' or strategy == 'fsdp2', 'activation offloading only supports fsdp strategy'
     layers = []
 
     def get_layers(module):
@@ -583,7 +588,7 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
         # so it will be disabled, but this implementation supports another version of activation checkpointing, so that
         # these two features can be enabled at the same time.
         for module in model.modules():
-            if hasattr(module, "gradient_checkpointing_disable"):
+            if hasattr(module, 'gradient_checkpointing_disable'):
                 module.gradient_checkpointing_disable()
 
     handler = ActivationHandler(context, sync_func, tensor_filter, enable_ckpt)
@@ -594,8 +599,6 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
         handler.wrap_module_forward_method(module)
 
 
-
-
 def detect_fsdp_version() -> Optional[int]:
     """
     Detect the FSDP version used in the current environment.
@@ -603,19 +606,19 @@ def detect_fsdp_version() -> Optional[int]:
     try:
         from accelerate import PartialState
         state = PartialState()
-        plugin = getattr(state, "fsdp_plugin", None)
-        if plugin is not None and hasattr(plugin, "fsdp_version"):
+        plugin = getattr(state, 'fsdp_plugin', None)
+        if plugin is not None and hasattr(plugin, 'fsdp_version'):
             return plugin.fsdp_version
     except Exception:
         pass
 
-    if os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true":
-        return int(os.environ.get("FSDP_VERSION", "1"))
+    if os.environ.get('ACCELERATE_USE_FSDP', 'false').lower() == 'true':
+        return int(os.environ.get('FSDP_VERSION', '1'))
 
     # try to detect fsdp version from torch.distributed.fsdp
     try:
         import torch.distributed.fsdp as fsdp
-        if hasattr(fsdp, "fully_shard"):
+        if hasattr(fsdp, 'fully_shard'):
             return 2
         return 1
     except Exception:
@@ -626,20 +629,18 @@ def detect_fsdp_version() -> Optional[int]:
 
 class ActivationCpuOffloadCallBack(TrainerCallback):
 
-
     def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         """
         Event called at the beginning of training.
         """
         model = kwargs['model']
-        
-        if args.activation_cpu_offload :
-            if(detect_fsdp_version() is None):
-                raise ValueError("Activation offloading only supports FSDP training strategy.")
+
+        if args.activation_cpu_offload:
+            if (detect_fsdp_version() is None):
+                raise ValueError('Activation offloading only supports FSDP training strategy.')
             strategy = detect_fsdp_version()
             if strategy == 1:
-                strategy_str = "fsdp"
+                strategy_str = 'fsdp'
             else:
-                strategy_str = "fsdp2"
+                strategy_str = 'fsdp2'
             enable_activation_offloading(model, strategy=strategy_str, enable_ckpt=args.gradient_checkpointing)
-        

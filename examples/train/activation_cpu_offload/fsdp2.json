@@ -8,7 +8,7 @@
     "fsdp_cpu_ram_efficient_loading": true,
     "fsdp_reshard_after_forward": true,
     "fsdp_state_dict_type": "FULL_STATE_DICT",
-    "fsdp_activation_checkpointing": true,
+    "fsdp_activation_checkpointing": false,
     "fsdp_version": 2
   },
   "machine_rank": 0,
