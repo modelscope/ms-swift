@@ -529,6 +529,9 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
         steps_per_generation (Optional[int]): The number of optimization steps per generation round. Only
             one of `steps_per_generation` and `generation_batch_size` can be set. Defaults to
             `gradient_accumulation_steps`.
+        num_generations_eval (Optional[int]): Number of generations to sample during evaluation. This allows
+            using fewer generations during evaluation to save computation. If `None`, uses the value of
+            `num_generations`. Defaults to None.
         dataset_shuffle (Optional[bool]): Whether to shuffle the dataset. Defaults to True.
         rollout_importance_sampling_mode (Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
             'sequence_mask']]): The training-pull inconsistency correction mode. Options are `token_truncate`,
@@ -599,6 +602,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
 
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
+    num_generations_eval: Optional[int] = None
 
     # dataset
     dataset_shuffle: Optional[bool] = True

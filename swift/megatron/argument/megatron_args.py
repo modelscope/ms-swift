@@ -44,6 +44,7 @@ class RLHFMegatronArgumentsMixin:
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
     num_generations: int = 8
+    num_generations_eval: Optional[int] = None
     max_completion_length: int = 512
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
@@ -312,8 +313,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # mcore-bridge
     model: Optional[str] = None
     model_type: Optional[str] = None
-    load_safetensors: bool = False
-    save_safetensors: bool = False
+    load_safetensors: Optional[bool] = None
+    save_safetensors: bool = True
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
@@ -719,6 +720,8 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
+        if isinstance(self.ref_adapters, str):
+            self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:

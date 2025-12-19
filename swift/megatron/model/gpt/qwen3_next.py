@@ -4,10 +4,10 @@ from typing import Optional, Tuple, Union
 
 import megatron.core
 import torch
-from megatron.core.extensions.transformer_engine import TENorm, _get_extra_te_kwargs
+from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec, get_gpt_mtp_block_spec
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -56,6 +56,33 @@ except ImportError:
     SplitAlongDim = None
 
 logger = get_logger()
+
+
+class Qwen3NextRMSNorm(torch.nn.Module):
+    """
+    Zero-Centered RMSNorm for Qwen3-Next.
+    Uses (1 + weight) scaling to match HuggingFace implementation exactly.
+    This eliminates the need for +1/-1 offset during weight conversion.
+
+    Interface matches TENorm for compatibility with Megatron-Core build_module.
+    """
+
+    def __init__(self, config: TransformerConfig, hidden_size: int, eps: float = 1e-5):
+        super().__init__()
+        self.config = config
+        self.eps = eps
+        # Initialize weight to zeros (Zero-Centered), matching HuggingFace Qwen3NextRMSNorm
+        self.weight = torch.nn.Parameter(torch.zeros(hidden_size))
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, hidden_states):
+        output = self._norm(hidden_states.float())
+        # Zero-Centered: use (1 + weight) instead of weight
+        # This matches HuggingFace's Qwen3NextRMSNorm exactly
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(hidden_states)
 
 
 class Qwen3NextSelfAttention(SelfAttention):
@@ -459,6 +486,8 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     config.linear_value_head_dim = args.linear_value_head_dim
     config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
 
+    # Use Zero-Centered RMSNorm to match HuggingFace exactly (no +1/-1 conversion needed)
+    layer_norm_impl = Qwen3NextRMSNorm
     kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
@@ -472,51 +501,51 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
     for layer_type in args.layer_types:
         layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
-            layer_spec.submodules.input_layernorm = TENorm
             layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
+            layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
+        # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
+        layer_spec.submodules.input_layernorm = layer_norm_impl
+        if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
+            layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
+        # Replace qk_layernorm if present
+        if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):
+            layer_spec.submodules.self_attention.submodules.q_layernorm = layer_norm_impl
+        if hasattr(layer_spec.submodules.self_attention.submodules, 'k_layernorm'):
+            layer_spec.submodules.self_attention.submodules.k_layernorm = layer_norm_impl
         layer_specs.append(layer_spec)
 
     local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
-    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=TENorm)
+    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
 
     return block_spec
+
+
+def get_qwen3_next_mtp_block_spec(*args, **kwargs):
+    mtp_block_spec = get_gpt_mtp_block_spec(*args, **kwargs)
+    if mtp_block_spec is not None:
+        for layer_spec in mtp_block_spec.layer_specs:
+            layer_spec.submodules.enorm = Qwen3NextRMSNorm
+            layer_spec.submodules.hnorm = Qwen3NextRMSNorm
+            layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
+    return mtp_block_spec
 
 
 class Qwen3NextBridge(GPTBridge):
     hf_mtp_prefix = 'mtp.layers'
 
-    def _set_state_dict(self,
-                        mg_module,
-                        mg_key: str,
-                        hf_state_dict,
-                        hf_key: str,
-                        to_mcore: bool,
-                        *,
-                        offset: float = 0,
-                        is_expert: bool = False):
-        if 'layernorm' in mg_key or 'layer_norm_weight' in mg_key or 'enorm' in mg_key or 'hnorm' in mg_key:
-            offset = 1 if to_mcore else -1
-        return super()._set_state_dict(
-            mg_module,
-            mg_key,
-            hf_state_dict,
-            hf_key,
-            to_mcore,
-            offset=offset,
-            is_expert=is_expert,
-        )
+    # NOTE: No offset needed for layernorm weights because we use Qwen3NextRMSNorm
+    # which implements Zero-Centered RMSNorm (1 + weight) matching HuggingFace exactly.
 
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         layer_type = self.args.layer_types[layer_idx]
+        mg_attn = None if mg_layer is None else mg_layer.self_attention
         if layer_type == 'linear_attention':
-            hf_state_dict.update(
-                self._set_module(None if mg_layer is None else mg_layer.self_attention, hf_state_dict, 'linear_attn.',
-                                 to_mcore))
-            self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
+            hf_state_dict.update(self._set_module(mg_attn, hf_state_dict, 'linear_attn.', to_mcore))
         elif layer_type == 'full_attention':
-            hf_state_dict = super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore)
+            hf_state_dict.update(self._set_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, to_mcore))
+        self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
         return hf_state_dict
 
     def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
@@ -537,5 +566,6 @@ register_megatron_model(
             ModelType.qwen3_next_thinking,
         ],
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
+        get_mtp_block_spec=get_qwen3_next_mtp_block_spec,
         bridge_cls=Qwen3NextBridge,
     ))

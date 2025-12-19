@@ -16,7 +16,7 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.datasets.utils import Split
 from megatron.core.enums import ModelType
-from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
 from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
@@ -27,7 +27,7 @@ from megatron.core.utils import StragglerDetector
 from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
                                print_rank_last, training)
-from megatron.training.checkpointing import load_checkpoint
+from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
 from megatron.training.dist_signal_handler import DistributedSignalHandler
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
@@ -42,13 +42,13 @@ from swift.trainers import SwiftMixin
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
-from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
-                    get_swift_datasets_provider)
+from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
+                    get_packed_seq_params, get_swift_datasets_provider)
 
 try:
-    from megatron.training.datasets.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+    from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
 except ImportError:
-    from megatron.legacy.data.data_samplers import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+    from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -434,25 +434,67 @@ class BaseMegatronTrainer(ABC):
         finally:
             optimizer._get_param_groups = _get_param_groups
 
+    def _load_iteration(self):
+        args = self.args
+        ckpt_dir = None
+        if args.train_type == 'full':
+            ckpt_dir = args.model
+        elif args.train_type == 'lora' and args.adapters:
+            ckpt_dir = args.adapters[0]
+        if ckpt_dir is None:
+            return 0, 0
+        logger.info(f'checkpoint_dir: {ckpt_dir}')
+        iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
+        if not os.path.exists(iteration_path):
+            return 0, 0
+        with open(iteration_path, 'r') as f:
+            iteration = int(f.read())
+
+        common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')
+        if not os.path.exists(common_path):
+            return iteration, 0
+
+        state_dict = torch.load(common_path)
+        set_checkpoint_version(state_dict.get('checkpoint_version', 0))
+        num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
+        if 'args' in state_dict and not args.finetune:
+            checkpoint_args = state_dict['args']
+            check_checkpoint_args(checkpoint_args)
+            args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
+            args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
+            update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
+            args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
+        else:
+            print_rank_0('could not find arguments in the checkpoint ...')
+
+        return iteration, num_floating_point_operations_so_far
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         args = get_args()
 
         def new_model_provider_func(*_args, **kwargs):
             model = model_provider_func(*_args, **kwargs)
-            if args.load_safetensors:
+            if args.load is None:
                 self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.load_safetensors and args.train_type == 'lora':
-                for adapters, name in [(args.adapters, 'default'), (args.ref_adapters, 'ref_adapter')]:
-                    if adapters:
-                        assert len(adapters) == 1, 'Currently only support one adapter.'
-                        self.bridge.load_weights(model, adapters[0], is_peft_format=True, adapter_name=name)
+            if args.train_type == 'lora':
+                if args.adapters and args.adapter_load is None:
+                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
+                if args.ref_adapters and args.ref_adapter_load is None:
+                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(
+                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+
             self.peft_models.append(peft_model)
             return model
 
         self._init_multimodal_full()
+        # read iteration
+        if not args.finetune:
+            args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
         with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
@@ -465,8 +507,7 @@ class BaseMegatronTrainer(ABC):
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                    model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
+                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
@@ -957,23 +998,37 @@ class BaseMegatronTrainer(ABC):
                         # Unmerge to restore separate LoRA weights for training
                         module.unmerge()
 
-    def save_checkpoint(self, iteration, *_args, **kwargs):
+    @staticmethod
+    def _copy_args(output_dir):
+        if is_last_rank():
+            args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+            if os.path.exists(args_path):
+                shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+
+    def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
-        if args.train_type == 'lora' and args.merge_lora:
-            self.merge_lora_adapters()
+        output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+        os.makedirs(output_dir, exist_ok=True)
+        origin_save = args.save
+        args.save = output_dir
+        self._copy_args(output_dir)
         save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        if args.save_safetensors and args.no_save_optim:
+            model = []
+        with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
+            self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+        args.save = origin_save
+        # safetensors
         if args.save_safetensors:
-            output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+            # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
+            if args.train_type == 'lora' and args.merge_lora:
+                self.merge_lora_adapters()
+                output_dir = f'{output_dir}-merged'
+                os.makedirs(output_dir, exist_ok=True)
+                self._copy_args(output_dir)
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-            if is_last_rank():
-                args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-                if os.path.exists(args_path):
-                    shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
-        else:
-            with adapter_state_dict_context(is_peft_format=save_peft_format):
-                self._origin_save_checkpoint(iteration, *_args, **kwargs)
-        if args.train_type == 'lora' and args.merge_lora:
-            self.unmerge_lora_adapters()
+            if args.train_type == 'lora' and args.merge_lora:
+                self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
         # support max_epochs
@@ -1059,7 +1114,9 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single' or is_val_dataset or not args.train_dataloader_shuffle:
+        elif args.dataloader_type == 'single' or is_val_dataset:
+            if is_val_dataset:
+                consumed_samples = 0
             # Megatron sampler
             batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(dataset),
@@ -1077,6 +1134,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
                 data_sharding=args.data_sharding,
+                shuffle=args.train_dataloader_shuffle,
             )
         else:
             raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
@@ -1092,7 +1150,7 @@ class BaseMegatronTrainer(ABC):
             num_workers=args.num_workers,
             pin_memory=args.dataloader_pin_memory,
             persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
-            prefetch_factor=args.dataloader_prefetch_factor,
+            prefetch_factor=args.dataloader_prefetch_factor if args.num_workers > 0 else None,
             worker_init_fn=maybe_worker_init_fn,
             collate_fn=data_collator,
         )

@@ -175,11 +175,11 @@ def prepare_adapter(model):
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
     if args.ref_adapter_load or args.ref_adapters:
-        lora_config = deepcopy(lora_config)
-        lora_config.inference_mode = True
-        with _patch_deepcopy():
-            model.add_adapter('ref_adapter', lora_config)
+        model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
+        for n, p in model.named_parameters():
+            if '.ref_adapter.' in n:
+                p.requires_grad = False
     return model
 
 
@@ -208,6 +208,8 @@ def adapter_state_dict_context(is_peft_format: bool = True):
 
     def generate_state_dict(args, model, *_args, **kwargs):
         state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
+        if 'model' not in state_dict:
+            return state_dict
         new_state_dict = {}
         state_dict_model = state_dict['model']
         for n, p in model[0].named_parameters():

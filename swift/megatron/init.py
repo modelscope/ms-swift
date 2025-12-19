@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import concurrent.futures
+import importlib.metadata
 import inspect
 import logging
 import os
@@ -16,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
 from tqdm import tqdm
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import git_clone_github
 from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
@@ -789,11 +791,38 @@ def _patch_mrope():
     rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
+def _patch_unified_memory():
+    if is_torch_npu_available():
+        return
+
+    mcore_015 = version.parse(importlib.metadata.version('megatron-core')) >= version.parse('0.15.0rc0')
+    if not mcore_015:
+        return
+    from torch.utils import cpp_extension
+    load_inline = cpp_extension.load_inline
+
+    def _new_load_inline(*args, **kwargs):
+        name = kwargs.get('name')
+        if name == 'managed_alloc_runtime':
+            raise RuntimeError
+        return load_inline(*args, **kwargs)
+
+    # not create unified memory mempool
+    cpp_extension.load_inline = _new_load_inline
+    try:
+        from megatron.core.inference import unified_memory
+    except Exception:
+        pass
+    finally:
+        cpp_extension.load_inline = load_inline
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_unified_memory()
     _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()

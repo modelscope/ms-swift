@@ -342,7 +342,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | ------------------------ |
 | Liger-kernel             |
 | Quantization/QLoRA       |
-| Megatron-related modules |
 | Using sglang as inference engine |
 
 

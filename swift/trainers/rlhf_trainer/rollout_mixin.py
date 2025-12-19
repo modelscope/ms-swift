@@ -91,6 +91,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         """Initialize rollout generation parameters"""
         args = self.args
         self.num_generations = args.num_generations if hasattr(args, 'num_generations') else 1
+        self.num_generations_eval = getattr(args, 'num_generations_eval', None) or self.num_generations
         self.temperature = args.temperature
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization
@@ -222,6 +223,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
+            # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
+            vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
+            load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
             engine = GRPOVllmEngine(
                 model.model_dir,
                 model.model_info.torch_dtype,
@@ -237,11 +241,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 max_model_len=args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=args.vllm_disable_cascade_attn,
-                load_format='dummy',
+                load_format=load_format,
                 mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
                 template=vllm_template,
                 distributed_executor_backend='external_launcher',
-                engine_kwargs=self.args.vllm_engine_kwargs,
+                engine_kwargs=vllm_engine_kwargs,
                 logprobs_mode=logprobs_mode,
                 **lora_kwargs,
             )
@@ -1267,16 +1271,24 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 template.sequence_parallel_size = original_sequence_parallel_size
 
     @contextmanager
-    def _template_context(self, template: Template, inputs: Optional['DataType'] = None):
-        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
-        max_length = template.max_length
-        template.max_length = None
+    def _template_context(self,
+                          template: Template,
+                          inputs: Optional['DataType'] = None,
+                          max_length: Optional[int] = None,
+                          mode: Optional[str] = None):
+        original_max_length = template.max_length
+        original_mode = template.mode
+        template.max_length = max_length
+        if mode is not None:
+            template.set_mode(mode)
         forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
         try:
             with forward_ctx:
                 yield
         finally:
-            template.max_length = max_length
+            template.max_length = original_max_length
+            if mode is not None:
+                template.set_mode(original_mode)
 
     def _prepare_resample_data_iterator(self):
         """Initialize resample data iterator for truncation_strategy 'raise'('delete').

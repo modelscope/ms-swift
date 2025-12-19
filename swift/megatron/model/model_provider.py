@@ -135,7 +135,11 @@ def model_provider(pre_process=True,
             else:
                 transformer_layer_spec_for_mtp = transformer_layer_spec
             kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
-            mtp_block_spec = get_gpt_mtp_block_spec(
+            if megatron_model_meta.get_mtp_block_spec is not None:
+                get_mtp_block_spec = megatron_model_meta.get_mtp_block_spec
+            else:
+                get_mtp_block_spec = get_gpt_mtp_block_spec
+            mtp_block_spec = get_mtp_block_spec(
                 config, transformer_layer_spec_for_mtp, use_transformer_engine=use_te, **kwargs)
 
         if args.use_shared_expert_gate and args.num_experts and args.moe_shared_expert_intermediate_size:

@@ -283,7 +283,7 @@ class SwiftMixin:
         supported_names = ('SentenceTransformer', )
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
-        save_safetensors = self.args.save_safetensors
+        save_safetensors = getattr(self.args, 'save_safetensors', True)
         use_flash_ckpt = self.args.use_flash_ckpt
 
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
