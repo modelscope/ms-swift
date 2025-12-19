@@ -284,7 +284,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         # FSDP2 preset configurations
         fsdp_mapping = {
             'fsdp2': 'fsdp2.json',
-            'fsdp2_offload': 'fsdp2_offload.json',
         }
 
         fsdp_config_path = self.fsdp
