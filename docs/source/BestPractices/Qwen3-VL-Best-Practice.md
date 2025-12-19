@@ -11,7 +11,7 @@ pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 pip install "ms-swift>=3.9.1"
 # pip install "vllm>=0.11.0"  # 若使用vllm推理后端进行推理
 ```
-- 关于训练缓慢：使用torch2.9会遇到训练（conv3d算子）缓慢的问题，请使用torch2.8尝试，参考[这个issue](https://github.com/pytorch/pytorch/issues/166122)。
+- 关于训练缓慢：使用torch2.9会遇到训练（conv3d算子）缓慢的问题，请使用torch2.8尝试，参考[这个issue](https://github.com/pytorch/pytorch/issues/166122)。在 ms-swift>=3.11.2，你可以通过设置`SWIFT_PATCH_CONV3D=1`规避该问题，具体查看[这个issue](https://github.com/modelscope/ms-swift/issues/7108)。
 - 关于视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
 
 ## 推理
