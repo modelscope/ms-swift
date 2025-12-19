@@ -545,7 +545,14 @@ class InitModelStrategy:
 
 def _patch_conv3d():
 
+    if not hasattr(nn.Conv3d, '_original_forward'):
+        nn.Conv3d._original_forward = nn.Conv3d.forward
+
     def forward(self, x):
+        if any(s != k for s, k in zip(self.stride, self.kernel_size)) or any(p != 0 for p in self.padding) or any(
+                d != 1 for d in self.dilation) or self.groups != 1:
+            raise NotImplementedError(
+                'Patched Conv3d only supports stride=kernel_size, padding=0, dilation=1, groups=1')
         N = x.shape[0]
         K = self.kernel_size
         x = x.unfold(2, K[0], K[0]).unfold(3, K[1], K[1]).unfold(4, K[2], K[2])
