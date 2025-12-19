@@ -900,3 +900,4 @@ The meanings of the following parameters can be found in the example code [here]
 - SWIFT_TIMEOUT: (ms-swift >= 3.10) If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
 - SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.
+- SWIFT_PATCH_CONV3D: (ms-swift>=3.11.2) If using torch==2.9, you may encounter slow Conv3d performance issues. You can work around this problem by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).
