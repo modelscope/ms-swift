@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 import json
 
 from swift.llm import Messages
+from swift.llm.template import get_last_user_round
 from swift.llm.template.utils import ContextType
 from .utils import calculate_loss_scale
 
@@ -51,9 +52,9 @@ class LossScale:
         res_context_list = []
         res_loss_scale = []
         i = 0
-        n_round = len(messages) // 2
+        last_user_round = get_last_user_round(messages)
         for context, context_type in zip(context_list, context_types):
-            is_last_round = i + 1 == n_round
+            is_last_round = i >= (last_user_round // 2)
             query, loss = None, None
             if context_type == ContextType.RESPONSE:
                 query = messages[2 * i]['content']

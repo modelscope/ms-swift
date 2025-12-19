@@ -57,10 +57,11 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_
 @dataclass
 class Qwen3MixedTemplateMeta(QwenTemplateMeta):
     is_thinking: bool = True
+    default_system: Optional[str] = None
     non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, default_system=None))
+register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'
@@ -80,12 +81,10 @@ QWEN3_GUARD_TEMPLATE = (
     "categories, separated by commas. If the content is safe, use 'Categories: None'."
     '<|im_end|>\n<|im_start|>assistant\n')
 
-register_template(
-    Qwen3MixedTemplateMeta(
-        LLMTemplateType.qwen3_guard,
-        default_system=None,
-        prompt=[QWEN3_GUARD_TEMPLATE],
-    ))
+register_template(Qwen3MixedTemplateMeta(
+    LLMTemplateType.qwen3_guard,
+    prompt=[QWEN3_GUARD_TEMPLATE],
+))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True))
 

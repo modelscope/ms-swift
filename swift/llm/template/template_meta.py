@@ -46,11 +46,11 @@ class TemplateMeta:
     agent_template: str = 'react_en'
     # thinking
     is_thinking: bool = False
-    thinking_prefix: bool = '<think>\n'
-    non_thinking_prefix: bool = ''  # for hybrid thinking model
+    thinking_prefix: str = '<think>\n'
+    non_thinking_prefix: str = ''  # for hybrid thinking model
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
-    history_thinking_prefix = ''
+    history_thinking_prefix: str = ''
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
         self = deepcopy(self)

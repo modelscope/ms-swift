@@ -27,7 +27,7 @@ from swift.llm import to_device
 from swift.utils import get_env_args, get_logger, retry_decorator
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -108,7 +108,7 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         self._response_prefix = response_prefix
         if enable_thinking is None:
-            enable_thinking = template_meta.enable_thinking
+            enable_thinking = template_meta.is_thinking and use_chat_template
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
@@ -145,7 +145,8 @@ class Template(ProcessorMixin):
         if self._response_prefix is not None:
             return self._response_prefix
         else:
-            return self.thinking_prefix if self.enable_thinking else self.non_thinking_prefix
+            template_meta = self.template_meta
+            return template_meta.thinking_prefix if self.enable_thinking else template_meta.non_thinking_prefix
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -1040,24 +1041,32 @@ class Template(ProcessorMixin):
 
     def _add_non_thinking_prefix(self, inputs) -> None:
         messages = inputs.messages
-        if self.non_thinking_prefix and self.use_chat_template:
-            for message in messages:
+        non_thinking_prefix = self.template_meta.non_thinking_prefix
+        if non_thinking_prefix:
+            if not self.is_training or self.loss_scale.name.startswith('last_round'):
+                start_idx = get_last_user_round(messages)
+            else:
+                start_idx = -1
+            for i, message in enumerate(messages):
+                if i < start_idx:
+                    continue
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith(('<think>', self.non_thinking_prefix)):
+                    if not message['content'].startswith('<think>'):
                         # During multi-turn SFT training/validation:
                         # If the message has no <think> block and does not start with the non_thinking_prefix,
                         # prepend the non_thinking_prefix to the content.
-                        message['content'] = self.non_thinking_prefix + message['content']
+                        message['content'] = non_thinking_prefix + message['content']
 
-    def _remove_history_thinking_content(self, inputs) -> None:
+    def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
-        if not self.is_training or self.loss_scale.name.startswith('last_round'):
-            for i, message in enumerate(messages):
-                # Delete the content before '</think>' in all assistant turns except the last round.
-                if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                    message['content'] = self.history_thinking_prefix + message['content'].split('</think>')[-1].strip()
+        history_thinking_prefix = self.template_meta.history_thinking_prefix
+        last_user_round = get_last_user_round(messages)
+        for i, message in enumerate(messages):
+            # Delete the content before '</think>' in all assistant turns except the last round.
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i < last_user_round:
+                message['content'] = history_thinking_prefix + message['content'].split('</think>')[-1].strip()
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """
@@ -1103,10 +1112,10 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
-        if self.is_thinking:
-            self._remove_history_thinking(inputs)
         if self.enable_thinking:
             self._add_non_thinking_prefix(inputs)
+        if template_meta.is_thinking and (not self.is_training or self.loss_scale.name.startswith('last_round')):
+            self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)
