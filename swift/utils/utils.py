@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -507,3 +508,21 @@ def get_previous_version_from_path(current_path: str) -> Optional[str]:
 
     prev_name = names[idx - 1]
     return str(parent / prev_name)
+def retry_decorator(retry=3):
+
+    def _retry(func):
+
+        @wraps(func)
+        def new_func(*args, **kwargs):
+            i = 1
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if i == retry:
+                        raise
+                    i += 1
+
+        return new_func
+
+    return _retry

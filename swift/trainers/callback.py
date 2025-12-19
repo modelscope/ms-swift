@@ -18,7 +18,10 @@ logger = get_logger()
 
 def get_max_reserved_memory() -> float:
     devices = list(range(get_device_count())) if is_mp() else [None]
-    mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
+    try:
+        mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
+    except AttributeError:
+        return 0  # fix mps
     return sum(mems) / 1024**3
 
 
@@ -34,7 +37,8 @@ def add_train_message(logs, state, start_time) -> None:
         if isinstance(v, float):
             logs[k] = round(logs[k], 8)
     state.max_memory = max(getattr(state, 'max_memory', 0), get_max_reserved_memory())
-    logs['memory(GiB)'] = round(state.max_memory, 2)
+    if state.max_memory:
+        logs['memory(GiB)'] = round(state.max_memory, 2)
 
     logs['train_speed(iter/s)'] = round(state.global_step / elapsed, 6)
 
