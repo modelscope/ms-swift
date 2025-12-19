@@ -24,7 +24,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.llm import to_device
-from swift.utils import get_env_args, get_logger
+from swift.utils import get_env_args, get_logger, retry_decorator
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -483,6 +483,7 @@ class Template(ProcessorMixin):
         return encoded
 
     @torch.inference_mode()
+    @retry_decorator(3)
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
                return_template_inputs: bool = False,
@@ -1208,31 +1209,20 @@ class Template(ProcessorMixin):
         return length
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
-        # retry to avoid megatron getting stuck
-        i = 1
-        retry = 3
-        while True:
-            try:
-                self._preprocess_inputs(inputs)
-                if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
-                    # For multi-modal models, images do not need to be pre processed here
-                    # vllm/lmdeploy/sglang will handle the logic
-                    encoded = Template._encode(self, inputs)
-                    keys = ['images', 'audios', 'videos']
-                    if self.mode == 'vllm':
-                        keys.append('mm_processor_kwargs')
-                    for key in keys:
-                        value = getattr(inputs, key)
-                        if value:
-                            encoded[key] = value
-                else:
-                    encoded = self._encode(inputs)
-            except Exception:
-                if i == retry:
-                    raise
-                i += 1
-            else:
-                break
+        self._preprocess_inputs(inputs)
+        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
+            # For multi-modal models, images do not need to be pre processed here
+            # vllm/lmdeploy/sglang will handle the logic
+            encoded = Template._encode(self, inputs)
+            keys = ['images', 'audios', 'videos']
+            if self.mode == 'vllm':
+                keys.append('mm_processor_kwargs')
+            for key in keys:
+                value = getattr(inputs, key)
+                if value:
+                    encoded[key] = value
+        else:
+            encoded = self._encode(inputs)
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')

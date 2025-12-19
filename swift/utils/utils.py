@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -471,3 +472,23 @@ def get_modules_to_not_convert(model):
                                                          or any(n.startswith(prefix) for prefix in prefix_list)):
             res.append(n)
     return res if res else None
+
+
+def retry_decorator(retry=3):
+
+    def _retry(func):
+
+        @wraps(func)
+        def new_func(*args, **kwargs):
+            i = 1
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if i == retry:
+                        raise
+                    i += 1
+
+        return new_func
+
+    return _retry
