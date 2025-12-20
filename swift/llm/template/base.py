@@ -108,7 +108,7 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
 
         if enable_thinking is None:
-            enable_thinking = template_meta.is_thinking and use_chat_template
+            enable_thinking = template_meta.is_thinking
         if response_prefix is None:
             response_prefix = template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix
 
@@ -1109,10 +1109,11 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
-        if self.enable_thinking:
-            self._add_non_thinking_prefix(inputs)
-        if template_meta.is_thinking:
-            self._remove_history_thinking(inputs)
+        if self.use_chat_template:
+            if self.enable_thinking:
+                self._add_non_thinking_prefix(inputs)
+            if template_meta.is_thinking:
+                self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)
