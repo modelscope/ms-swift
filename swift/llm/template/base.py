@@ -1055,18 +1055,21 @@ class Template(ProcessorMixin):
                         # prepend the non_thinking_prefix to the content.
                         message['content'] = non_thinking_prefix + message['content']
 
+    def _remove_thinking_content(self, content: str) -> str:
+        content = content.split('</think>')[-1].strip()
+        return self.template_meta.history_thinking_prefix + content
+
     def _remove_history_thinking(self, inputs) -> None:
         if self.is_training and self.loss_scale.base_strategy != 'last_round':
             return
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
-        history_thinking_prefix = self.template_meta.history_thinking_prefix
         last_user_round = get_last_user_round(messages)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
             if message['role'] == 'assistant' and isinstance(message['content'], str) and i < last_user_round:
-                message['content'] = history_thinking_prefix + message['content'].split('</think>')[-1].strip()
+                message['content'] = self._remove_thinking_content(message['content'])
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """

@@ -336,7 +336,12 @@ register_template(
 
 
 class HunyuanTemplate(Template):
-    with_answer = True
+
+    def _remove_thinking_content(self, content: str) -> str:
+        content = content.split('<answer>')[-1].rstrip()
+        if content.endswith('</answer>'):
+            content = content[:-len('</answer>')]
+        return self.template_meta.history_thinking_prefix + content.strip()
 
 
 register_template(
@@ -348,6 +353,8 @@ register_template(
         chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
         suffix=['<｜hy_place▁holder▁no▁2｜>'],
         template_cls=HunyuanTemplate,
+        is_thinking=True,
+        non_thinking_prefix='<think>\n\n</think>\n',
         agent_template='hunyuan_hermes'))
 
 
