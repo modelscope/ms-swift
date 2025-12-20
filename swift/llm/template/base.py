@@ -1114,7 +1114,8 @@ class Template(ProcessorMixin):
         template_meta = self.template_meta
         if self.enable_thinking:
             self._add_non_thinking_prefix(inputs)
-        if template_meta.is_thinking and (not self.is_training or self.loss_scale.base_strategy.startswith('last_round')):
+        if template_meta.is_thinking and (not self.is_training
+                                          or self.loss_scale.base_strategy.startswith('last_round')):
             self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
