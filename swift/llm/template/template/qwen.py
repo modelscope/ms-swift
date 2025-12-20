@@ -531,7 +531,9 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         return inputs
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
@@ -826,7 +828,9 @@ class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
         return inputs
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
 class Ovis1_6Template(Template):
@@ -1040,11 +1044,13 @@ class Ovis2_5Template(Template):
         return res
 
 
-register_template(QwenTemplateMeta(
-    MLLMTemplateType.ovis2_5,
-    template_cls=Ovis2_5Template,
-    default_system=None,
-))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.ovis2_5,
+        template_cls=Ovis2_5Template,
+        default_system=None,
+        is_thinking=True,
+    ))
 
 
 @dataclass

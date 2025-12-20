@@ -1120,7 +1120,7 @@ class Template(ProcessorMixin):
         if self.use_chat_template:
             if self.add_non_thinking_prefix:
                 self._add_non_thinking_prefix(inputs)
-            if template_meta.is_thinking:
+            if template_meta.is_thinking or self.enable_thinking:
                 self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
