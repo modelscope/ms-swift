@@ -194,6 +194,7 @@ gradient_checkpointing: true
 - 🔥deepspeed: 默认为None。可以设置为'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'来使用ms-swift内置的deepspeed配置文件。你也可以传入自定义deepspeed配置文件的路径。
 - zero_hpz_partition_size: 默认为None，这个参数是ZeRO++的特性，即node内模型分片，node间数据分片，如果遇到grad_norm NaN，请尝试使用`--torch_dtype float16`。
 - deepspeed_autotp_size: DeepSpeed张量并行大小，默认为1。使用DeepSpeed AutoTP时需将参数`--deepspeed`设置为'zero0'、'zero1'或'zero2'。（注意：该功能只支持全参数）
+- 🔥fsdp: FSDP2分布式训练配置。默认为None。可以设置为'fsdp2'来使用ms-swift内置的FSDP2配置文件。你也可以传入自定义FSDP配置文件的路径。FSDP2是PyTorch原生的分布式训练方案，与DeepSpeed二选一使用。
 - 🔥per_device_train_batch_size: 默认值1。
 - 🔥per_device_eval_batch_size: 默认值1。
 - 🔥gradient_accumulation_steps: 梯度累加。**默认为None，即设置gradient_accumulation_steps使得total_batch_size>=16**。total_batch_size等于`per_device_train_batch_size * gradient_accumulation_steps * world_size`。在GRPO训练中，默认为1。

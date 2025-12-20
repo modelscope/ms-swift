@@ -2197,6 +2197,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
                     self.reward_funcs[i] = prepare_deepspeed(reward_func, self.accelerator)
+                elif self.is_fsdp_enabled:
+                    from .utils import prepare_fsdp
+                    self.reward_funcs[i] = prepare_fsdp(reward_func, self.accelerator)
                 else:
                     self.reward_funcs[i] = self.accelerator.prepare_model(
                         reward_func, evaluation_mode=True, device_placement=True)

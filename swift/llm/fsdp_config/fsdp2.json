@@ -1,0 +1,25 @@
+{
+    "_description": "FSDP2 configuration for distributed training (PyTorch native FSDP v2)",
+    "_requires": "torch>=2.4.0",
+    "_note": "This is the recommended configuration for multi-GPU training without CPU offloading. NOTE: When using FSDP2, do NOT use --gradient_checkpointing, use activation_checkpointing in fsdp_config instead.",
+
+    "_param_docs": {
+        "fsdp": "FSDP strategy string. Options: 'full_shard' (ZeRO-3 style, shards params+grads+optimizer), 'shard_grad_op' (ZeRO-2 style, shards grads+optimizer only). Add 'auto_wrap' to enable automatic layer wrapping. Add 'offload' to enable CPU offloading.",
+        "fsdp_version": "FSDP version. Use 2 for PyTorch native FSDP2 (recommended). FSDP2 uses DTensor for per-parameter sharding, supports LoRA/QLoRA natively.",
+        "auto_wrap_policy": "How to wrap model layers. 'TRANSFORMER_BASED_WRAP' wraps transformer decoder layers (from model._no_split_modules). 'SIZE_BASED_WRAP' wraps modules exceeding min_num_params.",
+        "cpu_ram_efficient_loading": "If true, only rank 0 loads full model weights, then broadcasts to other ranks. Reduces CPU RAM usage during initialization.",
+        "state_dict_type": "'SHARDED_STATE_DICT' (recommended): each rank saves its own shard without extra communication. 'FULL_STATE_DICT': gathers full model on rank 0 (higher memory, slower).",
+        "reshard_after_forward": "true = FULL_SHARD (ZeRO-3), reshards params after forward pass. false = SHARD_GRAD_OP (ZeRO-2), keeps params gathered during forward/backward.",
+        "activation_checkpointing": "Use FSDP's native activation checkpointing instead of gradient_checkpointing. This is the correct way to save memory with FSDP."
+    },
+
+    "fsdp": "full_shard auto_wrap",
+    "fsdp_config": {
+        "fsdp_version": 2,
+        "reshard_after_forward": true,
+        "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
+        "cpu_ram_efficient_loading": true,
+        "state_dict_type": "SHARDED_STATE_DICT",
+        "activation_checkpointing": true
+    }
+}

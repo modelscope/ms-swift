@@ -772,6 +772,41 @@ def get_gather_if_zero3_context(trainer, is_zero3: Optional[bool] = None):
     return gather_if_zero3
 
 
+def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
+    """Prepare a model with FSDP wrapping
+
+    This function wraps a model with the appropriate FSDP mechanism based on
+    the accelerator configuration. It's designed for auxiliary models like
+    ref_model, teacher_model, or reward_model that need to be FSDP-wrapped
+    to prevent mixing DTensor (main model) with regular Tensor (auxiliary model).
+
+    Args:
+        model: The model to wrap with FSDP.
+        accelerator: The accelerator instance from trainer.
+        evaluation_mode: Whether to set the model to evaluation mode. Defaults to True.
+            When True, the model is frozen BEFORE FSDP wrapping to avoid float32 upcast,
+            which saves significant memory for evaluation-only models.
+
+    Returns:
+        The FSDP-wrapped model.
+    """
+    if evaluation_mode:
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad_(False)
+
+    if getattr(accelerator, 'is_fsdp2', False):
+        # FSDP2 uses fully_shard API with DTensor
+        from accelerate.utils.fsdp_utils import fsdp2_prepare_model
+        model = fsdp2_prepare_model(accelerator, model)
+    else:
+        # FSDP1 uses FullyShardedDataParallel wrapper
+        from trl.models.utils import prepare_fsdp as trl_prepare_fsdp
+        model = trl_prepare_fsdp(model, accelerator)
+
+    return model
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
