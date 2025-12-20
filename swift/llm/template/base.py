@@ -1020,8 +1020,7 @@ class Template(ProcessorMixin):
             kwargs['tools'] = inputs.tools
         if 'thinking_budget' in inputs.extra_kwargs:
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
-        if self.enable_thinking:
-            kwargs['enable_thinking'] = self.enable_thinking
+        kwargs['enable_thinking'] = self.enable_thinking
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
@@ -1195,9 +1194,9 @@ class Template(ProcessorMixin):
                 if add_eos:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
-            elif template_meta.response_prefix:
+            elif self.response_prefix:
                 # final round and during inference.
-                context_list.append(template_meta.response_prefix)
+                context_list.append(self.response_prefix)
 
             self._concat_context_list(
                 context_list,
