@@ -69,15 +69,16 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
-        enable_thinking: Optional[bool] = None,
         remove_unused_columns: bool = True,
+        padding_side: Literal['left', 'right'] = 'right',
         # only for train
         padding_free: bool = False,
-        padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
+        add_non_thinking_prefix: bool = True,
         # infer/deploy
         response_prefix: Optional[str] = None,
+        enable_thinking: Optional[bool] = None,
         template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
         """
@@ -106,7 +107,6 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-
         if enable_thinking is None:
             enable_thinking = template_meta.is_thinking
         if response_prefix is None:
@@ -119,6 +119,7 @@ class Template(ProcessorMixin):
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
+        self.add_non_thinking_prefix = add_non_thinking_prefix
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
@@ -1049,7 +1050,7 @@ class Template(ProcessorMixin):
                 if i < start_idx:
                     continue
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith('<think>'):
+                    if not message['content'].startswith(('<think>', non_thinking_prefix)):
                         # During multi-turn SFT training/validation:
                         # If the message has no <think> block and does not start with the non_thinking_prefix,
                         # prepend the non_thinking_prefix to the content.
@@ -1116,7 +1117,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         if self.use_chat_template:
-            if self.enable_thinking:
+            if self.add_non_thinking_prefix:
                 self._add_non_thinking_prefix(inputs)
             if template_meta.is_thinking:
                 self._remove_history_thinking(inputs)

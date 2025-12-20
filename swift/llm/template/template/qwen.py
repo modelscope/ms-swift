@@ -57,12 +57,11 @@ register_template(
 
 @dataclass
 class Qwen3MixedTemplateMeta(QwenTemplateMeta):
-    is_thinking: bool = True
     default_system: Optional[str] = None
     non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3))
+register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'

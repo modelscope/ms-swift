@@ -27,15 +27,16 @@ def get_template(
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,
     use_chat_template: bool = True,
-    enable_thinking: Optional[bool] = None,
     remove_unused_columns: bool = True,
+    padding_side: Literal['left', 'right'] = 'right',
     # train
     padding_free: bool = False,
-    padding_side: Literal['left', 'right'] = 'right',
     loss_scale: str = 'default',
     sequence_parallel_size: int = 1,
+    add_non_thinking_prefix: bool = True,
     # infer/deploy
     response_prefix: Optional[str] = None,
+    enable_thinking: Optional[bool] = None,
     template_backend: Literal['swift', 'jinja'] = 'swift',
 ) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]
@@ -50,15 +51,16 @@ def get_template(
         agent_template=agent_template,
         norm_bbox=norm_bbox,
         use_chat_template=use_chat_template,
-        enable_thinking=enable_thinking,
         remove_unused_columns=remove_unused_columns,
+        padding_side=padding_side,
         # train
         padding_free=padding_free,
-        padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
+        add_non_thinking_prefix=add_non_thinking_prefix,
         # infer/deploy
         response_prefix=response_prefix,
+        enable_thinking=enable_thinking,
         template_backend=template_backend,
     )
 

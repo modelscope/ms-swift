@@ -305,7 +305,9 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         return res
 
 
-register_template(Qwen3MixedTemplateMeta(
-    MLLMTemplateType.minicpmv4_5,
-    template_cls=MiniCPMV4_5Template,
-))
+register_template(
+    Qwen3MixedTemplateMeta(
+        MLLMTemplateType.minicpmv4_5,
+        template_cls=MiniCPMV4_5Template,
+        is_thinking=True,
+    ))
