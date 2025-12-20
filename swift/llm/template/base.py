@@ -1038,7 +1038,7 @@ class Template(ProcessorMixin):
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
-            if not self.is_training or self.loss_scale.base_strategy.startswith('last_round'):
+            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
@@ -1053,6 +1053,8 @@ class Template(ProcessorMixin):
                         message['content'] = non_thinking_prefix + message['content']
 
     def _remove_history_thinking(self, inputs) -> None:
+        if self.is_training and self.loss_scale.base_strategy != 'last_round':
+            return
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
@@ -1109,8 +1111,7 @@ class Template(ProcessorMixin):
         template_meta = self.template_meta
         if self.enable_thinking:
             self._add_non_thinking_prefix(inputs)
-        if template_meta.is_thinking and (not self.is_training
-                                          or self.loss_scale.base_strategy.startswith('last_round')):
+        if template_meta.is_thinking:
             self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
