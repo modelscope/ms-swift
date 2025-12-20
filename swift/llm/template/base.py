@@ -106,10 +106,16 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        self._response_prefix = response_prefix
-        if enable_thinking is None:
-            enable_thinking = template_meta.is_thinking and use_chat_template
 
+        if enable_thinking is None:
+            enable_thinking = template_meta.is_thinking
+        if response_prefix is None:
+            if use_chat_template:
+                response_prefix = (
+                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
+            else:
+                response_prefix = ''
+        self.response_prefix = response_prefix
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
@@ -139,14 +145,6 @@ class Template(ProcessorMixin):
 
         if processor is not None:
             self.init_processor(processor)
-
-    @property
-    def response_prefix(self):
-        if self._response_prefix is not None:
-            return self._response_prefix
-        else:
-            template_meta = self.template_meta
-            return template_meta.thinking_prefix if self.enable_thinking else template_meta.non_thinking_prefix
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -1043,7 +1041,7 @@ class Template(ProcessorMixin):
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
-            if not self.is_training or self.loss_scale.base_strategy.startswith('last_round'):
+            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
@@ -1058,6 +1056,8 @@ class Template(ProcessorMixin):
                         message['content'] = non_thinking_prefix + message['content']
 
     def _remove_history_thinking(self, inputs) -> None:
+        if self.is_training and self.loss_scale.base_strategy != 'last_round':
+            return
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
@@ -1112,11 +1112,11 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
-        if self.enable_thinking:
-            self._add_non_thinking_prefix(inputs)
-        if template_meta.is_thinking and (not self.is_training
-                                          or self.loss_scale.base_strategy.startswith('last_round')):
-            self._remove_history_thinking(inputs)
+        if self.use_chat_template:
+            if self.enable_thinking:
+                self._add_non_thinking_prefix(inputs)
+            if template_meta.is_thinking:
+                self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)

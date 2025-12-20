@@ -51,7 +51,7 @@ class LossScale:
         i = 0
         last_user_round = get_last_user_round(messages)
         for context, context_type in zip(context_list, context_types):
-            is_last_round = i >= (last_user_round // 2)
+            is_last_round = 2 * i >= last_user_round
             query, loss = None, None
             if context_type == ContextType.RESPONSE:
                 query = messages[2 * i]['content']
