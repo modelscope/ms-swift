@@ -33,11 +33,12 @@ def get_template(
     padding_free: bool = False,
     loss_scale: str = 'default',
     sequence_parallel_size: int = 1,
-    add_non_thinking_prefix: bool = True,
     # infer/deploy
+    template_backend: Literal['swift', 'jinja'] = 'swift',
+    # thinking
     response_prefix: Optional[str] = None,
     enable_thinking: Optional[bool] = None,
-    template_backend: Literal['swift', 'jinja'] = 'swift',
+    add_non_thinking_prefix: bool = True,
 ) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
@@ -57,11 +58,12 @@ def get_template(
         padding_free=padding_free,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
-        add_non_thinking_prefix=add_non_thinking_prefix,
         # infer/deploy
+        template_backend=template_backend,
+        # thinking
         response_prefix=response_prefix,
         enable_thinking=enable_thinking,
-        template_backend=template_backend,
+        add_non_thinking_prefix=add_non_thinking_prefix,
     )
 
 

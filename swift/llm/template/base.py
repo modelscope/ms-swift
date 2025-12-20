@@ -75,11 +75,12 @@ class Template(ProcessorMixin):
         padding_free: bool = False,
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
-        add_non_thinking_prefix: bool = True,
         # infer/deploy
+        template_backend: Literal['swift', 'jinja'] = 'swift',
+        # thinking
         response_prefix: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
-        template_backend: Literal['swift', 'jinja'] = 'swift',
+        add_non_thinking_prefix: bool = True,
     ) -> None:
         """
         default_system: Override the default_system in the template.

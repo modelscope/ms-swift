@@ -98,11 +98,12 @@ class TemplateArguments:
     padding_free: bool = False
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
-    add_non_thinking_prefix: bool = True
     # infer/deploy
+    template_backend: Literal['swift', 'jinja'] = 'swift'
+    # thinking
     response_prefix: Optional[str] = None
     enable_thinking: Optional[bool] = None
-    template_backend: Literal['swift', 'jinja'] = 'swift'
+    add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
         if self.template is None and getattr(self, 'model_meta', None):
@@ -149,9 +150,10 @@ class TemplateArguments:
             'padding_free': self.padding_free,
             'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
-            'add_non_thinking_prefix': self.add_non_thinking_prefix,
             # infer/deploy
+            'template_backend': self.template_backend,
+            # thinking
             'response_prefix': self.response_prefix,
             'enable_thinking': self.enable_thinking,
-            'template_backend': self.template_backend,
+            'add_non_thinking_prefix': self.add_non_thinking_prefix,
         }

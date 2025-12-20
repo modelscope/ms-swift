@@ -127,7 +127,7 @@ register_template(
         prompt=[']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'],
         chat_sep=['[e~[\n'],
         suffix=['[e~['],
-        default_system='You are a helpful assistant.',
+        default_system='You are MiniMax-M2, a helpful AI assistant built by MiniMax. Knowledge cutoff: 2025-06.',
         is_thinking=True,
         thinking_prefix='<think>\n',
     ))
