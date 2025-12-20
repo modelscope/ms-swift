@@ -104,14 +104,11 @@
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
-- enable_thinking: 是否启动thinking模式。默认为None (ms-swift>=3.12)，该参数的默认值根据模型类型确定（思考/混合思考模型为True，非思考模型为False）。推理时，若enable_thinking为False，则增加非思考前缀，例如Qwen3-8B混合思考模型增加前缀`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为True，则增加思考前缀，例如`<think>\n`。在训练时，若enable_thinking为True，对assistant部分不以思考标记开头`<think>`的数据样本增加非思考前缀。例如Qwen3-8B混合思考模型，额外增加`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为False，则不对数据样本做此修改。
-  - 注意：训练时，loss_scale的基本策略为last_round，则只对最后一轮做此修改；否则，例如为'default'、'all'，则对每一轮数据做此修改。
-  - 注意：对于思考模型（思考/混合思考），我们会在推理和训练时，对历史的思考内容进行删除。若训练时的loss_scale基本策略不为last_round，例如为'default'，则不对历史的思考内容进行删除。
+- padding_side: 当训练`batch_size>=2`时的padding_side，可选值为'left'、'right'，默认为'right'。（推理时的batch_size>=2时，只进行左padding）。
+  - 注意：PPO和GKD默认设置为'left'。
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。
-- padding_side: 当训练`batch_size>=2`时的padding_side，可选值为'left'、'right'，默认为'right'。（推理时的batch_size>=2时，只进行左padding）。
-  - 注意：PPO和GKD默认设置为'left'。
 - 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'loss_scale+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
   - 'default': 所有response（含history）以权重1计算交叉熵损失（**messages中的system/user/多模态tokens以及Agent训练中`tool_response`部分不计算损失**）。（**SFT默认为该值**）
   - 'last_round': 只计算最后一轮response的损失。在"ms-swift>=3.12"，最后一轮含义为最后一个"user"之后的所有内容，之前的含义只包含最后一个"assistant"。（**RLHF默认为该值**）
@@ -119,7 +116,10 @@
   - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
   - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
-- response_prefix: response的前缀字符，例如QwQ-32B将response_prefix设置为`'<think>\n'`，该参数只在推理时生效。默认为None，根据模型自动设置。
+- add_non_thinking_prefix: 该参数只在训练时生效，代表是否对数据样本assistant部分不以思考标记`<think>`开头的数据样本增加非思考前缀（通常混合思考模型含非思考前缀）。该特性可以让swift内置的数据集可以训练混合思考模型。默认值为True。例如：例如Qwen3-8B混合思考模型的非思考前缀为`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking/Instruct的非思考前缀为`''`。注意：训练时，loss_scale的基本策略为last_round，则只对最后一轮做此修改；否则，例如为'default'、'all'，则对每一轮数据做此修改。若设置为False，则不对数据样本增加非思考前缀。
+- response_prefix: response的前缀字符，该参数只在推理时生效。默认为None，根据enable_thinking参数和模版类型确定。
+- enable_thinking: (ms-swift>=3.12) 该参数在推理时生效，代表是否开启thinking模式。默认为None，默认值由模板（模型）类型确定（思考/混合思考模板为True，非思考模板为False）。若enable_thinking为False，则增加非思考前缀，例如Qwen3-8B混合思考模型增加前缀`<think>\n\n</think>\n\n`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为True，则增加思考前缀，例如`<think>\n`。注意：该参数的优先级低于response_prefix参数。
+  - 注意：对于思考模型（思考/混合思考），我们会在推理和训练时，对历史的思考内容进行删除（最后一轮的思考内容保留，即最后一个user信息后的内容）。若训练时的loss_scale基本策略不为last_round，例如为'default'，则不对历史的思考内容进行删除。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
   - 注意：jinja的template后端只支持推理，不支持训练（无法确定损失计算的tokens范围）。
 
