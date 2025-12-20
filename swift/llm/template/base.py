@@ -110,8 +110,11 @@ class Template(ProcessorMixin):
         if enable_thinking is None:
             enable_thinking = template_meta.is_thinking
         if response_prefix is None:
-            response_prefix = template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix
-
+            if use_chat_template:
+                response_prefix = (
+                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
+            else:
+                response_prefix = ''
         self.response_prefix = response_prefix
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
