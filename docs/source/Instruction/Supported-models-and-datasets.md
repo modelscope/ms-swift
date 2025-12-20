@@ -672,7 +672,7 @@
 |[Qwen/Qwen3-Reranker-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)|
 |[Qwen/Qwen3-Reranker-4B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-4B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B)|
 |[Qwen/Qwen3-Reranker-8B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-8B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B)|
-
+|[gongjy/MiniMind2](https://www.modelscope.cn/models/gongjy/MiniMind2)|minimind|minimind|transformers>=4.57.1|&#x2718;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
 
 ### 多模态大模型
 | Model ID | Model Type | Default Template | Requires | Support Megatron | Tags | HF Model ID |
