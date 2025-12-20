@@ -672,6 +672,14 @@ def test_ling2():
     assert response == response2
 
 
+def test_minimind():
+    pt_engine = PtEngine('gongjy/MiniMind2', model_type="minimind")
+    swift_response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    jinja_response = _infer_model(pt_engine)
+    assert swift_response == jinja_response
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -710,7 +718,7 @@ if __name__ == '__main__':
     # test_gemma3()
     # test_glm4_0414()
     # test_qwen3()
-    test_qwen3_guard()
+    # test_qwen3_guard()
     # test_mimo()
     # test_minicpm()
     # test_minimax()
@@ -724,3 +732,4 @@ if __name__ == '__main__':
     # test_ernie_thinking()
     # test_ring2()
     # test_ling2()
+    test_minimind()
