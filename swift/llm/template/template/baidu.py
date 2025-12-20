@@ -67,7 +67,11 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
 
 
 register_template(
-    ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate, is_thinking=True))
+    ERNIEThinkingTemplateMeta(
+        LLMTemplateType.ernie_thinking,
+        template_cls=ErnieThinkingTemplate,
+        is_thinking=True,
+        thinking_prefix='<think>\n'))
 
 
 class PaddleOCRTemplate(Template):

@@ -129,4 +129,5 @@ register_template(
         suffix=['[e~['],
         default_system='You are a helpful assistant.',
         is_thinking=True,
+        thinking_prefix='<think>\n',
     ))

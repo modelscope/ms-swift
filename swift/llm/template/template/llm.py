@@ -415,4 +415,5 @@ register_template(
         chat_sep=[],
         suffix=['<|endoftext|>'],
         is_thinking=True,
+        thinking_prefix='<think>\n',
     ))

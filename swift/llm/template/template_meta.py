@@ -46,7 +46,7 @@ class TemplateMeta:
     agent_template: str = 'react_en'
     # thinking
     is_thinking: bool = False
-    thinking_prefix: str = '<think>\n'
+    thinking_prefix: str = ''
     non_thinking_prefix: str = ''  # for hybrid thinking model
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.

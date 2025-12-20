@@ -51,7 +51,8 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True))
+register_template(
+    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
 
 
 @dataclass
@@ -86,7 +87,9 @@ register_template(Qwen3MixedTemplateMeta(
     prompt=[QWEN3_GUARD_TEMPLATE],
 ))
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True))
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
