@@ -310,4 +310,5 @@ register_template(
         MLLMTemplateType.minicpmv4_5,
         template_cls=MiniCPMV4_5Template,
         is_thinking=True,
+        thinking_prefix='<think>\n',
     ))
