@@ -34,10 +34,6 @@ class GLM4Template(Template):
         return response.lstrip('\n')
 
 
-class GLM4_0414Template(GLM4Template):
-    pass
-
-
 register_template(
     GLMTemplateMeta(
         LLMTemplateType.chatglm2,
@@ -250,7 +246,7 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, is_thinking=True))
 
 
 class GLM4_5Template(Template):
@@ -388,7 +384,10 @@ glm4z1rumination_system = (
 
 register_template(
     GLM4_0414TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
+        LLMTemplateType.glm4_z1_rumination,
+        template_cls=GLM4Template,
+        default_system=glm4z1rumination_system,
+        is_thinking=True))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
