@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import json
 
@@ -8,6 +8,8 @@ from swift.llm import Messages
 from swift.llm.template import get_last_user_round
 from swift.llm.template.utils import ContextType
 from .utils import calculate_loss_scale
+
+ALL_BASE_STRATEGY = ['default', 'last_round', 'all']
 
 
 class LossScale:
@@ -19,33 +21,28 @@ class LossScale:
     loss_scale_config = None  # path
     is_binary = None
 
-    def __init__(self):
+    def __init__(self, base_strategy: Literal['default', 'last_round', 'all'] = 'default'):
+        assert base_strategy in ALL_BASE_STRATEGY, (
+            f'ALL_BASE_STRATEGY: {ALL_BASE_STRATEGY}, base_strategy: {base_strategy}')
+        self.base_strategy = base_strategy
+        self.loss_scale_map = None
         if self.loss_scale_config is not None:
             path = os.path.dirname(os.path.abspath(__file__))
             config_path = os.path.join(path, 'config', self.loss_scale_config)
             with open(config_path, 'r', encoding='utf-8') as json_file:
                 self.loss_scale_map = json.load(json_file)
-        else:
-            self.loss_scale_map = None
 
-    def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool,
-                       **kwargs) -> Tuple[List[str], List[float]]:
+    def get_loss_scale(self, context: str, **kwargs) -> Tuple[List[str], List[float]]:
         """Calculate loss scale
 
         Args:
             context: The input context
-            context_type: The type of this context, like response/suffix(eos token)/other(query/system, etc.)
-            is_last_round: If this is the last round of messages.
             query: The query of this round.
 
         Returns:
             A tuple, list of context and list of loss_scales
         """
-        if context_type in {ContextType.RESPONSE, ContextType.SUFFIX}:
-            loss_scale = 1.
-        else:
-            loss_scale = 0.
-        return [context], [loss_scale]
+        return [context], [1.]
 
     def __call__(self, context_list: List[str], context_types: List[ContextType], messages: Messages,
                  **kwargs) -> Tuple[List[str], List[float]]:
@@ -71,7 +68,13 @@ class LossScale:
                 if context_type == ContextType.RESPONSE and loss is not None:
                     new_context, loss_scale = [context], [float(loss)]
                 else:
-                    new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, query=query)
+                    is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
+                    if self.base_strategy == 'all' or (self.base_strategy == 'default'
+                                                       and is_assistant) or (self.base_strategy == 'last_round'
+                                                                             and is_assistant and is_last_round):
+                        new_context, loss_scale = self.get_loss_scale(context, query=query)
+                    else:
+                        new_context, loss_scale = [context], [0.]
             res_context_list += new_context
             res_loss_scale += loss_scale
         return res_context_list, res_loss_scale
@@ -82,47 +85,25 @@ class LossScale:
             return self.is_binary
         if self.loss_scale_map is None:
             return True
-        return all(scale == 0.0 or scale == 1.0 for lst in self.loss_scale_map.values() for scale in lst)
-
-
-class DefaultLossScale(LossScale):
-    pass
-
-
-class LastRoundLossScale(LossScale):
-
-    def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool, **kwargs):
-        if context_type == ContextType.RESPONSE:
-            return [context], [float(is_last_round)]
-        return super().get_loss_scale(context, context_type, is_last_round)
+        return all(scale in {0.0, 1.0} for lst in self.loss_scale_map.values() for scale in lst)
 
 
 class AgentFlanLossScale(LossScale):
     loss_scale_config = 'agentflan.json'
 
-    def get_loss_scale(self,
-                       context: str,
-                       context_type: ContextType,
-                       is_last_round: bool,
-                       *,
-                       query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE and isinstance(context, str):
+    def get_loss_scale(self, context: str, *, query: Optional[str] = None):
+        if isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map['response'], self.loss_scale_map['query'])
-        return super().get_loss_scale(context, context_type, is_last_round)
+        return super().get_loss_scale(context)
 
 
 class REACTLossScale(LossScale):
     loss_scale_config = 'react.json'
 
-    def get_loss_scale(self,
-                       context: str,
-                       context_type: ContextType,
-                       is_last_round: bool,
-                       *,
-                       query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE and isinstance(context, str):
+    def get_loss_scale(self, context: str, *, query: Optional[str] = None):
+        if isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map)
-        return super().get_loss_scale(context, context_type, is_last_round)
+        return super().get_loss_scale(context)
 
 
 class QwenLossScale(REACTLossScale):
@@ -137,41 +118,14 @@ class AlphaUmiLossScale(REACTLossScale):
     loss_scale_config = 'alpha_umi.json'
 
 
-class TrainAllLossScale(LossScale):
-
-    def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
-        return [context], [1.]
-
-
-class IgnoreEmptyThink(REACTLossScale):
+class IgnoreEmptyThinkLossScale(REACTLossScale):
     loss_scale_config = 'ignore_empty_think.json'
-
-
-class LastRoundWithIgnoreEmptyThink(LossScale):
-    loss_scale_config = 'ignore_empty_think.json'
-
-    def get_loss_scale(self,
-                       context: str,
-                       context_type: ContextType,
-                       is_last_round: bool,
-                       *,
-                       query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
-            if not is_last_round:
-                return [context], [0.]
-            elif isinstance(context, str):
-                return calculate_loss_scale(query, context, self.loss_scale_map)
-
-        return super().get_loss_scale(context, context_type, is_last_round)
 
 
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
-    'last_round': LastRoundLossScale,
-    'default': DefaultLossScale,
-    'all': TrainAllLossScale,
-    'ignore_empty_think': IgnoreEmptyThink,
-    'last_round_with_ignore_empty_think': LastRoundWithIgnoreEmptyThink,
+    '-': LossScale,
+    'ignore_empty_think': IgnoreEmptyThinkLossScale,
     # agent
     'react': REACTLossScale,
     'hermes': HermesLossScale,
@@ -180,5 +134,14 @@ loss_scale_map = {
     'alpha_umi': AlphaUmiLossScale,
 }
 
-for k, v in loss_scale_map.items():
-    v.name = k
+
+def get_loss_scale(loss_scale: str) -> LossScale:
+    splited = loss_scale.split('+', 1)
+    if len(splited) == 1:
+        if splited[0] in ALL_BASE_STRATEGY:
+            base_strategy, loss_scale = splited[0], '-'
+        else:
+            base_strategy, loss_scale = 'default', splited[0]
+    else:
+        base_strategy, loss_scale = splited
+    return loss_scale_map[loss_scale](base_strategy)

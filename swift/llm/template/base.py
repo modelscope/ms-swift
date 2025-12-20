@@ -91,7 +91,7 @@ class Template(ProcessorMixin):
         """
         from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates, loss_scale_map
+        from swift.plugin import agent_templates, get_loss_scale
         self._processor_inited = False
         self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -117,7 +117,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = get_loss_scale(loss_scale)
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -1043,7 +1043,7 @@ class Template(ProcessorMixin):
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
-            if not self.is_training or self.loss_scale.name.startswith('last_round'):
+            if not self.is_training or self.loss_scale.base_strategy.startswith('last_round'):
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
@@ -1114,7 +1114,7 @@ class Template(ProcessorMixin):
         template_meta = self.template_meta
         if self.enable_thinking:
             self._add_non_thinking_prefix(inputs)
-        if template_meta.is_thinking and (not self.is_training or self.loss_scale.name.startswith('last_round')):
+        if template_meta.is_thinking and (not self.is_training or self.loss_scale.base_strategy.startswith('last_round')):
             self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
