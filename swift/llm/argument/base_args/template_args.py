@@ -93,14 +93,17 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     use_chat_template: Optional[bool] = None
+    padding_side: Literal['left', 'right', None] = None
     # train
     padding_free: bool = False
-    padding_side: Literal['left', 'right', None] = None
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
-    response_prefix: Optional[str] = None
     template_backend: Literal['swift', 'jinja'] = 'swift'
+    # thinking
+    response_prefix: Optional[str] = None
+    enable_thinking: Optional[bool] = None
+    add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
         if self.template is None and getattr(self, 'model_meta', None):
@@ -142,12 +145,15 @@ class TemplateArguments:
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
             'remove_unused_columns': remove_unused_columns,
+            'padding_side': self.padding_side,
             # train
             'padding_free': self.padding_free,
-            'padding_side': self.padding_side,
             'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
             # infer/deploy
-            'response_prefix': self.response_prefix,
             'template_backend': self.template_backend,
+            # thinking
+            'response_prefix': self.response_prefix,
+            'enable_thinking': self.enable_thinking,
+            'add_non_thinking_prefix': self.add_non_thinking_prefix,
         }

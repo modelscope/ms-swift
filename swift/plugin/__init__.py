@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .callback import extra_callbacks
     from .loss import loss_mapping, get_loss_func
-    from .loss_scale import loss_scale_map
+    from .loss_scale import loss_scale_map, get_loss_scale
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu, metric_mapping
     from .optimizer import optimizers_map
     from .agent_template import agent_templates
@@ -22,7 +22,7 @@ else:
     _import_structure = {
         'callback': ['extra_callbacks'],
         'loss': ['loss_mapping', 'get_loss_func'],
-        'loss_scale': ['loss_scale_map'],
+        'loss_scale': ['loss_scale_map', 'get_loss_scale'],
         'metric':
         ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu', 'metric_mapping'],
         'optimizer': ['optimizers_map'],

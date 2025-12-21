@@ -1,4 +1,4 @@
-# 8 * 60GiB, 8s/it
+# 8 * 64GiB, 8s/it
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
@@ -7,7 +7,7 @@ megatron sft \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \
     --load_safetensors true \
     --save_safetensors true \
-    --mtp_num_layers 1 \
+    --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
@@ -40,17 +40,13 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash \
+    --attention_backend unfused \
+    --padding_free false \
     --model_author swift \
     --model_name swift-robot
 
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3 \
 # swift infer \
-#     --model megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx-merged \
-#     --vllm_tensor_parallel_size 4 \
-#     --infer_backend vllm \
-#     --vllm_max_model_len 8192 \
-#     --vllm_gpu_memory_utilization 0.9 \
-#     --vllm_speculative_config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}' \
-#     --max_new_tokens 2048
+#     --adapters megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx \
+#     --stream true

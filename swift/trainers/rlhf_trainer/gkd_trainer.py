@@ -82,6 +82,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
             else:
                 self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+        elif self.is_fsdp_enabled:
+            from .utils import prepare_fsdp
+            self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
         else:
             self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
         self.teacher_model.eval()

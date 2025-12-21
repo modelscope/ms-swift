@@ -1,1 +1,1 @@
-from .loss_scale import loss_scale_map
+from .loss_scale import get_loss_scale, loss_scale_map
