@@ -62,6 +62,7 @@ class PtEngine(InferEngine):
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
             reranker_use_activation: bool = True,
+            cache_impl: Optional[str] = None,
             **kwargs):
         download_model = kwargs.pop('download_model', True)
         self.model, self.processor = get_model_tokenizer(
@@ -80,6 +81,7 @@ class PtEngine(InferEngine):
             model_kwargs=model_kwargs,
             **kwargs)
         self.reranker_use_activation = reranker_use_activation
+        self.cache_impl = cache_impl
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
             adapters = [adapters]
@@ -151,11 +153,21 @@ class PtEngine(InferEngine):
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
     @classmethod
-    def from_model_template(cls, model, template=None, *, max_batch_size: int = 1):
+    def from_model_template(
+        cls,
+        model,
+        template=None,
+        *,
+        max_batch_size: int = 1,
+        reranker_use_activation: bool = True,
+        cache_impl: Optional[str] = None,
+    ):
         self = super().__new__(cls)
         self.model = model
         self.processor = template.processor
         self.max_batch_size = max_batch_size
+        self.reranker_use_activation = reranker_use_activation
+        self.cache_impl = cache_impl
         self._post_init(template)
         return self
 
@@ -233,6 +245,8 @@ class PtEngine(InferEngine):
             template.generate(self.model, **kwargs)
 
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        if self.cache_impl is not None:
+            generate_kwargs['cache_implementation'] = self.cache_impl
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
@@ -392,6 +406,8 @@ class PtEngine(InferEngine):
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        if self.cache_impl is not None:
+            generate_kwargs['cache_implementation'] = self.cache_impl
         output = dict(template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']

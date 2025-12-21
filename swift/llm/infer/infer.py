@@ -32,8 +32,12 @@ class SwiftInfer(SwiftPipeline):
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
-            self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
-            self.infer_engine.reranker_use_activation = args.reranker_use_activation
+            self.infer_engine = PtEngine.from_model_template(
+                model,
+                self.template,
+                max_batch_size=args.max_batch_size,
+                reranker_use_activation=args.reranker_use_activation,
+                cache_impl=args.cache_impl)
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.template = args.get_template(None)
@@ -64,8 +68,8 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update(args.get_model_kwargs())
-            if hasattr(args, 'max_batch_size'):
-                kwargs.update({'max_batch_size': args.max_batch_size})
+            kwargs['max_batch_size'] = args.max_batch_size
+            kwargs['cache_impl'] = args.cache_impl
         elif infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
@@ -180,7 +184,7 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         if args.cached_dataset or args.cached_val_dataset:
-            _, val_datasets = get_cached_dataset(self.args)
+            _, val_datasets = get_cached_dataset(args)
         else:
             val_datasets = []
         if len(args.val_dataset) > 0:
