@@ -550,6 +550,7 @@ def gather_sequence_parallel_outputs(
         components (loss, metrics, etc.) can operate on full-length sequences.
         """
     from swift.trainers.sequence_parallel import sequence_parallel
+    from swift.trainers.sequence_parallel.utils import GatherTensor
 
     tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
 
@@ -561,7 +562,7 @@ def gather_sequence_parallel_outputs(
 
     for key in tensor_keys:
         if key in outputs:
-            outputs[key] = sequence_parallel.gather(outputs[key], dim=1, position_ids=position_ids)
+            outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
 
     return outputs
 
