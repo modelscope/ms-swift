@@ -14,7 +14,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
-from .qwen import Qwen2_5TemplateMeta, Qwen3Template, QwenTemplateMeta
+from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
 
 
@@ -242,7 +242,7 @@ register_template(ChatmlTemplateMeta(
 ))
 
 
-class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
+class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
@@ -305,8 +305,10 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         return res
 
 
-# enable_thinking: response_prefix='<think>\n',
-register_template(ChatmlTemplateMeta(
-    MLLMTemplateType.minicpmv4_5,
-    template_cls=MiniCPMV4_5Template,
-))
+register_template(
+    Qwen3MixedTemplateMeta(
+        MLLMTemplateType.minicpmv4_5,
+        template_cls=MiniCPMV4_5Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+    ))

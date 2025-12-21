@@ -156,3 +156,11 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
         for key, content in zip(parts[::2], parts[1::2]):
             res.append({'key': key, 'content': content})
     return res
+
+
+def get_last_user_round(messages):
+    """Get the index of the last occurrence of user role"""
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i]['role'] == 'user':
+            return i
+    return -1
