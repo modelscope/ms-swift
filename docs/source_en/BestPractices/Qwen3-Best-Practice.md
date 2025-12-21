@@ -92,7 +92,7 @@ When using ms-swift for SFT, the custom dataset format is as follows (the `syste
 
 If you want to train using data without the thinking chain while preserving the model's reasoning ability, you can use one of the following methods to minimize the impact of fine-tuning:
 
-**Option 1**: [Recommended] During training, specify `--loss_scale ignore_empty_think`, which will ignore the loss calculation for `Thought:` and `Answer:` tokens, thus avoiding the loss of reasoning capability. The training script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh). This method also works for models like DeepSeek-R1. The custom dataset format is as follows:
+**Option 1**: [Recommended] During training, specify `--loss_scale ignore_empty_think`, which will ignore the loss calculation for `'<think>\n\n</think>\n\n'`, thus avoiding the loss of reasoning capability. The training script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh). This method also works for models like DeepSeek-R1. The custom dataset format is as follows:
 
 ```json
 {"messages": [
