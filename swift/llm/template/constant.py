@@ -110,6 +110,7 @@ class LLMTemplateType:
     dbrx = 'dbrx'
 
     bert = 'bert'
+    olmoe = 'olmoe'
 
 
 class RMTemplateType:

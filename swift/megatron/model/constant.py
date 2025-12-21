@@ -2,6 +2,7 @@
 class LLMMegatronModelType:
     gpt = 'gpt'
     qwen3_next = 'qwen3_next'
+    olmoe = 'olmoe'
 
 
 class MLLMMegatronModelType:
