@@ -11,7 +11,6 @@ from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -25,18 +24,16 @@ class GLM4Template(Template):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
         for i, res_context in enumerate(res_context_list):
             # The last round or is tool_call.
-            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
-                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+            if isinstance(res_context,
+                          str) and (res_context.endswith('<|assistant|>\n')
+                                    or res_context.endswith('<think></think>\n')) and (
+                                        i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
                 res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
     def decode(self, *args, **kwargs):
         response = super().decode(*args, **kwargs)
         return response.lstrip('\n')
-
-
-class GLM4_0414Template(ThinkingTemplate, GLM4Template):
-    pass
 
 
 register_template(
@@ -69,6 +66,9 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
 @dataclass
 class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
     agent_template: str = 'glm4_5'
+    is_thinking: bool = True
+    non_thinking_prefix: str = '<think></think>\n'
+    history_thinking_prefix: str = '<think></think>\n'
 
 
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
@@ -248,12 +248,11 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+register_template(
+    GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, thinking_prefix='<think>'))
 
 
-class GLM4_5Template(ThinkingTemplate):
-    no_think_prefix = '<think></think>\n'
-    history_think_prefix = '<think></think>\n'
+class GLM4_5Template(GLM4Template):
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         for message in inputs.messages:
@@ -351,7 +350,7 @@ class GLM4_5VTemplate(GLM4_5Template):
         return res
 
 
-register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
@@ -366,9 +365,9 @@ glm4z1rumination_system = (
     '    * 访问并仔细阅读相关页面，识别新的关键概念/名词\n\n'
     '<重要配置>\n'
     '- 采用语言\n'
-    '    * 搜索关键词：英语\n'
-    '    * 思考：英语\n\n'
-    '<可调用的工具列表>\n\n'
+    '    * 搜索关键词：英文\n'
+    '    * 思考：英文\n\n'
+    '<可调用的工具列表>\n'
     '[{"name": "search", "description": "Execute a search query and return search results. '
     'Use this function when you need to find information about a specific topic.", '
     '"parameters": {"type": "object", "properties": {"query": {"type": "string", '
@@ -388,7 +387,10 @@ glm4z1rumination_system = (
 
 register_template(
     GLM4_0414TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
+        LLMTemplateType.glm4_z1_rumination,
+        template_cls=GLM4Template,
+        default_system=glm4z1rumination_system,
+        is_thinking=True))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
