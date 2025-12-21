@@ -45,9 +45,9 @@ class TemplateMeta:
     stop_words: List[Word] = field(default_factory=list)
     agent_template: str = 'react_en'
     # thinking
-    is_thinking: bool = False
+    is_thinking: bool = False  # Automatically remove think content
     thinking_prefix: str = ''
-    non_thinking_prefix: str = ''  # for hybrid thinking model
+    non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
     history_thinking_prefix: str = ''

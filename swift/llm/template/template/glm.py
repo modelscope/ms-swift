@@ -24,8 +24,10 @@ class GLM4Template(Template):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
         for i, res_context in enumerate(res_context_list):
             # The last round or is tool_call.
-            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
-                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+            if isinstance(res_context,
+                          str) and (res_context.endswith('<|assistant|>\n')
+                                    or res_context.endswith('<think></think>\n')) and (
+                                        i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
                 res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
@@ -246,10 +248,11 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, is_thinking=True))
+register_template(
+    GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, thinking_prefix='<think>'))
 
 
-class GLM4_5Template(Template):
+class GLM4_5Template(GLM4Template):
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         for message in inputs.messages:
