@@ -1794,7 +1794,7 @@ class Template(ProcessorMixin):
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
             if key == 'position_ids' and res[key][0].ndim == 3:
-                res[key] = torch.concat(res[key], dim=-1)
+                res[key] = self._pad_3d_position_ids(res[key], pad_value)
             else:
                 res[key] = self._pad_sequence(res[key], pad_value)
 
@@ -1804,6 +1804,39 @@ class Template(ProcessorMixin):
             res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res
+
+    def _pad_3d_position_ids(self,
+                             position_ids: List[torch.Tensor],
+                             padding_value: float = 0.,
+                             batch_dim: int = 1) -> torch.Tensor:
+        padding_side = self.padding_side if self.is_training else 'left'
+        padding_right = padding_side == 'right'
+        # position_ids
+        # batch_dim 0: [1, 4, 379], [1, 4, 300] -> [2, 4, 379]
+        # batch_dim 1: [3/4, 1, 379], [3/4, 1, 300] -> [3/4, 2, 379]
+        max_len = max(pos.shape[-1] for pos in position_ids)
+
+        padded_position_ids = []
+        for pos in position_ids:
+            current_len = pos.shape[-1]
+            pad_len = max_len - current_len
+
+            if pad_len > 0:
+                pad_shape = (pos.shape[0], pos.shape[1], pad_len)
+                padding = pos.new_full(pad_shape, padding_value)
+
+                if padding_right:
+                    padded_pos = torch.cat([pos, padding], dim=-1)
+                else:
+                    padded_pos = torch.cat([padding, pos], dim=-1)
+            else:
+                padded_pos = pos
+
+            padded_position_ids.append(padded_pos)
+
+        result = torch.cat(padded_position_ids, dim=batch_dim)
+
+        return result
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # multimodal

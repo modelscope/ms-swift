@@ -64,7 +64,7 @@ class TemplateArguments:
             Note: This requires `--attn_impl flash_attn` and `transformers>=4.44`. Compared to packing, padding_free
             has no preprocessing overhead, but packing offers faster training speeds and more stable memory usage.
         loss_scale (str): Loss weight configuration for training tokens. Default is `'default'`.
-            loss_scale includes 3 basic strategies: 'default', 'last_round', 'all',and other strategies:
+            loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies:
             'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
             For available options, refer to
             [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py).
