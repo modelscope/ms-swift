@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from .train_args import MegatronTrainArguments
@@ -7,7 +7,7 @@ from .train_args import MegatronTrainArguments
 
 @dataclass
 class MegatronRLHFArguments(MegatronTrainArguments):
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = 'dpo'
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = 'dpo'
     loss_scale: str = 'last_round'
     truncation_strategy: Optional[Literal['delete', 'left', 'right', 'split', None]] = None
 

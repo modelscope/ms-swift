@@ -21,11 +21,11 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = None
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
-    beta: float = 0.1
+    beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
@@ -39,6 +39,14 @@ class RLHFMegatronArgumentsMixin:
 
     # rm
     center_rewards_coefficient: Optional[float] = None
+
+    # gkd
+    teacher_model: Optional[str] = field(default=None)
+    lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
+    seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
+
+    # grpo/gkd
+    temperature: float = 0.9  # Temperature for sampling and loss computation
 
     # grpo
     generation_batch_size: Optional[int] = None
@@ -166,6 +174,9 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type is None:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
+        default_beta = {'gkd': 0.5, 'grpo': 0.04}
+        if self.beta is None:
+            self.beta = default_beta.get(self.rlhf_type, 0.1)
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
