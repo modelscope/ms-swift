@@ -33,7 +33,7 @@ logger = get_logger()
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
 
-    def swift_datasets_provider(train_val_test_num_samples):
+    def swift_datasets_provider(train_val_test_num_samples, vp_stage=None):
         nonlocal val_dataset
         args = get_args()
         data_parallel_size = mpu.get_data_parallel_world_size()
