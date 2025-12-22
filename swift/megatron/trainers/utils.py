@@ -28,6 +28,7 @@ except ImportError:
     from megatron.legacy.data.data_samplers import RandomSeedDataset
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+logger = get_logger()
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -373,7 +374,6 @@ def offload_megatron_optimizer(optimizers):
 
 
 def log_gpu_memory(prefix: str = '', info_once: bool = False):
-    logger = get_logger()
     log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
                f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
     if info_once:
