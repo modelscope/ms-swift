@@ -31,9 +31,9 @@ class BatchSamplerShard:
         self.group_by_length = group_by_length
         if group_by_length and not shuffle:
             raise ValueError('shuffle must be True when group_by_length is True')
-        self.lengths = None if lengths is None else [
-            max(length) if isinstance(length, list) else length for length in lengths
-        ]
+        self.lengths = lengths
+        if self.lengths is not None:
+            self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
 
     @property
     def rank(self):
@@ -55,7 +55,7 @@ class BatchSamplerShard:
                 total_idx = torch.randperm(self.total_samples * self.world_size, generator=generator).tolist()
             total_idx = total_idx[self.rank::self.world_size]
         else:
-            total_idx = range(self.rank, None, self.world_size)
+            total_idx = range(self.rank, self.total_samples * self.world_size, self.world_size)
 
         batch = []
         # Last batch if not complete will be dropped.
