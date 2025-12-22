@@ -88,7 +88,9 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
     assert found, 'Cannot find the proper lm_head name'
 
     def _output_embedding_hook(module, args, kwargs, output):
-        attention_mask = kwargs['attention_mask']
+        attention_mask = kwargs.get('attention_mask', None)
+        if attention_mask is None:
+            attention_mask = output.get('attention_mask', None)
         hidden_states = output.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
@@ -565,6 +567,63 @@ def gather_sequence_parallel_outputs(
             outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
 
     return outputs
+
+
+# def gather_sequence_parallel_outputs(
+#     outputs: Dict[str, Any],
+#     inputs: Optional[Dict[str, Any]] = None,
+#     tensor_keys: Optional[List[str]] = None,
+# ) -> Dict[str, Any]:
+#     """
+#         Gather split tensors produced by sequence parallel training so that downstream
+#         components (loss, metrics, etc.) can operate on full-length sequences.
+#         """
+#     from swift.trainers.sequence_parallel import sequence_parallel
+#     from swift.trainers.sequence_parallel.utils import GatherTensor
+
+#     tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
+
+#     position_ids = None
+
+#     if sequence_parallel.rp_world_size and sequence_parallel.rp_world_size > 1:
+#         position_ids = sequence_parallel.real_position_ids
+#         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+
+#     def _get(container, key):
+#         if container is None:
+#             return None
+#         if isinstance(container, dict):
+#             return container.get(key)
+#         return getattr(container, key, None)
+
+#     def _set(container, key, value):
+#         if container is None or value is None:
+#             return
+#         if isinstance(container, dict):
+#             container[key] = value
+#         else:
+#             try:
+#                 setattr(container, key, value)
+#             except Exception:
+#                 pass
+
+#     def _gather_tensor(tensor: torch.Tensor):
+#         if tensor is None or not isinstance(tensor, torch.Tensor) or tensor.dim() < 2:
+#             return tensor
+#         return GatherTensor.apply(tensor, 1, position_ids)
+
+#     for key in tensor_keys:
+#         val = _get(outputs, key)
+#         if val is None:
+#             continue
+#         if isinstance(val, (list, tuple)):
+#             gathered = [(_gather_tensor(v) if isinstance(v, torch.Tensor) else v) for v in val]
+#             val = type(val)(gathered) if isinstance(val, tuple) else gathered
+#         elif isinstance(val, torch.Tensor):
+#             val = _gather_tensor(val)
+#         _set(outputs, key, val)
+
+#     return outputs
 
 
 @contextmanager
