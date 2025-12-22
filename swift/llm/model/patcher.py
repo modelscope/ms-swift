@@ -544,7 +544,6 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
 
 def gather_sequence_parallel_outputs(
     outputs: Dict[str, Any],
-    inputs: Optional[Dict[str, Any]] = None,
     tensor_keys: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """

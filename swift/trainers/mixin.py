@@ -716,11 +716,8 @@ class SwiftMixin:
             # RP>1 implies ring-attention/zigzag workflow which requires careful task-specific pooling/restore.
             # We have not fully validated seq_cls/reranker/embedding under RP>1 yet, so fail fast.
             if sp_enabled and task_type in {'seq_cls', 'reranker', 'embedding', 'generative_reranker'}:
-                try:
-                    from swift.trainers.sequence_parallel import sequence_parallel
-                    rp_world_size = getattr(sequence_parallel, 'rp_world_size', None)
-                except Exception:
-                    rp_world_size = None
+                from swift.trainers.sequence_parallel import sequence_parallel
+                rp_world_size = getattr(sequence_parallel, 'rp_world_size', None)
                 if isinstance(rp_world_size, int) and rp_world_size > 1:
                     raise NotImplementedError(f'task_type={task_type} with ring-attention is not supported yet. ')
 
