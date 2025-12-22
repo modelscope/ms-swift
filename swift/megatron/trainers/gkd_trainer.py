@@ -473,73 +473,87 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         teacher_logits: torch.Tensor,
         labels: torch.Tensor,
         beta: float = 0.5,
+        chunk_size: int = 512,
     ) -> torch.Tensor:
-        """Compute the generalized Jensen-Shannon Divergence loss.
+        """Compute the generalized Jensen-Shannon Divergence loss with chunked computation.
 
         JSD(p, q) = beta * KL(p || m) + (1 - beta) * KL(q || m)
-        where m = beta * p + (1 - beta) * q
+        where m = beta * p + (1 - beta) * q, p = teacher, q = student
+
+        This implementation uses chunked computation to reduce peak memory usage,
+        which is critical for large vocab sizes.
 
         Args:
             student_logits: Student model logits [batch, seq_len, vocab_size]
             teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
-            labels: Token labels for masking [batch, seq_len]
+            labels: Token labels for masking [batch, seq_len], already shifted
             beta: Interpolation coefficient (0.5 = symmetric JSD)
+            chunk_size: Number of tokens to process in each chunk
 
         Returns:
-            Scalar loss value
+            Scalar loss value (mean over valid tokens)
         """
-        # Get mask from labels
         mask = labels != -100
+        num_valid = mask.sum()
 
-        # Align vocab size between student and teacher (handles different tokenizers)
+        if num_valid == 0:
+            return student_logits.new_zeros(())
+
+        # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
-        # Apply temperature scaling
-        student_logits = student_logits / self.temperature
-        teacher_logits = teacher_logits / self.temperature
+        # Apply temperature scaling and mask
+        student_logits_masked = (student_logits / self.temperature)[mask]  # [num_valid_tokens, vocab_size]
+        teacher_logits_masked = (teacher_logits / self.temperature)[mask]
+        del student_logits, teacher_logits
 
-        # Compute log probabilities (more numerically stable)
-        student_log_probs = F.log_softmax(student_logits, dim=-1)
-        teacher_log_probs = F.log_softmax(teacher_logits, dim=-1)
+        num_valid_int = num_valid.item()
+        total_loss = student_logits_masked.new_zeros(())
 
-        # Compute probabilities
-        student_probs = student_log_probs.exp()
-        teacher_probs = teacher_log_probs.exp()
+        if beta != 0 and beta != 1:
+            beta_t = torch.tensor(beta, dtype=student_logits_masked.dtype, device=student_logits_masked.device)
+            log_beta = torch.log(beta_t)
+            log_1_minus_beta = torch.log1p(-beta_t)
+        else:
+            beta_t = log_beta = log_1_minus_beta = None
 
-        # Mixture distribution: m = beta * student + (1 - beta) * teacher
-        mixture_probs = beta * student_probs + (1 - beta) * teacher_probs
-        mixture_log_probs = torch.log(mixture_probs + 1e-10)
+        for start_idx in range(0, num_valid_int, chunk_size):
+            end_idx = min(start_idx + chunk_size, num_valid_int)
+            s_chunk = student_logits_masked[start_idx:end_idx]
+            t_chunk = teacher_logits_masked[start_idx:end_idx]
 
-        # JSD = beta * KL(student || mixture) + (1 - beta) * KL(teacher || mixture)
-        # KL(p || q) = sum(p * (log(p) - log(q)))
-        kl_student = (student_probs * (student_log_probs - mixture_log_probs)).sum(dim=-1)
-        kl_teacher = (teacher_probs * (teacher_log_probs - mixture_log_probs)).sum(dim=-1)
+            s_log_probs = F.log_softmax(s_chunk, dim=-1)
+            t_log_probs = F.log_softmax(t_chunk, dim=-1)
+            del s_chunk, t_chunk
 
-        jsd = beta * kl_student + (1 - beta) * kl_teacher
+            if beta == 0:
+                jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
+            elif beta == 1:
+                jsd_chunk = F.kl_div(t_log_probs, s_log_probs, reduction='none', log_target=True)
+            else:
+                mixture_log_probs = torch.logsumexp(
+                    torch.stack([s_log_probs + log_1_minus_beta, t_log_probs + log_beta]),
+                    dim=0,
+                )
 
-        # Apply mask and compute mean
-        jsd = jsd * mask
-        loss = jsd.sum() / mask.sum().clamp(min=1)
+                kl_teacher = F.kl_div(mixture_log_probs, t_log_probs, reduction='none', log_target=True)
+                kl_student = F.kl_div(mixture_log_probs, s_log_probs, reduction='none', log_target=True)
+                del mixture_log_probs
 
-        return loss
+                jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
+                del kl_teacher, kl_student
+            total_loss = total_loss + jsd_chunk.sum()
+            del jsd_chunk, s_log_probs, t_log_probs
+
+        # Clean up masked logits
+        del student_logits_masked, teacher_logits_masked
+
+        return total_loss / num_valid
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, teacher_logits: torch.Tensor,
                   packed_seq_params):
-        """Compute GKD loss from student and teacher logits.
-
-        Args:
-            output_tensor: Student logits [batch, seq_len, vocab_size]
-            labels: Token labels for masking
-            teacher_logits: Teacher logits [batch, seq_len, vocab_size]
-            packed_seq_params: Packed sequence parameters
-
-        Returns:
-            Tuple of (loss, metric_dict)
-        """
         student_logits = output_tensor
-        # teacher_logits is passed via partial, already detached
 
-        # Compute JSD loss
         jsd_loss = self.generalized_jsd_loss(
             student_logits=student_logits,
             teacher_logits=teacher_logits,
@@ -555,7 +569,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         }
         metric = self._all_reduce_metric(metric)
 
-        # Fix megatron-lm bug for pipeline parallelism
         loss = loss / mpu.get_context_parallel_world_size()
 
         return loss, metric
