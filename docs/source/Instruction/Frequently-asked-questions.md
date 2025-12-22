@@ -520,7 +520,7 @@ rollout应该是不兼容pipeline parallel。
 [多任务训练](https://swift.readthedocs.io/zh-cn/latest/Instruction/GRPO/DeveloperGuide/multi_task.html)。
 
 ### Q152: 目前支持用yaml文件配置grpo和sft吗？
-应该都支持的，是在main.py中直接处理成命令行。
+都支持的，该配置是在main.py中直接处理成命令行。
 
 ### Q153: swift支持多节点的分布式训练吗？
 参考这里的[例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)。
@@ -561,7 +561,6 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --finetune true \
     --attention_backend flash \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
@@ -801,7 +800,7 @@ raise ValueError(f"Unknown initialization {init_lora_weights=}") ValueError: Unk
 在你的checkpoint文件夹里面有一个叫converted的文件夹，用那个。
 
 ### Q49: 使用swift infer命令进行推理，支持多机推理吗？
-如果单节点放得下模型，外面封装k8s就行。
+如果单节点放得下模型，外面封装k8s就行。如果单节点放不下那就不支持。
 
 ### Q50: 推理时如何计算acc/rouge等指标？
 参考[推理参数metric](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id14)。
