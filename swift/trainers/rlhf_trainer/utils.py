@@ -640,7 +640,11 @@ def get_gather_if_zero3_context(trainer, is_zero3: Optional[bool] = None):
 
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
-    from vllm.lora.models import LoRAModel
+    try:
+        from vllm.lora.models import LoRAModel
+    except ImportError:
+        # vllm >= 0.13 https://github.com/vllm-project/vllm/pull/30253
+        from vllm.lora.lora_model import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
 
     try:
