@@ -180,6 +180,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # auto_tp
     deepspeed_autotp_size: Optional[int] = None
 
+    # fsdp
+    fsdp: Optional[str] = None
+
     # early_step
     early_stop_interval: Optional[int] = None
 
@@ -220,6 +223,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self._handle_pai_compat()
 
         self._init_deepspeed()
+        self._init_fsdp()
         self._init_device()
 
         if getattr(self, 'accelerator_config', None) is None:
@@ -263,6 +267,82 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
                 self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             logger.info(f'Using deepspeed: {self.deepspeed}')
+
+    def _init_fsdp(self):
+        if not self.fsdp:
+            return
+
+        if is_mp() and not self.use_ray:
+            raise ValueError('FSDP2 is not compatible with `device_map`. '
+                             f'n_gpu: {get_device_count()}, '
+                             f'local_world_size: {self.local_world_size}.')
+        if self.deepspeed:
+            raise ValueError('FSDP2 is not compatible with DeepSpeed.')
+
+        fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fsdp_config'))
+
+        # FSDP2 preset configurations
+        fsdp_mapping = {
+            'fsdp2': 'fsdp2.json',
+        }
+
+        fsdp_config_path = self.fsdp
+        for fsdp_name, fsdp_config in fsdp_mapping.items():
+            if self.fsdp == fsdp_name:
+                fsdp_config_path = os.path.join(fsdp_config_folder, fsdp_config)
+                break
+
+        fsdp_config_dict = json_parse_to_dict(fsdp_config_path)
+
+        # Extract fsdp string options (e.g., "full_shard auto_wrap offload")
+        fsdp_options = fsdp_config_dict.get('fsdp', 'full_shard auto_wrap')
+        self.fsdp = fsdp_options
+
+        # Extract fsdp_config dict
+        self.fsdp_config = fsdp_config_dict.get('fsdp_config', {})
+
+        # Set FSDP_VERSION environment variable for accelerate to recognize FSDP2
+        fsdp_version = self.fsdp_config.get('fsdp_version', 2)
+        os.environ['FSDP_VERSION'] = str(fsdp_version)
+
+        # Set environment variable to optimize NCCL memory usage
+        if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
+            os.environ['TORCH_NCCL_AVOID_RECORD_STREAMS'] = '1'
+
+        # Check FSDP2 compatibility with other training arguments
+        self._check_fsdp2_compatibility()
+
+        logger.info(f'Using FSDP2: fsdp={self.fsdp}, fsdp_config={self.fsdp_config}')
+
+    def _check_fsdp2_compatibility(self):
+        """Check for incompatible argument combinations with FSDP2.
+
+        FSDP2 has several known limitations:
+        1. save_only_model=True + SHARDED_STATE_DICT: Can't save only model weights with sharded state dict
+        2. gradient_checkpointing=True: Should use activation_checkpointing in fsdp_config instead
+        """
+        state_dict_type = self.fsdp_config.get('state_dict_type', 'SHARDED_STATE_DICT')
+
+        # Check 1: save_only_model + SHARDED_STATE_DICT
+        if getattr(self, 'save_only_model', False) and 'SHARDED' in state_dict_type.upper():
+            raise ValueError(
+                'FSDP2 with SHARDED_STATE_DICT is not compatible with save_only_model=True. '
+                'Either set save_only_model=False, or change state_dict_type to FULL_STATE_DICT in fsdp_config. '
+                'Note: FULL_STATE_DICT requires more memory and is slower.')
+
+        # Check 2: gradient_checkpointing should be disabled, use activation_checkpointing instead
+        if getattr(self, 'gradient_checkpointing', False):
+            activation_checkpointing = self.fsdp_config.get('activation_checkpointing', False)
+            if activation_checkpointing:
+                logger.warning('Both gradient_checkpointing and fsdp_config.activation_checkpointing are enabled. '
+                               'For FSDP2, it is recommended to use only activation_checkpointing in fsdp_config. '
+                               'Disabling gradient_checkpointing automatically.')
+                self.gradient_checkpointing = False
+            else:
+                logger.warning(
+                    'gradient_checkpointing is enabled with FSDP2. '
+                    'For better performance, consider using activation_checkpointing in fsdp_config instead. '
+                    'Add "activation_checkpointing": true to your fsdp_config.')
 
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():

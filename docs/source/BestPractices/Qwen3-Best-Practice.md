@@ -90,7 +90,7 @@ pip install flash-attn --no-build-isolation  # packing需要
 
 如果您想使用不含思维链的数据进行训练，同时保留模型的推理能力，可以通过以下两种方法尽量减少微调的影响：
 
-**选项 1**：【推荐】在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `<think>\n\n</think>\n\n` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
+**选项 1**：【推荐】在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `'<think>\n\n</think>\n\n'` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
 
 ```json
 {"messages": [

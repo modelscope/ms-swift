@@ -16,7 +16,6 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, findall
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -404,23 +403,16 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
+register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True, thinking_prefix='<think>\n'))
 
-class DeepseekV3_1Template(ThinkingTemplate):
-    no_think_prefix = '</think>'
-    history_think_prefix = '</think>'
-    add_no_think_prefix_after_tool = False
-
-
-register_template(
-    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
-
-# enable thinking: response_prefix='<think>'
 register_template(
     DeepseekV2_5TemplateMeta(
         LLMTemplateType.deepseek_v3_1,
-        template_cls=DeepseekV3_1Template,
-        response_prefix='</think>',
-        agent_template='deepseek_v3_1'))
+        agent_template='deepseek_v3_1',
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):

@@ -10,7 +10,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingWithAnswerTemplate
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
     TemplateMeta(
@@ -334,6 +334,16 @@ register_template(
         suffix=['<|eos|>'],
     ))
 
+
+class HunyuanTemplate(Template):
+
+    def _remove_thinking_content(self, content: str) -> str:
+        content = content.split('<answer>')[-1].rstrip()
+        if content.endswith('</answer>'):
+            content = content[:-len('</answer>')]
+        return self.template_meta.history_thinking_prefix + content.strip()
+
+
 register_template(
     TemplateMeta(
         LLMTemplateType.hunyuan,
@@ -342,7 +352,9 @@ register_template(
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
         chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
         suffix=['<｜hy_place▁holder▁no▁2｜>'],
-        template_cls=ThinkingWithAnswerTemplate,
+        template_cls=HunyuanTemplate,
+        is_thinking=True,
+        non_thinking_prefix='<think>\n\n</think>\n',
         agent_template='hunyuan_hermes'))
 
 
@@ -409,5 +421,6 @@ register_template(
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
         chat_sep=[],
         suffix=['<|endoftext|>'],
-        response_prefix='<think>\n',
+        is_thinking=True,
+        thinking_prefix='<think>\n',
     ))
