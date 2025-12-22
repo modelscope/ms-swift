@@ -585,7 +585,7 @@ class Template(ProcessorMixin):
         for key in keys:
             if key == 'position_ids' and is_3d_position_ids:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
-            if key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
+            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]

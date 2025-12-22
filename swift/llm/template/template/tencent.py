@@ -23,6 +23,7 @@ class HunYuanVLTemplateMeta(TemplateMeta):
 class HunYuanVLTemplate(Template):
     image_token_id = 120120
     placeholder_tokens = ['<｜hy_place▁holder▁no▁102｜>']
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
