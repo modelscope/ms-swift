@@ -404,10 +404,13 @@ class MegatronPretrainingRandomSampler:
         self.micro_batch_size = micro_batch_size
         self.data_parallel_rank = data_parallel_rank
         self.data_parallel_size = data_parallel_size
-        if group_by_length and data_sharding:
-            data_sharding = False
-            logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
-                           'Setting `data_sharding=False` to enable length grouping.')
+        if group_by_length:
+            if data_sharding:
+                data_sharding = False
+                logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
+                               'Setting `data_sharding=False` to enable length grouping.')
+            if not shuffle:
+                raise ValueError('shuffle must be True when group_by_length is True')
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
