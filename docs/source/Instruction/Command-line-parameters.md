@@ -253,7 +253,7 @@ gradient_checkpointing: true
 - train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效（即对流式数据集失效）。IterableDataset采用顺序的方式读取。
 - optim: 优化器，默认值为 `"adamw_torch"` (对于 torch>=2.8 为 `"adamw_torch_fused"`)。完整的优化器列表请参见 [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py) 中的 `OptimizerNames`。
 - optim_args: 提供给优化器的可选参数，默认为None。
-- group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有部分随机），以最小化填充并提高效率。默认为False。
+- group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 - 🔥neftune_noise_alpha: neftune添加的噪声系数。默认为0，通常可以设置为5、10、15。
 - 🔥use_liger_kernel: 是否启用[Liger](https://github.com/linkedin/Liger-Kernel)内核加速训练并减少显存消耗。默认为False。示例shell参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger)。
   - 注意：liger_kernel不支持device_map，请使用DDP/DeepSpeed进行多卡训练。liger_kernel目前只支持`task_type='causal_lm'`。
