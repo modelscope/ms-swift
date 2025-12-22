@@ -9,6 +9,7 @@ ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数�
 | 预训练 | ✅ | ✅| ✅ | ✅ | ✅ |
 | [指令监督微调](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [GKD](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
