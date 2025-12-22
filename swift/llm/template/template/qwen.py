@@ -410,13 +410,11 @@ class Qwen2VLTemplate(Template):
         return res
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        position_ids = []
         for r in row:
-            r = r.copy()
-            r['input_ids'] = torch.tensor(r['input_ids'])[None]
-            position_ids.append(self._get_position_ids(r))
+            r_copy = r.copy()
+            r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
+            r['position_ids'] = self._get_position_ids(r_copy)
         packed = super().packing_row(row)
-        packed['position_ids'] = torch.concat(position_ids, dim=-1)
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
