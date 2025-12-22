@@ -160,6 +160,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
 
     is_multimodal = template.model_meta.is_multimodal
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
+    if mg_language_model.config.fp8 is not None:
+        raise ValueError('fp8 models currently do not support testing convert_precision. '
+                         'Please set `--test_convert_precision false`.')
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
         hf_model.eval()
