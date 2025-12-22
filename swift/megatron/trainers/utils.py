@@ -385,15 +385,18 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
 # Code borrowed from megatron-lm
 class MegatronPretrainingRandomSampler:
 
-    def __init__(self,
-                 dataset,
-                 total_samples,
-                 consumed_samples,
-                 micro_batch_size,
-                 data_parallel_rank,
-                 data_parallel_size,
-                 data_sharding,
-                 shuffle: bool = True):
+    def __init__(
+        self,
+        dataset,
+        total_samples,
+        consumed_samples,
+        micro_batch_size,
+        data_parallel_rank,
+        data_parallel_size,
+        data_sharding,
+        shuffle: bool = True,
+        group_by_length: bool = False,
+    ):
         # Keep a copy of input params for later use.
         self.dataset = dataset
         self.total_samples = total_samples
@@ -401,8 +404,14 @@ class MegatronPretrainingRandomSampler:
         self.micro_batch_size = micro_batch_size
         self.data_parallel_rank = data_parallel_rank
         self.data_parallel_size = data_parallel_size
+        if group_by_length and data_sharding:
+            data_sharding = False
+            logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
+                           'Setting `data_sharding=False` to enable length grouping.')
         self.data_sharding = data_sharding
         self.shuffle = shuffle
+        self.group_by_length = group_by_length
+        self.lengths = self.dataset['length'] if group_by_length else None
         self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size
         self.last_batch_size = self.total_samples % self.micro_batch_times_data_parallel_size
 
@@ -442,7 +451,12 @@ class MegatronPretrainingRandomSampler:
                 full_bucket_offset = current_epoch_samples
                 g = torch.Generator()
                 g.manual_seed(self.epoch)
-                idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
+                if self.group_by_length:
+                    from transformers.trainer_pt_utils import get_length_grouped_indices
+                    idx_range_total = get_length_grouped_indices(
+                        self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
+                else:
+                    idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
                 idx_range_active = idx_range_total[full_bucket_offset:]
                 idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
         else:

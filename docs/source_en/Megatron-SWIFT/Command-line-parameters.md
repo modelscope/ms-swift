@@ -340,6 +340,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
 - dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.12".
 - dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.12".
+- group_by_length: Whether to group samples of roughly the same length together (with partial randomness) in the training dataset to minimize padding and improve efficiency. Defaults to False.
 
 
 ## RLHF Parameters

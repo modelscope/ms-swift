@@ -31,7 +31,9 @@ class BatchSamplerShard:
         self.group_by_length = group_by_length
         if group_by_length and not shuffle:
             raise ValueError('shuffle must be True when group_by_length is True')
-        self.lengths = None if lengths is None else [max(length) if isinstance(length, list) else length for length in lengths]
+        self.lengths = None if lengths is None else [
+            max(length) if isinstance(length, list) else length for length in lengths
+        ]
 
     @property
     def rank(self):
@@ -47,8 +49,6 @@ class BatchSamplerShard:
             generator.manual_seed(self.curr_seed)
             if self.group_by_length:
                 from transformers.trainer_pt_utils import get_length_grouped_indices
-                # "Defaults to splitting the entire dataset into approximately 4 mega-batches,
-                # but not exceeding 50 times the batch_size
                 total_idx = get_length_grouped_indices(
                     self.lengths, self.batch_size * self.world_size, generator=generator)
             else:

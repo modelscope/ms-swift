@@ -321,6 +321,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - dataloader_pin_memory: 默认为True。使用该参数需"ms-swift>=3.12"。
 - dataloader_persistent_workers: 默认为True。使用该参数需"ms-swift>=3.12"。
 - dataloader_prefetch_factor: 默认为10。使用该参数需"ms-swift>=3.12"。
+- group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有部分随机），以最小化填充并提高效率。默认为False。
 
 
 ## RLHF参数
