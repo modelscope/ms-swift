@@ -1873,8 +1873,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         log_ratio = per_token_logps - rollout_per_token_logps
         log_ratio = log_ratio * completion_mask
 
-        # 2a. kl: Direct estimator for KL(π_training || π_rollout)
-        kl = masked_mean(log_ratio, completion_mask)
+        # 2a. kl: Direct estimator for KL(π_rollout || π_training)
+        kl = masked_mean(-log_ratio, completion_mask)
         metrics['kl'] = gather(kl.unsqueeze(0), group=dp_group).nanmean()
 
         # 2b. k3_kl: K3 estimator for KL

@@ -124,18 +124,18 @@ To monitor the degree of training-inference mismatch during training, we add the
 
 ### 1. KL Divergence
 
-KL divergence measures how much the training policy deviates from the rollout policy. Both metrics estimate $\text{KL}(\pi_\theta \| \pi_{\text{vLLM}})$, which is directly related to the importance sampling ratio $\rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}$.
+KL divergence measures the deviation between the rollout policy and the training policy. Both metrics estimate $\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta)$
 
 **Direct estimator `kl`**:
 
 $$
-\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \log \frac{\pi_\theta}{\pi_{\text{vLLM}}} \right]
+\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \log \frac{\pi_{\text{vLLM}}}{\pi_\theta} \right]
 $$
 
 **K3 estimator `k3_kl`**:
 
 $$
-\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) \approx \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
+\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) \approx \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
 $$
 
 The K3 estimator is more numerically stable when KL values are small and is always non-negative.
