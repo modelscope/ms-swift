@@ -40,15 +40,6 @@ You do not need to merge. Use `--resume_from_checkpoint output/xxx/vx-xxx/checkp
 ### Q12: I would like to control the location where the original model weights downloaded from the internet are stored. How can I place the original model in a specific folder?
 You can set the environment variable `MODELSCOPE_CACHE=your_path` to store the original model in the specified path. For SDK downloads, use `cache_dir="local_path"`. You can also use the `modelscope download` command-line tool or `git` to download it. For details, refer to the [Download Model](https://modelscope.cn/docs/Models/Download-Model). During training, set `--model` to the local path. For offline training, configure `--check_model false`. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
-### Q13: Has anyone encountered this issue with ms-swift?
-```text
-[rank6]: pydantic_core._pydantic_core.ValidationError: 1 validation error for DeepSpeedZeroConfig
-[rank6]: stage3_prefetch_bucket_size
-[rank6]: Input should be a valid integer, got a number with a fractional part [type=int_from_float,input_value=11560550.4，in put_type=float]
-[rank6]: For further information visit https://errors.pydantic.dev/2.8/v/int_fro_float
-```
-Downgrade `deepspeed` to `0.14.*`.
-
 ### Q14: Is there a complete tutorial and command line for fine-tuning Qwen-2-VL?
 Reference the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal) for multimodal model training.
 
@@ -82,8 +73,8 @@ Command-line parameter `dataset_shuffle`. For more details, see the [command-lin
 ### Q24: How to reduce GPU memory usage when training VLM models?
 Set `--freeze_vit true` and the parameter `--max_pixels` to limit the maximum pixels.
 
-### Q25: For models that do not have a suitable model_type, can I customize special_tokens and chat_template during SFT?
-Yes, you can. Refer to the PR for model integration and the custom model dataset documentation.
+### Q25: For a model that doesn't have a matching model_type, can I customize the special_tokens and chat_template during SFT?
+Yes, you can. Please refer to [Best Practices for MLLM Registration](https://swift.readthedocs.io/en/latest/BestPractices/MLLM-Registration.html).
 
 ### Q26: Can I use DPO to train Qwen2-VL in a Python script?
 Yes, import `rlhf_main` and `RLHFArguments` from `swift.llm`.
@@ -516,6 +507,99 @@ They are incompatible. Use modules_to_save for this purpose.
 ### Q147: During multi-node, multi-GPU training, is it normal that only the main node produces logs?
 Yes, that is normal.
 
+### Q148: Can Swift support setting a minimum learning rate? I feel like it decreases too much in the end.
+Yes, it's possible. Use `--lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'`.
+
+### Q149: I've set split_dataset_ratio, but there's no validation process for the validation set even by the end of training. Is there a configuration I missed?
+Streaming mode does not split the dataset for validation. You need to set a val_dataset.
+
+### Q150: Does GRPO support channel_loss?
+No, it doesn't.
+
+### Q151: Is there a way to pass through a task_id in GRPO? I want to distinguish between different tasks in the training set.
+See [Multi-task Training](https://swift.readthedocs.io/en/latest/Instruction/GRPO/DeveloperGuide/multi_task.html).
+
+### Q152: Is it currently supported to configure GRPO and SFT using a YAML file?
+Yes, both are supported. The configuration is directly processed into command-line arguments in main.py.
+
+### Q153: Does Swift support multi-node distributed training?
+Refer to the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node) here.
+
+### Q154: When fine-tuning a VLM with several tasks together, the video sampling rules are different for each task. Does MS-Swift support this? And where can I configure it?
+Check the interleave_prob parameter in the [Command-line Parameters Documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
+
+### Q155: Excuse me, does GKD currently support using different tokenizers for the teacher and student models?
+No, it doesn't.
+
+### Q156: Excuse me, are use_liger_kernel and log_entropy currently not supported to be used together?
+They are not supported together.
+
+### Q157: When training GRPO, why isn't there an entropy curve during monitoring?
+Set `--log_entropy true`. Calculating entropy incurs some extra overhead, so it's not logged by default.
+
+### Q158: In Swift, where is the location in the code that reads an image and converts it into a tensor?
+In the _encode method of the Template class.
+
+### Q159: I have a question. My original dataset has 'question' and 'answer' columns. After mapping them via the command line with --columns {"question": "query", "answer": "response"}, the reward function reports a 'column not found' error whether I use 'answer' or 'response'. How can I pass the dataset columns through to the reward function?
+These are reserved column names. Please use different column names.
+
+### Q160: I have a question about fine-tuning the qwen3-30b-a3b MoE model with LoRA in MS-Swift. The aux_loss barely changes, even when I set aux_loss_coef to 1.
+Add all-router to target_modules as well.
+
+### Q161: With the script below, is it possible to save checkpoints per epoch?
+```shell
+megatron sft \
+    --load "$MODEL_PATH" \
+    --dataset "$DATA_PATH"  \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 16 \
+    --target_modules all-linear \
+    --sequence_parallel true \
+    --micro_batch_size 4 \
+    --global_batch_size 128 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --attention_backend flash \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-4 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-5 \
+    --max_epochs 2 \
+    --save "$OUTPUT_PATH" \
+    --split_dataset_ratio 0.02 \
+    --save_interval 25 \
+    --max_length 8192 \
+    --finetune false \
+    --num_workers 4 \
+    --no_load_rng true \
+    --no_load_optim true \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+Saving checkpoints per epoch is not yet supported.
+
+### Q162: I encountered this error. How can I fix it? Installing Apex didn't help.
+```text
+RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
+```
+Set `--no_gradient_accumulation_fusion true`.
+
+### Q163: For MoE LoRA training, if target_modules is set to all-linear, does this include the router modules?
+It depends on whether the gate is implemented as nn.Linear. If it's an nn.Parameter, it won't be trained. For details, see the command-line parameter [target_parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#tuner-arguments).
+
+### Q164: For GRPO training, does the colocate mode not support use_async_engine?
+No, it doesn't.
+
+### Q165: Can a model trained with QLoRA be merged?
+Refer to the [QLoRA example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora).
+
 ## Inference
 
 ### Q1: Is there documentation for Swift inference?
@@ -652,11 +736,8 @@ Try uninstalling autoawq.
 ### Q35: When using swift sample, it seems that batch processing is not supported? It appears to sample examples one by one in a loop, which is somewhat slow.
 There is a [script](https://github.com/modelscope/ms-swift/blob/main/examples/train/rft/rft.py) that can use multiprocessing to split and sample the dataset.
 
-### Q36: Does swift support inference of embedding models? The following error occurred:
-```text
-[rank0]:[W511 17:18:01.815062493ProcessGroupNCCL.cpp:1250]Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present, but this warning has only been added since PyTorch 2.4 (function operator( ))
-```
-For embedding model inference, please use the official model code, as swift does not yet support it.
+### Q36: Does Swift support inference for embedding models?
+Please refer to the [example](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py).
 
 ### Q37: Does the swift framework support model or tensor parallelism for inference? There is no OOM during training, but OOM occurs during inference.
 ```shell
@@ -717,6 +798,18 @@ No, but you can refer to the `_get_last_hidden_state` method in the GRPO trainer
 raise ValueError(f"Unknown initialization {init_lora_weights=}") ValueError: Unknown initialization init_lora_weights='lora-ga'
 ```
 Use the model located in the converted folder inside your checkpoint directory.
+
+### Q49: Does the swift infer command support distributed inference across multiple nodes?
+It is supported if the model can be fully loaded onto a single node; in this case, you can use Kubernetes (k8s) to manage multiple instances. However, if the model itself is too large to fit on one node, then it is not supported.
+
+### Q50: How can I calculate metrics like acc/rouge during inference?
+Please refer to the [inference parameter metric](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#inference-arguments).
+
+### Q51: How do I set the system_prompt to be empty? I removed the --system parameter, but it still adds a default system prompt.
+Set it with `--system ''`.
+
+### Q52: My inference data has an "extra" field, but this field is not saved in the inference results. How can I configure it to save these extra fields?
+Set `--remove_unused_columns false`.
 
 ## Deployment
 
@@ -791,6 +884,9 @@ System prompt priority: The one in the dataset > The one from the command line >
 
 ### Q22: After deploying a model using the Swift PT engine, inference is not parallelized, and data is not distributed to other GPUs. Everything is running on the first GPU.
 Try using swift infer. The deploy command does not support DDP.
+
+### Q23: For a model deployed with swift deploy, how can I disable the "thinking" status on the client side? Adding it to the extra_body of the request doesn't work.
+Currently, the "thinking" status can only be disabled when launching swift deploy.
 
 ## Evaluation
 
@@ -983,4 +1079,10 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 swift eval does not support being launched in DDP mode.
 
 ### Q35: When using evalscope for evaluation, how can I control the input to have a fixed token length?
-Controlling the length is only supported for the random dataset. Please refer to the documentation.
+Controlling the length is only supported for the random dataset. Please refer to the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/examples.html#using-the-random-dataset).
+
+### Q36: Why can't evalscope app find the report, even though there are corresponding records in the outputs directory?
+It might be an inference performance stress test. For visualizing evalscope perf results, please refer to the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/examples.html#visualizing-test-results).
+
+### Q37: Where can I see what extra fields, besides the question itself, are included in the query sent during a Swift evaluation?
+The simplest way is to check the input field in the output reviews file. It contains the content sent to the model, converted to Markdown format. Note that this is not available if you are using the opencompass backend; you need to use the native backend.
