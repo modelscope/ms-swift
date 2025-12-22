@@ -88,7 +88,9 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
     assert found, 'Cannot find the proper lm_head name'
 
     def _output_embedding_hook(module, args, kwargs, output):
-        attention_mask = kwargs['attention_mask']
+        attention_mask = kwargs.get('attention_mask', None)
+        if attention_mask is None:
+            attention_mask = output.get('attention_mask', None)
         hidden_states = output.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
@@ -537,6 +539,32 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     outputs[hidden_state_key] = torch.stack(unpacked_logits, dim=0)
     inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
     outputs['attention_mask'] = inputs['attention_mask']
+    return outputs
+
+
+def gather_sequence_parallel_outputs(
+    outputs: Dict[str, Any],
+    tensor_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+        Gather split tensors produced by sequence parallel training so that downstream
+        components (loss, metrics, etc.) can operate on full-length sequences.
+        """
+    from swift.trainers.sequence_parallel import sequence_parallel
+    from swift.trainers.sequence_parallel.utils import GatherTensor
+
+    tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
+
+    position_ids = None
+
+    if sequence_parallel.rp_world_size and sequence_parallel.rp_world_size > 1:
+        position_ids = sequence_parallel.real_position_ids
+        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+
+    for key in tensor_keys:
+        if key in outputs:
+            outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
+
     return outputs
 
 
