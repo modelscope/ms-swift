@@ -648,6 +648,8 @@ The table below introduces the models integrated with ms-swift:
 |[PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking](https://modelscope.cn/models/PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking)|ernie_thinking|ernie_thinking|-|&#x2714;|-|[baidu/ERNIE-4.5-21B-A3B-Thinking](https://huggingface.co/baidu/ERNIE-4.5-21B-A3B-Thinking)|
 |[meituan-longcat/LongCat-Flash-Chat](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat)|
 |[meituan-longcat/LongCat-Flash-Chat-FP8](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat-FP8)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat-FP8](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat-FP8)|
+|[gongjy/MiniMind2](https://modelscope.cn/models/gongjy/MiniMind2)|minimind|minimind|transformers>=4.57.1|&#x2718;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
+|-|minimind|minimind|transformers>=4.57.1|pretrain, quality|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy|transformers>=4.48|&#x2718;|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
@@ -673,7 +675,7 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-Reranker-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)|
 |[Qwen/Qwen3-Reranker-4B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-4B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B)|
 |[Qwen/Qwen3-Reranker-8B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-8B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B)|
-|[gongjy/MiniMind2](https://www.modelscope.cn/models/gongjy/MiniMind2)|minimind|minimind|transformers>=4.57.1|&#x2718;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
+
 
 ### Multimodal large models
 | Model ID | Model Type | Default Template | Requires | Support Megatron | Tags | HF Model ID |

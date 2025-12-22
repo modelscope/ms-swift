@@ -673,7 +673,7 @@ def test_ling2():
 
 
 def test_minimind():
-    pt_engine = PtEngine('gongjy/MiniMind2', model_type="minimind")
+    pt_engine = PtEngine('gongjy/MiniMind2', model_type='minimind')
     swift_response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     jinja_response = _infer_model(pt_engine)

@@ -5,16 +5,15 @@ from transformers import AutoConfig
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import (Model, ModelGroup, ModelMeta,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
 
 
 def get_model_tokenizer_minimind(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
+                                 model_info: ModelInfo,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     model_config.pretraining_tp = 1
     kwargs['model_config'] = model_config

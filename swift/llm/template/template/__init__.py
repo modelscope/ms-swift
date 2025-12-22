@@ -1,3 +1,3 @@
 from . import (baai, baidu, bert, deepseek, dots, gemma, glm, idefics3, internlm, internvl, kwai, llama, llava, llm,
-               megrez, microsoft, midashenglm, minicpm, minimax, mistral, molmo, moonshot, mplug, openbuddy, pixtral,
-               qwen, seed, stepfun, tencent, valley, yi, minimind)
+               megrez, microsoft, midashenglm, minicpm, minimax, minimind, mistral, molmo, moonshot, mplug, openbuddy,
+               pixtral, qwen, seed, stepfun, tencent, valley, yi)
