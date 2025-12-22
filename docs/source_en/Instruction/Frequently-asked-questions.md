@@ -73,7 +73,7 @@ Command-line parameter `dataset_shuffle`. For more details, see the [command-lin
 ### Q24: How to reduce GPU memory usage when training VLM models?
 Set `--freeze_vit true` and the parameter `--max_pixels` to limit the maximum pixels.
 
-Q25: For a model that doesn't have a matching model_type, can I customize the special_tokens and chat_template during SFT?
+### Q25: For a model that doesn't have a matching model_type, can I customize the special_tokens and chat_template during SFT?
 Yes, you can. Please refer to [Best Practices for MLLM Registration](https://swift.readthedocs.io/en/latest/BestPractices/MLLM-Registration.html).
 
 ### Q26: Can I use DPO to train Qwen2-VL in a Python script?
@@ -520,7 +520,7 @@ No, it doesn't.
 See [Multi-task Training](https://swift.readthedocs.io/en/latest/Instruction/GRPO/DeveloperGuide/multi_task.html).
 
 ### Q152: Is it currently supported to configure GRPO and SFT using a YAML file?
-Yes, it should be supported for both. The configuration is directly processed into command-line arguments in main.py.
+Yes, both are supported. The configuration is directly processed into command-line arguments in main.py.
 
 ### Q153: Does Swift support multi-node distributed training?
 Refer to the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node) here.
@@ -561,7 +561,6 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --finetune true \
     --attention_backend flash \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
@@ -800,8 +799,8 @@ raise ValueError(f"Unknown initialization {init_lora_weights=}") ValueError: Unk
 ```
 Use the model located in the converted folder inside your checkpoint directory.
 
-### Q49: Does the swift infer command support multi-node inference?
-If the model can fit on a single node, you can just wrap it with Kubernetes (k8s).
+### Q49: Does the swift infer command support distributed inference across multiple nodes?
+It is supported if the model can be fully loaded onto a single node; in this case, you can use Kubernetes (k8s) to manage multiple instances. However, if the model itself is too large to fit on one node, then it is not supported.
 
 ### Q50: How can I calculate metrics like acc/rouge during inference?
 Please refer to the [inference parameter metric](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#inference-arguments).
@@ -1080,7 +1079,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 swift eval does not support being launched in DDP mode.
 
 ### Q35: When using evalscope for evaluation, how can I control the input to have a fixed token length?
-Controlling the length is only supported for the random dataset. Please refer to the documentation.
+Controlling the length is only supported for the random dataset. Please refer to the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/examples.html#using-the-random-dataset).
 
 ### Q36: Why can't evalscope app find the report, even though there are corresponding records in the outputs directory?
 It might be an inference performance stress test. For visualizing evalscope perf results, please refer to the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/examples.html#visualizing-test-results).
