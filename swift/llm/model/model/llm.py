@@ -397,3 +397,17 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mimo_v2,
+        [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-V2-Flash', 'XiaomiMiMo/MiMo-V2-Flash'),
+                Model('XiaomiMiMo/MiMo-V2-Flash-Base', 'XiaomiMiMo/MiMo-V2-Flash-Base'),
+            ])
+        ],
+        TemplateType.mimo_v2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['MiMoV2FlashForCausalLM'],
+    ))
