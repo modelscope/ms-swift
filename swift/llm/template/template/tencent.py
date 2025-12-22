@@ -83,6 +83,13 @@ class HunYuanVLTemplate(Template):
             attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
             encoded['attention_mask'] = attention_mask
         return encoded
+    
+    def _pad_3d_position_ids(self,
+                             position_ids: List[torch.Tensor],
+                             padding_value: float = 0.,
+                             batch_dim: int = 1) -> torch.Tensor:
+        batch_dim = 0
+        return super()._pad_3d_position_ids(position_ids, padding_value, batch_dim)
 
 
 register_template(HunYuanVLTemplateMeta(MLLMTemplateType.hunyuan_ocr, template_cls=HunYuanVLTemplate))
