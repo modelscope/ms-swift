@@ -1,6 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code partially sourced from Hugging Face TRL
 
+# fmt: off
+# apply patch before importing trl, which may internally reference GuidedDecodingParams
+try:
+    import vllm
+    try:
+        from vllm.sampling_params import GuidedDecodingParams
+    except ImportError:
+        import vllm.sampling_params
+        # removed in https://github.com/vllm-project/vllm/pull/22772
+        vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
+except ImportError:
+    pass
+# fmt: on
+
 import asyncio
 import inspect
 import multiprocessing
