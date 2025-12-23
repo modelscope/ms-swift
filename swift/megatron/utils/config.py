@@ -189,6 +189,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['mrope_section'] = res['rope_scaling']['mrope_section']
         mrope_interleaved = res['rope_scaling'].get('mrope_interleaved', False) or res['rope_scaling'].get(
             'interleaved', False)
+        if architectures == 'Glm4vForConditionalGeneration':
+            mrope_interleaved = True
         res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
