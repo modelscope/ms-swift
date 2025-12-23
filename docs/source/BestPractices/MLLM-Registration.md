@@ -37,6 +37,7 @@ register_model_arch(
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # generator的部分将永远不进行训练或处于冻结状态。
+        # 如果你希望`thinker.audio_tower`, `thinker.audio_tower.proj`永远不进行训练，你可以放置到generator中，并将其从vision_tower, aligner中移除。
         generator=['talker', 'token2wav'],
     ))
 

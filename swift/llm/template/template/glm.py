@@ -264,6 +264,17 @@ class GLM4_5Template(GLM4Template):
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
+register_template(
+    GLM4_5TemplateMeta(
+        LLMTemplateType.glm4_7,
+        template_cls=GLM4_5Template,
+        prompt=['<|user|>{{QUERY}}<|assistant|>'],
+        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>',
+        agent_template='glm4_7',
+    ))
+
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
 

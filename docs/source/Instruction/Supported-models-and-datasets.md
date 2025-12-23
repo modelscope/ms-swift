@@ -373,6 +373,8 @@
 |[ZhipuAI/GLM-4.5-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.5-FP8](https://huggingface.co/zai-org/GLM-4.5-FP8)|
 |[ZhipuAI/GLM-4.6](https://modelscope.cn/models/ZhipuAI/GLM-4.6)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.6](https://huggingface.co/zai-org/GLM-4.6)|
 |[ZhipuAI/GLM-4.6-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.6-FP8](https://huggingface.co/zai-org/GLM-4.6-FP8)|
+|[ZhipuAI/GLM-4.7](https://modelscope.cn/models/ZhipuAI/GLM-4.7)|glm4_7|glm4_7|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.7](https://huggingface.co/zai-org/GLM-4.7)|
+|[ZhipuAI/GLM-4.7-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.7-FP8)|glm4_7|glm4_7|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.7-FP8](https://huggingface.co/zai-org/GLM-4.7-FP8)|
 |[ZhipuAI/GLM-Z1-Rumination-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-Rumination-32B-0414)|glm4_z1_rumination|glm4_z1_rumination|transformers>4.51|&#x2718;|-|[zai-org/GLM-Z1-Rumination-32B-0414](https://huggingface.co/zai-org/GLM-Z1-Rumination-32B-0414)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-1.5b-chat](https://huggingface.co/zai-org/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
@@ -648,7 +650,7 @@
 |[meituan-longcat/LongCat-Flash-Chat](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat)|
 |[meituan-longcat/LongCat-Flash-Chat-FP8](https://modelscope.cn/models/meituan-longcat/LongCat-Flash-Chat-FP8)|longchat|longchat|transformers>=4.54,<4.56|&#x2718;|-|[meituan-longcat/LongCat-Flash-Chat-FP8](https://huggingface.co/meituan-longcat/LongCat-Flash-Chat-FP8)|
 |[gongjy/MiniMind2](https://modelscope.cn/models/gongjy/MiniMind2)|minimind|minimind|transformers>=4.57.1|&#x2718;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
-|-|minimind|minimind|transformers>=4.57.1|pretrain, quality|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
+|-|minimind|minimind|transformers>=4.57.1|&#x2718;|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy|transformers>=4.48|&#x2718;|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
