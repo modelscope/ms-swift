@@ -161,7 +161,7 @@ if __name__ == '__main__':
     # test_internlm3()
     # test_mimo()
     # test_moonlight()
-    test_gpt_oss()
+    # test_gpt_oss()
     # test_deepseek_v2()
     # test_deepseek_moe()
     # test_dots()
@@ -172,3 +172,4 @@ if __name__ == '__main__':
     # test_qwen3_next()
     # test_ernie_thinking()
     # test_tongyi_deepresearch()
+    test_glm4()
