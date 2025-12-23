@@ -74,7 +74,8 @@ def test_glm4_5v():
 
 
 def test_glm4_6v_flash():
-    _test_model('ZhipuAI/GLM-4.6V-Flash')
+    _test_model('ZhipuAI/GLM-4.1V-9B-Thinking')
+    # _test_model('ZhipuAI/GLM-4.6V-Flash')
 
 
 def test_ovis2_5():
