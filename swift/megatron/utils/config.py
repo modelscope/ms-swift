@@ -141,7 +141,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             if isinstance(val, list) and val and min(val) == max(val):
                 res[key] = val[0]
         n_shared_experts = res.pop('n_shared_experts')
-    elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
+    elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM', 'Glm4ForCausalLM'}:
         res['rotary_interleaved'] = True
     elif llm_architectures == 'GptOssForCausalLM':
         res['disable_bias_linear'] = False
