@@ -34,20 +34,16 @@ if HAVE_TE:
 
 
 class Qwen3Omni_Vit(HuggingFaceModule):
-    module_mapping = {
-        'thinker': 'thinker',
-    }
+    module_mapping = {'thinker': 'thinker', 'talker': 'talker', 'code2wav': 'code2wav'}
     _vision_tower = ['thinker.audio_tower', 'thinker.visual']
     _aligner = [
         'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger', 'thinker.visual.merger_list'
     ]
+    _generator = ['talker', 'code2wav']
 
     def __init__(self, config):
-        from transformers.models.qwen3_omni_moe import (Qwen3OmniMoeThinkerTextModel,
-                                                        Qwen3OmniMoeTalkerForConditionalGeneration,
-                                                        Qwen3OmniMoeCode2Wav)
-        super().__init__(
-            config, [Qwen3OmniMoeThinkerTextModel, Qwen3OmniMoeTalkerForConditionalGeneration, Qwen3OmniMoeCode2Wav])
+        from transformers.models.qwen3_omni_moe import Qwen3OmniMoeThinkerTextModel
+        super().__init__(config, [Qwen3OmniMoeThinkerTextModel])
 
     def prepare_model(self, hf_model):
         del self.thinker.model

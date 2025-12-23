@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 import pandas as pd
@@ -19,16 +19,16 @@ from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
-from trl.trainer.grpo_trainer import nanstd
 from vllm.distributed import parallel_state as vllm_ps
 
-from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, to_device
+from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, get_packed_seq_params, to_device
 from swift.llm.infer.protocol import RolloutOutput
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import MultiTurnScheduler, multi_turns, orms
 from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache,
-                                               replace_assistant_response_with_ids, set_expandable_segments)
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
+                                               nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
+                                               set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
@@ -60,7 +60,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def train(self, train_dataset, val_dataset, data_collator):
         # Store dataset provider for lazy resample iterator initialization
-        if self.dynamic_sample:
+        # Used by both dynamic_sample and truncation_strategy='raise'(delete)
+        if self.dynamic_sample or self.truncation_strategy == 'raise':
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
         super().train(train_dataset, val_dataset, data_collator)
@@ -74,6 +75,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.device = get_current_device()
         # algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
+        self.num_generations_eval = args.num_generations_eval or self.num_generations
         self.beta = args.beta
         self.temperature = args.temperature
         self.loss_type = args.loss_type
@@ -82,7 +84,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.top_entropy_quantile = args.top_entropy_quantile
         self.importance_sampling_level = args.importance_sampling_level
-        self.enable_offload = False
+
+        # SAPO, https://arxiv.org/abs/2511.20347
+        self.tau_pos = args.tau_pos
+        self.tau_neg = args.tau_neg
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -91,12 +96,20 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         # Dr. GRPO / RLOO / REINFORCE++
         self.scale_rewards = args.scale_rewards
-        self.advantage_estimator = args.advantage_estimator  # TODO
-        self.kl_in_reward = args.kl_in_reward  # TODO
+        self.advantage_estimator = args.advantage_estimator
+        self.kl_in_reward = args.kl_in_reward
 
         # Entropy mask settings, TODO
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
+
+        # Rollout Importance Sampling Correction
+        self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
+        self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
+        self.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
+
+        # Off-Policy Sequence Masking
+        self.off_policy_sequence_mask_delta = args.off_policy_sequence_mask_delta
 
         # batch size (completion-level)
         self.generation_batch_size = args.generation_batch_size
@@ -104,6 +117,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.global_batch_size = args.global_batch_size
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
+
+        self.enable_offload = False
 
         # sampling params
         self.request_config = RequestConfig(
@@ -114,11 +129,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True)
+            return_details=True,
+            logprobs=True)  # Enable logprobs for rollout importance sampling
 
         self._step = 0
         self._last_loaded_step = -1
         self._rollout_group = None  # Will be lazily initialized
+
+        # truncation_strategy support
+        self.truncation_strategy = self.template.truncation_strategy
 
     def _prepare_rollout_engine(self):
         args = self.args
@@ -131,6 +150,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False  # TODO
+        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+
+        self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
+            raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
+                             'please update vLLM to 0.10.2 or later.')
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         assert self.use_vllm
         if not is_vllm_available():
@@ -158,9 +183,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def prepare_vllm(self):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         args = self.args
-        max_num_seqs = self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
+        max_num_seqs = args.vllm_max_num_seqs or self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
         vllm_template = copy(self.template)
         vllm_template.padding_free = False
+        vllm_template.sequence_parallel_size = 1
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
+
+        # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
+        vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
+        load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
         engine = GRPOVllmEngine(
             self.hf_model_dir,
             args.torch_dtype,
@@ -176,10 +207,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             max_model_len=self.args.vllm_max_model_len,
             seed=self.process_index // self.vllm_tensor_parallel_size,
             disable_cascade_attn=self.args.vllm_disable_cascade_attn,
-            load_format='dummy',
+            load_format=load_format,
+            mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
             template=vllm_template,
             distributed_executor_backend='external_launcher',
-        )
+            engine_kwargs=vllm_engine_kwargs,
+            logprobs_mode=logprobs_mode)
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
         self._buffered_inputs = None
@@ -222,8 +255,11 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         For server mode: Process weights in buckets to avoid memory spikes.
         """
         # Export weights returns an iterator
+        target_device = None
+        if self.args.offload_bridge:
+            target_device = 'cpu'
         with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models)
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
 
         if self.vllm_mode == 'colocate':
             # Colocate mode: load_weights supports iterator, pass directly
@@ -472,8 +508,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             ]
             assert len(mini_batch_data) == self.steps_per_generation
             self._buffered_inputs = mini_batch_data
-        self._step += 1
         inputs = self._buffered_inputs[self._step % self.steps_per_generation]
+        self._step += 1
         return RerunDataIterator(iter(inputs))
 
     def _generate_and_score_completions(self, batch):
@@ -481,6 +517,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         args = get_args()
 
         rollout_group = self._get_rollout_group()
+
+        # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+        # This handles: (1) prompt length exceeds max_length, (2) multimodal encoding failures
+        # Do this before get_local_rollout_batch to process prompt-level data
+        if self.truncation_strategy == 'raise':
+            batch = self.resample_encode_failed_inputs(batch)
 
         rollout_batch = self.get_local_rollout_batch(batch)
 
@@ -492,69 +534,133 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         if self.dynamic_sample:
             rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
 
-        advantages = self._compute_advantages(rollout_batch, rewards_per_func)
-
-        def _get_encoded_batch(rollout_batch, advantages):
+        def _get_encoded_batch(rollout_batch):
             template = self.template
             with self._template_context(template):
-                encoded_batch = [template.encode(data, return_length=True) for data in rollout_batch]
+                encoded_list = [template.encode(data, return_length=True) for data in rollout_batch]
                 encoded_batch = to_device(
-                    template.data_collator(encoded_batch, padding_to=get_padding_to(args)), self.device)
-            labels = encoded_batch['labels']
-            assert self.template.padding_free
-            position_ids = encoded_batch.get('text_position_ids')
-            if position_ids is None:
-                position_ids = encoded_batch.get('position_ids')
-            squeezed_position_ids = position_ids.squeeze()
-            assert squeezed_position_ids is not None
-            # Remove trailing padding zeros from position_ids to avoid interference
-            # Find the last non-zero position
-            last_nonzero_idx = (squeezed_position_ids != 0).nonzero(as_tuple=True)[0]
-            if len(last_nonzero_idx) > 0:
-                # Keep only up to the last non-zero position + 1 to include the last valid position
-                squeezed_position_ids = squeezed_position_ids[:last_nonzero_idx[-1] + 1]
+                    template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
+                if 'cu_seq_lens_q' in encoded_batch:
+                    cu_seq_lens_q = encoded_batch['cu_seq_lens_q']
+                else:
+                    cu_seq_lens_q = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
+                seq_lengths = cu_seq_lens_q[1:] - cu_seq_lens_q[:-1]
 
-            # Calculate lengths based on sequence boundaries (position_ids == 0)
-            lengths = torch.diff(
-                torch.cat([(squeezed_position_ids == 0).nonzero(as_tuple=True)[0],
-                           torch.tensor([len(squeezed_position_ids)]).to(squeezed_position_ids.device)]))
-            advantages = torch.repeat_interleave(advantages, lengths)
+            labels = encoded_batch['labels']
+            batch_size = len(rollout_batch)
+            max_seq_len = seq_lengths.max().item()
+            assert self.template.padding_free
+
             truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
                                           dtype=torch.bool,
                                           device=self.device)
-            truncated_mask = torch.repeat_interleave(truncated_mask, lengths).unsqueeze(0)
-            padding_length = labels.shape[1] - truncated_mask.shape[1]
-            if padding_length > 0:
-                padding = torch.zeros((1, padding_length), device=truncated_mask.device, dtype=truncated_mask.dtype)
-                truncated_mask = torch.cat([truncated_mask, padding], dim=1)
-            # Pad advantages to match the original position_ids length
-            original_length = position_ids.shape[1]
-            if advantages.shape[0] < original_length:
-                padding_length = original_length - advantages.shape[0]
-                padding = torch.zeros(padding_length, device=advantages.device, dtype=advantages.dtype)
-                advantages = torch.cat([advantages, padding])
+
+            # completion_mask in rmpad format [1, total_tokens]
+            completion_mask_rmpad = (labels != -100).float()
+            completion_mask, _ = pad_logps_back_to_batch(
+                logps_rmpad=completion_mask_rmpad,
+                logits_to_keep=max_seq_len,
+                batch_size=batch_size,
+                seq_lengths=seq_lengths,
+                pad_value=0.0)
+            completion_mask = completion_mask.bool()
 
             encoded_batch.update({
-                'completion_mask': labels != -100,
-                'truncated_mask': truncated_mask,
-                'advantages': advantages,
-                'num_samples': len(rollout_batch),
+                'completion_mask': completion_mask,  # [batch_size, max_seq_len]
+                'truncated_mask': truncated_mask,  # [batch_size]
+                'num_samples': batch_size,
+                'seq_lengths': seq_lengths,  # [batch_size]
             })
+
+            # Process rollout_logprobs for importance sampling correction
+            rollout_per_token_logps = None
+            rollout_logprobs_list = [data.get('rollout_logprobs') for data in rollout_batch]
+            if all(lp is not None and lp for lp in rollout_logprobs_list):
+                # Validate that logprobs count matches completion tokens count
+                valid_logprobs = True
+                for i, nested_lp in enumerate(rollout_logprobs_list):
+                    total_logprobs = sum(len(turn_lps) for turn_lps in nested_lp)
+                    completion_count = int(completion_mask[i].sum().item())
+                    if total_logprobs != completion_count:
+                        logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
+                                       f'completion tokens count ({completion_count}). '
+                                       f'Skipping rollout importance sampling for this batch.')
+                        valid_logprobs = False
+                        break
+
+                if valid_logprobs:
+                    batch_size = completion_mask.shape[0]
+                    seq_len = completion_mask.shape[1]
+                    rollout_per_token_logps = torch.zeros(batch_size, seq_len, dtype=torch.float32, device=self.device)
+                    for i, nested_lp in enumerate(rollout_logprobs_list):
+                        # Flatten logprobs for this sample
+                        flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+                        if flat_lps:
+                            # Check for None values in flat_lps
+                            if any(lp is None for lp in flat_lps):
+                                logger.warning('Found None values in rollout_logprobs. '
+                                               'Skipping rollout importance sampling for this batch.')
+                                rollout_per_token_logps = None
+                                break
+                            # Get indices where completion_mask is True
+                            completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+                            # Scatter logprobs to completion positions
+                            rollout_per_token_logps[i, completion_indices] = torch.tensor(
+                                flat_lps, dtype=torch.float32, device=self.device)
+
+            encoded_batch['rollout_per_token_logps'] = rollout_per_token_logps
 
             return encoded_batch
 
-        # Step2: ref/old logps
+        # Gather rollout data across rollout group
         total_batch = gather_object(rollout_batch, group=rollout_group)
-        total_advantages = gather(advantages, group=rollout_group)
         mini_batch_data = []
+
+        # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         for idx in range(0, len(total_batch), self.micro_batch_size):
             micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
             micro_batch_data = self._maybe_replace_response_token(micro_batch_data)
-            micro_batch_advantages = total_advantages[idx:idx + self.micro_batch_size]
-            micro_batch_data = _get_encoded_batch(micro_batch_data, micro_batch_advantages)
+            micro_batch_encoded = _get_encoded_batch(micro_batch_data)
             with profiling_context(self, 'compute_ref_old_logps'):
-                micro_batch_data = self._maybe_compute_logps(micro_batch_data)
-            mini_batch_data.append(micro_batch_data)
+                micro_batch_encoded = self._maybe_compute_logps(micro_batch_encoded)
+            mini_batch_data.append(micro_batch_encoded)
+
+        # Step 2: Compute KL from logps if kl_in_reward is enabled
+        kl_values = None
+        if self.kl_in_reward and self.beta != 0.0:
+            kl_values = self._compute_kl_from_batches(mini_batch_data)
+
+        # Step 3: Compute advantages (with KL penalty if kl_in_reward is enabled)
+        advantages = self._compute_advantages(rollout_batch, rewards_per_func, kl_values=kl_values)
+        total_advantages = gather(advantages, group=rollout_group)
+
+        # Step 4: Add advantages to encoded batches
+        for idx, micro_batch_encoded in enumerate(mini_batch_data):
+            start_idx = idx * self.micro_batch_size
+            end_idx = start_idx + micro_batch_encoded['num_samples']
+            micro_batch_advantages = total_advantages[start_idx:end_idx]
+            micro_batch_encoded['advantages'] = micro_batch_advantages
+
+        if self.loss_type in ['cispo', 'dapo']:
+            # Calculate num_items_in_batch
+            # Count tokens from all mini_batch_data (this includes gathered data from rollout_group)
+            total_token_count = sum(batch_data['seq_lengths'].sum().item() if self.template.
+                                    padding_free else batch_data['completion_mask'].sum().item()
+                                    for batch_data in mini_batch_data)
+
+            # All-reduce across all ranks
+            total_token_count_tensor = torch.tensor(total_token_count, dtype=torch.int, device=self.device)
+            torch.distributed.all_reduce(total_token_count_tensor)
+
+            # Divide by rollout_group_size to account for duplicate counting within each rollout_group
+            # Each rollout_group (TP×PP×CP ranks) has the same gathered data, so we need to normalize
+            rollout_group_size = (
+                mpu.get_tensor_model_parallel_world_size() * mpu.get_pipeline_model_parallel_world_size()
+                * mpu.get_context_parallel_world_size())
+            num_items_in_batch = total_token_count_tensor / rollout_group_size
+            # Store num_items_in_batch in each mini_batch_data for CISPO/DAPO loss normalization
+            for batch_data in mini_batch_data:
+                batch_data['num_items_in_batch'] = num_items_in_batch
 
         return mini_batch_data
 
@@ -572,7 +678,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         Returns:
             batch: The input batch with rollout completion results merged in.
         """
-        # TODO: server mode
         # add prompt ids and system prompts
         batch = self._preprocess_inputs(batch)
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
@@ -583,7 +688,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             self.engine.engine.wake_up(**kwargs)
 
         # Step 2: Load model weights
-        if self._step != self._last_loaded_step:
+        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
             self._move_model_to_vllm()
             self._last_loaded_step = self._step
 
@@ -611,7 +716,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
     def _rollout(self, batch) -> List[RolloutOutput]:
         batch = self._set_inputs_system(batch)
         request_config = self._get_request_config()
-        # TODO: server mode
         if self.vllm_mode == 'server':
             rollout_outputs = self._server_rollout(batch, request_config)
         elif self.vllm_mode == 'colocate':
@@ -668,7 +772,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Step 4: Store finish reason (used for truncation filters etc.)
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
+            input_data['add_eos'] = False
 
+            # Step 5: Store rollout logprobs for importance sampling correction
+            if output.rollout_logprobs:
+                input_data['rollout_logprobs'] = output.rollout_logprobs
+            elif choice.logprobs is not None:
+                if 'content' in choice.logprobs:
+                    rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
+                    input_data['rollout_logprobs'] = [rollout_logprobs]
             return input_data
 
         assert len(batch) == len(outputs)
@@ -790,55 +902,126 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, batch: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
-        """Compute advantages for RL training."""
+    def _compute_advantages(self,
+                            batch: DataType,
+                            rewards_per_func: torch.Tensor,
+                            kl_values: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Compute advantages for RL training.
 
-        def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
+        Supports different advantage estimators:
+        - 'grpo': Group mean baseline
+        - 'rloo': Leave-One-Out baseline
+        - 'reinforce_plus_plus': Similar to grpo but normalizes advantages std
+
+        Args:
+            batch: Local batch data samples
+            rewards_per_func: Reward per function for local data samples
+            kl_values: Optional KL values for kl_in_reward mode, shape [total_samples]
+
+        Returns:
+            advantages: Computed advantages for local batch, shape [local_batch_size]
+        """
+
+        def normalize_advantages(advantages: torch.Tensor, std_values: torch.Tensor) -> torch.Tensor:
             """Normalize advantages if configured; otherwise, return as-is."""
             if self.scale_rewards != 'none':
-                return advantages / (rewards_std + 1e-4)
+                return advantages / (std_values + 1e-4)
             return advantages
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         assert len(batch) == rewards_per_func.shape[0]
         total_rewards_per_func = gather(rewards_per_func)
         rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-        grouped_rewards = rewards.view(-1, self.num_generations)
+
+        # Apply KL penalty to rewards if kl_in_reward is enabled
+        if self.kl_in_reward and self.beta != 0.0 and kl_values is not None:
+            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
+            rewards = rewards - self.beta * kl_values
+
+        # Use num_generations_eval in eval mode
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+        grouped_rewards = rewards.view(-1, num_generations)
+        K = num_generations
 
         # Compute group statistics
         group_rewards_mean = grouped_rewards.mean(dim=1)
 
         # Broadcast stats back to the original shape
-        group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
+        group_rewards_mean = group_rewards_mean.repeat_interleave(K)
 
-        # Compute advantages relative to group mean
-        advantages = rewards - group_rewards_mean
+        # Compute advantages based on estimation type
+        if self.advantage_estimator == 'rloo':
+            # RLOO: Leave-One-Out baseline
+            # A_i = r_i - mean(r_j for j != i)
+            # = r_i * K/(K-1) - mean_all * K/(K-1)
+            # Edge case: when K=1 (e.g., num_generations_eval=1), fall back to simple advantage
+            if K > 1:
+                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
+            else:
+                advantages = rewards - group_rewards_mean
+        else:  # 'grpo' or 'reinforce_plus_plus'
+            # Both use group mean as baseline
+            advantages = rewards - group_rewards_mean
 
-        # Normalize advantages based on scale_rewards setting
-        if self.scale_rewards == 'batch':
-            # Global batch-level normalization
-            rewards_std = rewards.std().expand_as(rewards)
-        elif self.scale_rewards == 'group':
-            # Group-level normalization (default)
-            rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
-        else:  # 'none'
-            rewards_std = None
-
-        if rewards_std is not None:
-            advantages = normalize_advantages(advantages, rewards_std)
+        # Normalize advantages based on estimator and scale_rewards
+        if self.advantage_estimator == 'reinforce_plus_plus':
+            # REINFORCE++: Use std of advantages (not rewards)
+            if self.scale_rewards == 'batch':
+                # Global whitening: std computed on advantages
+                if advantages.numel() > 1:
+                    advantages_std = advantages.std().expand_as(advantages)
+                else:  # edge case: num_generations_eval=batch_size=1
+                    advantages_std = torch.zeros_like(advantages)
+            elif self.scale_rewards == 'group':
+                # Group-level whitening on advantages
+                advantages_grouped = advantages.view(-1, K)
+                if K > 1:
+                    advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
+                else:  # edge case: num_generations_eval=1
+                    advantages_std = torch.zeros_like(advantages)
+            else:  # 'none'
+                advantages_std = None
+            if advantages_std is not None:
+                advantages = normalize_advantages(advantages, advantages_std)
+        else:  # 'grpo' or 'rloo'
+            # GRPO/RLOO: Use std of original rewards
+            if self.scale_rewards == 'batch':
+                # Global batch-level normalization
+                if rewards.numel() > 1:
+                    rewards_std = rewards.std().expand_as(rewards)
+                else:  # edge case: num_generations_eval=batch_size=1
+                    rewards_std = torch.zeros_like(rewards)
+            elif self.scale_rewards == 'group':
+                # Group-level normalization (default)
+                if K > 1:
+                    rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
+                else:  # edge case: num_generations_eval=1
+                    rewards_std = torch.zeros_like(rewards)
+            else:  # 'none'
+                rewards_std = None
+            if rewards_std is not None:
+                advantages = normalize_advantages(advantages, rewards_std)
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
-            # rewards: [prompt_batch_size, self.num_generations]
-            # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
-            group_rewards = rewards.view(-1, self.num_generations)
+            # rewards: [prompt_batch_size, num_generations]
+            # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
+            group_rewards = rewards.view(-1, num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
             # Compute std based on scale_rewards setting for logging
             if self.scale_rewards in ['group', 'none']:
-                rewards_std = group_rewards.std(-1).mean().item()
+                # Handle edge case when num_generations_eval=1
+                if num_generations > 1:
+                    rewards_std = group_rewards.std(-1).mean().item()
+                else:
+                    rewards_std = 0.0
             elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item()
-            is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
+            if num_generations > 1:
+                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
+            else:
+                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
 
             self._metrics[mode]['reward'].append(rewards_mean)
             self._metrics[mode]['reward_std'].append(rewards_std)
@@ -890,8 +1073,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             # Compute reward std for the entire global batch
             # We need to compute std on the gathered data to get a global mask
             global_rewards = (global_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-            grouped_rewards = global_rewards.view(-1, self.num_generations)
-            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            mode = 'train' if self.unwrapped_models[0].training else 'eval'
+            num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+            grouped_rewards = global_rewards.view(-1, num_generations)
+            # Handle edge case when num_generations=1
+            if num_generations > 1:
+                group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(num_generations)
+            else:
+                group_rewards_std = torch.zeros_like(global_rewards)
             global_valid_mask = (group_rewards_std > 0)
 
             # Filter valid samples based on std > 0
@@ -909,6 +1098,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             next_rollout_prompt_batch = []
             for _ in range(num_iters_per_step):
                 next_rollout_prompt_batch.extend(next(self.resample_data_iterator))
+
+            # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+            if self.truncation_strategy == 'raise':
+                next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
 
             # Repeat num_generations times and get local slice
             rollout_batch = self.get_local_rollout_batch(next_rollout_prompt_batch)
@@ -933,18 +1126,70 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: entropy
-        inputs = {k: v for k, v in batch.items() if k not in ['completion_mask', 'advantages', 'truncated_mask']}
+        seq_lengths = batch['seq_lengths']
+        batch_size = batch['num_samples']
+        max_seq_len = batch['completion_mask'].shape[1]
+
+        inputs = self._prepare_model_inputs(batch)
         if self.beta != 0.0:
             with torch.no_grad(), self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
                 ref_model = ref_models[0]
-                batch['ref_per_token_logps'] = self.model_forward(
+                ref_per_token_logps_rmpad = self.model_forward(
                     ref_model, iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+                ref_per_token_logps, _ = pad_logps_back_to_batch(
+                    logps_rmpad=ref_per_token_logps_rmpad,
+                    logits_to_keep=max_seq_len,
+                    batch_size=batch_size,
+                    seq_lengths=seq_lengths)
+                batch['ref_per_token_logps'] = ref_per_token_logps
 
-        if not self.on_policy:
-            batch['old_per_token_logps'] = self.model_forward(
-                self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+        old_per_token_logps_rmpad = self.model_forward(
+            self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
+        old_per_token_logps, _ = pad_logps_back_to_batch(
+            logps_rmpad=old_per_token_logps_rmpad,
+            logits_to_keep=max_seq_len,
+            batch_size=batch_size,
+            seq_lengths=seq_lengths)
+        batch['old_per_token_logps'] = old_per_token_logps
+
         return batch
+
+    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
+        """
+        Compute per-sample KL divergence from encoded batches for kl_in_reward.
+
+        The KL is computed as: sum over tokens of (old_logp - ref_logp) for each sample.
+
+        Args:
+            mini_batch_data: List of encoded batch dictionaries containing:
+                - old_per_token_logps: [batch_size, max_seq_len] in batch format
+                - ref_per_token_logps: [batch_size, max_seq_len] in batch format
+                - completion_mask: [batch_size, max_seq_len] mask for completion tokens
+
+        Returns:
+            kl_values: Per-sample KL values, shape [total_samples]
+        """
+        kl_list = []
+        assert self.beta != 0.0
+
+        for batch in mini_batch_data:
+            old_per_token_logps = batch['old_per_token_logps']  # [batch_size, max_seq_len]
+            ref_per_token_logps = batch['ref_per_token_logps']  # [batch_size, max_seq_len]
+            completion_mask = batch['completion_mask']  # [batch_size, max_seq_len]
+
+            # Compute per-token KL: old_logp - ref_logp
+            per_token_kl = old_per_token_logps - ref_per_token_logps  # [batch_size, max_seq_len]
+
+            # Compute per-sample KL by summing over completion tokens
+            sample_kl = (per_token_kl * completion_mask).sum(-1)  # [batch_size]
+            kl_list.append(sample_kl)
+
+        # Concatenate all KL values and gather across ranks
+        kl_values = torch.cat(kl_list, dim=0)
+        kl_values = gather(kl_values)
+
+        return kl_values
 
     @contextmanager
     def _disable_maxlength_template_context(self, template: Template):
@@ -1004,11 +1249,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # return: output_tensor, loss_func
         data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
-        inputs = {
-            k: v
-            for k, v in data.items() if k not in
-            ['completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps', 'truncated_mask']
-        }
+        inputs = self._prepare_model_inputs(data)
 
         with self.stimer:
             output_tensor = model(**inputs)
@@ -1016,53 +1257,90 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        advantages = data['advantages']
+        # Get pre-padded data in batch format [batch_size, max_seq_len]
+        advantages = data['advantages']  # [batch_size]
         labels = data['labels']
-        completion_mask = data['completion_mask']
+        completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
         packed_seq_params = data['packed_seq_params']
-        truncated_mask = data['truncated_mask']
+        truncated_mask = data['truncated_mask']  # [batch_size]
+        seq_lengths = data['seq_lengths']  # [batch_size]
+        max_seq_len = completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
+
         # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
         lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                  + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
-        lengths_with_padding = packed_seq_params.cu_seqlens_q[1:] - packed_seq_params.cu_seqlens_q[:-1]
 
-        # get_logps with per_token=True now returns full sequences (all_gather in CP mode)
-        per_token_logps = self.get_logps(
+        # get_logps with per_token=True returns rmpad format [1, total_tokens]
+        # Pad to batch format [batch_size, max_seq_len]
+        per_token_logps_rmpad = self.get_logps(
             output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
+        per_token_logps, _ = pad_logps_back_to_batch(
+            logps_rmpad=per_token_logps_rmpad,
+            logits_to_keep=max_seq_len,
+            batch_size=micro_batch_size,
+            seq_lengths=seq_lengths)
 
+        # Get pre-padded ref/old/rollout logps from data
+        ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
+        old_per_token_logps = data.get('old_per_token_logps')  # [batch_size, max_seq_len]
+        rollout_per_token_logps = data.get('rollout_per_token_logps')  # [batch_size, max_seq_len] or None
+
+        # Rollout importance sampling correction
+        rollout_correction_metrics = {}
+        should_compute_rollout_metrics = (
+            self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
+        local_has_rollout_per_token_logps = rollout_per_token_logps is not None
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps], group=dp_group)
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
+            # Compute off-policy diagnostic metrics
+            rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
+                                                                                 rollout_per_token_logps,
+                                                                                 completion_mask)
+
+            # Apply importance sampling correction if mode is enabled
+            if self.rollout_importance_sampling_mode is not None:
+                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+
+                # Compute IS-specific metrics
+                is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
+                rollout_correction_metrics.update(is_metrics)
+
+        # Apply truncated_mask filter (now in batch format)
         if self.args.overlong_filter and truncated_mask.any():
-            completion_mask = completion_mask & (~truncated_mask)
-            if not completion_mask.any():
+            if truncated_mask.all():
                 logger.warning('All completions are truncated in this batch. Loss and grad_norm will be 0. '
                                'Consider increasing max_completion_length')
+            # Expand truncated_mask from [batch_size] to [batch_size, max_seq_len]
+            truncated_mask_expanded = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
+            completion_mask = completion_mask & (~truncated_mask_expanded)
 
-        if self.beta != 0.0:
-            ref_per_token_logps = data.get('ref_per_token_logps')
+        # Compute KL divergence if needed
+        # Only compute KL for loss if kl_in_reward=False (GRPO style)
+        # When kl_in_reward=True, KL penalty is already applied to rewards in _compute_advantages
+        if self.beta != 0.0 and ref_per_token_logps is not None and not self.kl_in_reward:
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+        else:
+            per_token_kl = None
 
-        old_per_token_logps = (
-            per_token_logps.detach() if data.get('old_per_token_logps') is None else data['old_per_token_logps'])
+        # Compute log ratio for importance sampling
         log_ratio = per_token_logps - old_per_token_logps
 
+        # Compute importance weights based on level
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
-            log_ratio_list = torch.split(log_ratio.squeeze(0), lengths_with_padding.tolist())
-            mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
-            # Optimized: compute weighted sum for each sequence (avoid list comprehension overhead)
-            # Use torch.stack on results instead of intermediate lists
-            seq_weights = torch.stack([(lr * m).sum() / m.sum().clamp(min=1.0)
-                                       for lr, m in zip(log_ratio_list, mask_list)])
-            seq_level_log_weights = seq_weights.to(log_ratio.dtype).unsqueeze(-1)
+            # Sequence-level: compute mean log ratio per sequence
+            seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
+                                     / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
             if self.importance_sampling_level == 'sequence':
                 log_importance_weights = seq_level_log_weights
             else:
                 seq_level_log_weight = seq_level_log_weights.detach()
-                # Vectorized: use repeat_interleave with tensor directly
-                seq_level_log_weight = torch.repeat_interleave(
-                    seq_level_log_weight.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
@@ -1070,41 +1348,58 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 ",'sequence' and 'sequence_token'.")
 
         coef_1 = torch.exp(log_importance_weights)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-        if self.args.delta is not None:
-            coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        if self.template.padding_free:
-            # In padding_free + sequence mode, coef_1 is [num_samples, 1]
-            # We need to expand to [1, total_tokens] for token-level loss computation
-            if self.importance_sampling_level == 'sequence':
-                # Vectorized: expand sequence-level weights to token-level without gradient
-                coef_1 = torch.repeat_interleave(coef_1.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
-                coef_2 = torch.repeat_interleave(coef_2.squeeze(-1), lengths_with_padding, dim=0).unsqueeze(0)
+        if self.loss_type == 'cispo':
+            clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
+            per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+        elif self.loss_type == 'sapo':
+            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
+            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+            is_positive = advantages.unsqueeze(1) > 0
+            soft_gate = torch.where(is_positive, gate_pos, gate_neg)
+            per_token_loss = -soft_gate * advantages.unsqueeze(1)
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
+            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+            if self.args.delta is not None:
+                coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            advantages = advantages[-coef_1.shape[1]:]
-            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         else:
-            raise NotImplementedError
-            # per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            # per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-        if self.beta != 0.0:
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
+
+        if self.rollout_importance_sampling_mode is not None:
+            # Apply IS weights to loss
+            per_token_loss = per_token_loss * rollout_is_weights
+        # Add KL penalty if needed
+        if self.beta != 0.0 and per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        if self.loss_type == 'grpo':
-            loss_list = torch.split(per_token_loss.squeeze(0), lengths_with_padding.tolist())
-            mask_list = torch.split(completion_mask.squeeze(0), lengths_with_padding.tolist())
+        # Apply off-policy sequence masking if enabled
+        # Mask out sequences where delta > threshold AND advantage < 0
+        if self.off_policy_sequence_mask_delta is not None:
+            old_policy_per_token_logps = rollout_per_token_logps if rollout_per_token_logps is not None \
+                else old_per_token_logps
+            off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
+                                                                         completion_mask, advantages)
+            # Expand sequence mask to token level and apply to completion_mask
+            off_policy_seq_mask_expanded = off_policy_seq_mask.unsqueeze(-1).expand_as(completion_mask)
+            completion_mask = completion_mask & off_policy_seq_mask_expanded
 
-            sample_loss = torch.stack([(loss * mask).sum() / mask.sum().clamp(min=1.0)
-                                       for loss, mask in zip(loss_list[:micro_batch_size], mask_list[:micro_batch_size])
-                                       ])
-            loss = sample_loss.mean()
+        if self.loss_type in ['grpo', 'sapo']:
+            # Per-sample mean, then batch mean
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
+        elif self.loss_type in ['cispo', 'dapo']:
+            # CISPO and DAPO: Normalize by total completion tokens across all processes
+            num_items_in_batch = data['num_items_in_batch']
+            dp_size = mpu.get_data_parallel_world_size()
+            normalizer = num_items_in_batch / dp_size
+            loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1119,12 +1414,58 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'completions/min_length': total_lengths.float().min(),
         }
 
-        if self.beta != 0.0:
-            # Unified processing (no CP-specific logic needed)
+        if self.beta != 0.0 and per_token_kl is not None:
             kl_value = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
             avg_metric['kl'] = kl_value.clone().detach()
 
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
+
+        # Compute clipping metrics
+        completion_token_count = completion_mask.sum().clamp(min=1.0)
+        if self.loss_type == 'cispo':
+            # CISPO: Only track upper bound clipping
+            # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
+            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
+            # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
+            self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
+        elif self.loss_type == 'sapo':
+            # SAPO: No hard clipping, skip clipping metrics
+            pass
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
+            # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
+            # Use exp(log_importance_weights) to get the original ratios before clamping
+            coef_1_for_metrics = torch.exp(log_importance_weights)
+            is_low_clipped = (coef_1_for_metrics < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+            is_high_clipped = (coef_1_for_metrics > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            low_clip = (is_low_clipped.float() * completion_mask).sum() / completion_token_count
+            high_clip = (is_high_clipped.float() * completion_mask).sum() / completion_token_count
+            is_region_clipped = is_low_clipped | is_high_clipped
+            clip_ratio = (is_region_clipped.float() * completion_mask).sum() / completion_token_count
+
+            # For min/max, we need to gather values from all ranks to compute global min/max
+            # For mean, let _all_reduce_metric handle averaging
+            gathered_low_clip = gather(
+                low_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
+            gathered_high_clip = gather(
+                high_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
+
+            # Store local values for mean (will be averaged by _all_reduce_metric)
+            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip)
+            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip)
+            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio)
+            # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
+            custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
+            custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
+
+        # Add rollout correction metrics
+        if rollout_correction_metrics:
+            for key, value in rollout_correction_metrics.items():
+                if isinstance(value, torch.Tensor):
+                    custom_metrics[f'rollout_correction/{key}'] = value.clone().detach()
+                else:
+                    custom_metrics[f'rollout_correction/{key}'] = torch.tensor(value, device=loss.device)
+
         if self._metrics[mode]:
             addition_metrics = {
                 key: torch.tensor(sum(val) / len(val), device=loss.device)
@@ -1137,9 +1478,10 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         reporting_metric = {**avg_metric, **custom_metrics}
 
         # log_completions
-        if self.log_completions and self.is_main_process and self._step % self.steps_per_generation == 0:
+        if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
+                and self._step != self._last_logged_step):
             table = {
-                'gen_step': [self._step] * len(self._logs['prompt']),
+                'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
                 'completion': list(self._logs['completion']),
                 **{k: list(v)
@@ -1156,6 +1498,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 #     wandb_writer.define_metric('completions', step_metric='gen_step')
                 #     self.init_custom_metric = True
                 wandb_writer.log({'completions': wandb.Table(dataframe=df)})
+            self._last_logged_step = self._step
 
         return loss, reporting_metric
 
@@ -1193,7 +1536,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 load_megatron_optimizer(self.optimizer)
 
-    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
         def _process_image_data(image_data: Union[dict, str]) -> str:
@@ -1206,45 +1549,60 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
         if not inputs:
             return []
+
         args = self.args
 
         REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_dicts = []
+        requests_list = []
 
         for data in inputs:
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data['request_id']
-            if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                extra_fields = {
-                    k: v
-                    for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+            if isinstance(data, RolloutInferRequest):
+                request_obj = data
+            else:
+                request_data = {
+                    key: data[key]
+                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
                 }
-                if extra_fields:
-                    request_data['data_dict'] = extra_fields
-            elif self.multi_turn_scheduler:
-                base_data_dict = {}
-                if 'data_dict' in data:
-                    if isinstance(data['data_dict'], dict):
-                        base_data_dict = data['data_dict']
-                    else:
-                        raise ValueError('data_dict exists but is not a dictionary')
-                extra_data = {
-                    k: v
-                    for k, v in data.items()
-                    if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                }
-                final_data_dict = {**extra_data, **base_data_dict}
-                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+                if 'uuid' not in request_data:
+                    request_data['uuid'] = data['request_id']
+                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
+                    extra_fields = {
+                        k: v
+                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
+                    }
+                    if extra_fields:
+                        request_data['data_dict'] = extra_fields
+                elif self.multi_turn_scheduler:
+                    base_data_dict = {}
+                    if 'data_dict' in data:
+                        if isinstance(data['data_dict'], dict):
+                            base_data_dict = data['data_dict']
+                        else:
+                            raise ValueError('data_dict exists but is not a dictionary')
+                    extra_data = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
+                    }
+                    final_data_dict = {**extra_data, **base_data_dict}
+                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
 
-            requests_dicts.append(request_data)
+                if 'images' in request_data and request_data['images']:
+                    imgs = request_data['images']
+                    if not isinstance(imgs, list):
+                        imgs = [imgs]
+                    request_data['images'] = [_process_image_data(img) for img in imgs]
 
-        for request in requests_dicts:
-            if 'images' in request and request['images']:
-                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
-                    request['images'], list) else _process_image_data(request['images']))
+                if 'tools' in request_data and isinstance(request_data['tools'], str):
+                    try:
+                        request_data['tools'] = json.loads(request_data['tools'])
+                    except json.JSONDecodeError:
+                        pass
 
-        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+                request_obj = from_dict(RolloutInferRequest, request_data)
+            requests_list.append(request_obj)
+
+        return requests_list
 
     def _preprocess_inputs(self, inputs: DataType) -> DataType:
         """Preprocess inputs before inference"""
@@ -1252,6 +1610,71 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         for input_item in processed_inputs:
             remove_response(input_item['messages'])
         return processed_inputs
+
+    @profiling_decorator
+    def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until we have enough valid samples.
+
+        This method handles two cases:
+        1. Prompt length exceeds max_length
+        2. Encoding failures (e.g., multimodal data processing errors)
+
+        Unlike GRPOTrainer which fetches one sample at a time, this method accumulates
+        successfully encoded samples from each resample batch (micro_batch_size samples per fetch)
+        to avoid wasting data.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            max_resample_rounds (int, optional): Maximum number of resample rounds.
+                Each round processes samples from pending_samples buffer. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples with the same length as inputs.
+
+        Raises:
+            RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
+        """
+        template = self.template
+        required_count = len(inputs)
+        valid_samples = []
+
+        # Buffer for samples waiting to be validated
+        pending_samples = list(inputs)
+        # Lazy initialization of resample_data_iterator
+        if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
+            self.resample_data_iterator = self._init_resample_data_iterator()
+        for _ in range(max_resample_rounds + 1):
+            # Calculate how many more samples we need
+            still_needed = required_count - len(valid_samples)
+            if still_needed <= 0:
+                break
+
+            # Ensure pending_samples has enough samples to try
+            while len(pending_samples) < still_needed:
+                # Fetch a new batch of samples (micro_batch_size samples)
+                pending_samples.extend(next(self.resample_data_iterator))
+
+            # Try to encode samples from pending_samples until we have enough valid ones
+            while pending_samples and len(valid_samples) < required_count:
+                data = pending_samples.pop(0)
+                try:
+                    remove_response(data['messages'])
+                    template.encode(data)
+                    # Encoding succeeded, add to valid samples
+                    valid_samples.append(data)
+                except Exception as e:
+                    # Encoding failed, skip this sample
+                    logger.info(f'Encoding failed for one sample; will resample. {e}')
+
+        if len(valid_samples) < required_count:
+            raise RuntimeError(
+                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
+                f'Only collected {len(valid_samples)} valid samples. '
+                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
+
+        return valid_samples[:required_count]
 
     def _add_prompt_id_to_inputs(self, inputs: DataType) -> DataType:
         """Add unique prompt_id and request_id to each input"""
@@ -1276,14 +1699,17 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         return inputs
 
     def get_num_iters_per_step(self):
-        if hasattr(self, '_num_iters_per_step'):
-            return self._num_iters_per_step
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        cache_key = f'_num_iters_per_step_{mode}'
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
         # each rollout DP group will generate generation_batch_size / dp_size completions
         dp_size = mpu.get_data_parallel_world_size()
         completions_to_rollout = self.generation_batch_size // dp_size
         # completions will be repeated num_generations times after
         # so we need to divide num_iters_per_step by num_generations to get prompt batch size
-        prompts_to_rollout = completions_to_rollout // self.num_generations
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+        prompts_to_rollout = completions_to_rollout // num_generations
         # every iter will generate micro_batch_size prompts
         num_iters_per_step = prompts_to_rollout // self.micro_batch_size
         assert num_iters_per_step > 0, (
@@ -1291,17 +1717,19 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             f'This means no prompts will be generated'
             f'generation_batch_size={self.generation_batch_size}, '
             f'data_parallel_world_size={mpu.get_data_parallel_world_size()}, '
-            f'num_generations={self.num_generations}, '
+            f'num_generations={num_generations}, '
             f'micro_batch_size={self.micro_batch_size}. '
             'Please adjust these parameters so that '
             'generation_batch_size // data_parallel_world_size // num_generations // micro_batch_size >= 1.')
-        self._num_iters_per_step = num_iters_per_step
+        setattr(self, cache_key, num_iters_per_step)
         return num_iters_per_step
 
     def get_local_rollout_batch(self, batch):
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         # repeat num_generations times
         rollout_group = self._get_rollout_group()
-        global_rollout_batch = [deepcopy(item) for item in batch for _ in range(self.num_generations)]
+        global_rollout_batch = [deepcopy(item) for item in batch for _ in range(num_generations)]
         # get local rollout data
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
@@ -1328,26 +1756,15 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         from collections import deque
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
-        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'))
+        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
+        self._last_logged_step = -1
         self._logs = {
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }
-        if is_wandb_available():
-            # when log profiling, the step is different from the step in the training loop
-            # here patch wandb log to pop the step argument
-            from wandb.sdk.wandb_run import Run
-            origin_log = Run.log
-            from functools import wraps
-
-            @wraps(origin_log)
-            def log(self, data: dict[str, Any], step: int | None = None, commit: bool | None = None):
-                return origin_log(self, data, None, commit)
-
-            Run.log = log
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
@@ -1396,3 +1813,278 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
         return batch
+
+    def _compute_sequence_level_ratios(self, is_ratio: torch.Tensor, completion_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Helper function to compute sequence-level importance sampling ratios.
+
+        Args:
+            is_ratio: Token-level IS ratios, shape [batch_size, seq_len]
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+
+        Returns:
+            Sequence-level ratios as geometric mean of token-level ratios, shape [batch_size]
+        """
+        log_ratio = torch.log(is_ratio.clamp(min=1e-10))
+        # Compute per-sequence mean of log ratios
+        seq_log_ratios = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+        seq_ratios = torch.exp(seq_log_ratios)
+        return seq_ratios
+
+    def _apply_rollout_importance_sampling(self, rollout_log_ratio: torch.Tensor,
+                                           completion_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Apply rollout importance sampling correction using one of four modes.
+
+        Args:
+            rollout_log_ratio: log(π_θ / π_rollout) per token, shape [batch_size, seq_len]
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+
+        Returns:
+            IS weights to multiply with loss, same shape as rollout_log_ratio
+        """
+        mode = self.rollout_importance_sampling_mode
+        threshold = self.rollout_importance_sampling_threshold
+
+        # Clamp log_ratio to prevent numerical overflow from padding values
+        SAFETY_BOUND = 20.0
+        rollout_log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+
+        # Compute importance sampling ratios: exp(log_ratio)
+        is_ratio = torch.exp(rollout_log_ratio_safe)
+
+        if mode == 'token_truncate':
+            # Token-level truncated IS: clip ratios from above at threshold
+            is_weights = torch.clamp(is_ratio, max=threshold)
+
+        elif mode == 'token_mask':
+            # Token-level masked IS: mask out tokens with ratio > threshold
+            is_weights = torch.where(is_ratio <= threshold, is_ratio, torch.zeros_like(is_ratio))
+
+        elif mode == 'sequence_truncate':
+            # Sequence-level truncated IS: compute sequence-level ratio and clip
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            clipped_seq_ratios = torch.clamp(seq_ratios, max=threshold)
+
+            # Expand back to token-level [batch_size] -> [batch_size, seq_len]
+            is_weights = clipped_seq_ratios.unsqueeze(-1).expand_as(is_ratio)
+
+        elif mode == 'sequence_mask':
+            # Sequence-level masked IS: mask entire sequences with ratio > threshold
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            seq_mask = (seq_ratios <= threshold).float()
+
+            # Expand mask to token-level and apply to original token-level ratios
+            seq_mask_expanded = seq_mask.unsqueeze(-1).expand_as(is_ratio)
+            is_weights = is_ratio * seq_mask_expanded
+        else:
+            return is_ratio
+
+        return is_weights
+
+    def _compute_off_policy_sequence_mask(
+        self,
+        per_token_logps: torch.Tensor,
+        old_policy_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+        advantages: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute off-policy sequence mask to filter out sequences that deviate too much
+        from the old/rollout policy AND have negative advantage.
+
+        This implements the Off-Policy Sequence Masking technique from DeepSeek-V3.2
+        (https://arxiv.org/abs/2512.02556). The mask filters sequences where:
+        1. mean(old_policy_logps - policy_logps) > off_policy_sequence_mask_delta
+        2. AND advantage < 0
+
+        Args:
+            per_token_logps: Log probs from current policy, shape [batch_size, seq_len]
+            old_policy_per_token_logps: Log probs from old/rollout policy, shape [batch_size, seq_len].
+                Uses rollout_per_token_logps if available, otherwise old_per_token_logps.
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+            advantages: Advantage values per sample, shape [batch_size]
+
+        Returns:
+            Sequence mask, shape [batch_size], True = keep sequence, False = mask out
+        """
+        # Compute per-token log ratio: log(π_old / π_current)
+        # Following DeepSeek-V3.2: positive delta means old policy assigns higher prob
+        log_ratio = old_policy_per_token_logps - per_token_logps
+
+        # Compute sequence-level mean of log ratio
+        seq_mean_log_ratio = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
+        # Mask condition: delta > threshold AND advantage < 0
+        # Keep sequences that do NOT meet this condition
+        exceeds_threshold = seq_mean_log_ratio > self.off_policy_sequence_mask_delta
+        negative_advantage = advantages < 0
+        should_mask = exceeds_threshold & negative_advantage
+
+        # Return mask: True = keep, False = mask out
+        return ~should_mask
+
+    def _compute_rollout_offpolicy_metrics(
+        self,
+        per_token_logps: torch.Tensor,
+        rollout_per_token_logps: torch.Tensor,
+        completion_mask: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute off-policy diagnostic metrics (always computed for monitoring).
+
+        These metrics help diagnose the off-policy gap between rollout and training policies.
+
+        Args:
+            per_token_logps: Log probs from training policy model, shape [batch_size, seq_len]
+            rollout_per_token_logps: Log probs from rollout policy, shape [batch_size, seq_len]
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+
+        Returns:
+            Dictionary with off-policy diagnostic metrics
+        """
+        SAFETY_BOUND = 20.0
+        metrics = {}
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+
+        # Helper function for masked mean
+        def masked_mean(x, mask, axis=None):
+            if axis is None:
+                return (x * mask).sum() / mask.sum().clamp(min=1.0)
+            else:
+                return (x * mask).sum(axis) / mask.sum(axis).clamp(min=1.0)
+
+        # 1. Training policy perplexity
+        # Compute per-sequence mean log prob
+        mean_log_prob_training = masked_mean(per_token_logps, completion_mask, axis=-1)  # [batch_size]
+        training_ppl = torch.exp(-mean_log_prob_training).mean()
+        gathered_training_ppl = gather(training_ppl.unsqueeze(0), group=dp_group)
+        metrics['training_ppl'] = gathered_training_ppl.nanmean()
+        metrics['training_log_ppl'] = gather((-mean_log_prob_training).mean().unsqueeze(0), group=dp_group).nanmean()
+
+        # 2. Compute rollout off-policy metrics
+        log_ratio = per_token_logps - rollout_per_token_logps
+        log_ratio = log_ratio * completion_mask
+
+        # 2a. kl: Direct estimator for KL(π_rollout || π_training)
+        kl = masked_mean(-log_ratio, completion_mask)
+        metrics['kl'] = gather(kl.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2b. k3_kl: K3 estimator for KL
+        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        k3_kl = masked_mean(k3_kl_matrix, completion_mask)
+        metrics['k3_kl'] = gather(k3_kl.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2c. Rollout policy perplexity
+        mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask, axis=-1)  # [batch_size]
+        rollout_ppl = torch.exp(-mean_log_prob_rollout).mean()
+        metrics['rollout_ppl'] = gather(rollout_ppl.unsqueeze(0), group=dp_group).nanmean()
+        metrics['rollout_log_ppl'] = gather((-mean_log_prob_rollout).mean().unsqueeze(0), group=dp_group).nanmean()
+
+        # 2d. Log PPL difference
+        log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
+        metrics['log_ppl_diff'] = gather(log_ppl_diff.mean().unsqueeze(0), group=dp_group).nanmean()
+        metrics['log_ppl_abs_diff'] = gather(log_ppl_diff.abs().mean().unsqueeze(0), group=dp_group).nanmean()
+        metrics['log_ppl_diff_max'] = gather(log_ppl_diff.max().unsqueeze(0), group=dp_group).max()
+        metrics['log_ppl_diff_min'] = gather(log_ppl_diff.min().unsqueeze(0), group=dp_group).min()
+
+        # 2e. PPL ratio
+        ppl_ratio = torch.exp(log_ppl_diff).mean()
+        metrics['ppl_ratio'] = gather(ppl_ratio.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2f. Chi-squared divergence
+        log_ratio_safe = torch.clamp(log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_token = torch.exp(log_ratio_safe)
+        rho_squared_token = rho_token.square()
+        chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
+        metrics['chi2_token'] = gather(chi2_token.unsqueeze(0), group=dp_group).nanmean()
+
+        # Sequence-level chi2
+        log_ratio_mean = masked_mean(log_ratio, completion_mask, axis=-1)  # [batch_size]
+        log_ratio_mean_safe = torch.clamp(log_ratio_mean, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        rho_geo = torch.exp(log_ratio_mean_safe)
+        chi2_seq = (rho_geo.square().mean() - 1.0)
+        metrics['chi2_seq'] = gather(chi2_seq.unsqueeze(0), group=dp_group).nanmean()
+
+        return metrics
+
+    def _compute_is_correction_metrics(
+        self,
+        rollout_log_ratio: torch.Tensor,
+        is_weights: torch.Tensor,
+        completion_mask: torch.Tensor,
+    ) -> Dict[str, float]:
+        """
+        Compute importance sampling correction metrics (ess, clipped_frac, is_weight_mean).
+        Only called when rollout_importance_sampling_mode is enabled.
+
+        Args:
+            rollout_log_ratio: Log ratio log(π_policy / π_rollout), shape [batch_size, seq_len]
+            is_weights: Importance sampling weights after correction, shape [batch_size, seq_len]
+            completion_mask: Boolean mask for completion tokens, shape [batch_size, seq_len]
+
+        Returns:
+            Dictionary with IS-specific metrics
+        """
+        metrics = {}
+        SAFETY_BOUND = 20.0
+        threshold = self.rollout_importance_sampling_threshold
+        threshold_lower = 1.0 / threshold
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+
+        # Helper function for masked mean
+        def masked_mean(x, mask):
+            return (x * mask).sum() / mask.sum().clamp(min=1.0)
+
+        # Compute IS ratio with safety bounds
+        log_ratio_safe = torch.clamp(rollout_log_ratio, min=-SAFETY_BOUND, max=SAFETY_BOUND)
+        is_ratio = torch.exp(log_ratio_safe)
+
+        # 1. IS weight statistics
+        mean_is_weight = masked_mean(is_weights, completion_mask)
+        metrics['is_weight_mean'] = gather(mean_is_weight.unsqueeze(0), group=dp_group).nanmean()
+
+        # 2. Compute Effective Sample Size (ESS) for IS weights
+        weights_for_ess = is_weights.clamp(min=threshold_lower, max=threshold)
+        mean_for_ess = masked_mean(weights_for_ess, completion_mask)
+        is_weights_normalized = weights_for_ess / (mean_for_ess + 1e-8)
+        ess = 1.0 / masked_mean(is_weights_normalized.square(), completion_mask).clamp(min=1e-10)
+        metrics['ess'] = gather(ess.unsqueeze(0), group=dp_group).nanmean()
+
+        # 3. Fraction of clipped/masked samples
+        if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
+            # Token-level
+            if self.rollout_importance_sampling_mode == 'token_truncate':
+                clipped_frac = masked_mean((is_ratio > threshold).float(), completion_mask)
+            else:  # token_mask
+                clipped_frac = masked_mean((is_weights == 0).float(), completion_mask)
+            metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
+        else:
+            # Sequence-level (both truncate and mask)
+            seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
+            clipped_frac = (seq_ratios > threshold).float().mean()
+            metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
+
+        return metrics
+
+    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
+        """Filters inputs to create model_inputs, removing GRPO-specific keys."""
+        return {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+            ]
+        }
+
+    def _collect_config_info(self) -> Dict[str, str]:
+        config = {
+            'dynamic_sample': str(self.args.dynamic_sample),
+            'importance_sampling_level': str(self.args.importance_sampling_level),
+            'advantage_estimator': str(self.args.advantage_estimator),
+            'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
+            'rollout_importance_sampling':
+            'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
+            'loss_type': str(self.args.loss_type)
+        }
+        return config

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import json
@@ -142,8 +143,38 @@ def add_version_to_work_dir(work_dir: str) -> str:
 _T = TypeVar('_T')
 
 
+def _patch_args(class_type):
+    try:
+        for k, v in class_type.__annotations__.items():
+            if v == Union[str, dict, type(None)]:
+                class_type.__annotations__[k] = Union[dict, str, type(None)]
+    except Exception:
+        logger.warning('patch args failed')
+
+
+@contextmanager
+def _patch_get_type_hints():
+    # Fix parsing string arguments into dicts
+    from transformers import hf_argparser
+    origin_get_type_hints = hf_argparser.get_type_hints
+
+    def get_type_hints(*args, **kwargs):
+        kwargs = origin_get_type_hints(*args, **kwargs)
+        for k, v in kwargs.items():
+            if v == Union[str, dict, type(None)]:
+                kwargs[k] = Union[dict, str, type(None)]
+        return kwargs
+
+    hf_argparser.get_type_hints = get_type_hints
+    try:
+        yield
+    finally:
+        hf_argparser.get_type_hints = origin_get_type_hints
+
+
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
-    parser = HfArgumentParser([class_type])
+    with _patch_get_type_hints():
+        parser = HfArgumentParser([class_type])
     _ray_args = os.environ.get('RAY_SWIFT_ARGS')
     if _ray_args:
         argv = json.loads(_ray_args)
@@ -419,3 +450,45 @@ def disable_deepspeed_zero3():
         yield
     finally:
         ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref
+
+
+def get_modules_to_not_convert(model):
+    if not hasattr(model, 'model_meta') or not hasattr(model, 'model_info'):
+        return
+    model_arch = model.model_meta.model_arch
+    prefix_list = []
+    suffix_list = []
+    if model.model_info.is_moe_model:
+        suffix_list += ['mlp.gate', 'mlp.shared_expert_gate']
+    if model_arch is not None:
+        for key in ['vision_tower', 'aligner']:
+            value = getattr(model_arch, key, None)
+            if value:
+                prefix_list += value
+    suffix_list.append('lm_head')
+    res = []
+    for n, m in model.named_modules():
+        if 'linear' in m.__class__.__name__.lower() and (any(n.endswith(suffix) for suffix in suffix_list)
+                                                         or any(n.startswith(prefix) for prefix in prefix_list)):
+            res.append(n)
+    return res if res else None
+
+
+def retry_decorator(retry=3):
+
+    def _retry(func):
+
+        @wraps(func)
+        def new_func(*args, **kwargs):
+            i = 1
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if i == retry:
+                        raise
+                    i += 1
+
+        return new_func
+
+    return _retry

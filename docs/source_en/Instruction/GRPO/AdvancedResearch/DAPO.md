@@ -1,4 +1,4 @@
-# DAPO
+# DAPO: An Open-Source LLM Reinforcement Learning System at Scale
 
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476) introduces several tricks based on GRPO, including:
 - [Clip Higher](#clip-higher)
@@ -42,7 +42,9 @@ GRPO normalizes losses at the sentence level, which introduces bias based on res
 DAPO uses token-level normalization to avoid this bias in loss calculation.
 
 Parameters:
-- `loss_type bnpo` enables token-level normalization.
+- `loss_type bnpo/dapo` enables token-level normalization.
+
+> For the loss_type formula, please refer to the [documentation](../DeveloperGuide/loss_types.md).
 
 ## Overlong Filtering
 DAPO argues that forcibly truncated responses contain high reward noise, making it difficult for the model to distinguish between quality issues and length issues. To address this, DAPO filters out truncated data during training, excluding it from loss computation.
@@ -78,7 +80,7 @@ In summary, the following parameters can be set based on GRPOTrainer to implemen
 
 | Parameter             | Type      | Value       |
 |-----------------------|-----------|-------------|
-| `--loss_type`         | `str`     | `bnpo`      |
+| `--loss_type`         | `str`     | `bnpo`/`dapo`|
 | `--epsilon_high`      | `float`   | `0.28`      |
 | `--dynamic_sample`    | `bool`    | `true`      |
 | `--max_resample_times`| `int`     | `3`         |

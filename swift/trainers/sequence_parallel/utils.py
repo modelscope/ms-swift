@@ -16,6 +16,25 @@ except ImportError:
     from ..rlhf_trainer.utils import entropy_from_logits
 
 
+class GatherTensor(torch.autograd.Function):
+    """Gather tensor from sequence group (autograd supported)"""
+
+    @staticmethod
+    def forward(ctx, tensor, dim=0, position_ids=None):
+        ctx.dim = dim
+        from swift.trainers.sequence_parallel import sequence_parallel
+        if position_ids is not None:
+            position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+        ctx.position_ids = position_ids
+        return sequence_parallel.gather(tensor, dim=dim, position_ids=position_ids)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        from swift.trainers.sequence_parallel import sequence_parallel
+        grad_input = sequence_parallel.split(grad_output, dim=ctx.dim, position_ids=ctx.position_ids)
+        return grad_input, None, None
+
+
 class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 

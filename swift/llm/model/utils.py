@@ -6,10 +6,12 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
+import torch.nn.functional as F
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
 from transformers import PretrainedConfig
+from transformers.utils import strtobool
 
 from swift.hub import get_hub
 from swift.llm import to_device
@@ -61,6 +63,7 @@ class ModelInfo:
     # extra
     rope_scaling: Optional[Dict[str, Any]] = None
     is_moe_model: bool = False
+    is_multimodal: bool = False
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
@@ -71,6 +74,8 @@ class ModelInfo:
 
 
 class HfConfigFactory:
+    llm_keys = ['language_config', 'llm_config', 'text_config']
+    vision_keys = ['vit_config', 'vision_config', 'audio_config']
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
@@ -97,9 +102,9 @@ class HfConfigFactory:
             keys = dir(config)
         else:
             return []
-        config_keys = [None, 'language_config', 'llm_config', 'text_config']
+        config_keys = [None] + HfConfigFactory.llm_keys
         if include_vit:
-            config_keys += ['vit_config', 'vision_config', 'audio_config']
+            config_keys += HfConfigFactory.vision_keys
         if attr_name in keys and parent_key in config_keys:
             res.append((config, deep_getattr(config, attr_name)))
 
@@ -118,6 +123,20 @@ class HfConfigFactory:
             return True
         for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
             if HfConfigFactory.get_config_attr(config, key):
+                return True
+        return False
+
+    @staticmethod
+    def is_multimodal(config) -> bool:
+        if isinstance(config, dict):
+            keys = config.keys()
+        elif isinstance(config, PretrainedConfig):
+            keys = dir(config)
+        else:
+            keys = []
+        keys = set(keys)
+        for key in (HfConfigFactory.llm_keys + HfConfigFactory.vision_keys):
+            if key in keys:
                 return True
         return False
 
@@ -522,3 +541,30 @@ class InitModelStrategy:
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
                 init_func(param)
+
+
+def _patch_conv3d():
+
+    if not hasattr(nn.Conv3d, '_original_forward'):
+        nn.Conv3d._original_forward = nn.Conv3d.forward
+
+    def forward(self, x):
+        if any(s != k for s, k in zip(self.stride, self.kernel_size)) or any(p != 0 for p in self.padding) or any(
+                d != 1 for d in self.dilation) or self.groups != 1:
+            raise NotImplementedError(
+                'Patched Conv3d only supports stride=kernel_size, padding=0, dilation=1, groups=1')
+        N = x.shape[0]
+        K = self.kernel_size
+        x = x.unfold(2, K[0], K[0]).unfold(3, K[1], K[1]).unfold(4, K[2], K[2])
+        D_out, H_out, W_out = x.shape[2:5]
+        x = x.permute(0, 2, 3, 4, 1, 5, 6, 7).reshape(-1, self.in_channels * K[0] * K[1] * K[2])
+        x = F.linear(x, self.weight.view(self.out_channels, -1), self.bias)
+        x = x.view(N, D_out, H_out, W_out, self.out_channels).permute(0, 4, 1, 2, 3)
+        return x
+
+    nn.Conv3d.forward = forward
+    logger.info('Conv3d patched successfully')
+
+
+if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
+    _patch_conv3d()

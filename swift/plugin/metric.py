@@ -165,7 +165,7 @@ def compute_acc(preds,
         return {}
 
     masks = labels != -100
-    if acc_strategy == 'token' or preds.ndim == 1:
+    if acc_strategy == 'token' or preds.ndim == 1:  # 'single_label_classification'
         acc_list = (preds[masks] == labels[masks]).tolist()
     else:
         acc_list = []
@@ -203,11 +203,11 @@ def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> tor
 
 
 # Add your own metric calculation method here, use --metric xxx to train
-METRIC_MAPPING = {
+metric_mapping = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),
 }
 
 
 def get_metric(metric: str):
-    return METRIC_MAPPING[metric]
+    return metric_mapping[metric]

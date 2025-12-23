@@ -1101,6 +1101,50 @@ def test_mistral_2506():
         'stripes, particularly ')
 
 
+def test_sensenova_si():
+    pt_engine = PtEngine('SenseNova/SenseNova-SI-1.1-InternVL3-8B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
+def test_mistral_2512():
+    pt_engine = PtEngine('mistralai/Ministral-3-8B-Instruct-2512-BF16')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response[:256] == (
+        'This image depicts a charming kitten with a few notable features:\n\n'
+        '1. **Appearance**: The kitten has a soft, fluffy coat with a mix of white '
+        'and grayish-brown stripes, typical of a tabby pattern. The fur appears plush and slightly ruffled, '
+        'especially aroun')
+
+
+def test_mistral_2512_thinking():
+    pt_engine = PtEngine('mistralai/Ministral-3-8B-Reasoning-2512')
+    response1 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response1[:256] == response2[:256]
+
+
+def test_hunyuan_ocr():
+    pt_engine = PtEngine('Tencent-Hunyuan/HunyuanOCR')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    messages = [{
+        'role':
+        'user',
+        'content': ('Extract all information from the main body of the document image '
+                    'and represent it in markdown format, ignoring headers and footers. '
+                    'Tables should be expressed in HTML format, formulas in the document '
+                    'should be represented using LaTeX format, and the parsing should be '
+                    'organized according to the reading order.')
+    }]
+    response1 = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response1 == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1178,4 +1222,8 @@ if __name__ == '__main__':
     # test_paddle_ocr()
     # test_ernie_vl()
     # test_ernie_vl_thinking()
-    test_mistral_2506()
+    # test_mistral_2506()
+    # test_sensenova_si()
+    # test_mistral_2512()
+    # test_mistral_2512_thinking()
+    test_hunyuan_ocr()

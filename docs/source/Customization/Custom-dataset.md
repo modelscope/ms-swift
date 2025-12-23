@@ -29,7 +29,7 @@ query-response格式:
 ```jsonl
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
-注意：以下字段会自动转成对应的system、query、response字段。
+注意：以下字段会自动转成对应的system、query、response字段。（solution字段会保留）
 - system: 'system', 'system_prompt'.
 - query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
 - response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.

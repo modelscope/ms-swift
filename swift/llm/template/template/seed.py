@@ -170,7 +170,6 @@ class SeedTemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<seed:eos>'])
     template_cls: Type[Template] = SeedTemplate
     default_system: Optional[str] = None
-    response_prefix: str = ''
     stop_words: List[Word] = field(default_factory=lambda: ['<seed:eos>'])
     agent_template: str = 'react_en'
 

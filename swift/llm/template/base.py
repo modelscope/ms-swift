@@ -24,10 +24,10 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.llm import to_device
-from swift.utils import get_env_args, get_logger
+from swift.utils import get_env_args, get_logger, retry_decorator
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -52,7 +52,8 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
-    support_padding_free = False  # It only takes effect for multimodal models.
+    # For pure text models, the default is True; for multimodal models, the default is False.
+    support_padding_free = None
 
     is_encoder_decoder = False
 
@@ -63,20 +64,23 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
         remove_unused_columns: bool = True,
+        padding_side: Literal['left', 'right'] = 'right',
         # only for train
         padding_free: bool = False,
-        padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
         # infer/deploy
-        response_prefix: Optional[str] = None,
         template_backend: Literal['swift', 'jinja'] = 'swift',
+        # thinking
+        response_prefix: Optional[str] = None,
+        enable_thinking: Optional[bool] = None,
+        add_non_thinking_prefix: bool = True,
     ) -> None:
         """
         default_system: Override the default_system in the template.
@@ -89,9 +93,9 @@ class Template(ProcessorMixin):
         """
         from swift.plugin.loss_scale.loss_scale import LossScale
         from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates, loss_scale_map
+        from swift.plugin import agent_templates, get_loss_scale
         self._processor_inited = False
-        self._version = 'v4'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -104,16 +108,24 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        if response_prefix is not None:
-            template_meta.response_prefix = response_prefix
-
+        if enable_thinking is None:
+            enable_thinking = template_meta.is_thinking
+        if response_prefix is None:
+            if use_chat_template:
+                response_prefix = (
+                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
+            else:
+                response_prefix = ''
+        self.response_prefix = response_prefix
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
+        self.enable_thinking = enable_thinking
+        self.add_non_thinking_prefix = add_non_thinking_prefix
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale: LossScale = loss_scale_map[loss_scale]()
+        self.loss_scale: LossScale = get_loss_scale(loss_scale)
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -126,7 +138,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+                           'train', 'rlhf', 'kto'] = 'pt'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
@@ -156,7 +168,7 @@ class Template(ProcessorMixin):
             self.max_length = self.model_info.max_model_len
         logger.info(f'default_system: {repr(self.template_meta.default_system)}')
         logger.info(f'max_length: {self.max_length}')
-        logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')
+        logger.info(f'response_prefix: {repr(self.response_prefix)}')
         logger.info(f'agent_template: {self._agent_template}')
         if self.model_meta.is_multimodal:
             logger.info(f'norm_bbox: {self.norm_bbox}')
@@ -382,14 +394,6 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
-    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._encode_truncated(inputs)
-        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
-        for k in list(encoded.keys()):
-            if k.startswith('prompt_') or k.endswith('answer_'):
-                encoded.pop(k, None)
-        return encoded
-
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -409,7 +413,7 @@ class Template(ProcessorMixin):
 
             _all_negative_keys = set()
             for idx, negative in enumerate(inputs.negative):
-                _tmp_negative_keys = set()
+                _tmp_negative_keys = set()  # used to fill in missing keys
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     negative_key = f'negative_{key}'
@@ -464,6 +468,16 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
+            # Ensure that load_data_args true runs through inference successfully
+            # if len(anchor.messages) == 1:
+            #     docs = inputs.positive + inputs.negative
+            #     if docs:
+            #         assistant_messages = docs[0].messages
+            #         assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
+            #         anchor.messages = anchor.messages + assistant_messages
+            #         anchor.images = anchor.images + docs[0].images
+            #         anchor.audios = anchor.audios + docs[0].audios
+            #         anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
@@ -480,6 +494,7 @@ class Template(ProcessorMixin):
         return encoded
 
     @torch.inference_mode()
+    @retry_decorator(3)
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
                return_template_inputs: bool = False,
@@ -510,8 +525,6 @@ class Template(ProcessorMixin):
                 encoded = self._rlhf_encode(inputs)
             elif self.mode == 'kto':
                 encoded = self._kto_encode(inputs)
-            elif self.mode == 'gkd':
-                encoded = self._gkd_encode(chosen)
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -529,44 +542,51 @@ class Template(ProcessorMixin):
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
-        if chosen.channel is not None:
-            encoded['channel'] = chosen.channel
+        # compatible with `--truncation_strategy split`
+        batched = encoded
+        if not isinstance(batched, (list, tuple)):
+            batched = [batched]
+        for encoded in batched:
+            if chosen.channel is not None:
+                encoded['channel'] = chosen.channel
 
-        lengths = [0] if self.task_type not in {'reranker', 'generative_reranker'} else []
-        for key in list(encoded.keys()):
-            if encoded[key] is None:
-                encoded.pop(key)
-            elif key.endswith('length'):
-                value = encoded[key]
-                if isinstance(value, int):
-                    lengths.append(value)
-                elif isinstance(value, (tuple, list)):
-                    lengths += value
-        if return_length:
-            if self.task_type in {'reranker', 'generative_reranker'}:
-                encoded['length'] = lengths
+            lengths = []
+            for key in list(encoded.keys()):
+                if encoded[key] is None:
+                    encoded.pop(key)
+                elif key.endswith('length'):
+                    value = encoded[key]
+                    if isinstance(value, int):
+                        lengths.append(value)
+                    elif isinstance(value, (tuple, list)):
+                        lengths += value
+            if return_length:
+                if not lengths:
+                    raise ValueError(f'lengths should not be empty. batched: {batched}')
+                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
             else:
-                encoded['length'] = sum(lengths)
-        else:
-            encoded.pop('length', None)
-        if return_template_inputs:
-            encoded['template_inputs'] = chosen
-        if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = chosen.extra_kwargs
-        return encoded
+                encoded.pop('length', None)
+            if return_template_inputs:
+                encoded['template_inputs'] = chosen
+            if not self.remove_unused_columns:
+                encoded['_extra_kwargs'] = chosen.extra_kwargs
+        return batched[0] if len(batched) == 1 else batched
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         packed = {}
         keys = set()
         length = []
+        is_3d_position_ids = False
         for r in row:
+            if isinstance(r.get('position_ids'), torch.Tensor) and r['position_ids'].dim() == 3:
+                is_3d_position_ids = True
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key in {'input_ids', 'labels', 'loss_scale'}:
+            if key == 'position_ids' and is_3d_position_ids:
+                packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
+            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
-            elif key == 'length':
-                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
@@ -614,8 +634,8 @@ class Template(ProcessorMixin):
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
         response = self.tokenizer.decode(generate_ids, **kwargs)
-        if first_token and self.template_meta.response_prefix:
-            response = self.template_meta.response_prefix + response
+        if first_token and self.response_prefix:
+            response = self.response_prefix + response
         return response
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
@@ -624,7 +644,7 @@ class Template(ProcessorMixin):
     @contextmanager
     def generate_context(self):
         origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+        if self.mode in {'train', 'rlhf', 'kto'}:
             self.set_mode('pt')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
@@ -975,10 +995,10 @@ class Template(ProcessorMixin):
                          suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
-        for i in range(1, len(labels)):
-            if labels[i - 1] >= 0 and labels[i] == -100:
+        for i in range(1, len(labels) + 1):
+            if labels[i - 1] >= 0 and i < len(labels) and labels[i] == -100:
                 start = i
-            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
+            elif start > 0 and labels[i - 1] == -100 and (i == len(labels) or labels[i] >= 0):
                 # [0, 1, 2, -100(start), -100, 3(i), 4]
                 length = i - start
                 if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
@@ -1005,6 +1025,8 @@ class Template(ProcessorMixin):
             kwargs['tools'] = inputs.tools
         if 'thinking_budget' in inputs.extra_kwargs:
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
+        if self.template_meta.is_thinking or self.enable_thinking:
+            kwargs['enable_thinking'] = self.enable_thinking
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
@@ -1018,9 +1040,43 @@ class Template(ProcessorMixin):
         if system is None:
             system = template_meta.default_system
 
-        if tools is not None:
+        if tools:
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
+
+    def _add_non_thinking_prefix(self, inputs) -> None:
+        messages = inputs.messages
+        non_thinking_prefix = self.template_meta.non_thinking_prefix
+        if non_thinking_prefix:
+            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
+                start_idx = get_last_user_round(messages)
+            else:
+                start_idx = -1
+            for i, message in enumerate(messages):
+                if i < start_idx:
+                    continue
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if not message['content'].startswith(('<think>', non_thinking_prefix)):
+                        # During multi-turn SFT training/validation:
+                        # If the message has no <think> block and does not start with the non_thinking_prefix,
+                        # prepend the non_thinking_prefix to the content.
+                        message['content'] = non_thinking_prefix + message['content']
+
+    def _remove_thinking_content(self, content: str) -> str:
+        content = content.split('</think>')[-1].strip()
+        return self.template_meta.history_thinking_prefix + content
+
+    def _remove_history_thinking(self, inputs) -> None:
+        if self.is_training and self.loss_scale.base_strategy != 'last_round':
+            return
+        messages = inputs.messages
+        # Only during inference or training, and only if the loss_scale is set to 'last_round',
+        # will the previous 'think' entries be deleted.
+        last_user_round = get_last_user_round(messages)
+        for i, message in enumerate(messages):
+            # Delete the content before '</think>' in all assistant turns except the last round.
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i < last_user_round:
+                message['content'] = self._remove_thinking_content(message['content'])
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """
@@ -1048,7 +1104,7 @@ class Template(ProcessorMixin):
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool':
+            if pre_role == 'assistant' and role == 'tool' and self.template_backend == 'swift':
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
@@ -1066,7 +1122,11 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
-        self._swift_prepare_inputs(inputs)
+        if self.use_chat_template:
+            if self.add_non_thinking_prefix:
+                self._add_non_thinking_prefix(inputs)
+            if template_meta.is_thinking or self.enable_thinking:
+                self._remove_history_thinking(inputs)
         system = self._get_system(inputs)
 
         self._get_std_messages(inputs.messages)
@@ -1146,9 +1206,9 @@ class Template(ProcessorMixin):
                 if add_eos:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
-            elif template_meta.response_prefix:
+            elif self.response_prefix:
                 # final round and during inference.
-                context_list.append(template_meta.response_prefix)
+                context_list.append(self.response_prefix)
 
             self._concat_context_list(
                 context_list,
@@ -1171,7 +1231,7 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
+    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
                   truncation_strategy: Literal['left', 'right']):
         placeholder_tokens = torch.tensor(self.placeholder_tokens)
         input_ids_tensor = torch.tensor(input_ids)
@@ -1187,9 +1247,11 @@ class Template(ProcessorMixin):
         input_ids = input_ids_tensor[protected].tolist()
         if labels is not None:
             labels = torch.tensor(labels)[protected].tolist()
-        if loss_mask is not None:
-            loss_mask = torch.tensor(loss_mask)[protected].tolist()
-        return input_ids, labels, loss_mask
+            labels[0] = -100
+        if loss_scale is not None:
+            loss_scale = torch.tensor(loss_scale)[protected].tolist()
+            loss_scale[0] = 0
+        return input_ids, labels, loss_scale
 
     @staticmethod
     def _get_length(input_ids, labels):
@@ -1229,6 +1291,26 @@ class Template(ProcessorMixin):
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
+            elif self.truncation_strategy == 'split':
+                i = 0
+                batched = []
+                while i < length:
+                    splited = {}
+                    for key in ['input_ids', 'labels', 'loss_scale']:
+                        value = encoded.get(key)
+                        if value is not None:
+                            value = value[i:i + self.max_length]
+                            if key == 'labels' and len(value) > 0:
+                                value[0] = -100
+                            elif key == 'loss_scale' and len(value) > 0:
+                                value[0] = 0
+                        splited[key] = value
+                    splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
+                    batched.append(splited)
+                    i += self.max_length
+                return batched
+            else:
+                raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -1242,10 +1324,11 @@ class Template(ProcessorMixin):
                 and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
+        self._swift_prepare_inputs(inputs)
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder or self.mode == 'gkd':
+        if self.is_encoder_decoder:
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
@@ -1368,7 +1451,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto', 'gkd']) -> None:
+    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1421,8 +1504,6 @@ class Template(ProcessorMixin):
                 res = self._rlhf_data_collator(batch, padding_to=padding_to)
             elif self.mode == 'kto':
                 res = self._kto_data_collator(batch, padding_to=padding_to)
-            elif self.mode == 'gkd':
-                res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
@@ -1517,15 +1598,6 @@ class Template(ProcessorMixin):
             res['label'] = label
         return res
 
-    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = self._data_collator(batch, padding_to=padding_to)
-        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
-        if prompts_batch:
-            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-            res['prompts'] = prompts_res.pop('input_ids')
-            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
-        return res
-
     def _embedding_data_collator(self,
                                  batch: List[Dict[str, Any]],
                                  *,
@@ -1537,7 +1609,7 @@ class Template(ProcessorMixin):
                 new_batch += [b]
             else:
                 keys = [key for key in b.keys() if 'negative' in key]
-                max_neg = None
+                max_neg = None  # number of negative samples
                 for key in keys:
                     value_list = b[key]
                     suffix = key[len('negative_'):]
@@ -1722,7 +1794,7 @@ class Template(ProcessorMixin):
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
             if key == 'position_ids' and res[key][0].ndim == 3:
-                res[key] = torch.concat(res[key], dim=-1)
+                res[key] = self._pad_3d_position_ids(res[key], pad_value)
             else:
                 res[key] = self._pad_sequence(res[key], pad_value)
 
@@ -1732,6 +1804,39 @@ class Template(ProcessorMixin):
             res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res
+
+    def _pad_3d_position_ids(self,
+                             position_ids: List[torch.Tensor],
+                             padding_value: float = 0.,
+                             batch_dim: int = 1) -> torch.Tensor:
+        padding_side = self.padding_side if self.is_training else 'left'
+        padding_right = padding_side == 'right'
+        # position_ids
+        # batch_dim 0: [1, 4, 379], [1, 4, 300] -> [2, 4, 379]
+        # batch_dim 1: [3/4, 1, 379], [3/4, 1, 300] -> [3/4, 2, 379]
+        max_len = max(pos.shape[-1] for pos in position_ids)
+
+        padded_position_ids = []
+        for pos in position_ids:
+            current_len = pos.shape[-1]
+            pad_len = max_len - current_len
+
+            if pad_len > 0:
+                pad_shape = (pos.shape[0], pos.shape[1], pad_len)
+                padding = pos.new_full(pad_shape, padding_value)
+
+                if padding_right:
+                    padded_pos = torch.cat([pos, padding], dim=-1)
+                else:
+                    padded_pos = torch.cat([padding, pos], dim=-1)
+            else:
+                padded_pos = pos
+
+            padded_position_ids.append(padded_pos)
+
+        result = torch.cat(padded_position_ids, dim=batch_dim)
+
+        return result
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # multimodal

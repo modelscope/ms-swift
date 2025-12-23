@@ -52,6 +52,7 @@ class LLMModelType:
     glm4 = 'glm4'
     glm4_0414 = 'glm4_0414'
     glm4_5 = 'glm4_5'
+    glm4_7 = 'glm4_7'
     glm4_z1_rumination = 'glm4_z1_rumination'
 
     glm_edge = 'glm_edge'
@@ -70,6 +71,7 @@ class LLMModelType:
     deepseek_r1 = 'deepseek_r1'
     deepseek_r1_distill = 'deepseek_r1_distill'
     deepseek_v3_1 = 'deepseek_v3_1'
+    deepseek_v3_2 = 'deepseek_v3_2'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_llama3 = 'openbuddy_llama3'
@@ -140,6 +142,7 @@ class LLMModelType:
     gemma_emb = 'gemma_emb'
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
+    minimind = 'minimind'
 
 
 class BertModelType:
@@ -275,7 +278,10 @@ class MLLMModelType:
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
+    mistral_2512 = 'mistral_2512'
+    mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
+    hunyuan_ocr = 'hunyuan_ocr'
 
 
 class RerankerModelType:

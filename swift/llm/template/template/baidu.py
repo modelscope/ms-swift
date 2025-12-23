@@ -11,7 +11,6 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -26,7 +25,7 @@ class ERNIETemplateMeta(TemplateMeta):
 register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
 
-class ErnieThinkingTemplate(ThinkingTemplate):
+class ErnieThinkingTemplate(Template):
 
     def _swift_prepare_inputs(self, inputs) -> None:
         super()._swift_prepare_inputs(inputs)
@@ -54,7 +53,6 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
         default_factory=lambda: ['<|im_start|>user\n'
                                  '{{QUERY}}<|im_end|>\n\n'
                                  '<|im_start|>assistant\n'])
-    response_prefix: Optional[str] = '<think>\n'
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n\n'])
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: [
@@ -68,7 +66,12 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
     ])
 
 
-register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate))
+register_template(
+    ERNIEThinkingTemplateMeta(
+        LLMTemplateType.ernie_thinking,
+        template_cls=ErnieThinkingTemplate,
+        is_thinking=True,
+        thinking_prefix='<think>\n'))
 
 
 class PaddleOCRTemplate(Template):
@@ -81,7 +84,7 @@ class PaddleOCRTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         if self.mode == 'vllm':
-            assert NotImplementedError
+            return ['<|IMAGE_START|><|IMAGE_PLACEHOLDER|><|IMAGE_END|>']
         return ['<|IMAGE_START|>', [-100], '<|IMAGE_END|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -243,13 +246,16 @@ class ERNIE_VLTemplate(Template):
 
 
 register_template(
-    ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, response_prefix='<think>'))
+    ERNIETemplateMeta(
+        MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, is_thinking=True, thinking_prefix='<think>'))
 
 ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
                    'framework.')
+
 register_template(
     ERNIETemplateMeta(
         MLLMTemplateType.ernie_vl_thinking,
         template_cls=ERNIE_VLTemplate,
-        response_prefix='\n<think>\n',
+        is_thinking=True,
+        thinking_prefix='\n<think>\n',
         default_system=ERNIE_VL_SYSTEM))

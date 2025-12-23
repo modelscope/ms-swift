@@ -9,18 +9,28 @@ logger = get_logger()
 
 @dataclass
 class GenerationArguments:
-    """
-    GenerationArguments class is a dataclass that holds various arguments related to text generation.
+    """A dataclass that holds arguments for text generation.
 
     Args:
-        max_new_tokens (Optional[int]): Maximum number of new tokens to generate. Default is None (unlimited).
-        temperature (Optional[float]): Sampling temperature. Default is None.
-        top_k (Optional[int]): Top-k sampling parameter. Default is None.
-        top_p (Optional[float]): Top-p (nucleus) sampling parameter. Default is None.
-        repetition_penalty (Optional[float]): Penalty for repeated tokens. Default is None.
-        num_beams (int): Number of beams for beam search. Default is 1.
-        stream (bool): Flag to indicate if streaming output should be enabled. Default is None.
-        stop_words (List[str]): List of stop words to end generation. Default is an empty list.
+        max_new_tokens (Optional[int]): The maximum number of new tokens to generate. Defaults to None (unlimited).
+        temperature (Optional[float]): The sampling temperature. A higher temperature makes the output more random. To
+            disable randomness, you can set this to 0 or `top_k` to 1. Defaults to None, which means loading from
+            'generation_config.json'.
+        top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering.
+            Defaults to None (reads from 'generation_config.json').
+        top_p (Optional[float]): The cumulative probability for nucleus sampling. Filters the vocabulary to the
+            smallest set of tokens whose cumulative probability exceeds `top_p`. Defaults to None (reads from
+            'generation_config.json').
+        repetition_penalty (Optional[float]): The penalty applied to repeated tokens. A value of 1.0 means no penalty.
+            Defaults to None (reads from 'generation_config.json').
+        num_beams (Optional[int]): The number of beams to use for beam search. Defaults to 1.
+        stream (bool): Whether to enable streaming output. Defaults to None, which is `True` for interactive mode and
+            `False` for batch inference. Note: For ms-swift < 3.6, the default is `False`.
+        stop_words (List[str]): A list of extra stop words, in addition to the end-of-sequence token. Note: The
+            `eos_token` is removed from the output, while these stop words are preserved. Defaults to an empty list.
+        logprobs (bool): Whether to output log probabilities of the generated tokens. Defaults to False.
+        top_logprobs (Optional[int]): The number of top log probabilities to return for each token position. Requires
+            `logprobs` to be True. Defaults to None.
     """
 
     # generation config

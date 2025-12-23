@@ -50,6 +50,7 @@ class LLMTemplateType:
     glm4_0414 = 'glm4_0414'
     glm4_z1_rumination = 'glm4_z1_rumination'
     glm4_5 = 'glm4_5'
+    glm4_7 = 'glm4_7'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -110,6 +111,7 @@ class LLMTemplateType:
     dbrx = 'dbrx'
 
     bert = 'bert'
+    minimind = 'minimind'
 
 
 class RMTemplateType:
@@ -230,7 +232,10 @@ class MLLMTemplateType:
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
+    mistral_2512 = 'mistral_2512'
+    mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
+    hunyuan_ocr = 'hunyuan_ocr'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

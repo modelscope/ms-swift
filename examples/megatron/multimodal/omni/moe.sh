@@ -1,12 +1,16 @@
 # 2 * 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+ENABLE_AUDIO_OUTPUT=0 \
 NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen3-Omni-30B-A3B-Instruct-mcore \
+    --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \

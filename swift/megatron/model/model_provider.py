@@ -117,10 +117,7 @@ def model_provider(pre_process=True,
             transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)
         else:
             if args.num_experts:
-                if mcore_013:
-                    kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage}
-                else:
-                    kwargs = {}
+                kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage} if mcore_013 else {}
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
                     config, use_transformer_engine=use_te, normalization=args.normalization, **kwargs)
@@ -137,8 +134,13 @@ def model_provider(pre_process=True,
                 transformer_layer_spec_for_mtp = _get_transformer_layer_spec(use_te, config)
             else:
                 transformer_layer_spec_for_mtp = transformer_layer_spec
-            mtp_block_spec = get_gpt_mtp_block_spec(
-                config, transformer_layer_spec_for_mtp, use_transformer_engine=use_te, vp_stage=vp_stage)
+            kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
+            if megatron_model_meta.get_mtp_block_spec is not None:
+                get_mtp_block_spec = megatron_model_meta.get_mtp_block_spec
+            else:
+                get_mtp_block_spec = get_gpt_mtp_block_spec
+            mtp_block_spec = get_mtp_block_spec(
+                config, transformer_layer_spec_for_mtp, use_transformer_engine=use_te, **kwargs)
 
         if args.use_shared_expert_gate and args.num_experts and args.moe_shared_expert_intermediate_size:
             # qwen2_moe

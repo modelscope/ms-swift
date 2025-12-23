@@ -208,7 +208,7 @@ The specific effects of this configuration are as follows:
 
 2. Regular Expression Matching Example: Ignoring Empty Thought Blocks
 
-When training reasoning models, it may be necessary to exclude loss computation for empty thought blocks in the dataset, such as sequences like `<think>\n\n</think>\n\n`.
+When training reasoning models, it may be necessary to exclude loss computation for empty thought blocks in the dataset, such as sequences like `'<think>\n\n</think>\n\n'`.
 
 In such cases, use `--loss_scale ignore_empty_think` (see configuration file [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)). This configuration uses regular expression matching, where the dictionary mapping only needs to specify a single value—the loss weight for the matched content.
 

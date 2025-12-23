@@ -6,6 +6,7 @@ megatron rlhf \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --context_parallel_size 2 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
@@ -36,6 +37,7 @@ megatron rlhf \
     --loss_type grpo \
     --sleep_level 2 \
     --offload_model true \
+    --offload_bridge false \
     --offload_optimizer true \
     --log_interval 1 \
     --recompute_granularity selective \

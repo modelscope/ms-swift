@@ -5,9 +5,12 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
-    --load Qwen3-235B-A22B-Instruct-2507-mcore \
+    --model Qwen/Qwen3-235B-A22B-Instruct-2507 \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
+    --load_safetensors true \
+    --save_safetensors true \
+    --merge_lora false \
     --load_from_cache_file true \
     --train_type lora \
     --lora_rank 8 \

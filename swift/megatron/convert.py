@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import math
+import os
+import shutil
 from contextlib import contextmanager
 from dataclasses import fields
 from typing import Any, Dict
@@ -15,7 +17,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
-from swift.utils import get_logger, get_n_params_grads
+from swift.utils import get_logger, get_n_params_grads, is_master
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
 from .utils import (convert_hf_config, forward_step_helper, get_padding_to, patch_load_base_checkpoint,
@@ -158,6 +160,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
 
     is_multimodal = template.model_meta.is_multimodal
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
+    if mg_language_model.config.fp8 is not None:
+        raise ValueError('fp8 models currently do not support testing convert_precision. '
+                         'Please set `--test_convert_precision false`.')
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     if hf_model is not None:
         hf_model.eval()
@@ -332,6 +337,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         bridge = megatron_model_meta.bridge_cls()
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir)
+        if is_master():
+            args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
+            if os.path.exists(args_path):
+                shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
+            else:
+                args.save_args(args.output_dir)
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             hf_model, template = prepare_model_template(args, model=args.output_dir)

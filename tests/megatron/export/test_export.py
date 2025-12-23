@@ -28,7 +28,7 @@ def test_peft_to_mcore():
     megatron_export_main(
         MegatronExportArguments(
             model='Qwen/Qwen3-30B-A3B',
-            adapters=['megatron_output/Qwen3-30B-A3B/vx-xxx-hf'],
+            adapters=['megatron_output/Qwen3-30B-A3B/vx-xxx/checkpoint-xxx-hf'],
             merge_lora=False,
             to_mcore=True,
             exist_ok=True,
@@ -41,7 +41,7 @@ def test_peft_to_hf():
     megatron_export_main(
         MegatronExportArguments(
             load='Qwen3-30B-A3B-mcore',
-            adapter_load='megatron_output/Qwen3-30B-A3B/vx-xxx',
+            adapter_load='megatron_output/Qwen3-30B-A3B/vx-xxx/checkpoint-xxx',
             merge_lora=False,
             to_hf=True,
             exist_ok=True,

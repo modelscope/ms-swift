@@ -92,7 +92,7 @@ When using ms-swift for SFT, the custom dataset format is as follows (the `syste
 
 If you want to train using data without the thinking chain while preserving the model's reasoning ability, you can use one of the following methods to minimize the impact of fine-tuning:
 
-**Option 1**: [Recommended] During training, specify `--loss_scale ignore_empty_think`, which will ignore the loss calculation for `Thought:` and `Answer:` tokens, thus avoiding the loss of reasoning capability. The training script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh). This method also works for models like DeepSeek-R1. The custom dataset format is as follows:
+**Option 1**: [Recommended] During training, specify `--loss_scale ignore_empty_think`, which will ignore the loss calculation for `'<think>\n\n</think>\n\n'`, thus avoiding the loss of reasoning capability. The training script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh). This method also works for models like DeepSeek-R1. The custom dataset format is as follows:
 
 ```json
 {"messages": [
@@ -258,7 +258,7 @@ ms-swift supports RLHF methods such as DPO, GRPO, DAPO, PPO, KTO, and GKD. This 
 In addition to installing the dependencies related to ms-swift mentioned above, you also need to install the following:
 
 ```shell
-pip install "math_verify==0.5.2"
+pip install "math_verify"
 pip install vllm==0.8.5.post1
 ```
 
@@ -332,9 +332,9 @@ swift rlhf \
 
 Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/KTO/RM for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO/GRPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
-For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
+For environment setup, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 
 We will use Alibaba Cloud DLC to launch training. The training environment consists of two nodes equipped with 8x 80GiB A800 GPUs each. For more information on multi-node launching, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node).
 
@@ -344,7 +344,9 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --load_safetensors true \
+    --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

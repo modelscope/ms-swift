@@ -319,7 +319,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
 
 
 def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
-    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.01'))  # temperature
+    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.1'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
@@ -338,9 +338,16 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
     sentences = outputs['last_hidden_state']
 
     if world_size > 1 and use_batch:
-        # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
-        all_sentences = gather_object(sentences.unsqueeze(0))
-        labels = gather_object(labels)
+        from swift.trainers.sequence_parallel import sequence_parallel
+
+        if getattr(sequence_parallel, 'dp_group', None) is not None:
+            all_sentences = sequence_parallel._gather_object_dp(sentences.unsqueeze(0))
+            labels = sequence_parallel._gather_object_dp(labels)
+            rank = sequence_parallel.dp_rank
+        else:
+            # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
+            all_sentences = gather_object(sentences.unsqueeze(0))
+            labels = gather_object(labels)
         # override the gathered one
         all_sentences[rank] = sentences
         for idx in range(len(all_sentences)):
@@ -575,7 +582,7 @@ def generative_reranker_loss(outputs,
 
     # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    last_valid_indices = get_last_valid_indices(attention_mask)
+    last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
     batch_indices = torch.arange(batch_size, device=logits.device)
     last_valid_logits = logits[batch_indices, last_valid_indices, :]
 
@@ -743,7 +750,7 @@ def listwise_generative_reranker_loss(outputs,
 
     # Extract logits at the last valid (non-padding) token position for each sample
     batch_size = logits.shape[0]
-    last_valid_indices = get_last_valid_indices(attention_mask)
+    last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
     batch_indices = torch.arange(batch_size, device=logits.device)
     last_valid_logits = logits[batch_indices, last_valid_indices, :]
 

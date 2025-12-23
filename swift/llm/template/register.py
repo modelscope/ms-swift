@@ -22,20 +22,23 @@ def get_template(
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     *,
-    truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+    truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
     max_pixels: Optional[int] = None,  # h * w
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,
     use_chat_template: bool = True,
     remove_unused_columns: bool = True,
+    padding_side: Literal['left', 'right'] = 'right',
     # train
     padding_free: bool = False,
-    padding_side: Literal['left', 'right'] = 'right',
     loss_scale: str = 'default',
     sequence_parallel_size: int = 1,
     # infer/deploy
-    response_prefix: Optional[str] = None,
     template_backend: Literal['swift', 'jinja'] = 'swift',
+    # thinking
+    response_prefix: Optional[str] = None,
+    enable_thinking: Optional[bool] = None,
+    add_non_thinking_prefix: bool = True,
 ) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
@@ -50,14 +53,17 @@ def get_template(
         norm_bbox=norm_bbox,
         use_chat_template=use_chat_template,
         remove_unused_columns=remove_unused_columns,
+        padding_side=padding_side,
         # train
         padding_free=padding_free,
-        padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
         # infer/deploy
-        response_prefix=response_prefix,
         template_backend=template_backend,
+        # thinking
+        response_prefix=response_prefix,
+        enable_thinking=enable_thinking,
+        add_non_thinking_prefix=add_non_thinking_prefix,
     )
 
 

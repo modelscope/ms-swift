@@ -5,6 +5,7 @@ from types import MethodType
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
+import transformers
 from packaging import version
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -733,6 +734,18 @@ def patch_qwen_vl_utils(vision_process):
         backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
         if isinstance(backends, dict):
             backends['decord'] = _new_read_video_decord
+            _read_video_torchvision = getattr(vision_process, '_read_video_torchvision', None)
+            if _read_video_torchvision is not None:
+
+                def _new_read_video_torchvision(ele: dict):
+                    try:
+                        return _read_video_torchvision(ele)
+                    except Exception:
+                        from swift.llm import load_file  # base64
+                        ele['video'] = load_file(ele['video'])
+                        return _read_video_torchvision(ele)
+
+                backends['torchvision'] = _new_read_video_torchvision
         elif backends is None:  # keye_vl
             vision_process._read_video_decord = _new_read_video_decord
     vision_process._patch = True
@@ -977,12 +990,15 @@ def _patch_deepstack_process(model):
 
 
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
-    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+    if hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
-                                                                check_model_inputs, Cache, is_torchdynamo_compiling)
+                                                                check_model_inputs, Cache)
     from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
     output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
+
+    if version.parse(transformers.__version__) >= version.parse('4.57.2'):
+        check_model_inputs = check_model_inputs()
 
     @check_model_inputs
     def forward(
@@ -1021,38 +1037,19 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
             self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
             video_grid_thw)
         if position_ids is None:
-            attention_mask_tensor = (
-                attention_mask if not isinstance(attention_mask, dict) else attention_mask['full_attention'])
-            if attention_mask_tensor is not None and attention_mask_tensor.ndim == 4:
-                attention_mask_tensor = torch.diagonal(attention_mask_tensor[:, 0], dim1=1, dim2=2)
-                # Only apply conversion for floating point tensors (inverted masks)
-                if attention_mask_tensor.dtype.is_floating_point:
-                    attention_mask_tensor = attention_mask_tensor / torch.finfo(attention_mask_tensor.dtype).min
-                    attention_mask_tensor = (1.0 - attention_mask_tensor).int()
-
-            # Calculate RoPE index once per generation in the pre-fill stage only.
-            # When compiling, we can't check tensor values thus we check only input length
-            # It is safe to assume that `length!=1` means we're in pre-fill because compiled
-            # models currently cannot do asssisted decoding
-            prefill_compiled_stage = is_torchdynamo_compiling() and (
-                (input_ids is not None and input_ids.shape[1] != 1) or
-                (inputs_embeds is not None and inputs_embeds.shape[1] != 1))
-            prefill_noncompiled_stage = not is_torchdynamo_compiling() and (
-                (cache_position is not None and cache_position[0] == 0) or
-                (past_key_values is None or past_key_values.get_seq_length() == 0))
-            if (prefill_compiled_stage or prefill_noncompiled_stage) or self.rope_deltas is None:
+            past_key_values_length = 0 if past_key_values is None else past_key_values.get_seq_length()
+            if self.rope_deltas is None or past_key_values_length == 0:
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
                     image_grid_thw,
                     video_grid_thw,
-                    attention_mask=attention_mask_tensor,
+                    attention_mask=attention_mask,
                 )
                 self.rope_deltas = rope_deltas
             # then use the prev pre-calculated rope-deltas to get the correct position ids
             else:
                 batch_size, seq_length, _ = inputs_embeds.shape
-                delta = ((cache_position[0]
-                          + self.rope_deltas).to(inputs_embeds.device) if cache_position is not None else 0)
+                delta = (past_key_values_length + self.rope_deltas).to(inputs_embeds.device)
                 position_ids = torch.arange(seq_length, device=inputs_embeds.device)
                 position_ids = position_ids.view(1, -1).expand(batch_size, -1)
                 if cache_position is not None:  # otherwise `deltas` is an int `0`

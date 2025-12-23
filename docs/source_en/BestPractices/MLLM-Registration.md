@@ -7,7 +7,7 @@ This document introduces how to register a multimodal model in ms-swift and succ
 
 ```shell
 # Avoid future incompatibilities with documentation
-pip install "ms-swift>=3.9,<3.10"
+pip install "ms-swift>=3.10.2,<3.11"
 
 pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 ```
@@ -33,10 +33,11 @@ register_model_arch(
         # `freeze_llm`, `freeze_vit`, `freeze_aligner` behavior is determined by the values below.
         # For example: full parameter training, if `freeze_vit=True`, it will freeze parameters of model layers prefixed with `thinker.audio_tower` and `thinker.visual`.
         # LoRA training, if `freeze_vit=False`, it will additionally add LoRA to Linear layers prefixed with `thinker.audio_tower` and `thinker.visual`.
-        language_model='thinker.model',
+        language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # Generator parts will never be trained or remain frozen.
+        # If you want `thinker.audio_tower` and `thinker.audio_tower.proj` to never be trained, you can place them in the generator and remove them from vision_tower and aligner.
         generator=['talker', 'token2wav'],
     ))
 

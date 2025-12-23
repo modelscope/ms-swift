@@ -6,12 +6,16 @@ from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+import megatron.core
 import torch
+from megatron.core import parallel_state
+from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
+mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
 
 
@@ -40,9 +44,15 @@ class RLHFMegatronArgumentsMixin:
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
     num_generations: int = 8
+    num_generations_eval: Optional[int] = None
     max_completion_length: int = 512
     # GSPO https://arxiv.org/abs/2507.18071
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+
+    # SAPO https://arxiv.org/abs/2511.20347
+    # Temperature parameters for soft adaptive gate
+    tau_pos: float = 1.0
+    tau_neg: float = 1.05
 
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
@@ -51,7 +61,7 @@ class RLHFMegatronArgumentsMixin:
     top_p: float = 0.9
     repetition_penalty: float = 1.
     use_vllm: bool = True
-    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+    vllm_mode: Optional[Literal['server', 'colocate']] = None
 
     vllm_enable_prefix_caching: bool = True
     vllm_gpu_memory_utilization: float = 0.9
@@ -60,14 +70,20 @@ class RLHFMegatronArgumentsMixin:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_disable_cascade_attn: bool = False
+    vllm_max_num_seqs: Optional[int] = None
+    vllm_mm_processor_cache_gb: Optional[float] = None
+    vllm_engine_kwargs: Optional[Dict[str, Any]] = None
+
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
     offload_model: bool = False
+    offload_bridge: bool = False
 
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
     vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
+    vllm_server_group_port: Optional[List[int]] = None
 
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
@@ -92,13 +108,25 @@ class RLHFMegatronArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: Literal['none', 'group', 'batch'] = 'group'
 
-    wandb_log_unique_prompts: Optional[bool] = None
-    log_completions: bool = False
-
-    # ───────────────────────────  Not Supported Yet  ───────────────────────────
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     kl_in_reward: bool = False
+
+    wandb_log_unique_prompts: Optional[bool] = None
+    log_completions: bool = False
+
+    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
+                                                       'sequence_mask']] = None
+    rollout_importance_sampling_threshold: float = 2.0
+    log_rollout_offpolicy_metrics: bool = False
+    # Off-Policy Sequence Masking: mask out sequences that deviate too much from rollout policy
+    # If set, compute mean(rollout_per_token_logps - per_token_logps) per sequence,
+    # and mask sequences where this delta > threshold AND advantage < 0
+    # Falls back to old_per_token_logps if rollout_per_token_logps is not available
+    off_policy_sequence_mask_delta: Optional[float] = None
+
+    # ───────────────────────────  Not Supported Yet  ───────────────────────────
+
     # reward model
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
@@ -143,7 +171,11 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'kto':
             self._init_kto()
         if self.rlhf_type == 'grpo':
+            assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
             self._init_grpo()
+            if self.vllm_limit_mm_per_prompt is not None:
+                self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+            self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def _init_grpo(self):
 
@@ -162,10 +194,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
-            if self.kl_in_reward:
-                raise ValueError('kl_in_reward is not supported for Megatron GRPO right now')
-            if self.advantage_estimator != 'grpo':
-                raise ValueError('advantage_estimator must be grpo for Megatron GRPO right now')
 
         def _check_batch_params():
             # Set default values if both are None
@@ -196,6 +224,9 @@ class RLHFMegatronArgumentsMixin:
                                  f'Please adjust generation_batch_size/steps_per_generation/num_generations.')
 
             per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+            assert per_device_num_rollout_prompt >= 1, \
+                (f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be greater than 1, '
+                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
 
             if per_device_num_rollout_prompt % self.micro_batch_size != 0:
                 raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
@@ -207,12 +238,12 @@ class RLHFMegatronArgumentsMixin:
                                  f'micro_batch_size == 0')
 
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
+            assert self.per_device_generation_batch_size >= 1, \
+                (f'per_device_generation_batch_size ({self.per_device_generation_batch_size}) must be greater than 1, '
+                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
 
         _check_not_supported()
         _check_batch_params()
-        # default loss_type if no loss_type is provided
-        assert self.loss_type in ['grpo', 'bnpo', 'dr_grpo'], \
-            f'loss_type must be one of [grpo, bnpo, dr_grpo], but got {self.loss_type}'
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
@@ -264,7 +295,7 @@ class MegatronTunerMixin:
     use_rslora: bool = False
 
     def __post_init__(self):
-        if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
+        if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
             self.target_modules = self.target_regex
@@ -272,6 +303,7 @@ class MegatronTunerMixin:
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
+    check_model: bool = True
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
@@ -281,8 +313,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # mcore-bridge
     model: Optional[str] = None
     model_type: Optional[str] = None
-    load_safetensors: bool = False
-    save_safetensors: bool = False
+    load_safetensors: Optional[bool] = None
+    save_safetensors: bool = True
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
@@ -292,9 +324,13 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
-    # streaming dataloader
+
+    # dataloader
+    train_dataloader_shuffle: bool = True
+    dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
+    group_by_length: bool = False
 
     architectures: Optional[str] = None
     llm_architectures: Optional[str] = None
@@ -304,6 +340,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     task_type: Literal['causal_lm', 'seq_cls'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
+    save_strategy: Literal['steps', 'epoch'] = 'steps'
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
@@ -360,7 +397,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     no_masked_softmax_fusion: bool = False
-    no_bias_dropout_fusion: bool = False
+    no_bias_dropout_fusion: Optional[bool] = None
     no_bias_swiglu_fusion: bool = False
     no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
@@ -425,6 +462,9 @@ class MegatronArguments(ExtraMegatronArguments):
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
+    account_for_embedding_in_pipeline_split: bool = False
+    account_for_loss_in_pipeline_split: bool = False
+
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
@@ -443,6 +483,9 @@ class MegatronArguments(ExtraMegatronArguments):
     num_attention_heads: Optional[int] = None
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
+    softmax_type: Optional[Literal['vanilla', 'off-by-one', 'learnable']] = None
+    window_size: Optional[str] = None
+    window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
     mrope_section: Optional[List[int]] = None
@@ -452,6 +495,9 @@ class MegatronArguments(ExtraMegatronArguments):
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
+    quick_geglu: Optional[bool] = None
+    activation_func_clamp_value: Optional[float] = None
+    glu_linear_offset: Optional[float] = None
     untie_embeddings_and_output_weights: Optional[bool] = None
     disable_bias_linear: Optional[bool] = None
     add_qkv_bias: Optional[bool] = None
@@ -459,6 +505,9 @@ class MegatronArguments(ExtraMegatronArguments):
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
     qk_layernorm: Optional[bool] = None
+    qk_l2_norm: Optional[bool] = None
+    no_rope_freq: Optional[int] = None
+    moe_apply_probs_on_input: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # moe
@@ -476,7 +525,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
@@ -498,6 +547,10 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_lora_rank: Optional[int] = None
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
+
+    # mtp
+    mtp_num_layers: Optional[int] = None
+    mtp_loss_scaling_factor: float = 0.1
 
     # fp8
     fp8_format: Literal['e4m3', 'hybrid'] = None
@@ -534,13 +587,14 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
+    no_data_sharding: bool = False
 
     # extra_args for megatron
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
-        if self.mlp_padding_free and self.sequence_parallel:
-            raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
+            raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
@@ -550,6 +604,8 @@ class MegatronArguments(ExtraMegatronArguments):
                 self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
+        if self.softmax_type is None and mcore_015:
+            self.softmax_type = 'vanilla'
         if self.norm_epsilon is None:
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
@@ -562,6 +618,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.swiglu is None:
             self.swiglu = True
+        if self.quick_geglu is None:
+            self.quick_geglu = False
+        if self.glu_linear_offset is None and mcore_015:
+            self.glu_linear_offset = 0.
         if self.add_qkv_bias is None:
             self.add_qkv_bias = True
         if self.disable_bias_linear is None:
@@ -580,6 +640,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
+        if self.no_bias_dropout_fusion is None:
+            self.no_bias_dropout_fusion = False
         # moe
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
@@ -617,7 +679,6 @@ class MegatronArguments(ExtraMegatronArguments):
 
     @staticmethod
     def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        from megatron.core import parallel_state
         create_group_origin = parallel_state.create_group
 
         def create_group(ranks=None, timeout=None, *args, **kwargs):
@@ -636,11 +697,15 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.12')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
+        if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
+                                                       or self.decoder_last_pipeline_num_layers is not None):
+            raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
+                             'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self._patch_megatron_timeout(self.distributed_timeout_minutes)
@@ -653,6 +718,11 @@ class MegatronArguments(ExtraMegatronArguments):
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.save_strategy == 'epoch':
+            self.save_interval = 1
+            self.eval_interval = 1
+        if isinstance(self.ref_adapters, str):
+            self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:

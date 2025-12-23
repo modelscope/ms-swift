@@ -1,17 +1,17 @@
 # Quick Start
 
-ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
+ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO/GRPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
 
 
-| Method                             | Full-parameter | LoRA | MoE  | Multimodal |
-| ---------------------------------- | -------------- | ---- | ---- | ---------- |
-| Pretraining                        | ✅              | ✅    | ✅    | ✅          |
-| Instruction-supervised fine-tuning | ✅              | ✅    | ✅    | ✅          |
-| GRPO                               | ✅              | ✅    | ✅    | ✅          |
-| DPO                                | ✅              | ✅    | ✅    | ✅          |
-| KTO                                | ✅              | ✅    | ✅    | ✅          |
-| RM                                 | ✅              | ✅    | ✅    | ✅          |
-| Classification tasks               | ✅              | ✅    | ✅    | ✅          |
+| Method                 | Full-Parameter | LoRA | MoE  | Multimodal | FP8  |
+| ---------------------- | -------------- | ---- | ---- | ---------- | ---- |
+| Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
 
@@ -23,8 +23,6 @@ pip install pybind11
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer_engine[pytorch]
-# Or install using the following command
-# pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
 # Note: Megatron-SWIFT can run in environments without apex by setting `--no_gradient_accumulation_fusion true`.
@@ -33,7 +31,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.15.0
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -41,21 +39,21 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.14.0
 export MODELSCOPE_CACHE='/xxx/shared'
 
 # Megatron-LM
-# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.14.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.14.0)).
-git clone --branch core_r0.14.0 https://github.com/NVIDIA/Megatron-LM.git
+# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.15.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.15.0)).
+git clone --branch core_r0.15.0 https://github.com/NVIDIA/Megatron-LM.git
 export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
-# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.1
-# Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.6/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L109
-MAX_JOBS=8 pip install "flash-attn<2.8.2" --no-build-isolation
+# Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
+# Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.10/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L118
+MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
 ```
 
 Recommended Operating Environment:
@@ -65,11 +63,11 @@ Recommended Operating Environment:
 | python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.7.1/2.8.0    |                    |
-| transformer_engine    | >=2.3       |         |                  |
+| transformer_engine    | >=2.3       |  2.10.0  |                  |
 | apex |   |  0.1 | |
-| megatron_core    |    >=0.12    | 0.14      |                  |
-| flash_attn    |        | 2.8.1/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.1      |                    |
+| megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
+| flash_attn    |        | 2.8.3/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.57.3      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
@@ -79,9 +77,12 @@ Recommended Operating Environment:
 
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
+### Traditional Method
+
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - Multi-GPU weight conversion: Remove `CUDA_VISIBLE_DEVICES=0` to enable multi-GPU weight conversion.
 - Conversion precision test: `--test_convert_precision true` will test the conversion precision. For large MoE model conversions, this option takes longer and consumes more memory, so you may omit it as needed.
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -100,6 +101,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-7B-Instruct-mcore \
+    --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -135,10 +137,10 @@ Finally, convert the Megatron format weights back to HF format:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --test_convert_precision true
 ```
 
@@ -147,7 +149,7 @@ We then perform inference on the generated HF format weights:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
@@ -158,6 +160,59 @@ The inference results are as follows:
 ```
 <<< who are you?
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
+```
+
+### Mcore-Bridge [Recommended]
+
+In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
+
+Training script:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --load_safetensors true \
+    --save_safetensors true \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-5 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-6 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+We perform inference on the generated safetensors format weights:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
@@ -195,3 +250,8 @@ The training speed comparison for full-parameter MoE models with 8K context leng
 | ---------------- | ----------- | --------------- | --------------- |
 | Training Speed   | 9.6s/it    | -        | 91.2s/it       |
 | GPU Memory Usage | 16 * 60GiB  | OOM             | 16 * 80GiB      |
+
+
+## Megatron-SWIFT Wechat Group
+
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/megatron.png" width="250">

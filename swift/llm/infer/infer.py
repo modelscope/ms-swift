@@ -179,11 +179,12 @@ class SwiftInfer(SwiftPipeline):
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        if args.cached_dataset:
+        if args.cached_dataset or args.cached_val_dataset:
             _, val_datasets = get_cached_dataset(self.args)
         else:
             val_datasets = []
         if len(args.val_dataset) > 0:
+            dataset_kwargs.pop('interleave_prob', None)
             _, val_dataset = load_dataset(
                 args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
             val_datasets.append(val_dataset)

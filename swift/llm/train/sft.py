@@ -72,7 +72,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template.set_mode('train')
         if template.use_model:
             template.model = self.model
-        if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
+        support_padding_free = template.support_padding_free
+        if support_padding_free is None:
+            support_padding_free = not args.model_meta.is_multimodal
+        if (args.padding_free or args.packing) and not support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
 
@@ -80,16 +83,22 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        train_dataset, val_dataset = load_dataset(
-            args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
+        train_dataset, val_dataset = None, None
+        if args.dataset:
+            train_dataset, val_dataset = load_dataset(
+                args.dataset,
+                split_dataset_ratio=args.split_dataset_ratio,
+                shuffle=args.dataset_shuffle,
+                **dataset_kwargs)
         if len(args.val_dataset) > 0:
             # Loading val dataset
+            dataset_kwargs.pop('interleave_prob', None)
             _, val_dataset = load_dataset(
                 args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
             assert args.split_dataset_ratio == 0.
-        logger.info(f'train_dataset: {train_dataset}')
-        logger.info(f'val_dataset: {val_dataset}')
-
+        if args.truncation_strategy == 'split':
+            logger.info(f'train_dataset: {train_dataset}')
+            logger.info(f'val_dataset: {val_dataset}')
         return train_dataset, val_dataset
 
     def _get_data_collator(self):
@@ -112,18 +121,23 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         # Defer encoding to the training phase
         pre_process = not (hasattr(args, 'rlhf_type') and args.rlhf_type in ['grpo', 'gkd'])
-        if args.cached_dataset:
+        if args.cached_dataset or args.cached_val_dataset:
             assert not args.streaming, 'Cached dataset does not support streaming.'
             train_datasets, val_datasets = get_cached_dataset(self.args)
         else:
             train_datasets, val_datasets = [], []
-        if args.dataset:
+        if args.dataset or args.val_dataset:
             train_dataset, val_dataset = self._get_dataset()
             train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=pre_process)
-            train_datasets.append(train_dataset)
-            val_datasets.append(val_dataset)
+            if train_dataset is not None:
+                train_datasets.append(train_dataset)
+            if val_dataset is not None:
+                val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        if args.truncation_strategy != 'split':
+            logger.info(f'train_dataset: {train_dataset}')
+            logger.info(f'val_dataset: {val_dataset}')
         datasets = [train_dataset, val_dataset]
         if not pre_process:
             return datasets
@@ -142,7 +156,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if not args.streaming:
+            if not args.streaming and args.truncation_strategy != 'split':
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -317,6 +331,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         origin_template_model = template.model
         template.model = None  # Avoid serializing the model.
+        if args.truncation_strategy == 'split':
+            if (args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template
+                    or args.model_meta.is_multimodal):
+                raise ValueError(
+                    '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+            assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
+
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue
@@ -325,7 +346,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 continue
             if not args.lazy_tokenize and not args.streaming:
                 # Compatible with cached_dataset, only additionally write length here.
-                preprocessor = AddLengthPreprocessor(template=template)
+                preprocessor_cls = EncodePreprocessor if args.truncation_strategy == 'split' else AddLengthPreprocessor
+                preprocessor = preprocessor_cls(template=template)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,

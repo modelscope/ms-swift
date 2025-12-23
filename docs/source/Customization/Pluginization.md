@@ -29,7 +29,7 @@ extra_callbacks = [CustomCallback()]
 
 example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
 
-SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后trainer会自动使用你定制的loss方法。
+SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后在训练时设置`--loss_type custom_loss`使用你定制的loss方法。
 例如在plugin/loss.py中添加下面的代码：
 ```python
 def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
@@ -70,7 +70,7 @@ example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin
 
 metric可以定制训练时使用的评测参数：
 ```python
-METRIC_MAPPING = {
+metric_mapping = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),
     'custom': (custom_metric, custom_preprocess),
@@ -78,7 +78,7 @@ METRIC_MAPPING = {
 
 
 def get_metric(metric: str):
-    return METRIC_MAPPING[metric]
+    return metric_mapping[metric]
 ```
 在上面的定义中，我们添加了新的custom metric，它的value有两个值，第一个值是计算metric的过程，返回一个包含metric key-value对的dict，第二个值是针对logits做前处理，返回实际的predictions。
 

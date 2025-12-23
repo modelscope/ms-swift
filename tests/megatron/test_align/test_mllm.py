@@ -52,7 +52,8 @@ def test_internvl3_5():
 
 
 def test_internvl3_5_moe():
-    _test_model('OpenGVLab/InternVL3_5-30B-A3B')
+    # _test_model('OpenGVLab/InternVL3_5-30B-A3B')
+    _test_model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview')
 
 
 def test_internvl3_hf():
@@ -64,7 +65,8 @@ def test_internvl3_5_hf():
 
 
 def test_internvl3_5_moe_hf():
-    _test_model('OpenGVLab/InternVL3_5-30B-A3B-HF')
+    # _test_model('OpenGVLab/InternVL3_5-30B-A3B-HF')
+    _test_model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview-HF')
 
 
 def test_glm4_5v():
@@ -91,6 +93,10 @@ def test_qwen3_omni():
     _test_model('Qwen/Qwen3-Omni-30B-A3B-Instruct')
 
 
+def test_llama4():
+    _test_model('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
+
+
 if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()
@@ -104,6 +110,7 @@ if __name__ == '__main__':
     # test_glm4_5v()
     # test_ovis2_5()
     # test_kimi_vl()
-    test_qwen3_vl()
+    # test_qwen3_vl()
     # test_qwen3_vl_moe()
     # test_qwen3_omni()
+    test_llama4()

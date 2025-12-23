@@ -19,7 +19,7 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
+from swift.utils import get_dist_setting, get_last_valid_indices, get_logger, is_mp, is_mp_ddp, safe_ddp_context
 from swift.utils.torch_utils import (_get_max_memory, _sync_max_memory, get_cu_seqlens_from_position_ids,
                                      get_device_count, get_position_ids_from_cu_seqlens)
 from .utils import HfConfigFactory
@@ -76,7 +76,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(module, model_meta=model_meta)
+    llm_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
 
     found = False
     for lm_head in lm_heads:
@@ -88,7 +88,9 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
     assert found, 'Cannot find the proper lm_head name'
 
     def _output_embedding_hook(module, args, kwargs, output):
-        attention_mask = kwargs['attention_mask']
+        attention_mask = kwargs.get('attention_mask', None)
+        if attention_mask is None:
+            attention_mask = output.get('attention_mask', None)
         hidden_states = output.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
@@ -156,7 +158,8 @@ def get_lm_head_model(model, model_meta=None, lm_heads=None):
     if isinstance(model, PeftModel):
         model = model.model
     model_meta = model_meta or model.model_meta
-    lm_heads = lm_heads or ['lm_head']
+    if lm_heads is None:
+        lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
     prefix_list = []
     if llm_prefix_list:
@@ -206,7 +209,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
                 sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
             elif kwargs.get('attention_mask') is not None:
-                sequence_lengths = kwargs['attention_mask'].sum(dim=1) - 1
+                sequence_lengths = get_last_valid_indices(kwargs['attention_mask'])
             else:
                 sequence_lengths = -1
         if isinstance(sequence_lengths, torch.Tensor):
@@ -257,14 +260,15 @@ def _patch_sequence_classification(model, model_meta):
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     llm_model = get_lm_head_model(model, model_meta, lm_heads)
     llm_model.num_labels = model.config.num_labels
+    for lm_head in lm_heads:
+        if hasattr(llm_model, lm_head):
+            hidden_size = getattr(llm_model, lm_head).in_features
+            setattr(llm_model, lm_head, nn.Identity())
+            break
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
     if llm_model.score.weight.device == torch.device('meta'):
         llm_model.score.to_empty(device='cpu')
     llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
-    for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            setattr(llm_model, lm_head, nn.Identity())
-            break
 
     origin_forward = llm_model.forward
 
@@ -535,6 +539,32 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     outputs[hidden_state_key] = torch.stack(unpacked_logits, dim=0)
     inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
     outputs['attention_mask'] = inputs['attention_mask']
+    return outputs
+
+
+def gather_sequence_parallel_outputs(
+    outputs: Dict[str, Any],
+    tensor_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+        Gather split tensors produced by sequence parallel training so that downstream
+        components (loss, metrics, etc.) can operate on full-length sequences.
+        """
+    from swift.trainers.sequence_parallel import sequence_parallel
+    from swift.trainers.sequence_parallel.utils import GatherTensor
+
+    tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
+
+    position_ids = None
+
+    if sequence_parallel.rp_world_size and sequence_parallel.rp_world_size > 1:
+        position_ids = sequence_parallel.real_position_ids
+        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+
+    for key in tensor_keys:
+        if key in outputs:
+            outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
+
     return outputs
 
 

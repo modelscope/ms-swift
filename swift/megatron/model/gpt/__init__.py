@@ -2,7 +2,7 @@
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
-from . import qwen3_next
+from . import glm4, qwen3_next
 
 register_megatron_model(
     MegatronModelMeta(
@@ -52,7 +52,9 @@ register_megatron_model(
             ModelType.dots1,
             ModelType.ernie,
             ModelType.glm4_5,
+            ModelType.glm4_7,
             ModelType.deepseek_v3_1,
             ModelType.ernie_thinking,
+            ModelType.gpt_oss,
         ],
     ))
