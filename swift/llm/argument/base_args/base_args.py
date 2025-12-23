@@ -130,7 +130,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             if self.cached_dataset or self.cached_val_dataset:
                 self.lazy_tokenize = False
             elif (self.model_meta is not None and self.model_meta.is_multimodal and not self.streaming
-                  and not self.packing):
+                  and not self.packing and not self.group_by_length):
                 self.lazy_tokenize = True
             else:
                 self.lazy_tokenize = False

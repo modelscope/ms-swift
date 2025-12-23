@@ -1135,6 +1135,7 @@ class BaseMegatronTrainer(ABC):
                 data_parallel_size=mpu.get_data_parallel_world_size(),
                 data_sharding=args.data_sharding,
                 shuffle=args.train_dataloader_shuffle,
+                group_by_length=args.group_by_length,
             )
         else:
             raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))

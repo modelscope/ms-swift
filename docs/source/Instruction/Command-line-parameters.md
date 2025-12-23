@@ -104,21 +104,24 @@
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
   - 注意：`swift pt`默认为False，使用generation模板。该参数可以很好的**兼容多模态模型**。
+- padding_side: 当训练`batch_size>=2`时的padding_side，可选值为'left'、'right'，默认为'right'。（推理时的batch_size>=2时，只进行左padding）。
+  - 注意：PPO和GKD默认设置为'left'。
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。
-- padding_side: 当训练`batch_size>=2`时的padding_side，可选值为'left'、'right'，默认为'right'。（推理时的batch_size>=2时，只进行左padding）。
-  - 注意：PPO和GKD默认设置为'left'。
-- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`，代表所有response（含history）以权重1计算交叉熵损失（**messages中的system/user/多模态tokens以及Agent训练中`tool_response`部分不计算损失**）。可选值为'default'、'last_round'、'all'、'ignore_empty_think'、'last_round_with_ignore_empty_think'，以及agent需要的loss_scale: 'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py)。
-  - 'last_round': 只计算最后一轮response的损失。（常用；**RLHF默认为该值**）
+- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'last_round+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
+  - 'default': 所有response（含history）以权重1计算交叉熵损失（**messages中的system/user/多模态tokens以及Agent训练中`tool_response`部分不计算损失**）。（**SFT默认为该值**）
+  - 'last_round': 只计算最后一轮response的损失。在"ms-swift>=3.12"，最后一轮含义为最后一个"user"之后的所有内容，之前的含义只包含最后一个"assistant"。（**RLHF默认为该值**）
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
-  - 'ignore_empty_think': 在`'default'`的基础上，忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
-  - 'last_round_with_ignore_empty_think': 在`'last_round'`的基础上，忽略空的`'<think>\n\n</think>\n\n'`损失计算。
-  - 'react', 'hermes', 'qwen': 在`'default'`的基础上，将`tool_call`部分的loss权重调整为2。
+  - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
+  - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
-- response_prefix: response的前缀字符，例如QwQ-32B将response_prefix设置为`'<think>\n'`，该参数只在推理时生效。默认为None，根据模型自动设置。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
   - 注意：jinja的template后端只支持推理，不支持训练（无法确定损失计算的tokens范围）。
+- response_prefix: response的前缀字符，该参数只在推理时生效。默认为None，根据enable_thinking参数和模版类型确定。
+- enable_thinking: (ms-swift>=3.12) 该参数在推理时生效，代表是否开启thinking模式。默认为None，默认值由模板（模型）类型确定（思考/混合思考模板为True，非思考模板为False）。若enable_thinking为False，则增加非思考前缀，例如Qwen3-8B混合思考模型增加前缀`'<think>\n\n</think>\n\n'`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为True，则增加思考前缀，例如`'<think>\n'`。注意：该参数的优先级低于response_prefix参数。
+  - 注意：对于思考模型（思考/混合思考）或显式开启enable_thinking，我们会在推理和训练时，对历史的思考内容进行删除（最后一轮的思考内容保留，即最后一个user信息后的内容）。若训练时的loss_scale基本策略不为last_round，例如为'default'，则不对历史的思考内容进行删除。
+- add_non_thinking_prefix: (ms-swift>=3.12) 该参数只在训练时生效，代表是否对数据样本assistant部分不以思考标记`'<think>'`开头的数据样本增加非思考前缀（通常混合思考模型含非思考前缀）。该特性可以让swift内置的数据集可以训练混合思考模型。默认值为True。例如：例如Qwen3-8B混合思考模型的非思考前缀为`'<think>\n\n</think>\n\n'`，Qwen3-8B-Thinking/Instruct的非思考前缀为`''`。注意：训练时，loss_scale的基本策略为last_round，则只对最后一轮做此修改；否则，例如为'default'、'all'，则对每一轮数据做此修改。若设置为False，则不对数据样本增加非思考前缀。
 
 ### 生成参数
 参考[generation_config](https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig)文档。
@@ -191,6 +194,7 @@ gradient_checkpointing: true
 - 🔥deepspeed: 默认为None。可以设置为'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'来使用ms-swift内置的deepspeed配置文件。你也可以传入自定义deepspeed配置文件的路径。
 - zero_hpz_partition_size: 默认为None，这个参数是ZeRO++的特性，即node内模型分片，node间数据分片，如果遇到grad_norm NaN，请尝试使用`--torch_dtype float16`。
 - deepspeed_autotp_size: DeepSpeed张量并行大小，默认为1。使用DeepSpeed AutoTP时需将参数`--deepspeed`设置为'zero0'、'zero1'或'zero2'。（注意：该功能只支持全参数）
+- 🔥fsdp: FSDP2分布式训练配置。默认为None。可以设置为'fsdp2'来使用ms-swift内置的FSDP2配置文件。你也可以传入自定义FSDP配置文件的路径。FSDP2是PyTorch原生的分布式训练方案，与DeepSpeed二选一使用。
 - 🔥per_device_train_batch_size: 默认值1。
 - 🔥per_device_eval_batch_size: 默认值1。
 - 🔥gradient_accumulation_steps: 梯度累加。**默认为None，即设置gradient_accumulation_steps使得total_batch_size>=16**。total_batch_size等于`per_device_train_batch_size * gradient_accumulation_steps * world_size`。在GRPO训练中，默认为1。
@@ -247,6 +251,9 @@ gradient_checkpointing: true
 - dataloader_persistent_workers: 默认为False。
 - dataloader_prefetch_factor: 默认为None，若`dataloader_num_workers>0`，设置为10。
 - train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效（即对流式数据集失效）。IterableDataset采用顺序的方式读取。
+- optim: 优化器，默认值为 `"adamw_torch"` (对于 torch>=2.8 为 `"adamw_torch_fused"`)。完整的优化器列表请参见 [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py) 中的 `OptimizerNames`。
+- optim_args: 提供给优化器的可选参数，默认为None。
+- group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 - 🔥neftune_noise_alpha: neftune添加的噪声系数。默认为0，通常可以设置为5、10、15。
 - 🔥use_liger_kernel: 是否启用[Liger](https://github.com/linkedin/Liger-Kernel)内核加速训练并减少显存消耗。默认为False。示例shell参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger)。
   - 注意：liger_kernel不支持device_map，请使用DDP/DeepSpeed进行多卡训练。liger_kernel目前只支持`task_type='causal_lm'`。
@@ -872,3 +879,4 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - SWIFT_TIMEOUT: (ms-swift>=3.10) 若多模态数据集中存在图像URL，该参数用于控制获取图片的timeout，默认为20s。
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) 图像（多模态）资源的根目录。通过设置该参数，可以在数据集中使用相对于 `ROOT_IMAGE_DIR` 的相对路径。默认情况下，是相对于运行目录的相对路径。
 - SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) 单设备模式，可选值为"0"(默认值)/"1"，在此模式下，每个进程只能看到一个设备
+- SWIFT_PATCH_CONV3D: (ms-swift>=3.11.2) 若使用torch==2.9，会遇到Conv3d运行缓慢的问题，可以通过设置`SWIFT_PATCH_CONV3D=1`规避该问题，具体查看[这个issue](https://github.com/modelscope/ms-swift/issues/7108)。

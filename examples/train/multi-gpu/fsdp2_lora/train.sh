@@ -1,4 +1,5 @@
 # 14.7GiB * 2
+# NOTE: for swift>=3.12, you can use --fsdp fsdp2 instead of accelerate launch
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \

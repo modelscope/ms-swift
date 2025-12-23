@@ -104,21 +104,25 @@ The command-line arguments will be introduced in four categories: basic argument
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
   - Note: `swift pt` defaults to `False`, using the generation template. This setting provides good **compatibility with multimodal models**.
+- padding_side: Padding side when training with `batch_size >= 2`. Options: `'left'`, `'right'`. Default is `'right'`.
+  - Note: PPO and GKD default to `'left'`. (During inference with `batch_size >= 2`, only left-padding is applied.)
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
-- padding_side: Padding side when training with `batch_size >= 2`. Options: `'left'`, `'right'`. Default is `'right'`.
-  - Note: PPO and GKD default to `'left'`. (During inference with `batch_size >= 2`, only left-padding is applied.)
-- loss_scale: Loss weighting strategy for training tokens. Default is `'default'`, meaning all response tokens (including history) are weighted at 1 in cross-entropy loss (**tokens from system/user/multimodal inputs in messages, and `tool_response` in Agent training, are excluded from loss calculation**). Options include `'default'`, `'last_round'`, `'all'`, `'ignore_empty_think'`, `'last_round_with_ignore_empty_think'`, and agent-specific scales: `'react'`, `'hermes'`, `'qwen'`, `'agentflan'`, `'alpha_umi'`, etc. See [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py) for full list.
-  - 'last_round': Only compute loss for the final round of response. (Commonly used; **RLHF defaults to this**)
-  - 'all': Compute loss for all tokens. (**`swift pt` defaults to this**)
-  - 'ignore_empty_think': Based on 'default', ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
-  - 'last_round_with_ignore_empty_think': Based on 'last_round', ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
-  - `'react'`, `'hermes'`, `'qwen'`: Based on `'default'`, adjust the loss weight of the `tool_call` portion to 2.
+- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py). ms-swift>=3.12 supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
+  - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are not included in loss calculation**). (**Default value for SFT**)
+  - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round means all content after the last "user", previously it only included the last "assistant". (**Default value for RLHF**)
+  - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
+  - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+  - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
 - sequence_parallel_size: Size for sequence parallelism. Default is 1. Currently supported in CPT/SFT/DPO/GRPO. Training scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
-- response_prefix: Prefix string for the model's response. For example, QwQ-32B sets `response_prefix` to `'\<think\>\n'`. This parameter only takes effect during inference. Default is `None`, automatically determined by the model.
 - template_backend: Backend for template processing. Options are `'swift'` or `'jinja'`. Default is `'swift'`. If `'jinja'` is used, `apply_chat_template` from Transformers will be applied.
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).
+- response_prefix: The prefix string for responses, this parameter only takes effect during inference. Default is None, determined by the enable_thinking parameter and template type.
+- enable_thinking: (ms-swift>=3.12) This parameter takes effect during inference, indicating whether to enable thinking mode. Default is None, the default value is determined by the template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates). If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix. If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`. Note: The priority of this parameter is lower than the response_prefix parameter.
+  - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled, we will remove historical thinking content during both inference and training (the thinking content of the last round is retained, i.e., the content after the last user message). If the basic strategy of loss_scale during training is not last_round, for example 'default', then historical thinking content will not be removed.
+- add_non_thinking_prefix: This parameter only takes effect during training, indicating whether to add a non-thinking prefix to data samples whose assistant part does not start with the thinking marker `'<think>'` (typically hybrid thinking models contain a non-thinking prefix). This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True. For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`. Note: During training, if the basic strategy of loss_scale is last_round, this modification is only applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to every round of data. If set to False, no non-thinking prefix is added to data samples.
+
 
 ### Generation Arguments
 
@@ -193,6 +197,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - 🔥deepspeed: Default is `None`. Can be set to `'zero0'`, `'zero1'`, `'zero2'`, `'zero3'`, `'zero2_offload'`, `'zero3_offload'` to use built-in DeepSpeed configurations in ms-swift. You can also pass a path to a custom DeepSpeed config file.
 - zero_hpz_partition_size: Default is `None`. This enables ZeRO++ functionality—model sharding within nodes and data sharding across nodes. If encountering `grad_norm NaN`, try using `--torch_dtype float16`.
 - deepspeed_autotp_size: DeepSpeed tensor parallelism size. Default is 1. To use DeepSpeed AutoTP, set `--deepspeed` to `'zero0'`, `'zero1'`, or `'zero2'`. (Note: Only supports full-parameter training)
+- 🔥fsdp: FSDP2 distributed training configuration. Default is `None`. Can be set to `'fsdp2'` to use built-in FSDP2 configurations in ms-swift. You can also pass a path to a custom FSDP config file. FSDP2 is PyTorch's native distributed training solution, use either this or DeepSpeed (not both).
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - 🔥gradient_accumulation_steps: Gradient accumulation steps. Default is `None`, meaning `gradient_accumulation_steps` is automatically calculated so that `total_batch_size >= 16`. Total batch size is computed as `per_device_train_batch_size * gradient_accumulation_steps * world_size`. In GRPO training, default is 1.
@@ -249,6 +254,9 @@ Other important parameters:
 - dataloader_persistent_workers: Default is `False`.
 - dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, set to 10.
 - train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
+- optim: The optimizer, defaults to `"adamw_torch"` (for torch>=2.8 `"adamw_torch_fused"`). For a complete list of optimizers, please see `OptimizerNames` in [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py).
+- optim_args: Optional arguments to pass to the optimizer, defaults to None.
+- group_by_length: (ms-swift>=3.12) Whether to group samples with approximately the same length together in the training dataset (with a random factor) to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
   - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
@@ -899,3 +907,4 @@ The meanings of the following parameters can be found in the example code [here]
 - SWIFT_TIMEOUT: (ms-swift >= 3.10) If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
 - SWIFT_SINGLE_DEVICE_MODE: (ms-swift>=3.10) Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.
+- SWIFT_PATCH_CONV3D: (ms-swift>=3.11.2) If using torch==2.9, you may encounter slow Conv3d performance issues. You can work around this problem by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).

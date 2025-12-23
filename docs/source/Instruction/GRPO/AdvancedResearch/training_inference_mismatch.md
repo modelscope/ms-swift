@@ -124,18 +124,19 @@ $$
 
 ### 1. KL 散度（KL Divergence）
 
-KL 散度衡量训练策略偏离 rollout 策略的程度。两个指标都估计 $\text{KL}(\pi_\theta \| \pi_{\text{vLLM}})$，这与重要性采样权重 $\rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}$ 直接相关。
+KL 散度衡量 rollout 策略与训练策略之间的偏离程度。两个指标都估计 $\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta)$
+
 
 **直接估计器 `kl`**：
 
 $$
-\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \log \frac{\pi_\theta}{\pi_{\text{vLLM}}} \right]
+\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) = \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \log \frac{\pi_{\text{vLLM}}}{\pi_\theta} \right]
 $$
 
 **K3 估计器 `k3_kl`**：
 
 $$
-\text{KL}(\pi_\theta \| \pi_{\text{vLLM}}) \approx \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
+\text{KL}(\pi_{\text{vLLM}} \| \pi_\theta) \approx \mathbb{E}_{\pi_{\text{vLLM}}}\left[ \rho - \log \rho - 1 \right], \quad \rho = \frac{\pi_\theta}{\pi_{\text{vLLM}}}
 $$
 
 K3 估计器在 KL 值较小时数值更稳定，且始终非负。

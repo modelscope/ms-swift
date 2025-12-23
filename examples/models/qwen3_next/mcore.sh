@@ -1,4 +1,4 @@
-# 8 * 60GiB, 10s/it
+# 8 * 60GiB, 8s/it
 
 # Note: linear-attention does not support padding_free.
 # Therefore, if you enable padding_free (the default),
