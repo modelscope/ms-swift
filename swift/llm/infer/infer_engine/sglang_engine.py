@@ -23,6 +23,38 @@ from .utils import InferStreamer
 logger = get_logger()
 
 
+# Simple reasoning content parser for thinking models
+def extract_reasoning_content(response: str) -> tuple[Optional[str], str]:
+    """
+    Extract reasoning content from thinking model responses.
+
+    Args:
+        response: The full response text
+
+    Returns:
+        A tuple of (reasoning_content, content)
+        - reasoning_content: The content inside <think> tags, or None if not found
+        - content: The final answer (everything after </think>), or full response if no tags
+    """
+    think_start = '<think>'
+    think_end = '</think>'
+
+    start_idx = response.find(think_start)
+    end_idx = response.find(think_end)
+
+    if start_idx != -1 and end_idx != -1:
+        reasoning = response[start_idx + len(think_start):end_idx].strip()
+        content = response[end_idx + len(think_end):].strip()
+        return reasoning, content
+    elif start_idx != -1:
+        # Only start tag found (incomplete)
+        reasoning = response[start_idx + len(think_start):].strip()
+        return reasoning, ''
+    else:
+        # No thinking tags found
+        return None, response.strip()
+
+
 class SglangEngine(InferEngine):
 
     def __init__(
@@ -146,11 +178,23 @@ class SglangEngine(InferEngine):
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = template.decode(output['output_ids'])
-        toolcall = self._get_toolcall(response, template)
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
+
+        # Extract reasoning content for thinking models
+        reasoning_content = None
+        content = response
+        try:
+            reasoning_content, content = extract_reasoning_content(response)
+        except Exception as e:
+            logger.warning(f'Failed to extract reasoning content: {e}')
+            content = response
+
+        toolcall = self._get_toolcall(content, template)
         token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
-            message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+            message=ChatMessage(role='assistant', content=content, reasoning_content=reasoning_content, tool_calls=toolcall),
             finish_reason=meta_info['finish_reason']['type'],
             logprobs=None,
             token_ids=token_ids)
