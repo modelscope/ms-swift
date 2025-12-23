@@ -111,6 +111,7 @@ class LLMTemplateType:
 
     bert = 'bert'
     olmoe = 'olmoe'
+    minimind = 'minimind'
 
 
 class RMTemplateType:

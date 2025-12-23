@@ -142,6 +142,7 @@ class LLMModelType:
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
     olmoe = 'olmoe'
+    minimind = 'minimind'
 
 
 class BertModelType:
