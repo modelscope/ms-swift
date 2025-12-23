@@ -184,13 +184,13 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 for i in range(res['num_layers'])
             ]
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
+    elif architectures == 'Glm4vForConditionalGeneration':
+        res['rotary_interleaved'] = True
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
         mrope_interleaved = res['rope_scaling'].get('mrope_interleaved', False) or res['rope_scaling'].get(
             'interleaved', False)
-        if architectures == 'Glm4vForConditionalGeneration':
-            mrope_interleaved = True
         res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
