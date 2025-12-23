@@ -2,9 +2,9 @@
 import megatron.core
 from megatron.core.extensions.transformer_engine import TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec, get_gpt_mtp_block_spec
+from megatron.core.transformer import transformer_layer
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.mlp import MLP
-from megatron.core.transformer import transformer_layer
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from packaging import version
@@ -18,10 +18,12 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 
 class Glm4SelfAttention(SelfAttention):
+
     def __init__(
         self,
         config: TransformerConfig,
-        *args, **kwargs,
+        *args,
+        **kwargs,
     ):
         super().__init__(config, *args, **kwargs)
         self.post_self_attn_layernorm = build_module(
@@ -43,7 +45,8 @@ class Glm4MLP(MLP):
     def __init__(
         self,
         config: TransformerConfig,
-        *args, **kwargs,
+        *args,
+        **kwargs,
     ):
         super().__init__(config, *args, **kwargs)
         self.post_mlp_layernorm = build_module(
@@ -61,14 +64,17 @@ class Glm4MLP(MLP):
 
 
 class Glm4Bridge(GPTBridge):
+
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         hf_state_dict.update(super()._set_layer_attn(mg_layer, hf_state_dict, layer_idx, to_mcore))
-        self._set_state_dict(mg_layer, 'self_attention.post_self_attn_layernorm.weight', hf_state_dict, 'post_self_attn_layernorm.weight', to_mcore)
-        self._set_state_dict(mg_layer, 'mlp.post_mlp_layernorm.weight', hf_state_dict, 'post_mlp_layernorm.weight', to_mcore)
+        self._set_state_dict(mg_layer, 'self_attention.post_self_attn_layernorm.weight', hf_state_dict,
+                             'post_self_attn_layernorm.weight', to_mcore)
+        self._set_state_dict(mg_layer, 'mlp.post_mlp_layernorm.weight', hf_state_dict, 'post_mlp_layernorm.weight',
+                             to_mcore)
         return hf_state_dict
 
-def get_qwen4_transformer_layer_spec(config, vp_stage=None):
-    layer_norm_impl = TENorm
+
+def get_glm4_transformer_layer_spec(config, vp_stage=None):
     kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
     layer_spec = get_gpt_layer_with_transformer_engine_spec(
         num_experts=config.num_moe_experts,
@@ -91,6 +97,6 @@ register_megatron_model(
             ModelType.glm4_0414,
             ModelType.glm4_z1_rumination,
         ],
-        get_transformer_layer_spec=get_qwen4_transformer_layer_spec,
+        get_transformer_layer_spec=get_glm4_transformer_layer_spec,
         bridge_cls=Glm4Bridge,
     ))

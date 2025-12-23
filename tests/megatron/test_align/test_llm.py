@@ -138,6 +138,7 @@ def test_qwen3_next():
 def test_tongyi_deepresearch():
     _test_model('iic/Tongyi-DeepResearch-30B-A3B')
 
+
 def test_glm4():
     _test_model('ZhipuAI/GLM-4-9B-0414')
 
