@@ -192,8 +192,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     if rope_scaling.get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = rope_scaling['mrope_section']
-        mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get(
-            'interleaved', False)
+        mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:
