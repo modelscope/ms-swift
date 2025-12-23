@@ -1283,6 +1283,15 @@ class DataLoaderMixin:
                 dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device, skip_batches=skip_batches)
         return dataloader
 
+    @contextmanager
+    def _disable_group_by_length(self):
+        group_by_length = getattr(self.args, 'group_by_length', False)
+        self.args.group_by_length = False
+        try:
+            yield
+        finally:
+            self.args.group_by_length = group_by_length
+
     def get_eval_dataloader(self, eval_dataset=None):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
@@ -1291,5 +1300,6 @@ class DataLoaderMixin:
             eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
             dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size)
         if dataloader is None:
-            return super().get_eval_dataloader(eval_dataset=eval_dataset)
+            with self._disable_group_by_length():
+                return super().get_eval_dataloader(eval_dataset=eval_dataset)
         return dataloader

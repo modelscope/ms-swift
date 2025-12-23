@@ -21,10 +21,11 @@ if TYPE_CHECKING:
 
 
 def sample_dataset(
-    dataset: HfDataset,
-    dataset_sample: Optional[int],
-    shuffle: bool = True,
-    random_state: Optional[np.random.RandomState] = None,
+        dataset: HfDataset,
+        dataset_sample: Optional[int],
+        shuffle: bool = True,
+        random_state: Optional[np.random.RandomState] = None,
+        shuffle_all: bool = False,  # For compatibility, this defaults to False.
 ) -> HfDataset:
     """Sample dataset by a dataset_sample number
     Args:
@@ -44,14 +45,16 @@ def sample_dataset(
         logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
                        'repeated sampling will be performed.')
     idx = np.tile(range(len(dataset)), n_repeat_sample)
+    if random_state is None:
+        random_state = np.random.RandomState()
     if n_remain_sample >= 1:
         if shuffle:
-            if random_state is None:
-                random_state = np.random.RandomState()
             idx_remain = random_state.permutation(len(dataset))[:n_remain_sample]
         else:
             idx_remain = np.arange(n_remain_sample)
         idx = np.concatenate([idx, idx_remain])
+    if n_repeat_sample >= 1 and shuffle and shuffle_all:
+        random_state.shuffle(idx)
     dataset = dataset.select(idx)
     return dataset
 
