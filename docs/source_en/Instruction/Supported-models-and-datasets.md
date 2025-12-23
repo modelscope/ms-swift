@@ -361,11 +361,11 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/glm-4-9b](https://modelscope.cn/models/ZhipuAI/glm-4-9b)|glm4|glm4|transformers>=4.42|&#x2718;|-|[zai-org/glm-4-9b](https://huggingface.co/zai-org/glm-4-9b)|
 |[ZhipuAI/glm-4-9b-chat-1m](https://modelscope.cn/models/ZhipuAI/glm-4-9b-chat-1m)|glm4|glm4|transformers>=4.42|&#x2718;|-|[zai-org/glm-4-9b-chat-1m](https://huggingface.co/zai-org/glm-4-9b-chat-1m)|
 |[ZhipuAI/LongWriter-glm4-9b](https://modelscope.cn/models/ZhipuAI/LongWriter-glm4-9b)|glm4|glm4|transformers>=4.42|&#x2718;|-|[zai-org/LongWriter-glm4-9b](https://huggingface.co/zai-org/LongWriter-glm4-9b)|
-|[ZhipuAI/GLM-4-9B-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[zai-org/GLM-4-9B-0414](https://huggingface.co/zai-org/GLM-4-9B-0414)|
-|[ZhipuAI/GLM-4-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-32B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[zai-org/GLM-4-32B-0414](https://huggingface.co/zai-org/GLM-4-32B-0414)|
-|[ZhipuAI/GLM-4-32B-Base-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-32B-Base-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[zai-org/GLM-4-32B-Base-0414](https://huggingface.co/zai-org/GLM-4-32B-Base-0414)|
-|[ZhipuAI/GLM-Z1-9B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-9B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[zai-org/GLM-Z1-9B-0414](https://huggingface.co/zai-org/GLM-Z1-9B-0414)|
-|[ZhipuAI/GLM-Z1-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-32B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[zai-org/GLM-Z1-32B-0414](https://huggingface.co/zai-org/GLM-Z1-32B-0414)|
+|[ZhipuAI/GLM-4-9B-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2714;|-|[zai-org/GLM-4-9B-0414](https://huggingface.co/zai-org/GLM-4-9B-0414)|
+|[ZhipuAI/GLM-4-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-32B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2714;|-|[zai-org/GLM-4-32B-0414](https://huggingface.co/zai-org/GLM-4-32B-0414)|
+|[ZhipuAI/GLM-4-32B-Base-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-32B-Base-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2714;|-|[zai-org/GLM-4-32B-Base-0414](https://huggingface.co/zai-org/GLM-4-32B-Base-0414)|
+|[ZhipuAI/GLM-Z1-9B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-9B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2714;|-|[zai-org/GLM-Z1-9B-0414](https://huggingface.co/zai-org/GLM-Z1-9B-0414)|
+|[ZhipuAI/GLM-Z1-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-32B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2714;|-|[zai-org/GLM-Z1-32B-0414](https://huggingface.co/zai-org/GLM-Z1-32B-0414)|
 |[ZhipuAI/GLM-4.5-Air-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air-Base)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.5-Air-Base](https://huggingface.co/zai-org/GLM-4.5-Air-Base)|
 |[ZhipuAI/GLM-4.5-Air](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.5-Air](https://huggingface.co/zai-org/GLM-4.5-Air)|
 |[ZhipuAI/GLM-4.5-Air-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.5-Air-FP8](https://huggingface.co/zai-org/GLM-4.5-Air-FP8)|
@@ -376,7 +376,7 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/GLM-4.6-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.6-FP8](https://huggingface.co/zai-org/GLM-4.6-FP8)|
 |[ZhipuAI/GLM-4.7](https://modelscope.cn/models/ZhipuAI/GLM-4.7)|glm4_7|glm4_7|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.7](https://huggingface.co/zai-org/GLM-4.7)|
 |[ZhipuAI/GLM-4.7-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.7-FP8)|glm4_7|glm4_7|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.7-FP8](https://huggingface.co/zai-org/GLM-4.7-FP8)|
-|[ZhipuAI/GLM-Z1-Rumination-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-Rumination-32B-0414)|glm4_z1_rumination|glm4_z1_rumination|transformers>4.51|&#x2718;|-|[zai-org/GLM-Z1-Rumination-32B-0414](https://huggingface.co/zai-org/GLM-Z1-Rumination-32B-0414)|
+|[ZhipuAI/GLM-Z1-Rumination-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-Rumination-32B-0414)|glm4_z1_rumination|glm4_z1_rumination|transformers>4.51|&#x2714;|-|[zai-org/GLM-Z1-Rumination-32B-0414](https://huggingface.co/zai-org/GLM-Z1-Rumination-32B-0414)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-1.5b-chat](https://huggingface.co/zai-org/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeGeeX2-6B)|codefuse_codegeex2|codefuse|transformers<4.34|&#x2718;|coding|[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://huggingface.co/codefuse-ai/CodeFuse-CodeGeeX2-6B)|
