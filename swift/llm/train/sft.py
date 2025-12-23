@@ -92,6 +92,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 **dataset_kwargs)
         if len(args.val_dataset) > 0:
             # Loading val dataset
+            dataset_kwargs.pop('interleave_prob', None)
             _, val_dataset = load_dataset(
                 args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
             assert args.split_dataset_ratio == 0.

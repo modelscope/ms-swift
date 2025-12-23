@@ -72,8 +72,8 @@
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
   - 注意：需要额外设置`--max_steps`，因为流式数据集无法获得其长度。你可以通过设置`--save_strategy epoch`并设置较大的max_steps来实现与`--num_train_epochs`等效的训练。或者，你也可以设置`max_epochs`确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
-- interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。
-- stopping_strategy: 可选为"first_exhausted", "all_exhausted"，默认为"first_exhausted"。传入`interleave_datasets`函数中。
+- interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。该参数不对`--val_dataset`生效。
+- stopping_strategy: 可选为"first_exhausted", "all_exhausted"，默认为"first_exhausted"。传入`interleave_datasets`函数中。该参数不对`--val_dataset`生效。
 - shuffle_buffer_size: 该参数用于指定**流式数据集**的随机buffer大小，默认为1000。该参数只在`dataset_shuffle`设置为true时有效。
 - download_mode: 数据集下载模式，包含`reuse_dataset_if_exists`和`force_redownload`，默认为'reuse_dataset_if_exists'。
   - 通常在使用hub端数据集报错时设置为`--download_mode force_redownload`。
