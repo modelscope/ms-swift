@@ -509,7 +509,7 @@ class GPTBridge:
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
                                  'linear_qkv.lora_B.weight')
-            elif self._is_peft_format:
+            elif not self._is_peft_format:
                 linear_qkv_weight = torch.cat([
                     hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
                     hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
