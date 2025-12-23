@@ -139,6 +139,10 @@ def test_tongyi_deepresearch():
     _test_model('iic/Tongyi-DeepResearch-30B-A3B')
 
 
+def test_glm4():
+    _test_model('ZhipuAI/GLM-4-9B-0414')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
