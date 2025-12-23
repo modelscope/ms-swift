@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import multiprocessing as mp
+import random
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
@@ -21,10 +22,11 @@ if TYPE_CHECKING:
 
 
 def sample_dataset(
-    dataset: HfDataset,
-    dataset_sample: Optional[int],
-    shuffle: bool = True,
-    random_state: Optional[np.random.RandomState] = None,
+        dataset: HfDataset,
+        dataset_sample: Optional[int],
+        shuffle: bool = True,
+        random_state: Optional[np.random.RandomState] = None,
+        shuffle_all: bool = False,  # For compatibility, this defaults to False.
 ) -> HfDataset:
     """Sample dataset by a dataset_sample number
     Args:
@@ -52,6 +54,8 @@ def sample_dataset(
         else:
             idx_remain = np.arange(n_remain_sample)
         idx = np.concatenate([idx, idx_remain])
+    if n_repeat_sample >= 1 and shuffle and shuffle_all:
+        random.shuffle(idx)
     dataset = dataset.select(idx)
     return dataset
 
