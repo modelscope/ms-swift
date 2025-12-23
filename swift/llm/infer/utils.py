@@ -5,8 +5,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
+import numpy as np
 from datasets import load_from_disk
 
+from swift.llm.dataset import DatasetSyntax, sample_dataset
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
@@ -169,8 +171,16 @@ def _select_dataset(dataset, max_length):
 
 def get_cached_dataset(args):
     train_datasets, val_datasets = [], []
-    for train_path in args.cached_dataset:
-        train_datasets.append(_select_dataset(load_from_disk(train_path), args.max_length))
-    for val_path in args.cached_val_dataset:
-        val_datasets.append(_select_dataset(load_from_disk(val_path), args.max_length))
+    random_state = np.random.RandomState(args.data_seed)
+    for cached_dataset, datasets in zip([args.cached_dataset, args.cached_val_dataset], [train_datasets, val_datasets]):
+        for path in cached_dataset:
+            if os.path.exists(path):
+                dataset_sample = None
+            else:
+                path, dataset_sample = DatasetSyntax._safe_split(path, '#', True, 'right')
+            dataset = _select_dataset(load_from_disk(path), args.max_length)
+            if dataset_sample is not None:
+                dataset = sample_dataset(
+                    dataset, int(dataset_sample), args.dataset_shuffle, random_state=random_state, shuffle_all=True)
+            datasets.append(dataset)
     return train_datasets, val_datasets

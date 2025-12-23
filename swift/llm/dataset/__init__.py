@@ -4,7 +4,7 @@ from datasets import Dataset as HfDataset
 
 from ..utils import get_temporary_cache_files_directory
 from . import dataset
-from .loader import DATASET_TYPE, load_dataset
+from .loader import DATASET_TYPE, DatasetSyntax, load_dataset
 from .media import MediaResource
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                            RowPreprocessor)
