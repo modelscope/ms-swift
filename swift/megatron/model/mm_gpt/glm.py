@@ -23,4 +23,5 @@ register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.glm4_5v, [
             ModelType.glm4_5v,
+            ModelType.glm4_1v,
         ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4_5vVit))
