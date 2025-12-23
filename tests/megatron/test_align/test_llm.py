@@ -138,6 +138,9 @@ def test_qwen3_next():
 def test_tongyi_deepresearch():
     _test_model('iic/Tongyi-DeepResearch-30B-A3B')
 
+def test_glm4():
+    _test_model('ZhipuAI/GLM-4-9B-0414')
+
 
 if __name__ == '__main__':
     # test_qwen2()
@@ -157,7 +160,7 @@ if __name__ == '__main__':
     # test_internlm3()
     # test_mimo()
     # test_moonlight()
-    test_gpt_oss()
+    # test_gpt_oss()
     # test_deepseek_v2()
     # test_deepseek_moe()
     # test_dots()
@@ -168,3 +171,4 @@ if __name__ == '__main__':
     # test_qwen3_next()
     # test_ernie_thinking()
     # test_tongyi_deepresearch()
+    test_glm4()
