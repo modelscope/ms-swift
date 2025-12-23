@@ -353,6 +353,26 @@ def test_glm4_5():
     assert encoded['input_ids'][:-1] == encoded2['input_ids']
 
 
+def test_glm4_7():
+    engine = PtEngine('ZhipuAI/GLM-4.7-FP8', load_model=False, download_model=False)
+    template = engine.default_template
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert encoded['input_ids'][:-1] == encoded2['input_ids']
+
+
 def test_qwen3_coder():
     agent_template = agent_templates['qwen3_coder']()
     engine = PtEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
@@ -528,6 +548,7 @@ if __name__ == '__main__':
     # test_llama4()
     # test_hunyuan()
     # test_glm4_5()
+    test_glm4_7()
     # test_qwen3_coder()
     # test_deepseek_v3_1()
-    test_seed_oss()
+    # test_seed_oss()
