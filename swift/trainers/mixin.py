@@ -1285,7 +1285,7 @@ class DataLoaderMixin:
 
     @contextmanager
     def _disable_group_by_length(self):
-        group_by_length = self.args.group_by_length
+        group_by_length = getattr(self.args, 'group_by_length', False)
         self.args.group_by_length = False
         try:
             yield
