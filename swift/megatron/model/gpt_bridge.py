@@ -973,8 +973,10 @@ class GPTBridge:
                                         hf_state_dict[f'{hf_i}.gate_up_proj.weight_scale_inv'] = scale_inv[i].clone()
                             del gate_up_proj_weight
                         else:
+                            gate_up_proj_weight = gate_up_proj_weight.view(-1, gate_up_proj_weight.shape[-1])
                             hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.clone()
                             if scale_inv is not None:
+                                scale_inv = scale_inv.view(-1, scale_inv.shape[-1])
                                 hf_state_dict['gate_up_proj.weight_scale_inv'] = scale_inv.clone()
                     else:
                         if is_expert:
