@@ -18,6 +18,7 @@ from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
+from swift.llm import disable_gradient_checkpointing
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          unwrap_model_for_generation)
@@ -178,7 +179,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
             with load_context:
-                with torch.no_grad():
+                with torch.no_grad(), disable_gradient_checkpointing(self.teacher_model,
+                                                                     self.args.gradient_checkpointing_kwargs):
                     teacher_outputs = base_teacher(**model_inputs, use_cache=False)
 
                 # Get hidden states (shifted)
@@ -230,7 +232,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             model_inputs.pop('labels', None)
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with torch.no_grad(), load_context:
+            with torch.no_grad(), load_context, disable_gradient_checkpointing(self.teacher_model,
+                                                                               self.args.gradient_checkpointing_kwargs):
                 outputs_teacher = self.teacher_model(**model_inputs)
 
             shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)

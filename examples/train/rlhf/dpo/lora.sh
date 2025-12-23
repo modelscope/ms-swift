@@ -1,7 +1,7 @@
 # 24GiB
 # It is recommended to use padding_free. For more details, please refer to:
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/padding_free/dpo.sh
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=6 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
