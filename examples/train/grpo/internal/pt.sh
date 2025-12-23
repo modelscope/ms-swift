@@ -33,4 +33,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 4 \
     --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
