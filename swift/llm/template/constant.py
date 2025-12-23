@@ -50,6 +50,7 @@ class LLMTemplateType:
     glm4_0414 = 'glm4_0414'
     glm4_z1_rumination = 'glm4_z1_rumination'
     glm4_5 = 'glm4_5'
+    glm4_7 = 'glm4_7'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
