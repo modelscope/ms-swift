@@ -149,7 +149,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                 tool_content = tool_message['content']
                 res.append(f'\n<tool_response>\n{tool_content}\n</tool_response>')
             res.append('<|assistant|>\n')
-        else:
+        elif self.model_type == 'glm4_7':
             res = []
             for tool_message in tool_messages:
                 tool_content = tool_message['content']
