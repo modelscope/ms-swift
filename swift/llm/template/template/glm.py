@@ -272,6 +272,7 @@ register_template(
         system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>',
+        agent_template='glm4_7',
     ))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
