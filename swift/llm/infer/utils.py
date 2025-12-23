@@ -178,10 +178,9 @@ def get_cached_dataset(args):
                 dataset_sample = None
             else:
                 path, dataset_sample = DatasetSyntax._safe_split(path, '#', True, 'right')
-                dataset_sample = int(dataset_sample)
             dataset = _select_dataset(load_from_disk(path), args.max_length)
             if dataset_sample is not None:
                 dataset = sample_dataset(
-                    dataset, dataset_sample, args.dataset_shuffle, random_state=random_state, shuffle_all=True)
+                    dataset, int(dataset_sample), args.dataset_shuffle, random_state=random_state, shuffle_all=True)
             datasets.append(dataset)
     return train_datasets, val_datasets
