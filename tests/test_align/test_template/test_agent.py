@@ -356,7 +356,6 @@ def test_glm4_5():
 def test_glm4_7():
     engine = PtEngine('ZhipuAI/GLM-4.7-FP8', load_model=False, download_model=False)
     template = engine.default_template
-    template.template_backend = 'jinja'
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
