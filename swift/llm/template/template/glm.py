@@ -268,7 +268,6 @@ class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-        encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
