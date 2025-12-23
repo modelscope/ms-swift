@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import multiprocessing as mp
-import random
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
