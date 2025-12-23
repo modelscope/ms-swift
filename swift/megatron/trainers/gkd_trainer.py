@@ -3,11 +3,12 @@ import random
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn.functional as F
 from megatron.core import mpu
+from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_model, get_timers
 from megatron.training.utils import unwrap_model
 from transformers import AutoConfig
@@ -16,7 +17,7 @@ from swift.llm import Template, get_model_info_meta, to_device
 from swift.utils import get_logger
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
-from ..utils import convert_hf_config
+from ..utils import convert_hf_config, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import get_swift_datasets_provider, load_megatron_model_to_gpu, offload_megatron_model_to_cpu
@@ -43,8 +44,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.lmbda = args.lmbda  # On-policy probability
         self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
-        self.teacher_model = args.teacher_model  # Teacher model
-        assert self.teacher_model is not None, 'Teacher model is required for GKD training'
+        assert args.teacher_model is not None, 'Teacher model path is required for GKD training'
         self.use_vllm = getattr(args, 'use_vllm', False)
 
         # Get device for data processing
@@ -60,8 +60,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Step counter for weight sync tracking and deterministic random
         self._step = 0
 
-        # Teacher model will be loaded in setup_model_and_optimizer
-        self.teacher_models = None
+        # Teacher models will be loaded in setup_model_and_optimizer
+        # Using the same parallel parameters (PP/TP/CP/EP) as student model
+        self.teacher_models = []
+
+        # Teacher model config for temporary args override during forward
+        # When teacher and student have different architecture, we need to override args temporarily
+        self._teacher_megatron_config: Optional[Dict] = None  # Will be set in _load_teacher_model
 
         # Truncation strategy for handling sequences that exceed max_length
         self.truncation_strategy = args.truncation_strategy
@@ -80,39 +85,37 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         super().train(train_dataset, val_dataset, data_collator)
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-        """Setup model and optimizer, including teacher model."""
-        megatron_args = get_args()
+        """Setup model and optimizer, including teacher model.
 
-        # Get teacher model path from Swift args (defaults to ref_model if not specified)
-        teacher_model_path = (getattr(self.args, 'teacher_model', None) or self.args.model)
+        Teacher model uses the same parallel parameters (PP/TP/CP/EP) as student model,
+        """
+        # Get teacher model path from Swift args
+        teacher_model_path = self.args.teacher_model
         logger.info(f'Loading teacher model from: {teacher_model_path}')
 
-        # Load teacher model
-        self._load_teacher_model(teacher_model_path, model_type)
+        # Load teacher model with same parallel config as student
+        self._load_teacher_model(teacher_model_path, model_type, model_provider_func)
 
-        # Call parent's setup (skip ref_models loading since we use teacher_models)
-        # We need to temporarily disable ref_models loading
-        original_rlhf_type = megatron_args.rlhf_type
-        megatron_args.rlhf_type = 'rm'  # Trick to skip ref_models loading in parent
-        try:
-            result = super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
-        finally:
-            megatron_args.rlhf_type = original_rlhf_type
+        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
-        return result
+    def _load_teacher_model(self, teacher_model_path: str, model_type, model_provider_func):
+        """Load teacher model with the same parallel parameters (PP/TP/CP/EP) as student model.
 
-    def _load_teacher_model(self, teacher_model_path: str, model_type):
-        """Load teacher model with config automatically read from model path.
+        Teacher and student may have the same model_type (e.g., both are 'qwen2_5') but different
+        architectures (e.g., Qwen2.5-3B vs Qwen2.5-7B with different hidden_size and num_layers).
+        Therefore, we ALWAYS need to use teacher's config to create the model, not student's.
 
-        This method handles both same-architecture and heterogeneous teacher models by:
-        1. Getting teacher model info (including model_type) from the model path
-        2. Temporarily modifying global Megatron args with teacher's config
-        3. Creating and loading the teacher model
-        4. Restoring original student config
+        Process:
+        1. Get teacher model info and config
+        2. Temporarily modify global Megatron args with teacher's config
+        3. Create teacher model using get_model() (respects PP/TP/CP/EP settings from command line)
+        4. Load teacher weights
+        5. Restore original student config
 
         Args:
             teacher_model_path: Path to teacher model
             model_type: Megatron model type enum
+            model_provider_func: Model provider function (not used, kept for API compatibility)
         """
         megatron_args = get_args()
 
@@ -125,122 +128,106 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             hub_token=self.args.hub_token)
         teacher_model_type = teacher_model_info.model_type
 
+        # Get teacher's HF config and convert to Megatron config
         teacher_config = AutoConfig.from_pretrained(teacher_model_info.model_dir, trust_remote_code=True)
-        # Get teacher's megatron model meta (may differ from student's)
         teacher_megatron_model_meta = get_megatron_model_meta(teacher_model_type)
         if teacher_megatron_model_meta is None:
             raise ValueError(f'Teacher model type "{teacher_model_type}" is not supported in Megatron. '
                              f'Teacher model path: {teacher_model_path}')
 
-        # Convert HF config to Megatron config
         teacher_megatron_config = convert_hf_config(teacher_config)
 
+        # Store teacher config for temporary args override during forward
+        self._teacher_megatron_config = teacher_megatron_config
+
+        logger.info(f'Loading teacher model: type={teacher_model_type}, '
+                    f'hidden_size={teacher_megatron_config.get("hidden_size")}, '
+                    f'num_layers={teacher_megatron_config.get("num_layers")}')
+
         # Store original student model config from Megatron global args
+        # We need to override these with teacher's config temporarily
+        essential_keys = {'hf_model_type', 'model_dir'}
+        keys_to_override = set(teacher_megatron_config.keys()) | essential_keys
+
         original_config = {}
-        config_keys = [
-            # Core architecture
-            'hidden_size',
-            'num_layers',
-            'num_attention_heads',
-            'ffn_hidden_size',
-            'num_query_groups',
-            'kv_channels',
-            'padded_vocab_size',
-            'max_position_embeddings',
-            # Attention/Norm settings
-            'norm_epsilon',
-            'rotary_base',
-            'attention_dropout',
-            'add_qkv_bias',
-            'disable_bias_linear',
-            'swiglu',
-            'untie_embeddings_and_output_weights',
-            # MoE settings
-            'moe_ffn_hidden_size',
-            'moe_shared_expert_intermediate_size',
-            'moe_router_topk',
-            'moe_router_num_groups',
-            'moe_router_group_topk',
-            'num_experts',
-            'moe_router_pre_softmax',
-            # DeepSeek/MLA settings
-            'q_lora_rank',
-            'kv_lora_rank',
-            'multi_latent_attention',
-            'qk_head_dim',
-            'qk_pos_emb_head_dim',
-            'qk_layernorm',
-            # Model identity
-            'hf_model_type',
-            'model_dir',
-        ]
-        for key in config_keys:
+        for key in keys_to_override:
             if hasattr(megatron_args, key):
                 original_config[key] = getattr(megatron_args, key)
 
         # Apply teacher config to global Megatron args
-        for key in config_keys:
-            if key in teacher_megatron_config:
-                setattr(megatron_args, key, teacher_megatron_config[key])
-        # Set hf_model_type so model_provider can find correct megatron_model_meta
+        for key, value in teacher_megatron_config.items():
+            setattr(megatron_args, key, value)
         megatron_args.hf_model_type = teacher_model_type
-        # Set model_dir so GPTBridge._init_meta_hf_model uses teacher's model dir
         megatron_args.model_dir = teacher_model_info.model_dir
 
-        # Verify that get_args() returns the same object
-        verify_args = get_args()
-        logger.info(f'Verify: get_args() is megatron_args: {verify_args is megatron_args}')
-        logger.info(f'Verify hidden_size from fresh get_args(): {verify_args.hidden_size}')
-
         try:
-            # Create teacher model using teacher's model_provider
+            # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
+            # but with teacher's model architecture (hidden_size, num_layers, etc.)
             teacher_models = get_model(teacher_megatron_model_meta.model_provider, model_type, wrap_with_ddp=False)
 
-            # Create bridge for teacher model (uses megatron_args.model_dir for meta HF model)
+            # Create bridge for teacher model (for weight loading)
             teacher_bridge = teacher_megatron_model_meta.bridge_cls()
 
             # Load teacher weights
             for m in teacher_models:
                 m = unwrap_model(m)
                 teacher_bridge.load_weights(m, teacher_model_info.model_dir)
-                m.requires_grad_(False).eval()
 
-            self.teacher_models = teacher_models
-            logger.info(f'Loaded teacher model: hidden_size={teacher_megatron_config.get("hidden_size")}, '
-                        f'num_layers={teacher_megatron_config.get("num_layers")}')
-
-            # Offload teacher model to CPU if enabled
-            if self.offload_teacher_model:
-                self._offload_teacher_model()
-                logger.info('Teacher model offloaded to CPU to save GPU memory')
+            logger.info(f'Teacher model loaded successfully with PP={megatron_args.pipeline_model_parallel_size}, '
+                        f'TP={megatron_args.tensor_model_parallel_size}')
 
         finally:
             # Restore original student config to Megatron global args
             for key, value in original_config.items():
                 setattr(megatron_args, key, value)
 
-    @contextmanager
-    def null_ref_context(self):
-        """Override to use teacher_models instead of ref_models."""
-        yield self.teacher_models
+        self.teacher_models = teacher_models
 
-    def _offload_teacher_model(self):
-        """Offload teacher model to CPU to save GPU memory."""
-        if self.teacher_models is not None:
+        # Offload teacher models to CPU if enabled
+        if self.offload_teacher_model:
+            self._offload_teacher_models()
+            logger.info('Teacher models offloaded to CPU to save GPU memory')
+
+    @contextmanager
+    def _teacher_args_context(self):
+        """Context manager to temporarily override Megatron args with teacher's config.
+
+        This is necessary for forward_step_helper to use correct hidden_size, num_layers, etc.
+        when performing PP communication for teacher model.
+        """
+        megatron_args = get_args()
+
+        # Save original values and override with teacher config
+        original_values = {}
+        for key, value in self._teacher_megatron_config.items():
+            if hasattr(megatron_args, key):
+                original_values[key] = getattr(megatron_args, key)
+                setattr(megatron_args, key, value)
+
+        try:
+            yield
+        finally:
+            # Restore original values
+            for key, value in original_values.items():
+                setattr(megatron_args, key, value)
+
+    def _offload_teacher_models(self):
+        """Offload teacher models to CPU to save GPU memory."""
+        if self.teacher_models:
             offload_megatron_model_to_cpu(self.teacher_models)
 
-    def _load_teacher_model_to_gpu(self):
-        """Load teacher model back to GPU."""
-        if self.teacher_models is not None:
+    def _load_teacher_models_to_gpu(self):
+        """Load teacher models back to GPU."""
+        if self.teacher_models:
             load_megatron_model_to_gpu(self.teacher_models, load_grad=False)
 
     @contextmanager
     def load_teacher_model_context(self):
-        """Context manager to load teacher model for forward pass and optionally offload after.
+        """Context manager to load teacher models for forward pass and optionally offload after.
 
         When offload_teacher_model is enabled:
-        - Load teacher model to GPU before forward pass
-        - Offload teacher model to CPU after forward pass
+        - Load teacher models to GPU before forward pass
+        - Offload teacher models to CPU after forward pass
 
         This saves GPU memory during the training step.
         """
@@ -248,11 +235,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             yield
             return
 
-        self._load_teacher_model_to_gpu()
+        self._load_teacher_models_to_gpu()
         try:
             yield
         finally:
-            self._offload_teacher_model()
+            self._offload_teacher_models()
 
     @contextmanager
     def _template_context(self, template: Template, max_length: Optional[int] = None):
@@ -267,10 +254,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _encode_batch(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Encode a batch of raw data into model inputs."""
         template = self.template
+        args = get_args()
         max_length = template.max_length + self.max_completion_length
         with self._template_context(template, max_length=max_length):
             encoded_list = [template.encode(data, return_length=True) for data in batch]
-            encoded_batch = to_device(template.data_collator(encoded_list), self.device)
+            padding_to = get_padding_to(args)
+            encoded_batch = to_device(template.data_collator(encoded_list, padding_to=padding_to), self.device)
 
         encoded_batch['num_samples'] = len(batch)
         return encoded_batch
@@ -400,38 +389,59 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return valid_samples[:required_count]
 
-    def get_batch(self, data_iterator, vp_stage=None):
-        """Get batch from data iterator.
+    def _get_num_microbatches(self) -> int:
+        """Get the number of microbatches for the current training step."""
+        from megatron.core.num_microbatches_calculator import get_num_microbatches
+        return get_num_microbatches()
 
-        Implements GKD's three training modes:
-        1. On-Policy (prob lmbda): student-generated responses
-        2. Sequential KD (seq_kd=True): teacher-generated responses
-        3. Off-Policy (default): dataset responses
-        """
-        # Get raw batch from iterator
-        raw_batch = next(data_iterator)
+    def _compute_teacher_logits(self, encoded_batches: List[Dict]) -> None:
+        # Prepare batches for teacher forward (apply PP/CP transformations)
+        for encoded_batch in encoded_batches:
+            # Deep copy to avoid modifying original batch
+            teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
+            teacher_data = self._prepare_batch(teacher_batch)
+            teacher_data.pop('loss_scale', None)
+            # Remove labels so returns logits instead of loss
+            teacher_data.pop('labels', None)
 
-        # Resample for encoding failed data when truncation_strategy is 'delete'
-        if self.truncation_strategy == 'delete' and self._train_valid_test_dataset_provider is not None:
-            raw_batch = self.resample_encode_failed_inputs(raw_batch)
+            # Teacher forward with args override for correct hidden_size
+            with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
+                teacher_model = self.teacher_models[0]
+                teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                if teacher_logits is not None:
+                    teacher_logits = teacher_logits.detach()
+            encoded_batch['teacher_logits'] = teacher_logits
 
-        # Determine data source for this step
+    def _replace_data_iterator(self, data_iterator, model):
+        num_microbatches = self._get_num_microbatches()
+
         data_source = self._determine_data_source()
 
-        # On-policy mode: generate completions using student model via vLLM
-        if data_source == DataSource.STUDENT:
-            raw_batch = self._generate_completions(raw_batch, step=self._step)
-        elif data_source == DataSource.TEACHER:
-            logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
-                                'Falling back to dataset responses.')
+        encoded_batches = []
+        for _ in range(num_microbatches):
+            raw_batch = next(data_iterator)
+
+            # Resample for encoding failed data when truncation_strategy is 'delete'
+            if self.truncation_strategy == 'delete' and self._train_valid_test_dataset_provider is not None:
+                raw_batch = self.resample_encode_failed_inputs(raw_batch)
+
+            # On-policy mode: generate completions using student model via vLLM
+            if data_source == DataSource.STUDENT:
+                raw_batch = self._generate_completions(raw_batch, step=self._step)
+            elif data_source == DataSource.TEACHER:
+                logger.warning_once(
+                    'Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
+                    'Falling back to dataset responses.')
+
+            encoded_batch = self._encode_batch(raw_batch)
+            encoded_batches.append(encoded_batch)
+
+        self._compute_teacher_logits(encoded_batches)
+
         # Increment step counter (used for deterministic random and weight sync)
         self._step += 1
 
-        # Encode the batch
-        encoded_batch = self._encode_batch(raw_batch)
-
-        # Process through parent's _prepare_batch
-        return self._prepare_batch(encoded_batch, vp_stage)
+        return RerunDataIterator(iter(encoded_batches))
 
     def _align_vocab_size(
         self,
@@ -550,8 +560,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return total_loss / num_valid
 
-    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, teacher_logits: torch.Tensor,
-                  packed_seq_params):
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, teacher_logits: torch.Tensor):
         student_logits = output_tensor
 
         jsd_loss = self.generalized_jsd_loss(
@@ -574,22 +583,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        """Forward step for GKD training.
 
-        1. Get batch data
-        2. Forward teacher model WITHOUT labels to get logits
-        3. Forward student model WITHOUT labels to get logits
-        4. Compute JSD loss in loss_func
-
-        Note: By not passing labels, Megatron models return logits instead of loss.
-        We compute JSD loss directly from logits for true knowledge distillation.
-
-        Important: Both teacher and student forward must be executed on ALL ranks
-        to maintain NCCL collective operation consistency.
-        """
         timers = get_timers()
 
-        # Get the batch
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
@@ -599,37 +595,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             data = self.get_batch(data_iterator, vp_stage)
         timers('batch-generator').stop()
 
-        # Store labels for loss computation
-        labels = data.pop('labels')
         data.pop('loss_scale', None)
+        labels = data.pop('labels', None)
+        teacher_logits = data.pop('teacher_logits', None)
 
-        # Teacher forward - without labels to get logits
-        with self.load_teacher_model_context(), torch.no_grad():
-            teacher_model = self.teacher_models[vp_stage or 0]
-            # Clone input tensor if available (for PP intermediate stages)
-            teacher_input = input_tensor.detach().clone() if input_tensor is not None else None
-            if teacher_input is not None:
-                teacher_model.set_input_tensor(teacher_input)
-            # Returns [batch, seq_len, vocab] when labels=None (post_process=True)
-            # Returns [seq_len, batch, hidden] for intermediate PP stages
-            teacher_output = teacher_model(**data)
-
-        # Student forward - without labels to get logits
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
         with self.stimer:
             student_output = model(**data)
 
-        # For loss_func, we pass teacher logits via partial
-        # teacher_output is detached (no gradient) but needs to be on same device
-        teacher_logits = teacher_output.detach()
-
-        return student_output, partial(
-            self.loss_func,
-            labels=labels,
-            teacher_logits=teacher_logits,
-            packed_seq_params=data.get('packed_seq_params'))
-
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
-        """Custom logging for GKD metrics."""
-        super().custom_log(total_loss_dict, mode)
+        return student_output, partial(self.loss_func, labels=labels, teacher_logits=teacher_logits)

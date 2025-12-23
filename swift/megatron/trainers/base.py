@@ -1170,7 +1170,7 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
-    def _prepare_batch(self, data, vp_stage, num_samples=None):
+    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
