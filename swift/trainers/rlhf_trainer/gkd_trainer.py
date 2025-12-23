@@ -252,8 +252,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_logits=shifted_teacher_logits,
                 beta=self.beta,
             )
-            if self._trl_version_gte_0_24:
-                loss /= shifted_student_logits.shape[1]
             # Add SFT loss if enabled (skip for student-generated responses)
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -473,22 +471,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         temperature=1.0,
         chunk_size=512,
     ):
-        """Compute the generalized JSD loss with chunked computation to reduce peak memory.
-
-        JSD(p, q) = beta * KL(p || m) + (1 - beta) * KL(q || m)
-        where m = beta * p + (1 - beta) * q, p = teacher, q = student
-
-        Args:
-            student_logits: Student logits [batch, seq_len, vocab_size] or [1, num_tokens, vocab_size]
-            teacher_logits: Teacher logits [batch, seq_len, vocab_size] or [1, num_tokens, vocab_size]
-            labels: Optional token labels for masking [batch, seq_len], -100 for ignore
-            beta: Interpolation coefficient (0.5 = symmetric JSD)
-            temperature: Softmax temperature
-            chunk_size: Number of tokens to process per chunk
-
-        Returns:
-            Scalar loss tensor
-        """
         # Apply temperature scaling
         student_logits = student_logits / temperature
         teacher_logits = teacher_logits / temperature
