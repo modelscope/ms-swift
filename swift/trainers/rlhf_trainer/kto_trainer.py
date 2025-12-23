@@ -124,9 +124,6 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         KL_logps = None
         if self.calculate_KL:
             KL_model_kwargs, labels = self._get_model_kwargs(batch, 'KL_completion_')
-            # When gradient checkpointing is enabled with use_reentrant=True (default), calling the model inside a
-            # torch.no_grad() block triggers a harmless PyTorch warning ("None of the inputs have requires_grad=True").
-            # Temporarily disable checkpointing to avoid this warning during inference.
             with torch.no_grad(), disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
                 KL_logits = model(**KL_model_kwargs).logits
             KL_logps, _ = self.get_batch_logps(KL_model_kwargs, KL_logits, labels)
