@@ -52,6 +52,7 @@ register_megatron_model(
             ModelType.dots1,
             ModelType.ernie,
             ModelType.glm4_5,
+            ModelType.glm4_7,
             ModelType.deepseek_v3_1,
             ModelType.ernie_thinking,
             ModelType.gpt_oss,
