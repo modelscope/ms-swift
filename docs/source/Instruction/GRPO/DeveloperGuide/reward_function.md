@@ -2,8 +2,6 @@
 ## 自定义奖励函数
 奖励函数接受模型生成的文本 completions 其他数据集中的列以及训练器状态作为参数(kwargs)进行打分, 其中[训练器状态](https://huggingface.co/docs/transformers/main/main_classes/callback#transformers.TrainerState)包含训练的步数等信息。
 
-> Megatron GRPO 使用 self._step 获取当前训练步数
-
 注意：模型输入相关的列（比如query，response）会被处理为 messages 键，原数据集中的 assistant response 会被舍弃，请使用额外的列进行保留。
 相关处理的列名参考[文档](../../../Customization/Custom-dataset.md#query-response格式)
 
