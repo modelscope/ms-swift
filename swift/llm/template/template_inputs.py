@@ -51,7 +51,7 @@ class InferRequest:
             An optional list of tools. These should be organized in the agent_template format for
             tools requested by the system, for example 'react_en'.
 
-        objects (Dict[str, List[Any]]):
+        objects (Dict[str, Any]):
             Container for additional multimodal objects, grouped by type (key).
     """
     messages: Messages
@@ -61,7 +61,7 @@ class InferRequest:
     videos: List[str] = field(default_factory=list)
 
     tools: Optional[List[Tool]] = None
-    objects: Dict[str, List[Any]] = field(default_factory=dict)
+    objects: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         for key in ['images', 'audios', 'videos']:
@@ -114,7 +114,7 @@ class RolloutInferRequest(InferRequest):
             List of video resources associated with the request.
         tools (Optional[List[Tool]]):
             List of tools, organized by the agent template (e.g. 'react_en').
-        objects (Dict[str, List[Any]]):
+        objects (Dict[str, Any]):
             Optional container for additional multimodal objects.
 
     Additional / Overridden fields:
@@ -144,7 +144,7 @@ class StdTemplateInputs:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
-    objects: Dict[str, List[Any]] = field(default_factory=dict)
+    objects: Dict[str, Any] = field(default_factory=dict)
 
     margin: Optional[float] = None  # for reward modeling
     mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
