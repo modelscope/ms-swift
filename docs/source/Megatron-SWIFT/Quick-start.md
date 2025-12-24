@@ -224,6 +224,7 @@ swift infer \
   - TP/EP通信量较大，尽量不跨节点（NVLink域内），跨节点建议使用PP/DP；专家层建议使用EP而不是ETP，ETP更节约显存，但速度较慢。
   - MoE 并行折叠：MoE 相关的并行组与 Dense 组分离。Attention使用 tp-cp-dp-pp 组，MoE 使用 etp-ep-dp-pp 组。
 - 权重转换并行数的选择：Megatron-SWIFT在mcore端使用torch_dist存储格式，训练时可以调整并行数，不需要在权重转化时指定并行数。
+- 关于日志打印：Megatron-SWIFT的日志在last rank进行打印，因为在PP并行中，只有last pp_rank拥有完整的信息。
 
 ## Benchmark
 

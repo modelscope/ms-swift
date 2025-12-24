@@ -84,11 +84,12 @@ alpaca格式:
 ```
 
 多模态数据的格式参考[多模态数据集](#多模态), 额外加入如`images`的列表示其他模态输入。当需要为偏好对数据关联不同的图片信息时，可通过`rejected_images`字段标注拒绝回答对应的图片信息。
-对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个
+对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个。
 
 > 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
 
 当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
+- 若使用`rejected_response`，'rejected_images/rejected_audios/rejected_videos/rejected_tools'的默认值为'images/audios/videos/tools'；若使用`rejected_messages`，则需要额外传入。
 
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小狗。"}], "rejected_images": ["cat.png"]}
@@ -99,8 +100,15 @@ alpaca格式:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": "这是一只小狗。"}
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_images": ["dog.png"]}
+# 例子一也可写成：(ms-swift>=3.12)
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": [{"role": "assistant", "content": "这是一只小狗。"}]}
 ```
 
+ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
+```jsonl
+# 会寻找`messages`最后一个user的位置，并替换之后的内容为`rejected_response`组成`rejected_messages`
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}], "rejected_response": [{"role": "assistant", "content": "我不知道。"}]}
+```
 
 #### KTO
 
