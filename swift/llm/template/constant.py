@@ -112,6 +112,7 @@ class LLMTemplateType:
 
     bert = 'bert'
     olmoe = 'olmoe'
+    olmoe_0924 = 'olmoe_0924'
     minimind = 'minimind'
 
 
