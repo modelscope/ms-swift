@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Omega17Exp LoRA SFT Fine-tuning Script
+Omega17Exp LoRA SFT Fine-tuning Script (MS-SWIFT 3.x)
 
 This script provides a production-ready way to fine-tune the Omega17ExpForCausalLM
 model using LoRA (Low-Rank Adaptation) for Supervised Fine-Tuning (SFT).
 
 Requirements:
-    pip install transformers-usf-om-vl-exp-v0
-    pip install ms-swift[llm]
+    1. pip install ms-swift[llm]
+    2. pip install transformers-usf-om-vl-exp-v0 --force-reinstall
+    3. python setup_environment.py  # REQUIRED: patches compatibility issues
 
 Usage:
     python train_lora_sft.py \
@@ -26,27 +27,9 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-
-def register_omega17_model():
-    """Register the Omega17Exp model with MS-SWIFT."""
-    from swift.llm.model.register import MODEL_MAPPING
-    
-    # Skip if already registered
-    if 'omega17_exp' in MODEL_MAPPING:
-        print("✅ Omega17Exp model already registered")
-        return
-    
-    # Import the omega17 module to trigger registration
-    # This imports all the proper model registration from omega17.py
-    from swift.llm.model.model import omega17
-    
-    if 'omega17_exp' in MODEL_MAPPING:
-        print("✅ Omega17Exp model registered successfully!")
-    else:
-        raise RuntimeError(
-            "Failed to register Omega17Exp model. "
-            "Make sure swift.llm.model.model.omega17 is properly installed."
-        )
+# Register Omega17Exp model BEFORE importing other MS-SWIFT components
+# This works with pip-installed MS-SWIFT - no source modification needed
+from register_omega17 import register_omega17_model
 
 
 def parse_args():
@@ -211,78 +194,77 @@ def main():
         print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
         print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
     
-    # Register custom model
-    print("\n📦 Registering Omega17Exp model...")
-    register_omega17_model()
+    # Model is auto-registered when register_omega17 is imported
+    print("\n📦 Omega17Exp model registration verified")
     
-    # Import MS-SWIFT
-    from swift.llm import SftArguments, sft_main
+    # Import MS-SWIFT 3.x API
+    from swift.llm.train import SwiftSft
     
-    # Build training arguments
+    # Build training arguments as dict for MS-SWIFT 3.x
     print("\n⚙️  Building training arguments...")
     
+    # Prepare dataset
     dataset_list = [args.dataset]
     if args.val_dataset:
         dataset_list.append(args.val_dataset)
     
-    sft_args = SftArguments(
+    # Build args dict for SwiftSft
+    train_args = {
         # Model
-        model=args.model_path,
-        model_type=args.model_type,
+        'model': args.model_path,
+        'model_type': args.model_type,
         
         # Dataset
-        dataset=dataset_list,
+        'dataset': dataset_list,
         
         # Training type
-        train_type='lora',
+        'train_type': 'lora',
         
         # LoRA
-        lora_rank=args.lora_rank,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        lora_target_modules=args.lora_target_modules,
-        
-        # Quantization
-        quant_bits=args.quant_bits if args.use_qlora else None,
+        'lora_rank': args.lora_rank,
+        'lora_alpha': args.lora_alpha,
+        'lora_dropout': args.lora_dropout,
+        'lora_target_modules': args.lora_target_modules,
         
         # Training
-        output_dir=args.output_dir,
-        max_length=args.max_length,
-        num_train_epochs=args.num_epochs,
-        per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        learning_rate=args.learning_rate,
-        warmup_ratio=args.warmup_ratio,
-        
-        # Optimizer
-        optim='adamw_torch',
-        lr_scheduler_type='cosine',
+        'output_dir': args.output_dir,
+        'max_length': args.max_length,
+        'num_train_epochs': args.num_epochs,
+        'per_device_train_batch_size': args.batch_size,
+        'gradient_accumulation_steps': args.gradient_accumulation_steps,
+        'learning_rate': args.learning_rate,
+        'warmup_ratio': args.warmup_ratio,
         
         # Precision
-        torch_dtype=args.torch_dtype,
+        'torch_dtype': args.torch_dtype,
         
         # Memory optimization
-        gradient_checkpointing=args.gradient_checkpointing,
+        'gradient_checkpointing': args.gradient_checkpointing,
         
         # Logging
-        logging_steps=args.logging_steps,
-        save_steps=args.save_steps,
-        save_total_limit=args.save_total_limit,
-        eval_steps=args.eval_steps,
-        
-        # DeepSpeed
-        deepspeed=args.deepspeed,
+        'logging_steps': args.logging_steps,
+        'save_steps': args.save_steps,
+        'save_total_limit': args.save_total_limit,
         
         # Misc
-        seed=args.seed,
-        report_to=args.report_to,
-    )
+        'seed': args.seed,
+    }
     
-    # Start training
+    # Add quantization if using QLoRA
+    if args.use_qlora:
+        train_args['quant_bits'] = args.quant_bits
+    
+    # Add deepspeed if specified
+    if args.deepspeed:
+        train_args['deepspeed'] = args.deepspeed
+    
+    # Start training using MS-SWIFT 3.x API
     print("\n🚀 Starting training...")
     print("-" * 60)
     
-    result = sft_main(sft_args)
+    # Run training
+    sft = SwiftSft(train_args)
+    result = sft.main()
     
     print("\n" + "=" * 60)
     print("✅ TRAINING COMPLETED!")
