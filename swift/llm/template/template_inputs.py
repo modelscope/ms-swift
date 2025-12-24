@@ -8,6 +8,7 @@ from PIL import Image
 
 from swift.utils import get_logger
 from ..utils import Messages, Tool, messages_to_history
+from .utils import get_last_user_round
 
 logger = get_logger()
 
@@ -149,8 +150,6 @@ class StdTemplateInputs:
     margin: Optional[float] = None  # for reward modeling
     mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
-    # compat
-    rejected_response: Optional[List[str]] = None
 
     def __post_init__(self):
         self.image_idx = 0
@@ -164,9 +163,6 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
-        if self.rejected_response:
-            assert isinstance(self.rejected_response, list) and all(
-                isinstance(item, str) for item in self.rejected_response)
 
     def to_history(self):
         if not self.messages:
@@ -286,26 +282,27 @@ class TemplateInputs:
     def _compat_rejected_response(inputs: Dict[str, Any]):
         if 'rejected_response' not in inputs:
             return
-        # Find the first round's 'assistant'.
         messages = inputs['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        for idx in range(len(messages), 0, -1):
-            message = messages[idx - 1]
-            if message['role'] in {'user', 'tool', 'tool_response'}:
-                break
+        idx = get_last_user_round(messages) + 1
 
         rejected_response = inputs.pop('rejected_response')
-        if isinstance(rejected_response, list) and rejected_response and isinstance(rejected_response[0], str):
-            inputs['rejected_response'] = rejected_response
-            return
-        assert isinstance(rejected_response, str), f'rejected_response: {rejected_response}'
-        # Check that the response is different from the rejected_response.
         if isinstance(rejected_response, str):
-            if len(messages[idx:]) == 1:
-                response = messages[idx]['content']
-                assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
-            rejected_response = [{'role': 'assistant', 'content': rejected_response}]
-        inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_response
+            rejected_responses = [{'role': 'assistant', 'content': rejected_response}]
+        elif isinstance(rejected_response, list):
+            rejected_responses = rejected_response
+            for message in rejected_responses:
+                if message['role'] == 'user':
+                    raise ValueError(
+                        f"The 'user' role is not allowed in 'rejected_response' messages. Found: {message}")
+        else:
+            raise ValueError(f'rejected_response must be a str or list. rejected_response: {rejected_response}')
+        # Check that the response is different from the rejected_response.
+        if len(messages[idx:]) == 1 and len(rejected_responses) == 1:
+            response = messages[idx]['content']
+            rejected_response = rejected_responses[0]['content']
+            assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
+        inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_responses
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':
@@ -313,7 +310,6 @@ class TemplateInputs:
 
         has_rejected_messages = inputs.get('rejected_messages') is not None
         cls._compat_rejected_response(inputs)
-        rejected_response = inputs.pop('rejected_response', None)
         kwargs = {}
         non_chosen_keys = ['rejected', 'positive', 'negative']
         for prefix in ['chosen'] + non_chosen_keys:
@@ -335,7 +331,5 @@ class TemplateInputs:
                 rejected_v = rejected.get(k)
                 if chosen_v is not None and rejected_v is None:
                     rejected[k] = chosen_v
-        if rejected_response and 'chosen' in kwargs:
-            kwargs['chosen']['rejected_response'] = rejected_response
 
         return cls(**kwargs)
