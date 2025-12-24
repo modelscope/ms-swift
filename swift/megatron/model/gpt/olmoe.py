@@ -147,40 +147,32 @@ class OLMoEBridge(GPTBridge):
                 assert (lora_A == hf_state_dict['k_proj.lora_A.weight'].load()).all() and (
                     lora_A == hf_state_dict['v_proj.lora_A.weight'].load()
                 ).all(), 'Need to ensure QKV\'s lora_A are consistent'
-                q_lora_B = hf_state_dict['q_proj.lora_B.weight'].load()
                 lora_B = torch.cat([
-                    q_lora_B.reshape((num_query_groups, -1, q_lora_B.shape[-1])),
-                    hf_state_dict['k_proj.lora_B.weight'].load().reshape((num_query_groups, -1, q_lora_B.shape[-1])),
-                    hf_state_dict['v_proj.lora_B.weight'].load().reshape((num_query_groups, -1, q_lora_B.shape[-1])),
-                ],
-                                   dim=0).reshape((-1, q_lora_B.shape[-1]))
+                    hf_state_dict['q_proj.lora_B.weight'].load(),
+                    hf_state_dict['k_proj.lora_B.weight'].load(),
+                    hf_state_dict['v_proj.lora_B.weight'].load(),
+                ], dim=0)
                 self._set_weight(mg_attn.linear_qkv.lora_A[self._adapter_name].weight, lora_A,
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
                                  'linear_qkv.lora_B.weight')
             else:
                 linear_qkv_weight = torch.cat([
-                    hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
-                    hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
-                    hf_state_dict['v_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
-                ],
-                                              dim=0).reshape((-1, args.hidden_size))
+                    hf_state_dict['q_proj.weight'].load(),
+                    hf_state_dict['k_proj.weight'].load(),
+                    hf_state_dict['v_proj.weight'].load(),
+                ], dim=0)
                 qkv_scale_inv = None
                 if 'q_proj.weight_scale_inv' in hf_state_dict:
                     qkv_scale_inv = torch.cat([
-                        hf_state_dict['q_proj.weight_scale_inv'].load().reshape(
-                            (num_query_groups, -1, hidden_size_block)),
-                        hf_state_dict['k_proj.weight_scale_inv'].load().reshape(
-                            (num_query_groups, -1, hidden_size_block)),
-                        hf_state_dict['v_proj.weight_scale_inv'].load().reshape(
-                            (num_query_groups, -1, hidden_size_block)),
-                    ],
-                                              dim=0).reshape((-1, hidden_size_block))
+                        hf_state_dict['q_proj.weight_scale_inv'].load(),
+                        hf_state_dict['k_proj.weight_scale_inv'].load(),
+                        hf_state_dict['v_proj.weight_scale_inv'].load(),
+                    ], dim=0)
                 self._set_weight(
                     mg_attn.linear_qkv.weight, linear_qkv_weight, 'linear_qkv.weight', hf_scale_inv=qkv_scale_inv)
         else:
-            q_dim, kv_dim = hf_attn.q_proj.weight.shape[0] // num_query_groups, hf_attn.k_proj.weight.shape[
-                0] // num_query_groups
+            q_dim, kv_dim = hf_attn.q_proj.weight.shape[0], hf_attn.k_proj.weight.shape[0]
             q_block = q_dim // self.fp8_block_size
             kv_block = kv_dim // self.fp8_block_size
             is_lora = False if mg_attn is None else isinstance(mg_attn.linear_qkv,
@@ -199,43 +191,37 @@ class OLMoEBridge(GPTBridge):
                     self._peft_target_modules.update({'q_proj', 'k_proj', 'v_proj'})
                     for key in ['q_proj', 'k_proj', 'v_proj']:
                         hf_state_dict[f'{key}.lora_A.weight'] = lora_A.clone()
-                    hf_state_dict['q_proj.lora_B.weight'] = lora_B[:num_query_groups * q_dim, :].clone()
-                    hf_state_dict['k_proj.lora_B.weight'] = lora_B[num_query_groups * q_dim:-num_query_groups
-                                                                   * kv_dim, :].clone()
-                    hf_state_dict['v_proj.lora_B.weight'] = lora_B[-num_query_groups * kv_dim, :].clone()
+                    hf_state_dict['q_proj.lora_B.weight'] = lora_B[:q_dim, :].clone()
+                    hf_state_dict['k_proj.lora_B.weight'] = lora_B[q_dim:-kv_dim, :].clone()
+                    hf_state_dict['v_proj.lora_B.weight'] = lora_B[-kv_dim:, :].clone()
             elif not self._is_peft_format:
                 mg_attn_weight, scale_inv = self._get_weight(
                     None if mg_attn is None else mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
                 if mg_attn_weight is not None:
-                    hf_state_dict['q_proj.weight'] = mg_attn_weight[:num_query_groups * q_dim, :].clone()
-                    hf_state_dict['k_proj.weight'] = mg_attn_weight[num_query_groups * q_dim:-num_query_groups
-                                                                    * kv_dim, :].clone()
-                    hf_state_dict['v_proj.weight'] = mg_attn_weight[-num_query_groups * kv_dim:, :].clone()
+                    hf_state_dict['q_proj.weight'] = mg_attn_weight[:q_dim, :].clone()
+                    hf_state_dict['k_proj.weight'] = mg_attn_weight[q_dim:-kv_dim, :].clone()
+                    hf_state_dict['v_proj.weight'] = mg_attn_weight[-kv_dim:, :].clone()
                 if scale_inv is not None:
-                    hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:num_query_groups * q_block, :].clone()
-                    hf_state_dict['k_proj.weight_scale_inv'] = scale_inv[num_query_groups * q_block:-num_query_groups
-                                                                         * kv_block, :].clone()
-                    hf_state_dict['v_proj.weight_scale_inv'] = scale_inv[-num_query_groups * kv_block:, :].clone()
+                    hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:q_block, :].clone()
+                    hf_state_dict['k_proj.weight_scale_inv'] = scale_inv[q_block:-kv_block, :].clone()
+                    hf_state_dict['v_proj.weight_scale_inv'] = scale_inv[-kv_block:, :].clone()
                 del mg_attn_weight
         self._set_state_dict(mg_attn, 'linear_proj.weight', hf_state_dict, 'o_proj.weight', to_mcore)
         if args.add_qkv_bias and not self._is_peft_format:
             if to_mcore:
                 linear_qkv_bias = torch.cat([
-                    hf_state_dict['q_proj.bias'].load().reshape((num_query_groups, -1)),
-                    hf_state_dict['k_proj.bias'].load().reshape((num_query_groups, -1)),
-                    hf_state_dict['v_proj.bias'].load().reshape((num_query_groups, -1)),
-                ],
-                                            dim=0).reshape(-1)
+                    hf_state_dict['q_proj.bias'].load(),
+                    hf_state_dict['k_proj.bias'].load(),
+                    hf_state_dict['v_proj.bias'].load(),
+                ], dim=0)
                 self._set_weight(mg_attn.linear_qkv.bias, linear_qkv_bias, 'linear_qkv.bias')
             else:
                 mg_attn_bias, _ = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
                                                    'linear_qkv.bias')
                 if mg_attn_bias is not None:
-                    mg_attn_bias = mg_attn_bias.reshape((num_query_groups, -1))
-                    hf_state_dict['q_proj.bias'] = mg_attn_bias[:num_query_groups * q_dim].clone()
-                    hf_state_dict['k_proj.bias'] = mg_attn_bias[num_query_groups * q_dim:-num_query_groups
-                                                                * kv_dim].clone()
-                    hf_state_dict['v_proj.bias'] = mg_attn_bias[-num_query_groups * kv_dim:].clone()
+                    hf_state_dict['q_proj.bias'] = mg_attn_bias[:q_dim].clone()
+                    hf_state_dict['k_proj.bias'] = mg_attn_bias[q_dim:-kv_dim].clone()
+                    hf_state_dict['v_proj.bias'] = mg_attn_bias[-kv_dim:].clone()
         if args.qk_layernorm:
             hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
             hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
@@ -246,7 +232,6 @@ class OLMoEBridge(GPTBridge):
         else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
-
 
 register_megatron_model(
     MegatronModelMeta(
