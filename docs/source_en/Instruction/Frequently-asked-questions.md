@@ -88,8 +88,8 @@ Use fp32 for training with the V100 machine.
 ### Q29: Does Swift support distillation?
 Refer to this [example](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh).
 
-### Q30: The default maximum number of checkpoints saved after training is two. How can I increase this number?
-Use `--save_total_limit`. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
+### Q30: How many checkpoints are saved by default after training?
+By default, all checkpoints are saved. For details, see the [command-line parameter save_total_limit](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html). This parameter is not supported in Megatron-SWIFT; please set save_interval to save checkpoints instead. For details, refer to the [Megatron-SWIFT command-line parameters](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
 
 ### Q31: In grounding tasks, does the universal data format support multiple instances for one category?
 Currently, it supports one object corresponding to multiple bounding boxes. Refer to the documentation on [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html#grounding).
