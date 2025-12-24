@@ -223,28 +223,7 @@ class MuonClip(Optimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
-
-        # ======== 只打印一次 attention 实现类型 ========
-        if not hasattr(self, "_printed_attn_impl"):
-            self._printed_attn_impl = True
-            try:
-                import torch
-                print(
-                    "[MuonClip DEBUG] "
-                    "attn_implementation =",
-                    getattr(getattr(self, "_model", None), "config", None)
-                )
-                print(
-                    "[MuonClip DEBUG] "
-                    "torch has SDPA:",
-                    hasattr(torch.nn.functional, "scaled_dot_product_attention")
-                )
-            except Exception as e:
-                print("[MuonClip DEBUG] failed to inspect attention impl:", e)
-        # ==============================================
-
-
-        # Fallback: HF Trainer typically calls optimizer.step() with no custom args.
+                
         if max_logits is None and self.defaults.get('qk_clip_enabled', False):
             max_logits = _MaxLogitsTracker.consume()
         
