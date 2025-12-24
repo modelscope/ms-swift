@@ -14,6 +14,7 @@ importlib_metadata
 jieba
 json_repair
 matplotlib
+mindstudio-probe
 modelscope>=1.23
 nltk
 numpy

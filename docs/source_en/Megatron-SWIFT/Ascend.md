@@ -44,3 +44,135 @@ while iteration < args.train_iters:
   ...
 prof.stop()
 ```
+
+# NPU Accuracy Data Collection
+### Configuration
+
+Modify the dump_path, level and other configuration items in the msprobe_config.json file under the ms-swift directory as needed.
+More configurations can be found in [Configuration Examples](https://gitcode.com/Ascend/mstt/blob/master/debug/accuracy_tools/msprobe/docs/zh/dump/config_json_examples.md) and [Configuration File Introduction](https://gitcode.com/Ascend/mstt/blob/master/debug/accuracy_tools/msprobe/docs/zh/dump/config_json_introduct.md)
+
+
+### Code Modification
+To support accuracy debugging with the msprobe tool, we need to modify the `_patch_word_embeddings` function in the `swift/megatron/model/mm_gpt_model.py` file. The main changes are to adjust the function parameters and internal implementation logic so that it can correctly patch the embedding layer.
+
+The specific modification content is as follows:
+
+Before modification:
+```python
+def _patch_word_embeddings(self, kwargs):
+    origin_forward = VocabParallelEmbedding.forward
+
+    def forward(_self, input_):
+        from ..trainers.utils import split_cp_inputs
+        args = get_args()
+        reduce_scatter_embeddings = _self.reduce_scatter_embeddings
+        _self.reduce_scatter_embeddings = False
+        input_ = torch.masked_fill(input_, input_ < 0, 0)
+        res = origin_forward(_self, input_)
+        _self.reduce_scatter_embeddings = reduce_scatter_embeddings
+        packed_seq_params = kwargs.get('packed_seq_params')
+        # ...other logic...
+        return res
+    VocabParallelEmbedding.forward = forward
+    try:
+        yield
+    finally:
+        VocabParallelEmbedding.forward = origin_forward
+
+def forward(
+    self,
+    input_ids: torch.Tensor,
+    position_ids: torch.Tensor,
+    attention_mask: torch.Tensor = None,
+    decoder_input: torch.Tensor = None,
+    labels: torch.Tensor = None,
+    inference_params: InferenceParams = None,
+    packed_seq_params: PackedSeqParams = None,
+    **kwargs,
+) -> torch.Tensor:
+    if decoder_input is not None:
+        pass
+    elif self.pre_process:
+        kwargs.update({'input_ids': input_ids, 'packed_seq_params': packed_seq_params})
+        with self._patch_word_embeddings(kwargs):
+            decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
+
+    # ...other logic...
+```
+
+After modification:
+```python
+def _patch_word_embeddings(self, kwargs, emb):          # Modification 1
+    origin_forward = emb.word_embeddings.forward        # Modification 2
+
+    def forward(input_):                                # Modification 3
+        from ..trainers.utils import split_cp_inputs
+        args = get_args()
+        _self = emb.word_embeddings                     # Modification 4
+        reduce_scatter_embeddings = _self.reduce_scatter_embeddings
+        _self.reduce_scatter_embeddings = False
+        input_ = torch.masked_fill(input_, input_ < 0, 0)
+        res = origin_forward(input_)                    # Modification 5
+        _self.reduce_scatter_embeddings = reduce_scatter_embeddings
+        packed_seq_params = kwargs.get('packed_seq_params')
+        # ...other logic...
+        return res
+    
+    emb.word_embeddings.forward = forward               # Modification 6
+    try:
+        yield
+    finally:
+        emb.word_embeddings.forward = origin_forward    # Modification 7
+
+def forward(
+    self,
+    input_ids: torch.Tensor,
+    position_ids: torch.Tensor,
+    attention_mask: torch.Tensor = None,
+    decoder_input: torch.Tensor = None,
+    labels: torch.Tensor = None,
+    inference_params: InferenceParams = None,
+    packed_seq_params: PackedSeqParams = None,
+    **kwargs,
+) -> torch.Tensor:
+    if decoder_input is not None:
+        pass
+    elif self.pre_process:
+        kwargs.update({'input_ids': input_ids, 'packed_seq_params': packed_seq_params})
+        with self._patch_word_embeddings(kwargs, self.language_model.embedding):                # Modification 8
+            decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
+
+    # ...other logic...
+```
+
+Major changes include:
+1. The `_patch_word_embeddings` method adds an `emb` parameter to receive the embedding module instance
+2. Directly obtain `emb.word_embeddings.forward` instead of `VocabParallelEmbedding.forward`
+3. The internal `forward` function signature changed from `(_self, input_)` to `(input_)`
+4. Get `_self` through `emb.word_embeddings` inside the function
+5. Pass `input_` directly when calling the original forward
+6. Use `emb.word_embeddings.forward` for replacement and recovery operations (Modifications 6, 7)
+7. Pass the `self.language_model.embedding` instance when calling `_patch_word_embeddings`
+
+
+### Enablement
+Add `--enable_msprobe True` to the startup script
+
+In addition, since msprobe does not support fused computation, you also need to add `--no_bias_dropout_fusion True`, `--no_bias_swiglu_fusion True`, `--cross_entropy_loss_fusion False`
+#### Example
+```shell
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --load Qwen2.5-7B-Instruct-mcore \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --tensor_model_parallel_size 2 \
+    ...
+    --no_bias_dropout_fusion True \ 
+    --no_bias_swiglu_fusion True \
+    --cross_entropy_loss_fusion False \
+    --enable_msprobe True
+```

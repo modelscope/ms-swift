@@ -361,6 +361,10 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
 
+    # dump
+    enable_msprobe: bool = False
+    msprobe_config: str = './msprobe_config.json'
+
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
         res = {}
