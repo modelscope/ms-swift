@@ -116,6 +116,7 @@ class GLM4VTemplate(Template):
 
 class GLM4vPackingTemplateMixin:
     support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+    use_model = True
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         for r in row:
@@ -331,7 +332,6 @@ register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ['<|image|>', '<|video|>']
-    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
