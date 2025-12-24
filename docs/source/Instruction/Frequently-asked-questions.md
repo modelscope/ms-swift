@@ -88,8 +88,8 @@ V100机器要用fp32训练qwen2。
 ### Q29: 想问一下，swift，能支持蒸馏吗？
 参考这个[例子](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh)。
 
-### Q30: 当前训练完默认最多保存两个checkpoint，如果想多保存几个应该怎么修改呢？
-`--save_total_limit`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
+### Q30: 当前训练完默认保存多少个checkpoint？
+默认保存所有的checkpoint，详见[命令行参数 save_total_limit](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。该参数在megatron swift中不支持，请设置save_interval保存checkpoint，详见[megatron swift命令行参数](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
 
 ### Q31: Grounding任务中通用数据格式支持一个类别有多个实例吗？
 目前均支持了一个物体对应多个bbox，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)。
