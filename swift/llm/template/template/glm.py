@@ -151,7 +151,6 @@ class GLM4vPackingTemplateMixin:
         return res
 
     def _patch_create_causal_mask(self, modeling_module):
-        self._patched = True
         create_causal_mask = modeling_module.create_causal_mask
 
         def new_create_causal_mask(*args, **kwargs):
@@ -174,7 +173,8 @@ class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
         if processor is None:
             return
         super().init_processor(processor)
-        if not getattr(self, '_patched', False) and self.padding_free:
+        if not getattr(GLM4_1VTemplate, '_patched', False) and self.padding_free:
+            GLM4_1VTemplate._patched = True
             from transformers.models.glm4v import modeling_glm4v
             self._patch_create_causal_mask(modeling_glm4v)
         self.image_token = self._tokenize('<|image|>')[0]
@@ -377,7 +377,8 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
 
     def init_processor(self, processor) -> None:
         super().init_processor(processor)
-        if not getattr(self, '_patched', False) and self.padding_free:
+        if not getattr(GLM4_5VTemplate, '_patched', False) and self.padding_free:
+            GLM4_5VTemplate._patched = True
             from transformers.models.glm4v_moe import modeling_glm4v_moe
             self._patch_create_causal_mask(modeling_glm4v_moe)
 
