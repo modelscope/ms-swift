@@ -39,23 +39,37 @@ export HF_TOKEN="hf_your_token_here"
 # Go to working directory
 cd /workspace/usf-ms-swift
 
-# Install MS-SWIFT from source
+# ============================================================
+# INSTALL ORDER IS CRITICAL - DO NOT CHANGE
+# ============================================================
+
+# Step A: Install MS-SWIFT from source FIRST
 pip install -e ".[llm]"
 
-# Install required packages
-pip install transformers>=4.51 accelerate bitsandbytes>=0.46.1 peft datasets
+# Step B: Install custom transformers fork AFTER ms-swift
+# This MUST come after ms-swift to override huggingface-hub version
+pip install transformers-usf-om-vl-exp-v0 --force-reinstall
 
-# Run environment patches (fixes all compatibility issues)
+# Step C: Install other dependencies
+pip install accelerate bitsandbytes>=0.46.1 peft datasets
+
+# Step D: Run environment patches (fixes all compatibility issues)
 cd examples/omega17_exp
 python setup_environment.py
 
-# Download model
+# Step E: Download model
 python download_model.py --output_dir ./model
 
 echo "============================================================"
 echo "SETUP COMPLETE! Ready to train."
 echo "============================================================"
 ```
+
+> ⚠️ **IMPORTANT**: The install order matters!
+> 1. MS-SWIFT first (sets up base dependencies)
+> 2. Custom transformers fork AFTER (overrides huggingface-hub)
+> 3. Other packages
+> 4. Run patches
 
 ### Step 3: Start Training (Single Command)
 

@@ -81,14 +81,17 @@ else
 fi
 
 # ============================================================
-# STEP 1: INSTALL DEPENDENCIES
+# STEP 1: INSTALL DEPENDENCIES (ORDER IS CRITICAL)
 # ============================================================
-print_step "Installing MS-SWIFT from source..."
+print_step "Step A: Installing MS-SWIFT from source FIRST..."
 cd "$SWIFT_DIR"
 pip install -e ".[llm]" -q
 
-print_step "Installing required packages..."
-pip install transformers>=4.51 accelerate bitsandbytes>=0.46.1 peft datasets -q
+print_step "Step B: Installing custom transformers fork AFTER ms-swift..."
+pip install transformers-usf-om-vl-exp-v0 --force-reinstall -q
+
+print_step "Step C: Installing other dependencies..."
+pip install accelerate bitsandbytes>=0.46.1 peft datasets -q
 
 # ============================================================
 # STEP 2: RUN ENVIRONMENT PATCHES
