@@ -3,6 +3,7 @@ import inspect
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
@@ -166,6 +167,31 @@ def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
             continue
         _add_gradient_checkpointing(module_list)
         logger.info(f'Automatically add gradient_checkpointing to {model_tower.__class__}.')
+
+
+@contextmanager
+def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointing_kwargs: Optional[Dict] = None):
+    """
+    Temporarily disable gradient checkpointing, restoring the previous state afterward.
+
+    When gradient checkpointing is enabled with use_reentrant=True (default), calling the model inside a
+    torch.no_grad() block triggers a harmless PyTorch warning ("None of the inputs have requires_grad=True").
+    Temporarily disable checkpointing to avoid this warning during inference.
+
+    Args:
+        model (`PreTrainedModel`):
+            Model for which to temporarily disable gradient checkpointing.
+        gradient_checkpointing_kwargs (`dict` or `None`, *optional*):
+            Additional kwargs for gradient checkpointing enabling.
+    """
+    was_enabled = getattr(model, 'is_gradient_checkpointing', False)
+    if was_enabled:
+        model.gradient_checkpointing_disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
 
 
 def history_to_messages(history: History,

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import ModelType, Template
 from ..constant import MegatronModelType
+from ..gpt.glm4 import Glm4Bridge, get_glm4_transformer_layer_spec
 from ..gpt_bridge import MultimodalGPTBridge
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
@@ -24,3 +25,17 @@ register_megatron_model(
         MegatronModelType.glm4_5v, [
             ModelType.glm4_5v,
         ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4_5vVit))
+
+
+class Glm4_1vBridge(Glm4Bridge, MultimodalGPTBridge):
+    pass
+
+
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.glm4_1v, [
+            ModelType.glm4_1v,
+        ],
+        get_transformer_layer_spec=get_glm4_transformer_layer_spec,
+        bridge_cls=Glm4_1vBridge,
+        visual_cls=Glm4_5vVit))

@@ -114,7 +114,44 @@ class GLM4VTemplate(Template):
         return res
 
 
-class GLM4_1VTemplate(Template):
+class GLM4vPackingTemplateMixin:
+    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        for r in row:
+            r_copy = r.copy()
+            r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
+            r['position_ids'] = self._get_position_ids(r_copy)
+        packed = super().packing_row(row)
+        return packed
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        base_model = self.get_base_model(self._get_model())
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
+        position_ids, _ = base_model.model.get_rope_index(
+            inputs['input_ids'],
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask=attention_mask)
+        return self._concat_text_position_ids(position_ids)
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if not self.padding_free and self.is_training:
+            res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            # https://github.com/huggingface/transformers/pull/40194
+            if text_position_ids.shape[0] == 1:
+                res.update(get_packed_seq_params(text_position_ids))
+        return res
+
+
+class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
     begin_of_image_token = 151339
     end_of_image_token = 151340
     begin_of_video_token = 151341
@@ -231,7 +268,6 @@ class GLM4_1VTemplate(Template):
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-        encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -264,12 +300,22 @@ class GLM4_5Template(GLM4Template):
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
+register_template(
+    GLM4_5TemplateMeta(
+        LLMTemplateType.glm4_7,
+        template_cls=GLM4_5Template,
+        prompt=['<|user|>{{QUERY}}<|assistant|>'],
+        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>',
+        agent_template='glm4_7',
+    ))
+
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
 
-class GLM4_5VTemplate(GLM4_5Template):
-    placeholder_tokens = ['<|image|>']
-    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
+    placeholder_tokens = ['<|image|>', '<|video|>']
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -305,26 +351,6 @@ class GLM4_5VTemplate(GLM4_5Template):
         encoded['input_ids'] = input_ids
         return encoded
 
-    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        for r in row:
-            r_copy = r.copy()
-            r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
-            r['position_ids'] = self._get_position_ids(r_copy)
-        packed = super().packing_row(row)
-        return packed
-
-    def _get_position_ids(self, inputs: Dict[str, Any]):
-        base_model = self.get_base_model(self._get_model())
-        attention_mask = inputs.get('attention_mask_2d')
-        if attention_mask is None:
-            attention_mask = inputs.get('attention_mask')
-        position_ids, _ = base_model.model.get_rope_index(
-            inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
-            attention_mask=attention_mask)
-        return self._concat_text_position_ids(position_ids)
-
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
@@ -333,19 +359,6 @@ class GLM4_5VTemplate(GLM4_5Template):
         inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
         inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
-
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
-        if not self.padding_free and self.is_training:
-            res['position_ids'] = self._get_position_ids(res)
-        if 'position_ids' in res:
-            position_ids = res['position_ids']
-            res['position_ids'] = position_ids[1:]
-            res['text_position_ids'] = text_position_ids = position_ids[0]
-            # https://github.com/huggingface/transformers/pull/40194
-            if text_position_ids.shape[0] == 1:
-                res.update(get_packed_seq_params(text_position_ids))
-        return res
 
 
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))

@@ -39,7 +39,7 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
-from swift.llm import RowPreprocessor, Template, to_device
+from swift.llm import RowPreprocessor, Template, disable_gradient_checkpointing, to_device
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
@@ -877,14 +877,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             extra_kwargs['completion_mask'] = completion_mask
             batch_encoded_inputs.update(extra_kwargs)
 
-            with torch.no_grad():
+            with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
-                    ref_per_token_logps = \
-                        self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
+                    with disable_gradient_checkpointing(self.ref_model, self.args.gradient_checkpointing_kwargs):
+                        ref_per_token_logps = \
+                            self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
                 else:
                     with self.null_ref_context():
                         ref_per_token_logps = \
