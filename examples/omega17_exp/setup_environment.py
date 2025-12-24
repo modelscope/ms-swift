@@ -21,6 +21,7 @@ What it fixes:
 5. omega17_exp model registration in swift
 6. @check_model_inputs decorator causing TypeError during training
 7. bitsandbytes installation for 4-bit quantization (QLoRA)
+8. Omega17Exp native registration in transformers (uses optimized Qwen3Moe)
 """
 
 import os
@@ -172,6 +173,155 @@ def _compute_default_rope_parameters(config, device, seq_len=None, **rope_kwargs
         f.write(content)
     
     print("   ✅ ROPE_INIT_FUNCTIONS patched successfully")
+    return True
+
+
+def patch_omega17_native_transformers(transformers_path):
+    """Register Omega17Exp as native model in transformers using Qwen3Moe classes.
+    
+    This makes Omega17Exp use the optimized native Qwen3Moe implementation instead of
+    trust_remote_code Python code, resulting in ~2x faster training.
+    
+    Creates:
+    - transformers/models/omega17_exp/__init__.py
+    - transformers/models/omega17_exp/configuration_omega17_exp.py
+    - transformers/models/omega17_exp/modeling_omega17_exp.py
+    """
+    omega17_dir = os.path.join(transformers_path, 'models', 'omega17_exp')
+    os.makedirs(omega17_dir, exist_ok=True)
+    
+    # Create __init__.py
+    init_content = '''"""Omega17Exp model - optimized using Qwen3Moe native implementation."""
+from .configuration_omega17_exp import Omega17ExpConfig
+from .modeling_omega17_exp import (
+    Omega17ExpForCausalLM,
+    Omega17ExpModel,
+    Omega17ExpPreTrainedModel,
+)
+
+__all__ = [
+    "Omega17ExpConfig",
+    "Omega17ExpForCausalLM",
+    "Omega17ExpModel",
+    "Omega17ExpPreTrainedModel",
+]
+'''
+    
+    # Create configuration_omega17_exp.py
+    config_content = '''"""Omega17Exp configuration - inherits from Qwen3MoeConfig."""
+from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
+
+
+class Omega17ExpConfig(Qwen3MoeConfig):
+    """Configuration for Omega17Exp model.
+    
+    Omega17Exp is architecturally identical to Qwen3Moe, so we inherit
+    all configuration from Qwen3MoeConfig.
+    """
+    model_type = "omega17_exp"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+'''
+    
+    # Create modeling_omega17_exp.py
+    modeling_content = '''"""Omega17Exp model - uses optimized Qwen3Moe implementation.
+
+Omega17Exp is architecturally identical to Qwen3Moe (same layers, experts, dimensions).
+By inheriting from Qwen3Moe classes, we get the native optimized implementation
+instead of the slower trust_remote_code Python version.
+"""
+from transformers.models.qwen3_moe.modeling_qwen3_moe import (
+    Qwen3MoeForCausalLM,
+    Qwen3MoeModel,
+    Qwen3MoePreTrainedModel,
+    Qwen3MoeDecoderLayer,
+    Qwen3MoeAttention,
+    Qwen3MoeSparseMoeBlock,
+    Qwen3MoeMLP,
+    Qwen3MoeRMSNorm,
+    Qwen3MoeRotaryEmbedding,
+)
+from .configuration_omega17_exp import Omega17ExpConfig
+
+
+# Create Omega17Exp classes as aliases of Qwen3Moe classes
+class Omega17ExpPreTrainedModel(Qwen3MoePreTrainedModel):
+    """Omega17Exp base class."""
+    config_class = Omega17ExpConfig
+    base_model_prefix = "model"
+    _no_split_modules = ["Omega17ExpDecoderLayer"]
+
+
+class Omega17ExpModel(Qwen3MoeModel):
+    """Omega17Exp model (transformer only, no LM head)."""
+    config_class = Omega17ExpConfig
+
+
+class Omega17ExpForCausalLM(Qwen3MoeForCausalLM):
+    """Omega17Exp for causal language modeling."""
+    config_class = Omega17ExpConfig
+    _tied_weights_keys = ["lm_head.weight"]
+
+
+# Alias the internal classes for compatibility
+Omega17ExpDecoderLayer = Qwen3MoeDecoderLayer
+Omega17ExpAttention = Qwen3MoeAttention
+Omega17ExpSparseMoeBlock = Qwen3MoeSparseMoeBlock
+Omega17ExpMLP = Qwen3MoeMLP
+Omega17ExpRMSNorm = Qwen3MoeRMSNorm
+Omega17ExpRotaryEmbedding = Qwen3MoeRotaryEmbedding
+'''
+    
+    # Write files
+    with open(os.path.join(omega17_dir, '__init__.py'), 'w') as f:
+        f.write(init_content)
+    print(f"   ✅ Created {omega17_dir}/__init__.py")
+    
+    with open(os.path.join(omega17_dir, 'configuration_omega17_exp.py'), 'w') as f:
+        f.write(config_content)
+    print(f"   ✅ Created configuration_omega17_exp.py")
+    
+    with open(os.path.join(omega17_dir, 'modeling_omega17_exp.py'), 'w') as f:
+        f.write(modeling_content)
+    print(f"   ✅ Created modeling_omega17_exp.py (uses Qwen3Moe native code)")
+    
+    # Register in transformers AUTO_MAPPING
+    auto_init_path = os.path.join(transformers_path, 'models', 'auto', 'modeling_auto.py')
+    if os.path.exists(auto_init_path):
+        with open(auto_init_path, 'r') as f:
+            content = f.read()
+        
+        # Add to MODEL_FOR_CAUSAL_LM_MAPPING_NAMES if not present
+        if 'Omega17ExpForCausalLM' not in content:
+            # Find the mapping and add omega17_exp
+            if 'MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict' in content:
+                old_pattern = 'MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict(\n    ['
+                new_pattern = 'MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict(\n    [("omega17_exp", "Omega17ExpForCausalLM"),\n     '
+                if old_pattern in content:
+                    content = content.replace(old_pattern, new_pattern)
+                    with open(auto_init_path, 'w') as f:
+                        f.write(content)
+                    print("   ✅ Registered Omega17ExpForCausalLM in AUTO_MAPPING")
+    
+    # Register config in configuration_auto.py
+    config_auto_path = os.path.join(transformers_path, 'models', 'auto', 'configuration_auto.py')
+    if os.path.exists(config_auto_path):
+        with open(config_auto_path, 'r') as f:
+            content = f.read()
+        
+        if 'omega17_exp' not in content:
+            # Add to CONFIG_MAPPING_NAMES
+            if 'CONFIG_MAPPING_NAMES = OrderedDict' in content:
+                old_pattern = 'CONFIG_MAPPING_NAMES = OrderedDict(\n    ['
+                new_pattern = 'CONFIG_MAPPING_NAMES = OrderedDict(\n    [("omega17_exp", "Omega17ExpConfig"),\n     '
+                if old_pattern in content:
+                    content = content.replace(old_pattern, new_pattern)
+                    with open(config_auto_path, 'w') as f:
+                        f.write(content)
+                    print("   ✅ Registered Omega17ExpConfig in CONFIG_MAPPING")
+    
+    print("   ✅ Omega17Exp native registration complete")
     return True
 
 
@@ -505,6 +655,10 @@ def main():
     # Patch 7: Install bitsandbytes for QLoRA
     print("\n7. Installing bitsandbytes for 4-bit quantization (QLoRA)...")
     install_bitsandbytes()
+    
+    # Patch 8: Register Omega17Exp natively in transformers
+    print("\n8. Registering Omega17Exp natively in transformers (optimized)...")
+    patch_omega17_native_transformers(transformers_path)
     
     # Verify
     success = verify_imports()

@@ -19,6 +19,7 @@ class LLMModelType:
     qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
+    omega17_exp = 'omega17_exp'  # Omega17Exp MoE model
     qwen3_next = 'qwen3_next'
     qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
