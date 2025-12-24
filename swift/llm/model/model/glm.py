@@ -251,10 +251,6 @@ register_model(
 
 def get_model_tokenizer_glm4_1v(*args, **kwargs):
     from transformers import Glm4vForConditionalGeneration
-    logger.info(
-        "If you encounter the error 'TypeError: group_images_by_shape() missing 1 required positional argument: "
-        "\"disable_grouping\"', please install the source version of the transformers library.")
-
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
     if model is not None and hasattr(model, 'visual'):
