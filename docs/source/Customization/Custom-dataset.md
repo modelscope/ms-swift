@@ -99,9 +99,9 @@ alpaca格式:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": "这是一只小狗。"}
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_images": ["dog.png"]}
-# 例子一也可写成 (ms-swift>=3.12)
+# 例子一也可写成：(ms-swift>=3.12)
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": [{"role": "assistant", "content": "这是一只小狗。"}]}
-{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小狗。"}], "images": ["cat.png"], "rejected_messages": [{"role": "assistant", "content": "这是一只小狗。"}]}
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_messages": [{"role": "assistant", "content": "这是一只小狗。"}]}
 ```
 
 ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
