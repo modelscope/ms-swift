@@ -298,7 +298,7 @@ class TemplateInputs:
         # Check that the response is different from the rejected_response.
         if len(messages[idx:]) == 1 and len(rejected_responses) == 1:
             response = messages[idx]['content']
-            rejected_response = rejected_responses[0]
+            rejected_response = rejected_responses[0]['content']
             assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_responses
 
