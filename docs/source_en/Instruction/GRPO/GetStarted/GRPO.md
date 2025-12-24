@@ -338,7 +338,7 @@ With `overlong_filter` enabled, all completions on a certain GPU were truncated.
 
 Refer to [issue](https://github.com/modelscope/ms-swift/issues/3912).
 
-**5. Why is the clip ratio always 1?**
+**5. Why is the clip ratio always 0?**
 
 The core purpose of the clip mechanism is to limit the magnitude of policy updates to prevent policy performance collapse due to excessively large updates (i.e., a drastic decline in performance after policy updates). The specific formula for the clip operation is as follows:
 
