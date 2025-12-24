@@ -139,8 +139,6 @@ class OLMoEBridge(GPTBridge):
             hf_state_dict = {}
         hf_attn = self.hf_layers[layer_idx].self_attn
         args = self.args
-        num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
-        hidden_size_block = args.hidden_size // self.fp8_block_size
         if to_mcore:
             if isinstance(mg_attn.linear_qkv, LoraParallelLinear):
                 lora_A = hf_state_dict['q_proj.lora_A.weight'].load()
