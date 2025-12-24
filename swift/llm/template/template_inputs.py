@@ -292,7 +292,9 @@ class TemplateInputs:
         elif isinstance(rejected_response, list):
             rejected_responses = rejected_response
             for message in rejected_responses:
-                assert message['role'] != 'user', f'message: {message}'
+                if message['role'] == 'user':
+                    raise ValueError(
+                        f"The 'user' role is not allowed in 'rejected_response' messages. Found: {message}")
         else:
             raise ValueError(f'rejected_response must be a str or list. rejected_response: {rejected_response}')
         # Check that the response is different from the rejected_response.
