@@ -131,7 +131,7 @@ class MegatronRolloutMixin:
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
 
-        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 and self.args.rlhf_type == 'grpo' else None
 
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
         load_format = vllm_engine_kwargs.pop('load_format', 'dummy')

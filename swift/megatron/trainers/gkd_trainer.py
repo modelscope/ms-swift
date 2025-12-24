@@ -507,7 +507,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         num_valid = mask.sum()
 
         if num_valid == 0:
-            return student_logits.new_zeros(())
+            return (student_logits.sum() * 0).reshape(())
 
         # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
