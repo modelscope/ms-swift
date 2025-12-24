@@ -172,6 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
   - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for cross-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
   - MoE parallel folding: separate MoE parallel groups from Dense groups. Attention uses tp-cp-dp-pp groups, while MoE uses etp-ep-dp-pp groups.
 - Choosing parallelism for weight conversion: Megatron-SWIFT uses the torch_dist storage format on the MCore side; you can adjust parallelism at training time and do not need to specify it during weight conversion.
+- Regarding log printing: Megatron-SWIFT logs are printed on the last rank, because in PP parallelism, only the last pp_rank has complete information.
 
 
 ## Benchmark
