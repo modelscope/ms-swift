@@ -73,6 +73,11 @@ def test_glm4_5v():
     _test_model('ZhipuAI/GLM-4.5V')
 
 
+def test_glm4_6v_flash():
+    _test_model('ZhipuAI/GLM-4.1V-9B-Thinking')
+    # _test_model('ZhipuAI/GLM-4.6V-Flash')
+
+
 def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
@@ -108,9 +113,10 @@ if __name__ == '__main__':
     # test_internvl3_5_hf()
     # test_internvl3_5_moe_hf()
     # test_glm4_5v()
+    test_glm4_6v_flash()
     # test_ovis2_5()
     # test_kimi_vl()
     # test_qwen3_vl()
     # test_qwen3_vl_moe()
     # test_qwen3_omni()
-    test_llama4()
+    # test_llama4()

@@ -39,7 +39,7 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
-from swift.llm import RowPreprocessor, Template, to_device
+from swift.llm import RowPreprocessor, Template, disable_gradient_checkpointing, to_device
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
@@ -877,14 +877,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             extra_kwargs['completion_mask'] = completion_mask
             batch_encoded_inputs.update(extra_kwargs)
 
-            with torch.no_grad():
+            with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
-                    ref_per_token_logps = \
-                        self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
+                    with disable_gradient_checkpointing(self.ref_model, self.args.gradient_checkpointing_kwargs):
+                        ref_per_token_logps = \
+                            self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
                 else:
                     with self.null_ref_context():
                         ref_per_token_logps = \
@@ -2407,25 +2408,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             (-mean_log_prob_training).mean()).nanmean().item()
 
         # 2. Compute rollout off-policy metrics
-        # All KL metrics estimate KL(π_training || π_rollout), which measures how much
+        # All KL metrics estimate KL(π_rollout || π_training), which measures how much
         # the training policy deviates from the rollout policy. This is directly related
         # to the importance sampling ratio ρ = π_training / π_rollout.
 
-        # log_ratio = log(π_training / π_rollout), used for both KL estimators
+        # log_ratio = log(π_training / π_rollout), used for IS weights and KL estimators
         log_ratio = per_token_logps - rollout_per_token_logps
         log_ratio *= completion_mask
 
-        # 2a. kl: Direct estimator for KL(π_training || π_rollout)
-        # Formula: KL(P||Q) = E_Q[log(P/Q)] when sampled from Q (rollout)
-        # However, we use the identity: E_Q[log(P/Q)] = E_Q[log P] - E_Q[log Q]
-        # Since data is from rollout, E_Q[log Q] ≈ E[rollout_logps], E_Q[log P] ≈ E[training_logps]
-        # Positive value means training policy assigns higher probability than rollout
-        kl = masked_mean(log_ratio, completion_mask)
+        # 2a. kl: Direct estimator for KL(π_rollout || π_training)
+        # Formula: KL(P||Q) = E_P[log(P/Q)] where P=π_rollout, Q=π_training
+        # = E_rollout[log(π_rollout) - log(π_training)] = E[-log_ratio]
+        kl = masked_mean(-log_ratio, completion_mask)
         metrics['kl'] = self.accelerator.gather_for_metrics(kl).nanmean().item()
 
-        # 2b. k3_kl: K3 estimator for KL(π_training || π_rollout)
+        # 2b. k3_kl: K3 estimator for KL(π_rollout || π_training)
         # More stable for small KL values
-        # Formula: KL(P||Q) ≈ E_Q[P/Q - log(P/Q) - 1] where P=π_training, Q=π_rollout
         k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
         k3_kl = masked_mean(k3_kl_matrix, completion_mask)
         metrics['k3_kl'] = self.accelerator.gather_for_metrics(k3_kl).nanmean().item()

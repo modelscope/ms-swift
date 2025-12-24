@@ -28,11 +28,12 @@ except ImportError:
     from megatron.legacy.data.data_samplers import RandomSeedDataset
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+logger = get_logger()
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
 
-    def swift_datasets_provider(train_val_test_num_samples):
+    def swift_datasets_provider(train_val_test_num_samples, vp_stage=None):
         nonlocal val_dataset
         args = get_args()
         data_parallel_size = mpu.get_data_parallel_world_size()
@@ -373,7 +374,6 @@ def offload_megatron_optimizer(optimizers):
 
 
 def log_gpu_memory(prefix: str = '', info_once: bool = False):
-    logger = get_logger()
     log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
                f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
     if info_once:
@@ -385,15 +385,18 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
 # Code borrowed from megatron-lm
 class MegatronPretrainingRandomSampler:
 
-    def __init__(self,
-                 dataset,
-                 total_samples,
-                 consumed_samples,
-                 micro_batch_size,
-                 data_parallel_rank,
-                 data_parallel_size,
-                 data_sharding,
-                 shuffle: bool = True):
+    def __init__(
+        self,
+        dataset,
+        total_samples,
+        consumed_samples,
+        micro_batch_size,
+        data_parallel_rank,
+        data_parallel_size,
+        data_sharding,
+        shuffle: bool = True,
+        group_by_length: bool = False,
+    ):
         # Keep a copy of input params for later use.
         self.dataset = dataset
         self.total_samples = total_samples
@@ -401,8 +404,19 @@ class MegatronPretrainingRandomSampler:
         self.micro_batch_size = micro_batch_size
         self.data_parallel_rank = data_parallel_rank
         self.data_parallel_size = data_parallel_size
+        if group_by_length:
+            if data_sharding:
+                data_sharding = False
+                logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
+                               'Setting `data_sharding=False` to enable length grouping.')
+            if not shuffle:
+                raise ValueError('shuffle must be True when group_by_length is True')
         self.data_sharding = data_sharding
         self.shuffle = shuffle
+        self.group_by_length = group_by_length
+        self.lengths = self.dataset['length'] if group_by_length else None
+        if self.lengths is not None:
+            self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
         self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size
         self.last_batch_size = self.total_samples % self.micro_batch_times_data_parallel_size
 
@@ -442,7 +456,12 @@ class MegatronPretrainingRandomSampler:
                 full_bucket_offset = current_epoch_samples
                 g = torch.Generator()
                 g.manual_seed(self.epoch)
-                idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
+                if self.group_by_length:
+                    from transformers.trainer_pt_utils import get_length_grouped_indices
+                    idx_range_total = get_length_grouped_indices(
+                        self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
+                else:
+                    idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
                 idx_range_active = idx_range_total[full_bucket_offset:]
                 idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
         else:

@@ -509,7 +509,7 @@ class GPTBridge:
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
                                  'linear_qkv.lora_B.weight')
-            else:
+            elif not self._is_peft_format:
                 linear_qkv_weight = torch.cat([
                     hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
                     hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
@@ -759,7 +759,7 @@ class GPTBridge:
                     mg_lora_A, lora_A, f'linear_fc1.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
                 self._set_weight(
                     mg_lora_B, lora_B, f'linear_fc1.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
-            else:
+            elif not self._is_peft_format:
                 fc1_weight = [getattr(mg_mlp.linear_fc1, f'weight{i}')
                               for i in range(num_local_experts)] if is_expert else mg_mlp.linear_fc1.weight
                 fc1_bias = None
@@ -973,8 +973,10 @@ class GPTBridge:
                                         hf_state_dict[f'{hf_i}.gate_up_proj.weight_scale_inv'] = scale_inv[i].clone()
                             del gate_up_proj_weight
                         else:
+                            gate_up_proj_weight = gate_up_proj_weight.view(-1, gate_up_proj_weight.shape[-1])
                             hf_state_dict['gate_up_proj.weight'] = gate_up_proj_weight.clone()
                             if scale_inv is not None:
+                                scale_inv = scale_inv.view(-1, scale_inv.shape[-1])
                                 hf_state_dict['gate_up_proj.weight_scale_inv'] = scale_inv.clone()
                     else:
                         if is_expert:
@@ -1023,7 +1025,7 @@ class GPTBridge:
                         mg_lora_A, lora_A, f'linear_fc2.lora_A.{self._adapter_name}.weight', is_expert=is_expert)
                     self._set_weight(
                         mg_lora_B, lora_B, f'linear_fc2.lora_B.{self._adapter_name}.weight', is_expert=is_expert)
-                else:
+                elif not self._is_peft_format:
                     fc2_weight = [getattr(mg_mlp.linear_fc2, f'weight{i}')
                                   for i in range(num_local_experts)] if is_expert else mg_mlp.linear_fc2.weight
                     fc2_bias = None

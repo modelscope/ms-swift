@@ -37,6 +37,7 @@ register_model_arch(
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # Generator parts will never be trained or remain frozen.
+        # If you want `thinker.audio_tower` and `thinker.audio_tower.proj` to never be trained, you can place them in the generator and remove them from vision_tower and aligner.
         generator=['talker', 'token2wav'],
     ))
 

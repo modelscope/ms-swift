@@ -338,9 +338,16 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kw
     sentences = outputs['last_hidden_state']
 
     if world_size > 1 and use_batch:
-        # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
-        all_sentences = gather_object(sentences.unsqueeze(0))
-        labels = gather_object(labels)
+        from swift.trainers.sequence_parallel import sequence_parallel
+
+        if getattr(sequence_parallel, 'dp_group', None) is not None:
+            all_sentences = sequence_parallel._gather_object_dp(sentences.unsqueeze(0))
+            labels = sequence_parallel._gather_object_dp(labels)
+            rank = sequence_parallel.dp_rank
+        else:
+            # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
+            all_sentences = gather_object(sentences.unsqueeze(0))
+            labels = gather_object(labels)
         # override the gathered one
         all_sentences[rank] = sentences
         for idx in range(len(all_sentences)):

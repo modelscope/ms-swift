@@ -55,11 +55,12 @@
 ### 数据参数
 - 🔥dataset: 数据集id或路径的list。默认为`[]`。每个数据集的传入格式为：`'数据集id or 数据集路径:子数据集#采样数量'`，其中子数据集和取样数据可选。本地数据集支持jsonl、csv、json、文件夹等。**hub端的开源数据集可以通过`git clone`到本地并将文件夹传入而离线使用**。自定义数据集格式可以参考[自定义数据集文档](../Customization/Custom-dataset.md)。你可以传入`--dataset <dataset1> <dataset2>`来使用多个数据集。
   - 子数据集: 该参数只有当dataset为ID或者文件夹时生效。若注册时指定了subsets，且只有一个子数据集，则默认选择注册时指定的子数据集，否则默认为'default'。你可以使用`/`来选择多个子数据集，例如：`<dataset_id>:subset1/subset2`。你也可以使用'all'来选择注册时指定的所有子数据集，例如：`<dataset_id>:all`。注册例子可以参考[这里](https://modelscope.cn/datasets/swift/garbage_competition)。
-  - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
+  - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样，例如`<dataset_path#1000>`。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
 - 🔥cached_dataset: 使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练/推理时，tokenize过程占用gpu时间。该参数用于设置缓存训练数据集文件夹路径，默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset)。
   - 提示：在"ms-swift>=3.11"，cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。
   - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf（需"ms-swift>=3.11"），使用`--template_mode`设置训练类型；在"ms-swift>=3.12"，支持embedding/reranker/seq_cls任务，使用`--task_type`设置任务类型。
+  - 在"ms-swift>=3.12"，支持了对cache_dataset进行采样的功能，语法为`<cached_dataset_path>#采样数`，支持采样数高于和少于样本数的情况，功能与实现参考`--dataset`的介绍。
 - cached_val_dataset: 缓存验证数据集的文件夹路径，默认为`[]`。
 - 🔥split_dataset_ratio: 不指定val_dataset时从训练集拆分验证集的比例，默认为0.，即不从训练集切分验证集。
   - 注意：该参数在"ms-swift<3.6"的默认值为0.01。
@@ -74,8 +75,8 @@
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
   - 注意：需要额外设置`--max_steps`，因为流式数据集无法获得其长度。你可以通过设置`--save_strategy epoch`并设置较大的max_steps来实现与`--num_train_epochs`等效的训练。或者，你也可以设置`max_epochs`确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
-- interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。
-- stopping_strategy: 可选为"first_exhausted", "all_exhausted"，默认为"first_exhausted"。传入`interleave_datasets`函数中。
+- interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。该参数不对`--val_dataset`生效。
+- stopping_strategy: 可选为"first_exhausted", "all_exhausted"，默认为"first_exhausted"。传入`interleave_datasets`函数中。该参数不对`--val_dataset`生效。
 - shuffle_buffer_size: 该参数用于指定**流式数据集**的随机buffer大小，默认为1000。该参数只在`dataset_shuffle`设置为true时有效。
 - download_mode: 数据集下载模式，包含`reuse_dataset_if_exists`和`force_redownload`，默认为'reuse_dataset_if_exists'。
   - 通常在使用hub端数据集报错时设置为`--download_mode force_redownload`。
@@ -251,6 +252,9 @@ gradient_checkpointing: true
 - dataloader_persistent_workers: 默认为False。
 - dataloader_prefetch_factor: 默认为None，若`dataloader_num_workers>0`，设置为10。
 - train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效（即对流式数据集失效）。IterableDataset采用顺序的方式读取。
+- optim: 优化器，默认值为 `"adamw_torch"` (对于 torch>=2.8 为 `"adamw_torch_fused"`)。完整的优化器列表请参见 [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py) 中的 `OptimizerNames`。
+- optim_args: 提供给优化器的可选参数，默认为None。
+- group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 - 🔥neftune_noise_alpha: neftune添加的噪声系数。默认为0，通常可以设置为5、10、15。
 - 🔥use_liger_kernel: 是否启用[Liger](https://github.com/linkedin/Liger-Kernel)内核加速训练并减少显存消耗。默认为False。示例shell参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger)。
   - 注意：liger_kernel不支持device_map，请使用DDP/DeepSpeed进行多卡训练。liger_kernel目前只支持`task_type='causal_lm'`。
