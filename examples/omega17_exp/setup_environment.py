@@ -634,14 +634,30 @@ def verify_imports():
 
 
 def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Omega17Exp Environment Setup - Patches all compatibility issues'
+    )
+    parser.add_argument(
+        '--model_dir', '-m',
+        type=str,
+        default=None,
+        help='Path to model directory (for patching @check_model_inputs). Can be absolute or relative path.'
+    )
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("OMEGA17EXP ENVIRONMENT SETUP")
     print("=" * 60)
     
+    if args.model_dir:
+        print(f"\n📁 Model directory: {args.model_dir}")
+    
     site_packages = get_site_packages()
     transformers_path = os.path.join(site_packages, 'transformers')
     
-    print(f"\n📁 Site packages: {site_packages}")
+    print(f"📁 Site packages: {site_packages}")
     print(f"📁 Transformers: {transformers_path}")
     
     if not os.path.exists(transformers_path):
@@ -673,7 +689,7 @@ def main():
     
     # Patch 6: Remove @check_model_inputs decorator from model files
     print("\n6. Removing @check_model_inputs decorator from model files...")
-    patch_check_model_inputs()
+    patch_check_model_inputs(model_dir=args.model_dir)
     
     # Patch 7: Install bitsandbytes for QLoRA
     print("\n7. Installing bitsandbytes for 4-bit quantization (QLoRA)...")

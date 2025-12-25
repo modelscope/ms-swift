@@ -57,8 +57,15 @@ pip install accelerate bitsandbytes>=0.46.1 peft datasets
 cd examples/omega17_exp
 python setup_environment.py
 
-# Step E: Download model
-python download_model.py --output_dir ./model
+# Step E: Download model (you can change the output path to anywhere)
+# Option 1: Download to /workspace/model (absolute path - recommended)
+python download_model.py --output_dir /workspace/model
+
+# Option 2: Download to examples/omega17_exp/model (relative path)
+# python download_model.py --output_dir ./model
+
+# Step F: Run setup again with model path to patch model files (optional but recommended)
+python setup_environment.py --model_dir /workspace/model
 
 echo "============================================================"
 echo "SETUP COMPLETE! Ready to train."
@@ -71,13 +78,19 @@ echo "============================================================"
 > 3. Other packages
 > 4. Run patches
 
+> 💡 **Model Path**: You can download the model to ANY location. Just use the same path in the `--model` argument during training.
+
 ### Step 3: Start Training (Single Command)
 
 ```bash
 cd /workspace/usf-ms-swift
 
+# Use the same path where you downloaded the model
+# If you used: python download_model.py --output_dir /workspace/model
+# Then use: --model /workspace/model
+
 swift sft \
-    --model examples/omega17_exp/model \
+    --model /workspace/usf-ms-swift/examples/omega17_exp/model \
     --model_type omega17_exp \
     --dataset tatsu-lab/alpaca \
     --use_hf true \
