@@ -1,11 +1,11 @@
-import torch
-from torch.optim import Optimizer
 import math
-from typing import List, Optional
-
 import threading
 from contextlib import suppress
+from typing import List, Optional
+
+import torch
 import torch.nn.functional as F
+from torch.optim import Optimizer
 
 
 class _MaxLogitsTracker:
@@ -30,7 +30,7 @@ class _MaxLogitsTracker:
 
     @classmethod
     def _get(cls):
-        return getattr(cls._tls, "max_logits", None)
+        return getattr(cls._tls, 'max_logits', None)
 
     @classmethod
     def _set(cls, v: float):
@@ -51,8 +51,8 @@ class _MaxLogitsTracker:
     @classmethod
     def consume(cls):
         v = cls._get()
-        if hasattr(cls._tls, "max_logits"):
-            delattr(cls._tls, "max_logits")
+        if hasattr(cls._tls, 'max_logits'):
+            delattr(cls._tls, 'max_logits')
         return v
 
     @classmethod
@@ -88,7 +88,7 @@ class _MaxLogitsTracker:
             return
         cls._patched_sdpa = True
 
-        if not hasattr(F, "scaled_dot_product_attention"):
+        if not hasattr(F, 'scaled_dot_product_attention'):
             return
 
         cls._orig_sdpa = F.scaled_dot_product_attention
@@ -105,7 +105,9 @@ class _MaxLogitsTracker:
                     s = float(scale) if scale is not None else (1.0 / math.sqrt(float(d)))
                     cls._update(qn * kn * s)
             return cls._orig_sdpa(
-                query, key, value,
+                query,
+                key,
+                value,
                 attn_mask=attn_mask,
                 dropout_p=dropout_p,
                 is_causal=is_causal,
@@ -129,8 +131,16 @@ class _MaxLogitsTracker:
 
         cls._orig_flash_attn_func = flash_attn_func
 
-        def _flash_attn(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False,
-                        window_size=(-1, -1), alibi_slopes=None, deterministic=False, return_attn_probs=False):
+        def _flash_attn(q,
+                        k,
+                        v,
+                        dropout_p=0.0,
+                        softmax_scale=None,
+                        causal=False,
+                        window_size=(-1, -1),
+                        alibi_slopes=None,
+                        deterministic=False,
+                        return_attn_probs=False):
             # FlashAttention kernel doesn't expose logits; record an upper bound via L2 norms
             with suppress(Exception):
                 if isinstance(q, torch.Tensor) and isinstance(k, torch.Tensor):
@@ -140,7 +150,9 @@ class _MaxLogitsTracker:
                     s = float(softmax_scale) if softmax_scale is not None else (1.0 / math.sqrt(float(d)))
                     cls._update(qn * kn * s)
             return cls._orig_flash_attn_func(
-                q, k, v,
+                q,
+                k,
+                v,
                 dropout_p=dropout_p,
                 softmax_scale=softmax_scale,
                 causal=causal,
@@ -163,26 +175,25 @@ class _MaxLogitsTracker:
 
 
 class MuonClip(Optimizer):
-    def __init__(
-        self,
-        params,
-        lr: float = 0.02,
-        momentum: float = 0.95,
-        weight_decay: float = 0.0,
-        nesterov: bool = False,
-        newton_schulz_steps: int = 5,
-        qk_clip_tau: float = 100.0,
-        qk_clip_enabled: bool = True
-    ):
+
+    def __init__(self,
+                 params,
+                 lr: float = 0.02,
+                 momentum: float = 0.95,
+                 weight_decay: float = 0.0,
+                 nesterov: bool = False,
+                 newton_schulz_steps: int = 5,
+                 qk_clip_tau: float = 100.0,
+                 qk_clip_enabled: bool = True):
         if lr < 0.0:
-            raise ValueError(f"Invalid learning rate: {lr}")
+            raise ValueError(f'Invalid learning rate: {lr}')
         if momentum < 0.0 or momentum >= 1.0:
-            raise ValueError(f"Invalid momentum value: {momentum}")
+            raise ValueError(f'Invalid momentum value: {momentum}')
         if weight_decay < 0.0:
-            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
+            raise ValueError(f'Invalid weight_decay value: {weight_decay}')
         if qk_clip_tau <= 0.0:
-            raise ValueError(f"Invalid qk_clip_tau: {qk_clip_tau}")
-        
+            raise ValueError(f'Invalid qk_clip_tau: {qk_clip_tau}')
+
         defaults = dict(
             lr=lr,
             momentum=momentum,
@@ -190,54 +201,53 @@ class MuonClip(Optimizer):
             nesterov=nesterov,
             newton_schulz_steps=newton_schulz_steps,
             qk_clip_tau=qk_clip_tau,
-            qk_clip_enabled=qk_clip_enabled
-        )
+            qk_clip_enabled=qk_clip_enabled)
         super().__init__(params, defaults)
-        
+
         self.max_logits_history = []
 
         # Auto-track max_logits for Trainer/AMP loops that call optimizer.step() without args.
         if self.defaults.get('qk_clip_enabled', False):
             _MaxLogitsTracker.enable_all()
-    
+
     def newton_schulz(self, G, steps=5, eps=1e-7):
         a, b, c = (3.4445, -4.7750, 2.0315)
         X = G.bfloat16() / (G.norm() + eps)
-        
+
         if G.size(0) > G.size(1):
             X = X.T
-        
+
         for _ in range(steps):
             A = X @ X.T
             B = b * A + c * A @ A
             X = a * X + B @ X
-        
+
         if G.size(0) > G.size(1):
             X = X.T
-        
+
         return X.to(G.dtype)
-    
+
     @torch.no_grad()
     def step(self, closure=None, max_logits: Optional[float] = None):
         loss = None
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
-                
+
         if max_logits is None and self.defaults.get('qk_clip_enabled', False):
             max_logits = _MaxLogitsTracker.consume()
-        
+
         if max_logits is not None:
             if not isinstance(max_logits, (int, float)):
-                raise TypeError(f"max_logits must be a number, got {type(max_logits)}")
+                raise TypeError(f'max_logits must be a number, got {type(max_logits)}')
             if math.isnan(max_logits) or math.isinf(max_logits):
-                raise ValueError(f"max_logits is invalid: {max_logits}")
+                raise ValueError(f'max_logits is invalid: {max_logits}')
             if max_logits < 0:
-                raise ValueError(f"max_logits must be non-negative, got {max_logits}")
-        
+                raise ValueError(f'max_logits must be non-negative, got {max_logits}')
+
         if max_logits is not None and self.defaults['qk_clip_enabled']:
             self.max_logits_history.append(max_logits)
-        
+
         for group in self.param_groups:
             momentum = group['momentum']
             lr = group['lr']
@@ -246,24 +256,24 @@ class MuonClip(Optimizer):
             qk_clip_tau = group['qk_clip_tau']
             qk_clip_enabled = group['qk_clip_enabled']
             ns_steps = group['newton_schulz_steps']
-            
+
             for p in group['params']:
                 if p.grad is None:
                     continue
-                
+
                 grad = p.grad
                 state = self.state[p]
                 is_qk_weight = self._is_qk_weight(p, group)
-                
+
                 if len(state) == 0:
                     state['momentum_buffer'] = torch.zeros_like(p)
                     state['step'] = 0
-                
+
                 buf = state['momentum_buffer']
                 state['step'] += 1
-                
+
                 buf.mul_(momentum).add_(grad)
-                
+
                 if p.ndim >= 2:
                     orthogonalized = self.newton_schulz(buf, steps=ns_steps)
                     n, m = p.shape[0], p.shape[1] if p.ndim > 1 else 1
@@ -271,31 +281,31 @@ class MuonClip(Optimizer):
                     update = orthogonalized * rms_scale
                 else:
                     update = buf
-                
+
                 if nesterov and p.ndim >= 2:
                     update = grad.add(update, alpha=momentum)
                 elif nesterov:
                     update = grad.add(buf, alpha=momentum)
-                
+
                 if weight_decay != 0:
                     p.mul_(1 - lr * weight_decay)
-                
+
                 if qk_clip_enabled and is_qk_weight and max_logits is not None:
                     if max_logits > qk_clip_tau:
                         gamma = qk_clip_tau / max_logits
                         gamma_sqrt = math.sqrt(gamma)
                         p.mul_(gamma_sqrt)
                         update = update * gamma_sqrt
-                
+
                 p.add_(update, alpha=-lr)
-        
+
         return loss
-    
+
     def _is_qk_weight(self, param, group):
         if 'is_qk' in group:
             return group['is_qk']
         return False
-    
+
     def zero_grad(self, set_to_none: bool = True):
         for group in self.param_groups:
             for p in group['params']:
@@ -307,43 +317,35 @@ class MuonClip(Optimizer):
                         p.grad.zero_()
 
 
-def build_muon_param_groups(
-    model,
-    lr=0.02,
-    weight_decay=0.0,
-    qk_ratio=0.1
-):
+def build_muon_param_groups(model, lr=0.02, weight_decay=0.0, qk_ratio=0.1):
     qk_params = []
     other_params = []
-    
+
     # Identify Q and K projection weights
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        
+
         # Check if parameter is Q or K projection weight
         is_qk = False
         if any(qk_name in name.lower() for qk_name in ['q_proj', 'k_proj', 'query', 'key']):
             is_qk = True
-        
+
         if is_qk:
             qk_params.append(param)
         else:
             other_params.append(param)
-    
-    param_groups = [
-        {
-            'params': qk_params,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'is_qk': True
-        },
-        {
-            'params': other_params,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'is_qk': False
-        }
-    ]
-    
+
+    param_groups = [{
+        'params': qk_params,
+        'lr': lr,
+        'weight_decay': weight_decay,
+        'is_qk': True
+    }, {
+        'params': other_params,
+        'lr': lr,
+        'weight_decay': weight_decay,
+        'is_qk': False
+    }]
+
     return param_groups

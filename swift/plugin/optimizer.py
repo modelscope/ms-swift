@@ -111,17 +111,17 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
 
     # parse args.optim_args (same style as create_muon_optimizer, but with type casting)
     optim_args = {}
-    if getattr(args, "optim_args", None):
-        for mapping in args.optim_args.replace(" ", "").split(","):
+    if getattr(args, 'optim_args', None):
+        for mapping in args.optim_args.replace(' ', '').split(','):
             if not mapping:
                 continue
-            key, value = mapping.split("=", 1)
+            key, value = mapping.split('=', 1)
 
             # basic casting
             v = value
             lv = value.lower()
-            if lv in ("true", "false"):
-                v = (lv == "true")
+            if lv in ('true', 'false'):
+                v = (lv == 'true')
             else:
                 try:
                     f = float(value)
@@ -152,14 +152,14 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
 
     param_groups = []
     if qk_params:
-        param_groups.append({"params": qk_params, "lr": args.learning_rate, "is_qk": True})
+        param_groups.append({'params': qk_params, 'lr': args.learning_rate, 'is_qk': True})
     if other_params:
-        param_groups.append({"params": other_params, "lr": args.learning_rate, "is_qk": False})
+        param_groups.append({'params': other_params, 'lr': args.learning_rate, 'is_qk': False})
     if not param_groups:
         all_params = [p for _, p in model.named_parameters() if p.requires_grad]
-        param_groups = [{"params": all_params, "lr": args.learning_rate, "is_qk": False}]
+        param_groups = [{'params': all_params, 'lr': args.learning_rate, 'is_qk': False}]
 
-    allowed = {"lr", "momentum", "weight_decay", "nesterov", "newton_schulz_steps", "qk_clip_tau"}
+    allowed = {'lr', 'momentum', 'weight_decay', 'nesterov', 'newton_schulz_steps', 'qk_clip_tau'}
     optim_args = {k: v for k, v in optim_args.items() if k in allowed}
 
     return MuonClip(
@@ -168,6 +168,7 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
         weight_decay=args.weight_decay,
         **optim_args,
     ), None
+
 
 def get_param_startswith(model,
                          chosen_prefix: List[str],
