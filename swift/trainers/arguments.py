@@ -190,7 +190,7 @@ class TrainArgumentsMixin:
                 self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if self.dataloader_prefetch_factor is None and self.dataloader_num_workers > 0:
-            self.dataloader_prefetch_factor = 10
+            self.dataloader_prefetch_factor = 2
         if self.eval_use_evalscope:
             try:
                 import evalscope

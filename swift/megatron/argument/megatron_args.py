@@ -329,7 +329,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 10
+    dataloader_prefetch_factor: int = 2
     group_by_length: bool = False
 
     architectures: Optional[str] = None
@@ -721,6 +721,12 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
+        if not self.no_gradient_accumulation_fusion:
+            try:
+                import apex
+            except ImportError:
+                logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
+                self.no_gradient_accumulation_fusion = True
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:

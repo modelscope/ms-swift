@@ -253,7 +253,8 @@ Other important parameters:
 - 🔥dataloader_num_workers: Default is `None`. On Windows, set to 0; otherwise, 1.
 - dataloader_pin_memory: Default is `True`.
 - dataloader_persistent_workers: Default is `False`.
-- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, set to 10.
+- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, it is set to 2. Number of batches loaded in advance by each worker. 2 means there will be a total of 2 * num_workers batches prefetched across all workers.
+  - In "ms-swift<3.12", the default value is 10, which may cause out of memory issues.
 - train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
 - optim: The optimizer, defaults to `"adamw_torch"` (for torch>=2.8 `"adamw_torch_fused"`). For a complete list of optimizers, please see `OptimizerNames` in [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py).
 - optim_args: Optional arguments to pass to the optimizer, defaults to None.
