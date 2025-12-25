@@ -1235,6 +1235,7 @@ class BaseMegatronTrainer(ABC):
             last_token_idx = get_last_valid_indices((~attention_mask[:, 0, :, 0]).long())
             last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
         else:
+            num_samples = num_samples or packed_seq_params.num_samples
             last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens
