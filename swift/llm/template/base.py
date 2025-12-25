@@ -1703,7 +1703,8 @@ class Template(ProcessorMixin):
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         elif self.use_megatron:
             for encoded in batch:
-                encoded['position_ids'] = list(range(len(encoded.get('labels') or encoded['input_ids'])))
+                val = encoded['input_ids'] if encoded.get('labels') is None else encoded['labels']
+                encoded['position_ids'] = list(range(len(val)))
 
         res = {}
         if self.padding_free:

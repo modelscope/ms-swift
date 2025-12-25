@@ -28,18 +28,18 @@ class MegatronTrainer(BaseMegatronTrainer):
         if args.problem_type == 'regression':
             loss_fct = MSELoss()
             if num_labels == 1:
-                loss = loss_fct(logits.squeeze(), labels.squeeze())
+                loss = loss_fct(last_tokens.squeeze(), labels.squeeze())
             else:
-                loss = loss_fct(logits, labels)
+                loss = loss_fct(last_tokens, labels)
         elif args.problem_type == 'single_label_classification':
             loss_fct = CrossEntropyLoss()
-            logits = logits.view(-1, num_labels)
+            logits = last_tokens.view(-1, num_labels)
             labels = labels.view(-1)
             loss = loss_fct(logits, labels)
             acc = (logits.detach().argmax(dim=-1) == labels).float().mean()
         elif args.problem_type == 'multi_label_classification':
             loss_fct = BCEWithLogitsLoss()
-            loss = loss_fct(logits, labels)
+            loss = loss_fct(last_tokens, labels)
         metric = {'loss': loss.detach().clone()}
         if acc is not None:
             metric['acc'] = acc
