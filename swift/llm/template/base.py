@@ -528,7 +528,7 @@ class Template(ProcessorMixin):
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
-                for prefix in ['chosen', 'rejected']:
+                for prefix in ['chosen', 'rejected']:  # rm
                     encoded.pop(f'{prefix}_labels', None)
                     encoded.pop(f'{prefix}_loss_scale', None)
             else:
@@ -1703,7 +1703,7 @@ class Template(ProcessorMixin):
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         elif self.use_megatron:
             for encoded in batch:
-                encoded['position_ids'] = list(range(len(encoded['labels'])))
+                encoded['position_ids'] = list(range(len(encoded.get('labels') or encoded['input_ids'])))
 
         res = {}
         if self.padding_free:
