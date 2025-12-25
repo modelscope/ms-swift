@@ -267,6 +267,10 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
+    try:
+        import apex
+    except ImportError:
+        current_convert_kwargs['no_gradient_accumulation_fusion'] = True
     megatron_args = MegatronArguments(
         model=args.model,
         model_type=args.model_type,
