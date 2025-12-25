@@ -56,7 +56,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                 for m in self.peft_models:
                     m.set_adapter('default')
 
-    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples=None, per_token=False):
+    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples, per_token=False):
         args = get_args()
         per_token_logps = -output_tensor
         loss_mask = labels != -100
@@ -68,8 +68,6 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                                                                      or packed_seq_params.num_samples)
             return per_token_logps
 
-        if num_samples is None:
-            num_samples = packed_seq_params.num_samples * 2
         cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
         all_logps = per_token_logps.new_zeros((num_samples, ))
         for i in range(num_samples):

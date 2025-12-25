@@ -40,7 +40,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="kto"` only supports padding_free.'
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):

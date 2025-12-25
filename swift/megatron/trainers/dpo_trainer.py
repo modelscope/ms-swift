@@ -32,7 +32,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
         self.ref_models = []
 
@@ -40,10 +39,10 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
         output_tensor = output_tensor[output_tensor.shape[0] // 2:]
         args = get_args()
-        num_samples = packed_seq_params.num_samples
+        num_samples = labels.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
 
-        logps = self.get_logps(output_tensor, labels, packed_seq_params)
-        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params)
+        logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
+        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params, num_samples * 2)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:num_samples],
             logps[num_samples:],
