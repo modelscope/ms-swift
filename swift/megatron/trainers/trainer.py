@@ -20,7 +20,6 @@ class MegatronTrainer(BaseMegatronTrainer):
 
     def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None):
         args = self.args
-        assert args.padding_free, 'Currently `task_type="seq_cls"` only supports padding_free.'
         assert args.context_parallel_size == 1, 'Currently `task_type="seq_cls"` does not support context parallelism.'
         last_token = packed_seq_params.cu_seqlens_q[1:packed_seq_params.num_samples + 1] - 1
         logits = output_tensor[0, last_token]

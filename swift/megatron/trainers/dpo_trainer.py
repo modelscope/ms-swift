@@ -51,8 +51,11 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         )
         if args.rpo_alpha:
             loss_mask = labels != -100
-            num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
-            loss_mask[:, num_tokens:] = 0
+            if args.padding_free:
+                num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
+                loss_mask[:, num_tokens:] = 0
+            else:
+                loss_mask[:, num_samples:] = 0
             nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
             if args.context_parallel_size > 1:
                 nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())

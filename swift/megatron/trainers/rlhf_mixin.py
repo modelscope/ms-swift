@@ -68,11 +68,14 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                                                                      or packed_seq_params.num_samples)
             return per_token_logps
 
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((num_samples, ))
-        for i in range(num_samples):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            all_logps[i] = per_token_logps[:, start:end].sum()
+        if args.padding_free:
+            cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
+            all_logps = per_token_logps.new_zeros((num_samples, ))
+            for i in range(num_samples):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                all_logps[i] = per_token_logps[:, start:end].sum()
+        else:
+            all_logps = per_token_logps.sum(-1)
         if args.context_parallel_size > 1:
             all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
         return all_logps
