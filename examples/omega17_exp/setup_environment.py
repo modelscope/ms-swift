@@ -39,7 +39,7 @@ def get_site_packages():
 
 
 def patch_backends_mapping(transformers_path):
-    """Fix BACKENDS_MAPPING missing tensorflow backends."""
+    """Fix BACKENDS_MAPPING missing backends (tf, keras_nlp, etc.)."""
     import_utils_path = os.path.join(transformers_path, 'utils', 'import_utils.py')
     
     if not os.path.exists(import_utils_path):
@@ -51,47 +51,43 @@ def patch_backends_mapping(transformers_path):
     
     modified = False
     
-    # Add dummy tf functions if not present
-    tf_functions = '''
-# Patched by setup_environment.py for Omega17Exp compatibility
-def is_tf_available():
-    """Dummy TensorFlow availability check - always returns False."""
-    return False
-
-def is_tensorflow_text_available():
-    """Dummy TensorFlow Text availability check - always returns False."""
-    return False
-
-def is_tensorflow_probability_available():
-    """Dummy TensorFlow Probability availability check - always returns False."""
-    return False
-
-TF_IMPORT_ERROR = "TensorFlow is not installed."
-TENSORFLOW_TEXT_IMPORT_ERROR = "tensorflow_text is not installed."
-TENSORFLOW_PROBABILITY_IMPORT_ERROR = "tensorflow_probability is not installed."
-
-'''
+    # All backends that might be missing - add them all at once
+    all_backends = [
+        ('tf', 'is_tf_available', 'TF_IMPORT_ERROR', 'TensorFlow'),
+        ('tensorflow_text', 'is_tensorflow_text_available', 'TENSORFLOW_TEXT_IMPORT_ERROR', 'tensorflow_text'),
+        ('tensorflow_probability', 'is_tensorflow_probability_available', 'TENSORFLOW_PROBABILITY_IMPORT_ERROR', 'tensorflow_probability'),
+        ('keras_nlp', 'is_keras_nlp_available', 'KERAS_NLP_IMPORT_ERROR', 'keras_nlp'),
+        ('keras', 'is_keras_available', 'KERAS_IMPORT_ERROR', 'keras'),
+        ('flax', 'is_flax_available', 'FLAX_IMPORT_ERROR', 'flax'),
+        ('jax', 'is_jax_available', 'JAX_IMPORT_ERROR', 'jax'),
+    ]
     
-    # Check if already patched
-    if 'def is_tf_available():' not in content or 'is_tensorflow_text_available' not in content:
-        # Insert before BACKENDS_MAPPING
+    # Build dummy functions for all missing backends
+    functions_to_add = []
+    for backend_name, func_name, error_name, desc in all_backends:
+        if f'def {func_name}()' not in content:
+            functions_to_add.append(f'''
+def {func_name}():
+    """{desc} availability check - always returns False."""
+    return False
+
+{error_name} = "{desc} is not installed."
+''')
+    
+    if functions_to_add:
+        all_functions = '\n# Patched by setup_environment.py for Omega17Exp compatibility' + ''.join(functions_to_add)
+        
         if 'BACKENDS_MAPPING = OrderedDict(' in content:
             content = content.replace(
                 'BACKENDS_MAPPING = OrderedDict(',
-                tf_functions + 'BACKENDS_MAPPING = OrderedDict('
+                all_functions + '\nBACKENDS_MAPPING = OrderedDict('
             )
             modified = True
     
-    # Add all tensorflow backends to mapping if not present
-    backends_to_add = [
-        ('tf', 'is_tf_available', 'TF_IMPORT_ERROR'),
-        ('tensorflow_text', 'is_tensorflow_text_available', 'TENSORFLOW_TEXT_IMPORT_ERROR'),
-        ('tensorflow_probability', 'is_tensorflow_probability_available', 'TENSORFLOW_PROBABILITY_IMPORT_ERROR'),
-    ]
-    
-    for backend_name, func_name, error_name in backends_to_add:
+    # Add all backends to mapping if not present
+    for backend_name, func_name, error_name, _ in all_backends:
         if f'("{backend_name}"' not in content:
-            # Find a good place to insert (after av or at the beginning of the list)
+            # Find a good place to insert
             if '("av", (is_av_available, AV_IMPORT_ERROR))' in content:
                 content = content.replace(
                     '("av", (is_av_available, AV_IMPORT_ERROR))',
@@ -108,7 +104,7 @@ TENSORFLOW_PROBABILITY_IMPORT_ERROR = "tensorflow_probability is not installed."
     if modified:
         with open(import_utils_path, 'w') as f:
             f.write(content)
-        print("   ✅ BACKENDS_MAPPING patched successfully (tf, tensorflow_text, tensorflow_probability)")
+        print("   ✅ BACKENDS_MAPPING patched (tf, tensorflow_text, keras_nlp, keras, flax, jax)")
         return True
     else:
         print("   ✅ BACKENDS_MAPPING already patched")
