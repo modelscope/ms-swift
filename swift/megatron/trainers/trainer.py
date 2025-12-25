@@ -21,24 +21,24 @@ class MegatronTrainer(BaseMegatronTrainer):
     def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None, attention_mask=None):
         args = self.args
         assert args.context_parallel_size == 1, 'Currently `task_type="seq_cls"` does not support context parallelism.'
-        last_tokens = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
+        logits = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
         num_labels = args.num_labels
         acc = None
         if args.problem_type == 'regression':
             loss_fct = MSELoss()
             if num_labels == 1:
-                loss = loss_fct(last_tokens.squeeze(), labels.squeeze())
+                loss = loss_fct(logits.squeeze(), labels.squeeze())
             else:
-                loss = loss_fct(last_tokens, labels)
+                loss = loss_fct(logits, labels)
         elif args.problem_type == 'single_label_classification':
             loss_fct = CrossEntropyLoss()
-            logits = last_tokens.view(-1, num_labels)
+            logits = logits.view(-1, num_labels)
             labels = labels.view(-1)
             loss = loss_fct(logits, labels)
             acc = (logits.detach().argmax(dim=-1) == labels).float().mean()
         elif args.problem_type == 'multi_label_classification':
             loss_fct = BCEWithLogitsLoss()
-            loss = loss_fct(last_tokens, labels)
+            loss = loss_fct(logits, labels)
         metric = {'loss': loss.detach().clone()}
         if acc is not None:
             metric['acc'] = acc
