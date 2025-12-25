@@ -378,83 +378,154 @@ def install_bitsandbytes():
         return False
 
 
-def patch_check_model_inputs(model_dir=None):
-    """Remove @check_model_inputs decorator from model files.
-    
-    The @check_model_inputs decorator in transformers-usf-om-vl-exp-v0 causes
-    TypeError during training: 'got an unexpected keyword argument input_ids'
-    
-    This patches both local model directory and HuggingFace cache.
-    """
-    import shutil
+def _get_all_model_locations(model_dir=None):
+    """Get all locations where model files might exist."""
     import glob
     
-    patched = False
     locations = []
     
     # Add local model directory if provided
     if model_dir and os.path.exists(model_dir):
-        locations.append(model_dir)
+        locations.append(os.path.abspath(model_dir))
     
     # Add common local paths
-    for local_path in ['./model', '../model', '/workspace/finetune/model']:
-        if os.path.exists(local_path) and local_path not in locations:
-            locations.append(local_path)
+    for local_path in ['./model', '../model', '/workspace/finetune/model', '/workspace/model']:
+        if os.path.exists(local_path):
+            abs_path = os.path.abspath(local_path)
+            if abs_path not in locations:
+                locations.append(abs_path)
     
-    # Add HuggingFace cache locations
-    hf_cache = os.path.expanduser('~/.cache/huggingface/modules/transformers_modules')
-    if os.path.exists(hf_cache):
-        for subdir in glob.glob(os.path.join(hf_cache, '*')):
-            if os.path.isdir(subdir):
-                locations.append(subdir)
+    # Add HuggingFace cache locations - this is critical!
+    hf_cache_paths = [
+        os.path.expanduser('~/.cache/huggingface/modules/transformers_modules'),
+        '/root/.cache/huggingface/modules/transformers_modules',
+        os.path.expanduser('~/.cache/huggingface/hub'),
+    ]
+    
+    for hf_cache in hf_cache_paths:
+        if os.path.exists(hf_cache):
+            # Check direct subdirs
+            for subdir in glob.glob(os.path.join(hf_cache, '*')):
+                if os.path.isdir(subdir) and subdir not in locations:
+                    locations.append(subdir)
+            # Check nested subdirs (for hub cache structure)
+            for subdir in glob.glob(os.path.join(hf_cache, '*', '*')):
+                if os.path.isdir(subdir) and subdir not in locations:
+                    locations.append(subdir)
+            for subdir in glob.glob(os.path.join(hf_cache, '*', '*', '*')):
+                if os.path.isdir(subdir) and subdir not in locations:
+                    locations.append(subdir)
+    
+    return locations
+
+
+def patch_model_files(model_dir=None):
+    """Patch ALL known issues in model files (modeling_omega17_exp.py).
+    
+    This patches:
+    1. @check_model_inputs decorator removal
+    2. ROPE_INIT_FUNCTIONS 'default' key issue
+    3. Any other known compatibility issues
+    
+    Checks: local model dir, common paths, AND HuggingFace cache.
+    """
+    import shutil
+    import re
+    
+    locations = _get_all_model_locations(model_dir)
+    
+    patched_files = []
+    found_files = []
     
     for location in locations:
         model_file = os.path.join(location, 'modeling_omega17_exp.py')
         if not os.path.exists(model_file):
             continue
         
+        found_files.append(model_file)
+        
         with open(model_file, 'r') as f:
             content = f.read()
         
-        if '@check_model_inputs' not in content:
-            continue
+        original_content = content
+        patches_applied = []
         
-        # Remove decorator and import
-        import re
-        new_content = re.sub(r'\s*@check_model_inputs\s*\n', '\n', content)
-        new_content = new_content.replace(', check_model_inputs', '')
-        new_content = new_content.replace('check_model_inputs, ', '')
+        # Patch 1: Remove @check_model_inputs decorator
+        if '@check_model_inputs' in content:
+            content = re.sub(r'\s*@check_model_inputs\s*\n', '\n', content)
+            content = content.replace(', check_model_inputs', '')
+            content = content.replace('check_model_inputs, ', '')
+            patches_applied.append('@check_model_inputs removal')
         
-        with open(model_file, 'w') as f:
-            f.write(new_content)
+        # Patch 2: Fix ROPE_INIT_FUNCTIONS['default'] KeyError
+        # Replace direct dict access with .get() fallback
+        if 'ROPE_INIT_FUNCTIONS[self.rope_type]' in content:
+            content = content.replace(
+                'ROPE_INIT_FUNCTIONS[self.rope_type]',
+                'ROPE_INIT_FUNCTIONS.get(self.rope_type, ROPE_INIT_FUNCTIONS.get("linear", list(ROPE_INIT_FUNCTIONS.values())[0]))'
+            )
+            patches_applied.append('ROPE_INIT_FUNCTIONS fallback')
         
-        print(f"   ✅ Removed @check_model_inputs from {model_file}")
-        patched = True
+        # Patch 3: Alternative ROPE fix - add default to the import area
+        if 'from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS' in content:
+            if '_patched_rope_init' not in content:
+                rope_patch = '''from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS as _ROPE_INIT_FUNCTIONS_ORIG
+
+# Patched by setup_environment.py - add 'default' fallback
+def _default_rope_init(config, device, seq_len=None, **kwargs):
+    base = getattr(config, 'rope_theta', 10000.0)
+    partial_rotary_factor = getattr(config, 'partial_rotary_factor', 1.0)
+    head_dim = getattr(config, 'head_dim', config.hidden_size // config.num_attention_heads)
+    dim = int(head_dim * partial_rotary_factor)
+    import torch
+    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).float().to(device) / dim))
+    return inv_freq, 1.0
+
+ROPE_INIT_FUNCTIONS = dict(_ROPE_INIT_FUNCTIONS_ORIG)
+if 'default' not in ROPE_INIT_FUNCTIONS:
+    ROPE_INIT_FUNCTIONS['default'] = _default_rope_init
+_patched_rope_init = True
+'''
+                content = content.replace(
+                    'from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS',
+                    rope_patch
+                )
+                patches_applied.append('ROPE_INIT_FUNCTIONS default key injection')
         
-        # Clear __pycache__
-        cache_dir = os.path.join(location, '__pycache__')
-        if os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
+        # Write if changed
+        if content != original_content:
+            with open(model_file, 'w') as f:
+                f.write(content)
+            patched_files.append((model_file, patches_applied))
+            
+            # Clear __pycache__
+            cache_dir = os.path.join(location, '__pycache__')
+            if os.path.exists(cache_dir):
+                shutil.rmtree(cache_dir)
     
-    if not patched:
-        # Check if model files exist but just don't have the decorator
-        found_model_files = []
-        for location in locations:
-            model_file = os.path.join(location, 'modeling_omega17_exp.py')
-            if os.path.exists(model_file):
-                found_model_files.append(model_file)
-        
-        if found_model_files:
-            print(f"   ✅ Model files found, no @check_model_inputs decorator to remove")
-            for f in found_model_files:
-                print(f"      Found: {f}")
-        else:
-            print("   ⚠️  No model files found at provided path")
-            if model_dir:
-                print(f"      Checked: {model_dir}")
-            print("      (This is OK if model will be loaded with trust_remote_code=True)")
+    # Print results
+    if patched_files:
+        for filepath, patches in patched_files:
+            print(f"   ✅ Patched {filepath}")
+            for p in patches:
+                print(f"      - {p}")
+    elif found_files:
+        print(f"   ✅ Model files found, already patched or no patches needed")
+        for f in found_files:
+            print(f"      Found: {f}")
+    else:
+        print("   ⚠️  No model files found")
+        if model_dir:
+            print(f"      Checked model_dir: {model_dir}")
+        print("      Checked HuggingFace cache locations")
+        print("      (This is OK - files will be patched when model is first loaded)")
     
     return True
+
+
+def patch_check_model_inputs(model_dir=None):
+    """Legacy function - now calls patch_model_files for backwards compatibility."""
+    return patch_model_files(model_dir)
 
 
 def patch_swift_train_args(site_packages):
@@ -760,9 +831,9 @@ def main():
     print("\n5. Registering omega17_exp model in swift...")
     patch_swift_model_registration(site_packages)
     
-    # Patch 6: Remove @check_model_inputs decorator from model files
-    print("\n6. Removing @check_model_inputs decorator from model files...")
-    patch_check_model_inputs(model_dir=args.model_dir)
+    # Patch 6: Patch ALL model files (ROPE, @check_model_inputs, etc.)
+    print("\n6. Patching model files (ROPE default key, @check_model_inputs, etc.)...")
+    patch_model_files(model_dir=args.model_dir)
     
     # Patch 7: Install bitsandbytes for QLoRA
     print("\n7. Installing bitsandbytes for 4-bit quantization (QLoRA)...")
