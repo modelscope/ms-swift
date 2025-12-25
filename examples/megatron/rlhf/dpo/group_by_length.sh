@@ -35,4 +35,5 @@ megatron rlhf \
     --sequence_parallel true \
     --attention_backend unfused \
     --beta 0.1 \
+    --rpo_alpha 0.1 \
     --loss_type sigmoid

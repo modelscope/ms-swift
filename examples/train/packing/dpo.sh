@@ -27,4 +27,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --deepspeed zero3 \
     --attn_impl flash_attn \
+    --rpo_alpha 0.1 \
     --packing true
