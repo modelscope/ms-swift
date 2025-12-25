@@ -339,7 +339,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - In "ms-swift>3.12", val_dataset will no longer be shuffled.
 - dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
 - dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.12".
-- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.12".
+- dataloader_prefetch_factor: Default is 2. Using this parameter requires "ms-swift>=3.12".
 - group_by_length: (ms-swift>=3.12) Whether to group samples with approximately the same length together in the training dataset (with a random factor) to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
 
 
