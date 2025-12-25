@@ -437,7 +437,22 @@ def patch_check_model_inputs(model_dir=None):
             shutil.rmtree(cache_dir)
     
     if not patched:
-        print("   ⚠️  No model files found with @check_model_inputs decorator")
+        # Check if model files exist but just don't have the decorator
+        found_model_files = []
+        for location in locations:
+            model_file = os.path.join(location, 'modeling_omega17_exp.py')
+            if os.path.exists(model_file):
+                found_model_files.append(model_file)
+        
+        if found_model_files:
+            print(f"   ✅ Model files found, no @check_model_inputs decorator to remove")
+            for f in found_model_files:
+                print(f"      Found: {f}")
+        else:
+            print("   ⚠️  No model files found at provided path")
+            if model_dir:
+                print(f"      Checked: {model_dir}")
+            print("      (This is OK if model will be loaded with trust_remote_code=True)")
     
     return True
 
