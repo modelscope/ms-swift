@@ -1,12 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import Optional
+
 import megatron.core
+from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer import transformer_layer
 from megatron.core.transformer.attention import SelfAttention
-from megatron.core.transformer.mlp import MLP
+from megatron.core.transformer.mlp import MLP, apply_swiglu_sharded_factory
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.utils import sharded_state_dict_default
 from packaging import version
 
 from swift.llm import ModelType
@@ -61,6 +65,22 @@ class Glm4MLP(MLP):
         assert bias is None, 'not support'
         output = self.post_mlp_layernorm(output)
         return output, bias
+
+    def sharded_state_dict(self,
+                           prefix: str = '',
+                           sharded_offsets: tuple = (),
+                           metadata: Optional[dict] = None) -> ShardedStateDict:
+        """Return the sharded state dictionary of the module."""
+        sharded_state_dict = {}
+        singleton_local_shards = (metadata or {}).get('singleton_local_shards', False)
+        for name, module in self._modules.items():
+            sub_sd = sharded_state_dict_default(module, f'{prefix}{name}.', sharded_offsets, metadata)
+            if self.config.gated_linear_unit and name == 'linear_fc1':
+                for k, v in sub_sd.items():
+                    if k in (f'{prefix}{name}.weight', f'{prefix}{name}.bias'):
+                        sub_sd[k] = apply_swiglu_sharded_factory(v, sharded_offsets, singleton_local_shards)
+            sharded_state_dict.update(sub_sd)
+        return sharded_state_dict
 
 
 class Glm4Bridge(GPTBridge):
