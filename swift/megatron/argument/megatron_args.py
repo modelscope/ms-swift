@@ -710,6 +710,12 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
+        if not self.no_gradient_accumulation_fusion:
+            try:
+                import apex
+            except ImportError:
+                logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
+                self.no_gradient_accumulation_fusion = True
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
