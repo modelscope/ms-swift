@@ -441,7 +441,7 @@ register_template(
     TemplateMeta(
         LLMTemplateType.olmoe_0924,
         prefix=[],
-        system_prefix=['<|system|>\n{{SYSTEM}}\n'],
+        system_prefix=['<|endoftext|><|system|>\n{{SYSTEM}}\n'],
         prompt=['<|user|>\n{{QUERY}}\n<|assistant|>\n'],
         chat_sep=['<|endoftext|>\n'],
         suffix=['<|endoftext|>'],
