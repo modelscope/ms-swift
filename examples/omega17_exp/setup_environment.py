@@ -458,53 +458,131 @@ def patch_check_model_inputs(model_dir=None):
 
 
 def patch_swift_train_args(site_packages):
-    """Fix logging_dir AttributeError in swift train_args.py."""
-    train_args_path = os.path.join(site_packages, 'swift', 'llm', 'argument', 'train_args.py')
+    """Fix logging_dir AttributeError in swift train_args.py.
     
-    if not os.path.exists(train_args_path):
-        print(f"   ⚠️  train_args.py not found: {train_args_path}")
-        return False
+    Checks both pip-installed location AND source directory for editable installs.
+    """
+    # Possible locations for train_args.py
+    locations = [
+        os.path.join(site_packages, 'swift', 'llm', 'argument', 'train_args.py'),
+        # Source directory locations (for editable install)
+        '/workspace/usf-ms-swift/swift/llm/argument/train_args.py',
+        '/workspace/ms-swift/swift/llm/argument/train_args.py',
+        # Relative to this script
+        os.path.join(os.path.dirname(__file__), '..', '..', 'swift', 'llm', 'argument', 'train_args.py'),
+    ]
     
-    with open(train_args_path, 'r') as f:
-        content = f.read()
+    patched = False
+    for train_args_path in locations:
+        train_args_path = os.path.abspath(train_args_path)
+        
+        if not os.path.exists(train_args_path):
+            continue
+        
+        with open(train_args_path, 'r') as f:
+            content = f.read()
+        
+        # Check if logging_dir field is defined in TrainArguments
+        if 'logging_dir: Optional[str] = None' in content:
+            print(f"   ✅ train_args.py already has logging_dir field: {train_args_path}")
+            patched = True
+            continue
+        
+        # Add logging_dir field after add_version and create_checkpoint_symlink
+        if 'add_version: bool = True' in content and 'create_checkpoint_symlink: bool = False' in content:
+            content = content.replace(
+                'create_checkpoint_symlink: bool = False\n\n    # extra',
+                'create_checkpoint_symlink: bool = False\n    logging_dir: Optional[str] = None\n\n    # extra'
+            )
+            with open(train_args_path, 'w') as f:
+                f.write(content)
+            print(f"   ✅ Added logging_dir field to train_args.py: {train_args_path}")
+            patched = True
+            continue
+        
+        # Alternative: patch the logging_dir check with getattr
+        if 'if self.logging_dir is None:' in content and 'getattr(self, "logging_dir", None)' not in content:
+            content = content.replace(
+                'if self.logging_dir is None:',
+                'if getattr(self, "logging_dir", None) is None:'
+            )
+            with open(train_args_path, 'w') as f:
+                f.write(content)
+            print(f"   ✅ Patched train_args.py (logging_dir fix): {train_args_path}")
+            patched = True
     
-    # Check if already patched
-    if 'getattr(self, "logging_dir", None)' in content:
-        print("   ✅ train_args.py already patched")
-        return True
+    if not patched:
+        print("   ⚠️  train_args.py not found in any expected location")
+        print("      Checked:")
+        for loc in locations:
+            print(f"        - {loc}")
     
-    # Patch the logging_dir check
-    if 'if self.logging_dir is None:' in content:
-        content = content.replace(
-            'if self.logging_dir is None:',
-            'if getattr(self, "logging_dir", None) is None:'
-        )
-        with open(train_args_path, 'w') as f:
-            f.write(content)
-        print("   ✅ Patched train_args.py (logging_dir fix)")
-        return True
-    else:
-        print("   ⚠️  Could not find logging_dir check to patch")
-        return False
+    return patched
 
 
 def patch_swift_model_registration(site_packages):
-    """Add omega17_exp model registration to swift installation."""
-    swift_model_path = os.path.join(site_packages, 'swift', 'llm', 'model', 'model')
+    """Add omega17_exp model registration to swift installation.
     
-    if not os.path.exists(swift_model_path):
-        print(f"   ⚠️  Swift model path not found: {swift_model_path}")
-        return False
+    Checks both pip-installed location AND source directory for editable installs.
+    """
+    # Possible locations for swift model directory
+    locations = [
+        os.path.join(site_packages, 'swift', 'llm', 'model', 'model'),
+        # Source directory locations (for editable install)
+        '/workspace/usf-ms-swift/swift/llm/model/model',
+        '/workspace/ms-swift/swift/llm/model/model',
+        # Relative to this script
+        os.path.join(os.path.dirname(__file__), '..', '..', 'swift', 'llm', 'model', 'model'),
+    ]
     
-    omega17_path = os.path.join(swift_model_path, 'omega17.py')
+    registered = False
+    for swift_model_path in locations:
+        swift_model_path = os.path.abspath(swift_model_path)
+        
+        if not os.path.exists(swift_model_path):
+            continue
+        
+        omega17_path = os.path.join(swift_model_path, 'omega17.py')
+        
+        # Check if already exists
+        if os.path.exists(omega17_path):
+            print(f"   ✅ omega17.py already exists: {omega17_path}")
+            registered = True
+            continue
+        
+        # Create omega17.py module in this location
+        omega17_code = _get_omega17_code()
+        
+        with open(omega17_path, 'w') as f:
+            f.write(omega17_code)
+        print(f"   ✅ Created omega17.py: {omega17_path}")
+        
+        # Update __init__.py to import omega17
+        init_path = os.path.join(swift_model_path, '__init__.py')
+        if os.path.exists(init_path):
+            with open(init_path, 'r') as f:
+                content = f.read()
+            
+            if 'omega17' not in content:
+                content = content.rstrip() + '\nfrom . import omega17\n'
+                with open(init_path, 'w') as f:
+                    f.write(content)
+                print(f"   ✅ Updated __init__.py: {init_path}")
+        
+        registered = True
     
-    # Check if already patched
-    if os.path.exists(omega17_path):
-        print("   ✅ omega17.py already exists in swift")
-        return True
+    if not registered:
+        print("   ⚠️  Swift model path not found in any expected location")
+        print("      Checked:")
+        for loc in locations:
+            print(f"        - {loc}")
     
-    # Create omega17.py module
-    omega17_code = '''"""
+    return registered
+
+
+def _get_omega17_code():
+    """Return the omega17.py module code."""
+    return '''"""
 Omega17Exp Model Registration for MS-SWIFT
 Auto-generated by setup_environment.py
 """
@@ -581,26 +659,6 @@ register_model(
     )
 )
 '''
-    
-    with open(omega17_path, 'w') as f:
-        f.write(omega17_code)
-    print("   ✅ Created omega17.py in swift")
-    
-    # Update __init__.py to import omega17
-    init_path = os.path.join(swift_model_path, '__init__.py')
-    if os.path.exists(init_path):
-        with open(init_path, 'r') as f:
-            content = f.read()
-        
-        if 'omega17' not in content:
-            content = content.rstrip() + '\nfrom . import omega17\n'
-            with open(init_path, 'w') as f:
-                f.write(content)
-            print("   ✅ Updated swift __init__.py to import omega17")
-        else:
-            print("   ✅ omega17 already in swift __init__.py")
-    
-    return True
 
 
 def verify_imports():

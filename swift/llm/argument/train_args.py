@@ -168,6 +168,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
+    logging_dir: Optional[str] = None
 
     # extra
     max_new_tokens: int = 64
