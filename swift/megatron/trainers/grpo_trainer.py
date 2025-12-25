@@ -34,6 +34,7 @@ from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_a
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
+from .rollout_mixin import create_rollout_group
 from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
                     load_megatron_optimizer, offload_megatron_model_to_cpu, offload_megatron_optimizer,
                     profiling_context, profiling_decorator)
@@ -132,9 +133,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             return_details=True,
             logprobs=True)  # Enable logprobs for rollout importance sampling
 
-        self._step = 0
-        self._last_loaded_step = -1
         self._rollout_group = None  # Will be lazily initialized
+        self._rollout_groups_created = False  # Flag for group creation (all ranks must create together)
 
         # truncation_strategy support
         self.truncation_strategy = self.template.truncation_strategy
@@ -384,66 +384,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _get_rollout_group(self):
-        """
-        Get or create the rollout process group (TP×PP×CP).
-
-        The rollout group is used for:
-        1. Data slicing: distributing rollout data across ranks with same data samples
-        2. Gather operations: collecting results from ranks with same data samples
-
-        Note: Groups are created per data parallel index, containing TP×PP×CP ranks each.
-        This follows Megatron's data_iterator logic where same data_parallel_rank processes
-        identical data samples.
-
-        Key insight: ranks with the SAME data parallel index process the SAME data samples
-        and must coordinate for rollout data distribution.
-        Megatron rank order: TP → CP → EP → DP → PP
-        """
-        if self._rollout_group is not None:
-            return self._rollout_group
-
-        cp_size = mpu.get_context_parallel_world_size()
-        if cp_size == 1:
-            # No CP, use the standard MODEL_PARALLEL_GROUP
-            self._rollout_group = mpu.get_model_parallel_group()
-            return self._rollout_group
-
-        # Use RankGenerator to create rollout groups following Megatron-LM logic
-        global_rank = torch.distributed.get_rank()
-
-        # Get parallel dimensions
-        tp_size = mpu.get_tensor_model_parallel_world_size()
-        pp_size = mpu.get_pipeline_model_parallel_world_size()
-        dp_size = mpu.get_data_parallel_world_size()
-        cp_size = mpu.get_context_parallel_world_size()
-
-        # Create RankGenerator following Megatron-LM pattern
-        # Order: tp-cp-ep-dp-pp (default in Megatron-LM)
-        decoder_rank_generator = mpu.RankGenerator(
-            tp=tp_size,
-            ep=1,
-            dp=dp_size,
-            pp=pp_size,
-            cp=cp_size,
-            order='tp-cp-ep-dp-pp',
-            rank_offset=0,
-        )
-
-        # Create rollout groups based on data consistency from data_iterator
-        # Same data_parallel_rank processes same data - group ranks with same DP index
-        if not hasattr(self, '_rollout_groups_created'):
-            # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
-            dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
-            for dp_group_ranks in dp_groups:
-                # Sort for consistency
-                dp_group_ranks = sorted(dp_group_ranks)
-                group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
-
-                if global_rank in dp_group_ranks:
-                    self._rollout_group = group
-            self._rollout_groups_created = True
-
-        return self._rollout_group
+        """Get or create the rollout process group (TP×PP×CP)."""
+        return create_rollout_group(self)
 
     def _init_resample_data_iterator(self):
         """

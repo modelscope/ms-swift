@@ -57,9 +57,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         else:
             logger.info('GKD trainer initialized with off-policy training (dataset responses)')
 
-        # Step counter for weight sync tracking and deterministic random
-        self._step = 0
-
         # Teacher models will be loaded in setup_model_and_optimizer
         # Using the same parallel parameters (PP/TP/CP/EP) as student model
         self.teacher_models = []
@@ -415,9 +412,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _replace_data_iterator(self, data_iterator, model):
         num_microbatches = self._get_num_microbatches()
 
+        # Determine data source once for the entire global batch
         data_source = self._determine_data_source()
 
-        encoded_batches = []
+        # Collect all micro-batches into a global batch
+        global_batch = []
         for _ in range(num_microbatches):
             raw_batch = next(data_iterator)
 
@@ -425,14 +424,33 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if self.truncation_strategy == 'delete' and self._train_valid_test_dataset_provider is not None:
                 raw_batch = self.resample_encode_failed_inputs(raw_batch)
 
-            # On-policy mode: generate completions using student model via vLLM
-            if data_source == DataSource.STUDENT:
-                raw_batch = self._generate_completions(raw_batch, step=self._step)
-            elif data_source == DataSource.TEACHER:
-                logger.warning_once(
-                    'Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
-                    'Falling back to dataset responses.')
+            global_batch.extend(raw_batch)
 
+        # On-policy mode: generate completions for the entire global batch at once
+        # This avoids multiple wake/sleep/offload cycles and maximizes vLLM KV cache efficiency
+        if data_source == DataSource.STUDENT:
+            # Split global batch within rollout group for distributed generation
+            local_batch = self._get_local_rollout_batch(global_batch)
+
+            # Generate completions for local batch
+            # NOTE: _generate_completions must be called by ALL ranks because
+            # _move_model_to_vllm contains collective operations (all_reduce in export_weights).
+            # The actual vLLM inference will handle empty batch gracefully.
+            local_batch = self._generate_completions(local_batch)
+
+            # Gather results from all ranks in rollout group
+            global_batch = self._gather_rollout_results(local_batch)
+        elif data_source == DataSource.TEACHER:
+            logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
+                                'Falling back to dataset responses.')
+
+        # Split global batch back into micro-batches for encoding
+        encoded_batches = []
+        micro_batch_size = len(global_batch) // num_microbatches
+        for i in range(num_microbatches):
+            start_idx = i * micro_batch_size
+            end_idx = start_idx + micro_batch_size
+            raw_batch = global_batch[start_idx:end_idx]
             encoded_batch = self._encode_batch(raw_batch)
             encoded_batches.append(encoded_batch)
 

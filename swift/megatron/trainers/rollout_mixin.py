@@ -32,6 +32,76 @@ DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
 
 
+def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
+    """
+    Get or create the rollout process group (TP×PP×CP).
+
+    This is a shared function used by both MegatronRolloutMixin and MegatronGRPOTrainer.
+
+    The rollout group is used for:
+    1. Data slicing: distributing rollout data across ranks with same data samples
+    2. Gather operations: collecting results from ranks with same data samples
+
+    Note: Groups are created per data parallel index, containing TP×PP×CP ranks each.
+    This follows Megatron's data_iterator logic where same data_parallel_rank processes
+    identical data samples.
+
+    Key insight: ranks with the SAME data parallel index process the SAME data samples
+    and must coordinate for rollout data distribution.
+    Megatron rank order: TP → CP → EP → DP → PP
+
+    Args:
+        trainer: Trainer instance with _rollout_group and _rollout_groups_created attributes
+
+    Returns:
+        The rollout process group for this rank
+    """
+    if trainer._rollout_group is not None:
+        return trainer._rollout_group
+
+    cp_size = mpu.get_context_parallel_world_size()
+    if cp_size == 1:
+        # No CP, use the standard MODEL_PARALLEL_GROUP
+        trainer._rollout_group = mpu.get_model_parallel_group()
+        return trainer._rollout_group
+
+    # Use RankGenerator to create rollout groups following Megatron-LM logic
+    global_rank = torch.distributed.get_rank()
+
+    # Get parallel dimensions
+    tp_size = mpu.get_tensor_model_parallel_world_size()
+    pp_size = mpu.get_pipeline_model_parallel_world_size()
+    dp_size = mpu.get_data_parallel_world_size()
+
+    # Create RankGenerator following Megatron-LM pattern
+    # Order: tp-cp-ep-dp-pp (default in Megatron-LM)
+    decoder_rank_generator = mpu.RankGenerator(
+        tp=tp_size,
+        ep=1,
+        dp=dp_size,
+        pp=pp_size,
+        cp=cp_size,
+        order='tp-cp-ep-dp-pp',
+        rank_offset=0,
+    )
+
+    # Create rollout groups based on data consistency from data_iterator
+    # Same data_parallel_rank processes same data - group ranks with same DP index
+    if not trainer._rollout_groups_created:
+        # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
+        dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
+        for dp_group_ranks in dp_groups:
+            # Sort for consistency
+            dp_group_ranks = sorted(dp_group_ranks)
+            group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
+
+            if global_rank in dp_group_ranks:
+                trainer._rollout_group = group
+        trainer._rollout_groups_created = True
+
+    return trainer._rollout_group
+
+
 class MegatronRolloutMixin:
     """Mixin class providing vLLM rollout capabilities for Megatron trainers.
 
@@ -74,8 +144,60 @@ class MegatronRolloutMixin:
             logprobs=True)
 
         self._last_loaded_step = -1
-        self._rollout_group = None
+        self._step = 0
+        self._rollout_group = None  # Lazily initialized rollout group (TP×PP×CP)
+        self._rollout_groups_created = False  # Flag for group creation (all ranks must create together)
         self._bridge = None
+
+    def _get_rollout_group(self):
+        """Get or create the rollout process group (TP×PP×CP)."""
+        return create_rollout_group(self)
+
+    def _get_local_rollout_batch(self, batch: List[Dict]) -> List[Dict]:
+        """Split batch within rollout group for distributed vLLM generation.
+
+        The batch is evenly split across the rollout group (TP×PP×CP ranks with
+        the same DP index). This is the base implementation that simply splits
+        the batch without repetition.
+
+        Subclasses (e.g., GRPO) may override this to implement custom logic like
+        repeating each prompt num_generations times.
+
+        Note: In Megatron, batch size should always be divisible by rollout group size.
+        This is ensured by global_batch_size = micro_batch_size * num_microbatches * dp_size,
+        where rollout_group_size = tp_size * pp_size * cp_size, and world_size = dp_size * rollout_group_size.
+
+        Args:
+            batch: Full batch of data samples
+
+        Returns:
+            Local slice of batch for this rank to process
+        """
+        rollout_group = self._get_rollout_group()
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
+
+        total_batch_size = len(batch)
+        assert total_batch_size % rollout_group_size == 0, \
+            f'Batch size ({total_batch_size}) must be divisible by rollout group size ({rollout_group_size})'
+
+        per_device_batch_size = total_batch_size // rollout_group_size
+        start_idx = rollout_rank * per_device_batch_size
+        end_idx = start_idx + per_device_batch_size
+
+        return batch[start_idx:end_idx]
+
+    def _gather_rollout_results(self, local_batch: List[Dict]) -> List[Dict]:
+        """Gather rollout results from all ranks in the rollout group.
+
+        Args:
+            local_batch: Local rollout results from this rank
+
+        Returns:
+            Gathered results from all ranks in the rollout group
+        """
+        rollout_group = self._get_rollout_group()
+        return gather_object(local_batch, group=rollout_group)
 
     def _init_rollout_engine(self):
         """Initialize vLLM engine for rollout generation."""
@@ -131,7 +253,7 @@ class MegatronRolloutMixin:
         vllm_template.padding_free = False
         vllm_template.sequence_parallel_size = 1
 
-        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 and self.args.rlhf_type == 'grpo' else None
+        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
         load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
@@ -239,7 +361,7 @@ class MegatronRolloutMixin:
         del bucket, metadatas, flattened_tensor
 
     @profiling_decorator
-    def _generate_completions(self, batch: DataType, step: int = 0) -> DataType:
+    def _generate_completions(self, batch: DataType) -> DataType:
         """Generate completions for a batch using vLLM engine.
 
         Args:
@@ -258,9 +380,9 @@ class MegatronRolloutMixin:
             self.engine.engine.wake_up(**kwargs)
 
         # Load model weights if needed
-        if step != self._last_loaded_step or self.args.sleep_level == 2:
+        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
             self._move_model_to_vllm()
-            self._last_loaded_step = step
+            self._last_loaded_step = self._step
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
@@ -333,6 +455,10 @@ class MegatronRolloutMixin:
 
     def _colocate_rollout(self, batch: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform co-located rollout with vLLM engine."""
+        start_idx = 0
+        end_idx = len(batch)
+
+        # Handle vLLM tensor parallelism
         if self.vllm_tensor_parallel_size > 1:
             local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
             local_input_length = len(batch)
