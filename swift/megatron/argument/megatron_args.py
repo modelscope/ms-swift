@@ -329,7 +329,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 10
+    dataloader_prefetch_factor: int = 2
     group_by_length: bool = False
 
     architectures: Optional[str] = None
