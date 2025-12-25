@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
 from functools import partial
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import torch
 from megatron.core import mpu
