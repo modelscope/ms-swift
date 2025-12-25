@@ -39,7 +39,7 @@ def get_site_packages():
 
 
 def patch_backends_mapping(transformers_path):
-    """Fix BACKENDS_MAPPING missing 'tf' backend."""
+    """Fix BACKENDS_MAPPING missing tensorflow backends."""
     import_utils_path = os.path.join(transformers_path, 'utils', 'import_utils.py')
     
     if not os.path.exists(import_utils_path):
@@ -49,43 +49,70 @@ def patch_backends_mapping(transformers_path):
     with open(import_utils_path, 'r') as f:
         content = f.read()
     
-    # Check if already patched
-    if 'def is_tf_available():' in content and 'TF_IMPORT_ERROR' in content:
-        print("   ✅ BACKENDS_MAPPING already patched")
-        return True
+    modified = False
     
-    # Add dummy tf function before BACKENDS_MAPPING
-    tf_fix = '''
+    # Add dummy tf functions if not present
+    tf_functions = '''
 # Patched by setup_environment.py for Omega17Exp compatibility
 def is_tf_available():
     """Dummy TensorFlow availability check - always returns False."""
     return False
 
+def is_tensorflow_text_available():
+    """Dummy TensorFlow Text availability check - always returns False."""
+    return False
+
+def is_tensorflow_probability_available():
+    """Dummy TensorFlow Probability availability check - always returns False."""
+    return False
+
 TF_IMPORT_ERROR = "TensorFlow is not installed."
+TENSORFLOW_TEXT_IMPORT_ERROR = "tensorflow_text is not installed."
+TENSORFLOW_PROBABILITY_IMPORT_ERROR = "tensorflow_probability is not installed."
 
 '''
     
-    # Insert before BACKENDS_MAPPING
-    if 'BACKENDS_MAPPING = OrderedDict(' in content:
-        content = content.replace(
-            'BACKENDS_MAPPING = OrderedDict(',
-            tf_fix + 'BACKENDS_MAPPING = OrderedDict('
-        )
-        
-        # Add tf to the mapping list
-        content = content.replace(
-            '("av", (is_av_available, AV_IMPORT_ERROR))',
-            '("tf", (is_tf_available, TF_IMPORT_ERROR)),\n        ("av", (is_av_available, AV_IMPORT_ERROR))'
-        )
-        
+    # Check if already patched
+    if 'def is_tf_available():' not in content or 'is_tensorflow_text_available' not in content:
+        # Insert before BACKENDS_MAPPING
+        if 'BACKENDS_MAPPING = OrderedDict(' in content:
+            content = content.replace(
+                'BACKENDS_MAPPING = OrderedDict(',
+                tf_functions + 'BACKENDS_MAPPING = OrderedDict('
+            )
+            modified = True
+    
+    # Add all tensorflow backends to mapping if not present
+    backends_to_add = [
+        ('tf', 'is_tf_available', 'TF_IMPORT_ERROR'),
+        ('tensorflow_text', 'is_tensorflow_text_available', 'TENSORFLOW_TEXT_IMPORT_ERROR'),
+        ('tensorflow_probability', 'is_tensorflow_probability_available', 'TENSORFLOW_PROBABILITY_IMPORT_ERROR'),
+    ]
+    
+    for backend_name, func_name, error_name in backends_to_add:
+        if f'("{backend_name}"' not in content:
+            # Find a good place to insert (after av or at the beginning of the list)
+            if '("av", (is_av_available, AV_IMPORT_ERROR))' in content:
+                content = content.replace(
+                    '("av", (is_av_available, AV_IMPORT_ERROR))',
+                    f'("{backend_name}", ({func_name}, {error_name})),\n        ("av", (is_av_available, AV_IMPORT_ERROR))'
+                )
+                modified = True
+            elif 'BACKENDS_MAPPING = OrderedDict(\n    [' in content:
+                content = content.replace(
+                    'BACKENDS_MAPPING = OrderedDict(\n    [',
+                    f'BACKENDS_MAPPING = OrderedDict(\n    [("{backend_name}", ({func_name}, {error_name})),\n        '
+                )
+                modified = True
+    
+    if modified:
         with open(import_utils_path, 'w') as f:
             f.write(content)
-        
-        print("   ✅ BACKENDS_MAPPING patched successfully")
+        print("   ✅ BACKENDS_MAPPING patched successfully (tf, tensorflow_text, tensorflow_probability)")
         return True
     else:
-        print("   ⚠️  Could not find BACKENDS_MAPPING to patch")
-        return False
+        print("   ✅ BACKENDS_MAPPING already patched")
+        return True
 
 
 def patch_deepspeed_module(transformers_path):
