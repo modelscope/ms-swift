@@ -47,6 +47,7 @@ class RLHFMegatronArgumentsMixin:
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
+    sft_alpha: float = 0.0  # Weight for SFT loss in GKD (0 = pure JSD, >0 = JSD + sft_alpha * SFT)
 
     # grpo/gkd
     temperature: float = 0.9  # Temperature for sampling and loss computation

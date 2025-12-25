@@ -3,7 +3,7 @@ import random
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -44,6 +44,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.lmbda = args.lmbda  # On-policy probability
         self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
+        self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
         assert args.teacher_model is not None, 'Teacher model path is required for GKD training'
         self.use_vllm = getattr(args, 'use_vllm', False)
 
@@ -51,11 +52,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.device = torch.cuda.current_device()
 
         # Initialize vLLM rollout engine if on-policy generation is enabled
-        if self.use_vllm and self.lmbda > 0:
-            self._init_rollout_engine()
-            logger.info(f'GKD trainer initialized with on-policy generation (vLLM mode: {args.vllm_mode})')
-        else:
-            logger.info('GKD trainer initialized with off-policy training (dataset responses)')
+        self._init_rollout_engine()
 
         # Teacher models will be loaded in setup_model_and_optimizer
         # Using the same parallel parameters (PP/TP/CP/EP) as student model
@@ -91,32 +88,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         logger.info(f'Loading teacher model from: {teacher_model_path}')
 
         # Load teacher model with same parallel config as student
-        self._load_teacher_model(teacher_model_path, model_type, model_provider_func)
+        self._load_teacher_model(teacher_model_path, model_type)
 
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
-    def _load_teacher_model(self, teacher_model_path: str, model_type, model_provider_func):
-        """Load teacher model with the same parallel parameters (PP/TP/CP/EP) as student model.
-
-        Teacher and student may have the same model_type (e.g., both are 'qwen2_5') but different
-        architectures (e.g., Qwen2.5-3B vs Qwen2.5-7B with different hidden_size and num_layers).
-        Therefore, we ALWAYS need to use teacher's config to create the model, not student's.
-
-        Process:
-        1. Get teacher model info and config
-        2. Temporarily modify global Megatron args with teacher's config
-        3. Create teacher model using get_model() (respects PP/TP/CP/EP settings from command line)
-        4. Load teacher weights
-        5. Restore original student config
-
-        Args:
-            teacher_model_path: Path to teacher model
-            model_type: Megatron model type enum
-            model_provider_func: Model provider function (not used, kept for API compatibility)
-        """
+    def _load_teacher_model(self, teacher_model_path: str, model_type: str):
         megatron_args = get_args()
 
-        # Get teacher model info
         teacher_model_info, _ = get_model_info_meta(
             teacher_model_path,
             model_type=getattr(self.args, 'teacher_model_type', None),
@@ -165,10 +143,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # Create bridge for teacher model (for weight loading)
             teacher_bridge = teacher_megatron_model_meta.bridge_cls()
 
-            # Load teacher weights
+            # Load teacher weights and set to eval mode
             for m in teacher_models:
-                m = unwrap_model(m)
-                teacher_bridge.load_weights(m, teacher_model_info.model_dir)
+                unwrapped = unwrap_model(m)
+                teacher_bridge.load_weights(unwrapped, teacher_model_info.model_dir)
+                unwrapped.requires_grad_(False)
+                unwrapped.eval()
 
             logger.info(f'Teacher model loaded successfully with PP={megatron_args.pipeline_model_parallel_size}, '
                         f'TP={megatron_args.tensor_model_parallel_size}')
@@ -189,8 +169,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _teacher_args_context(self):
         """Context manager to temporarily override Megatron args with teacher's config.
 
-        This is necessary for forward_step_helper to use correct hidden_size, num_layers, etc.
-        when performing PP communication for teacher model.
+        This is necessary for teacher model forward to use correct hidden_size, num_layers, etc.
+        when the teacher has a different architecture than the student.
         """
         megatron_args = get_args()
 
@@ -391,8 +371,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         from megatron.core.num_microbatches_calculator import get_num_microbatches
         return get_num_microbatches()
 
-    def _compute_teacher_logits(self, encoded_batches: List[Dict]) -> None:
-        # Prepare batches for teacher forward (apply PP/CP transformations)
+    def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
+        """Compute teacher logits for each encoded batch.
+
+        Args:
+            encoded_batches: List of encoded batch dictionaries
+            vp_stage: Virtual pipeline stage (if using VP). When None, uses teacher_models[0].
+        """
+        # Select teacher model based on vp_stage (for VP support)
+        # Note: In non-VP mode, vp_stage is None and we use teacher_models[0]
+        teacher_model = self.teacher_models[vp_stage or 0]
+
         for encoded_batch in encoded_batches:
             # Deep copy to avoid modifying original batch
             teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
@@ -400,10 +389,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_data.pop('loss_scale', None)
             # Remove labels so returns logits instead of loss
             teacher_data.pop('labels', None)
-
+            teacher_data.pop('data_source', None)
             # Teacher forward with args override for correct hidden_size
             with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
-                teacher_model = self.teacher_models[0]
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
@@ -452,6 +440,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             end_idx = start_idx + micro_batch_size
             raw_batch = global_batch[start_idx:end_idx]
             encoded_batch = self._encode_batch(raw_batch)
+            # Store data_source for conditional SFT loss in loss_func
+            encoded_batch['data_source'] = data_source
             encoded_batches.append(encoded_batch)
 
         self._compute_teacher_logits(encoded_batches)
@@ -495,6 +485,64 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return student_logits, teacher_logits
 
+    def _vocab_parallel_log_softmax(self, logits: torch.Tensor) -> torch.Tensor:
+        """Compute log_softmax across vocab-parallel sharded logits.
+
+        When using Tensor Parallelism, vocab is sharded across TP ranks.
+        This function correctly computes log_softmax by:
+        1. Finding global max via all_reduce
+        2. Computing sum of exp via all_reduce
+        3. Computing log_softmax using the global statistics
+
+        Args:
+            logits: Logits tensor [..., partition_vocab_size]
+
+        Returns:
+            log_softmax tensor [..., partition_vocab_size]
+        """
+        tp_group = mpu.get_tensor_model_parallel_group()
+
+        # Step 1: Find global max for numerical stability
+        logits_max = logits.max(dim=-1, keepdim=True)[0]
+        torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=tp_group)
+
+        # Step 2: Compute exp(logits - max) and sum across all TP ranks
+        exp_logits = torch.exp(logits - logits_max)
+        sum_exp = exp_logits.sum(dim=-1, keepdim=True)
+        torch.distributed.all_reduce(sum_exp, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+
+        # Step 3: Compute log_softmax
+        log_softmax = logits - logits_max - torch.log(sum_exp)
+
+        return log_softmax
+
+    def _vocab_parallel_kl_div(self, input_log_probs: torch.Tensor, target_log_probs: torch.Tensor) -> torch.Tensor:
+        """Compute KL divergence for vocab-parallel sharded log probabilities.
+
+        KL(target || input) = sum(target_prob * (target_log_prob - input_log_prob))
+                            = sum(exp(target_log_prob) * (target_log_prob - input_log_prob))
+
+        Since both log_probs are sharded across TP, we compute the partial sum
+        on each rank and then all_reduce to get the global sum.
+
+        Args:
+            input_log_probs: Input log probabilities [..., partition_vocab_size]
+            target_log_probs: Target log probabilities [..., partition_vocab_size]
+
+        Returns:
+            KL divergence per position [...], already reduced across TP
+        """
+        tp_group = mpu.get_tensor_model_parallel_group()
+
+        # Compute partial KL on this rank's vocab partition
+        target_probs = torch.exp(target_log_probs)
+        partial_kl = (target_probs * (target_log_probs - input_log_probs)).sum(dim=-1)
+
+        # All-reduce to get global KL
+        torch.distributed.all_reduce(partial_kl, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+
+        return partial_kl
+
     def generalized_jsd_loss(
         self,
         student_logits: torch.Tensor,
@@ -503,26 +551,20 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         beta: float = 0.5,
         chunk_size: int = 512,
     ) -> torch.Tensor:
-        """Compute the generalized Jensen-Shannon Divergence loss with chunked computation.
+        """Compute generalized JSD loss with Context Parallel support.
 
-        JSD(p, q) = beta * KL(p || m) + (1 - beta) * KL(q || m)
-        where m = beta * p + (1 - beta) * q, p = teacher, q = student
-
-        This implementation uses chunked computation to reduce peak memory usage,
-        which is critical for large vocab sizes.
-
-        Args:
-            student_logits: Student model logits [batch, seq_len, vocab_size]
-            teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
-            labels: Token labels for masking [batch, seq_len], already shifted
-            beta: Interpolation coefficient (0.5 = symmetric JSD)
-            chunk_size: Number of tokens to process in each chunk
-
-        Returns:
-            Scalar loss value (mean over valid tokens)
+        When CP > 1, each rank only sees a portion of the sequence.
+        We need to all-reduce the loss sum and valid token count across CP group.
         """
+        args = get_args()
         mask = labels != -100
-        num_valid = mask.sum()
+        local_num_valid = mask.sum()
+        num_valid = local_num_valid.float()
+
+        # All-reduce num_valid across CP group for correct averaging
+        if args.context_parallel_size > 1:
+            torch.distributed.all_reduce(
+                num_valid, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
 
         if num_valid == 0:
             return (student_logits.sum() * 0).reshape(())
@@ -531,11 +573,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
         # Apply temperature scaling and mask
-        student_logits_masked = (student_logits / self.temperature)[mask]  # [num_valid_tokens, vocab_size]
+        student_logits_masked = (student_logits
+                                 / self.temperature)[mask]  # [local_num_valid_tokens, partition_vocab_size]
         teacher_logits_masked = (teacher_logits / self.temperature)[mask]
         del student_logits, teacher_logits
 
-        num_valid_int = num_valid.item()
+        # Use local count for iteration, global count for averaging
+        local_num_valid_int = local_num_valid.item()
         total_loss = student_logits_masked.new_zeros(())
 
         if beta != 0 and beta != 1:
@@ -545,40 +589,64 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         else:
             beta_t = log_beta = log_1_minus_beta = None
 
-        for start_idx in range(0, num_valid_int, chunk_size):
-            end_idx = min(start_idx + chunk_size, num_valid_int)
+        for start_idx in range(0, local_num_valid_int, chunk_size):
+            end_idx = min(start_idx + chunk_size, local_num_valid_int)
             s_chunk = student_logits_masked[start_idx:end_idx]
             t_chunk = teacher_logits_masked[start_idx:end_idx]
 
-            s_log_probs = F.log_softmax(s_chunk, dim=-1)
-            t_log_probs = F.log_softmax(t_chunk, dim=-1)
+            # Compute log_softmax with vocab-parallel support
+            s_log_probs = self._vocab_parallel_log_softmax(s_chunk)
+            t_log_probs = self._vocab_parallel_log_softmax(t_chunk)
             del s_chunk, t_chunk
 
             if beta == 0:
-                jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
+                # JSD = KL(teacher || student)
+                jsd_chunk = self._vocab_parallel_kl_div(s_log_probs, t_log_probs)
             elif beta == 1:
-                jsd_chunk = F.kl_div(t_log_probs, s_log_probs, reduction='none', log_target=True)
+                # JSD = KL(student || teacher)
+                jsd_chunk = self._vocab_parallel_kl_div(t_log_probs, s_log_probs)
             else:
+                # Compute mixture log probabilities: m = beta * teacher + (1-beta) * student
+                # log(m) = logsumexp(log(student) + log(1-beta), log(teacher) + log(beta))
                 mixture_log_probs = torch.logsumexp(
                     torch.stack([s_log_probs + log_1_minus_beta, t_log_probs + log_beta]),
                     dim=0,
                 )
 
-                kl_teacher = F.kl_div(mixture_log_probs, t_log_probs, reduction='none', log_target=True)
-                kl_student = F.kl_div(mixture_log_probs, s_log_probs, reduction='none', log_target=True)
+                kl_teacher = self._vocab_parallel_kl_div(mixture_log_probs, t_log_probs)
+                kl_student = self._vocab_parallel_kl_div(mixture_log_probs, s_log_probs)
                 del mixture_log_probs
 
                 jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
                 del kl_teacher, kl_student
+
             total_loss = total_loss + jsd_chunk.sum()
             del jsd_chunk, s_log_probs, t_log_probs
 
         # Clean up masked logits
         del student_logits_masked, teacher_logits_masked
 
+        # All-reduce total_loss across CP group for correct sum
+        if args.context_parallel_size > 1:
+            torch.distributed.all_reduce(
+                total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+
         return total_loss / num_valid
 
-    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, teacher_logits: torch.Tensor):
+    def loss_func(self,
+                  output_tensor: torch.Tensor,
+                  *,
+                  labels: torch.Tensor,
+                  teacher_logits: torch.Tensor,
+                  data_source: DataSource = DataSource.DATASET):
+        """Compute GKD loss (JSD + optional SFT loss).
+
+        Args:
+            output_tensor: Student model logits [batch, seq_len, vocab_size]
+            labels: Token labels for masking [batch, seq_len]
+            teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
+            data_source: Data source (STUDENT/TEACHER/DATASET) for conditional SFT loss
+        """
         student_logits = output_tensor
 
         jsd_loss = self.generalized_jsd_loss(
@@ -591,9 +659,32 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         loss = jsd_loss
 
         metric = {
-            'loss': loss.detach().clone(),
             'jsd_loss': jsd_loss.detach().clone(),
         }
+
+        # Add SFT loss if enabled (skip for student-generated responses)
+        if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
+            args = get_args()
+            logits_sbv = student_logits.transpose(0, 1).contiguous()
+            per_token_loss = self.unwrapped_models[0].compute_language_model_loss(labels, logits_sbv)
+
+            loss_mask = labels != -100
+            sft_loss_sum = (per_token_loss * loss_mask).sum()
+            sft_loss_count = loss_mask.sum().float()
+
+            # All-reduce across CP group for correct averaging
+            if args.context_parallel_size > 1:
+                sft_stats = torch.stack([sft_loss_sum, sft_loss_count])
+                torch.distributed.all_reduce(
+                    sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+                sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
+
+            sft_loss = sft_loss_sum / sft_loss_count
+
+            loss = loss + self.sft_alpha * sft_loss
+            metric['sft_loss'] = sft_loss.detach().clone()
+
+        metric['loss'] = loss.detach().clone()
         metric = self._all_reduce_metric(metric)
 
         loss = loss / mpu.get_context_parallel_world_size()
@@ -616,10 +707,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
         teacher_logits = data.pop('teacher_logits', None)
+        data_source = data.pop('data_source', DataSource.DATASET)
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
         with self.stimer:
             student_output = model(**data)
 
-        return student_output, partial(self.loss_func, labels=labels, teacher_logits=teacher_logits)
+        return student_output, partial(
+            self.loss_func, labels=labels, teacher_logits=teacher_logits, data_source=data_source)

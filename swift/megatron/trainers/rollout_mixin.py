@@ -103,21 +103,6 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
 
 
 class MegatronRolloutMixin:
-    """Mixin class providing vLLM rollout capabilities for Megatron trainers.
-
-    This mixin provides:
-    - vLLM engine initialization (server or colocate mode)
-    - Model weight synchronization to vLLM
-    - Rollout generation with vLLM
-    - Model offloading for memory efficiency
-
-    Usage:
-        class MyTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
-            def __init__(self, args, template, **kwargs):
-                self.vllm_client = kwargs.pop('vllm_client', None)
-                super().__init__(args, template)
-                self._init_rollout_engine()
-    """
 
     def _init_rollout_params(self):
         """Initialize rollout generation parameters."""
@@ -213,7 +198,9 @@ class MegatronRolloutMixin:
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
 
         if not args.use_vllm:
-            logger.info('vLLM is not enabled. Online generation will not be available.')
+            return
+
+        if args.rlhf_type == 'gkd' and args.lmbda == 0:
             return
 
         if not is_vllm_available():
@@ -472,7 +459,8 @@ class MegatronRolloutMixin:
             torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
             batch = [p for sublist in gathered_batch for p in sublist]
 
-        outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
+        outputs: List[RolloutOutput] = self.engine.infer(
+            infer_requests=batch, request_config=request_config, use_tqdm=False)
 
         if self.vllm_tensor_parallel_size > 1:
             outputs = outputs[start_idx:end_idx]
