@@ -347,7 +347,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', and 'rm' are available.
+- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', 'rm', and 'gkd' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
 
@@ -429,6 +429,22 @@ In addition to inheriting the training parameters, the following parameters are 
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking threshold from [DeepSeek-V3.2 paper](https://arxiv.org/abs/2512.02556). When set, computes `mean(old_policy_logps - policy_logps)` for each sequence. If this value exceeds the threshold AND the sequence has negative advantage, the sequence is masked out from loss computation. For details, refer to the [documentation](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking).
 
 Built-in reward function parameters refer to the [documentation](../Instruction/Command-line-parameters.md#reward-function-parameters).
+
+### GKD Parameters
+
+- teacher_model: Path or model ID of the teacher model. Required.
+- teacher_model_type: Teacher model type. Default is None, auto-detected.
+- teacher_model_revision: Teacher model version. Default is None.
+- beta: JSD divergence interpolation coefficient. 0.0 means Forward KL, 0.5 means symmetric JSD, 1.0 means Reverse KL. Default is 0.5.
+- lmbda: On-Policy learning probability. 0.0 means pure Off-Policy, 1.0 means pure On-Policy. Default is 0.5.
+- seq_kd: Whether to use teacher-generated responses (Sequential KD), not yet supported. Default is False.
+- temperature: Temperature for sampling and loss computation. Default is 0.9.
+- offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
+- sft_alpha: Mixing coefficient for SFT loss, `loss = jsd_loss + sft_alpha * sft_loss`. Takes effect when using dataset responses (Off-Policy). Default is 0.
+- max_completion_length: Maximum tokens for generation. Default is 512.
+- vllm_mode: Same as GRPO parameter, used for On-Policy generation. Colocate mode deploys vLLM within the program.
+  - Note: On-Policy generation requires vLLM (`--use_vllm true --vllm_mode colocate/server`).
+  - When `lmbda > 0` but vLLM is not enabled, it will automatically fall back to Off-Policy mode.
 
 ## Export Parameters
 
