@@ -143,6 +143,11 @@ def test_glm4():
     _test_model('ZhipuAI/GLM-4-9B-0414')
 
 
+def test_olmoe():
+    # _test_model('allenai/OLMoE-1B-7B-0924-Instruct')
+    _test_model('allenai/OLMoE-1B-7B-0125-Instruct')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -172,4 +177,5 @@ if __name__ == '__main__':
     # test_qwen3_next()
     # test_ernie_thinking()
     # test_tongyi_deepresearch()
-    test_glm4()
+    # test_glm4()
+    test_olmoe()

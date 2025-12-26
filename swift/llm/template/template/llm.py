@@ -433,18 +433,16 @@ register_template(
         prompt=['<|user|>\n{{QUERY}}\n<|assistant|>\n'],
         chat_sep=['|||IP_ADDRESS|||\n'],
         suffix=['|||IP_ADDRESS|||'],
-        default_system='You are a helpful assistant.',
         stop_words=['<|endoftext|>'],
     ))
 
 register_template(
     TemplateMeta(
         LLMTemplateType.olmoe_0924,
-        prefix=[],
+        prefix=['<|endoftext|>'],
         system_prefix=['<|endoftext|><|system|>\n{{SYSTEM}}\n'],
         prompt=['<|user|>\n{{QUERY}}\n<|assistant|>\n'],
         chat_sep=['<|endoftext|>\n'],
         suffix=['<|endoftext|>'],
-        default_system='You are a helpful assistant.',
         stop_words=['<|endoftext|>'],
     ))

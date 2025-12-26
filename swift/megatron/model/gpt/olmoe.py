@@ -6,10 +6,9 @@ import torch
 import torch.distributed as dist
 from megatron.core.extensions.transformer_engine import SplitAlongDim, TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
-from megatron.core.process_groups_config import ModelCommProcessGroups
 from megatron.core.transformer.attention import SelfAttention as SelfAttentionBase
 from megatron.core.transformer.attention import SelfAttentionSubmodules
-from megatron.core.transformer.enums import AttnMaskType, LayerType
+from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -27,23 +26,8 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 class OLMoESelfAttention(SelfAttentionBase):
 
-    def __init__(
-        self,
-        config: TransformerConfig,
-        submodules: SelfAttentionSubmodules,
-        layer_number: int,
-        attn_mask_type=AttnMaskType.padding,
-        cp_comm_type: str = None,
-        model_comm_pgs: ModelCommProcessGroups = None,
-    ):
-        super().__init__(
-            config=config,
-            submodules=submodules,
-            layer_number=layer_number,
-            attn_mask_type=attn_mask_type,
-            cp_comm_type=cp_comm_type,
-            model_comm_pgs=model_comm_pgs,
-        )
+    def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
+        super().__init__(config, submodules, *args, **kwargs)
         self.q_layernorm = build_module(
             submodules.q_layernorm,
             hidden_size=self.hidden_size_per_attention_head * self.num_attention_heads_per_partition,
@@ -57,7 +41,7 @@ class OLMoESelfAttention(SelfAttentionBase):
             eps=self.config.layernorm_epsilon,
         )
 
-    def get_query_key_value_tensors(self, hidden_states, key_value_states=None):
+    def get_query_key_value_tensors(self, hidden_states, key_value_states=None, *args, **kwargs):
         """
         Derives `query`, `key` and `value` tensors from `hidden_states`.
         """
@@ -75,13 +59,11 @@ class OLMoESelfAttention(SelfAttentionBase):
             (query, key, value) = SplitAlongDim(mixed_qkv, 2, split_arg_list)
         else:
             (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=2)
-
         if self.q_layernorm is not None:
             query = self.q_layernorm(query)
 
         if self.k_layernorm is not None:
             key = self.k_layernorm(key)
-
         query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
         key = key.reshape(key.size(0), key.size(1), -1, self.hidden_size_per_attention_head)
         value = value.reshape(value.size(0), value.size(1), -1, self.hidden_size_per_attention_head)
@@ -149,7 +131,8 @@ class OLMoEBridge(GPTBridge):
                     hf_state_dict['q_proj.lora_B.weight'].load(),
                     hf_state_dict['k_proj.lora_B.weight'].load(),
                     hf_state_dict['v_proj.lora_B.weight'].load(),
-                ], dim=0)
+                ],
+                                   dim=0)
                 self._set_weight(mg_attn.linear_qkv.lora_A[self._adapter_name].weight, lora_A,
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
@@ -159,14 +142,16 @@ class OLMoEBridge(GPTBridge):
                     hf_state_dict['q_proj.weight'].load(),
                     hf_state_dict['k_proj.weight'].load(),
                     hf_state_dict['v_proj.weight'].load(),
-                ], dim=0)
+                ],
+                                              dim=0)
                 qkv_scale_inv = None
                 if 'q_proj.weight_scale_inv' in hf_state_dict:
                     qkv_scale_inv = torch.cat([
                         hf_state_dict['q_proj.weight_scale_inv'].load(),
                         hf_state_dict['k_proj.weight_scale_inv'].load(),
                         hf_state_dict['v_proj.weight_scale_inv'].load(),
-                    ], dim=0)
+                    ],
+                                              dim=0)
                 self._set_weight(
                     mg_attn.linear_qkv.weight, linear_qkv_weight, 'linear_qkv.weight', hf_scale_inv=qkv_scale_inv)
         else:
@@ -211,7 +196,8 @@ class OLMoEBridge(GPTBridge):
                     hf_state_dict['q_proj.bias'].load(),
                     hf_state_dict['k_proj.bias'].load(),
                     hf_state_dict['v_proj.bias'].load(),
-                ], dim=0)
+                ],
+                                            dim=0)
                 self._set_weight(mg_attn.linear_qkv.bias, linear_qkv_bias, 'linear_qkv.bias')
             else:
                 mg_attn_bias, _ = self._get_weight(None if mg_attn is None else mg_attn.linear_qkv.bias.data,
@@ -220,16 +206,16 @@ class OLMoEBridge(GPTBridge):
                     hf_state_dict['q_proj.bias'] = mg_attn_bias[:q_dim].clone()
                     hf_state_dict['k_proj.bias'] = mg_attn_bias[q_dim:-kv_dim].clone()
                     hf_state_dict['v_proj.bias'] = mg_attn_bias[-kv_dim:].clone()
-        if args.qk_layernorm:
-            hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
-            hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
-            self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
-            self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
+        hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
+        hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
+        self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
+        self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
         if to_mcore:
             hf_state_dict = {}
         else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
+
 
 register_megatron_model(
     MegatronModelMeta(
