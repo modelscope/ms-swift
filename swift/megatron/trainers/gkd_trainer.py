@@ -27,7 +27,7 @@ logger = get_logger()
 
 class DataSource(str, Enum):
     """Data source for GKD training."""
-    DATASET = 'dataset'  # Off-policy: use responses from dataset
+    DATASET = 'dataset'  # Offline: use responses from dataset
     STUDENT = 'student'  # On-policy: use student-generated responses
     TEACHER = 'teacher'  # Sequential KD: use teacher-generated responses
 
@@ -246,10 +246,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """Generate a deterministic random number consistent across all processes.
 
         Uses an isolated Random instance with seed based on args.seed + step counter
-        to ensure:
-        1. Thread-safety (doesn't interfere with global random state)
-        2. Cross-process consistency (all ranks get the same random number)
-        3. Reproducibility (same seed + step = same random number)
 
         Returns:
             float: A random number in the range [0.0, 1.0).
@@ -373,14 +369,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return get_num_microbatches()
 
     def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
-        """Compute teacher logits for each encoded batch.
-
-        Args:
-            encoded_batches: List of encoded batch dictionaries
-            vp_stage: Virtual pipeline stage (if using VP). When None, uses teacher_models[0].
-        """
-        # Select teacher model based on vp_stage (for VP support)
-        # Note: In non-VP mode, vp_stage is None and we use teacher_models[0]
         teacher_model = self.teacher_models[vp_stage or 0]
 
         for encoded_batch in encoded_batches:
@@ -416,18 +404,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             global_batch.extend(raw_batch)
 
         # On-policy mode: generate completions for the entire global batch at once
-        # This avoids multiple wake/sleep/offload cycles and maximizes vLLM KV cache efficiency
         if data_source == DataSource.STUDENT:
-            # Split global batch within rollout group for distributed generation
             local_batch = self._get_local_rollout_batch(global_batch)
-
-            # Generate completions for local batch
-            # NOTE: _generate_completions must be called by ALL ranks because
-            # _move_model_to_vllm contains collective operations (all_reduce in export_weights).
-            # The actual vLLM inference will handle empty batch gracefully.
             local_batch = self._generate_completions(local_batch)
-
-            # Gather results from all ranks in rollout group
             global_batch = self._gather_rollout_results(local_batch)
         elif data_source == DataSource.TEACHER:
             logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
@@ -552,11 +531,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         beta: float = 0.5,
         chunk_size: int = 512,
     ) -> torch.Tensor:
-        """Compute generalized JSD loss with Context Parallel support.
-
-        When CP > 1, each rank only sees a portion of the sequence.
-        We need to all-reduce the loss sum and valid token count across CP group.
-        """
         args = get_args()
         mask = labels != -100
         local_num_valid = mask.sum()
