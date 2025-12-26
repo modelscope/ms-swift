@@ -60,6 +60,7 @@ class RLHFMegatronArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+
     use_vllm: bool = True
     vllm_mode: Optional[Literal['server', 'colocate']] = None
 

@@ -140,6 +140,7 @@
   - 注意：eos_token会在输出respsone中被删除，额外停止词会在输出中保留。
 - logprobs: 是否输出logprobs，默认为False。
 - top_logprobs: 输出top_logprobs的数量，默认为None。
+- structured_outputs_regex: 结构化输出（引导解码）的正则表达式模式。设置后，模型生成将被约束为匹配指定的正则表达式模式。仅在`infer_backend`为`vllm`时生效。默认为`None`。
 
 ### 量化参数
 以下为加载模型时量化的参数，具体含义可以查看[量化](https://huggingface.co/docs/transformers/main/en/main_classes/quantization)文档。这里不包含`swift export`中涉及的`gptq`、`awq`量化参数。
