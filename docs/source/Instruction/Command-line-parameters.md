@@ -593,6 +593,7 @@ reward模型参数将在PPO、GRPO中使用。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
   - enable_flattened_weight_sync: 是否使用 flattened tensor 进行权重同步。启用后会将多个参数打包为单个连续 tensor 进行传输，可提升同步效率，在 Server Mode 下生效，默认为 True。
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制flattened tensor 权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
+- vllm_guided_decoding_regex: vLLM引导解码（结构化输出）的正则表达式模式。设置后，模型生成将被约束为匹配指定的正则表达式模式，例如推理链（如`r"<reasoning>\\n.*\\n</reasoning>\\n<answer>\\n.*\\n</answer>"`）。默认为None。
 - vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
   - vllm_max_model_len: vllm透传参数，默认为None。

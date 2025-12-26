@@ -31,6 +31,10 @@ try:
     import vllm
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
     from vllm.pooling_params import PoolingParams
+    try:
+        from vllm.sampling_params import GuidedDecodingParams
+    except ImportError:
+        from vllm.sampling_params import StructuredOutputsParams as GuidedDecodingParams
 except Exception:
     raise
 
@@ -432,6 +436,10 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             if hasattr(SamplingParams, key):
                 kwargs[key] = getattr(request_config, key)
+
+        # Handle guided decoding (structured outputs)
+        if request_config.guided_decoding_regex:
+            kwargs['guided_decoding'] = GuidedDecodingParams(regex=request_config.guided_decoding_regex)
 
         res = SamplingParams(**kwargs)
 

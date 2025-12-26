@@ -607,6 +607,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
   - enable_flattened_weight_sync: Whether to use flattened tensor for weight synchronization. When enabled, multiple parameters are packed into a single contiguous tensor for transfer, which can improve synchronization efficiency; Only takes effect in Server Mode. Default is True.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: An environment variable that controls the bucket size (in MB) for flattened tensor weight synchronization during full-parameter training in Server Mode. Default is 512 MB.
+- vllm_guided_decoding_regex: A regular expression pattern for vLLM guided decoding (structured outputs). When set, the model's generation is constrained to match the specified regex pattern. This is useful for tasks requiring structured outputs like reasoning chains (e.g., `r"<reasoning>\\n.*\\n</reasoning>\\n<answer>\\n.*\\n</answer>"`). Defaults to None.
 - vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vLLM-Arguments).)
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.

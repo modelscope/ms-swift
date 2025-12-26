@@ -121,6 +121,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_offload = False
 
         # sampling params
+        guided_decoding_regex = getattr(args, 'vllm_guided_decoding_regex', None)
+
         self.request_config = RequestConfig(
             n=1,
             max_tokens=args.max_completion_length,
@@ -130,7 +132,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
             return_details=True,
-            logprobs=True)  # Enable logprobs for rollout importance sampling
+            logprobs=True,
+            guided_decoding_regex=guided_decoding_regex)  # Enable logprobs for rollout importance sampling
 
         self._step = 0
         self._last_loaded_step = -1
