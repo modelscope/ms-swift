@@ -347,7 +347,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
 
-    log_backend: Optional[Literal['wandb', 'swanlab']] = None
+    report_to: Optional[Literal['wandb', 'swanlab']] = None
 
     # visual
     vit_gradient_checkpointing: bool = True
@@ -698,23 +698,25 @@ class MegatronArguments(ExtraMegatronArguments):
 
         def _set_wandb_writer(*args, **kwargs):
             assert global_vars._GLOBAL_WANDB_WRITER is None
-            if self.log_backend is None or not is_last_rank():
+            if self.report_to is None or not is_last_rank():
                 return
             config = vars(self)
-            if self.log_backend == 'wandb':
+            save_dir = self.wandb_save_dir
+            if self.report_to == 'wandb':
                 import wandb
-                wandb.init(dir=self.wandb_save_dir, name=self.wandb_exp_name, project=self.wandb_project, config=config)
+                if save_dir is None:
+                    save_dir = os.path.join(self.save, 'wandb')
+                wandb.init(dir=save_dir, name=self.wandb_exp_name, project=self.wandb_project, config=config)
                 writer = wandb
-            elif self.log_backend == 'swanlab':
+            elif self.report_to == 'swanlab':
                 import swanlab
+                if save_dir is None:
+                    save_dir = os.path.join(self.save, 'swanlab')
                 swanlab.init(
-                    logdir=self.wandb_save_dir,
-                    experiment_name=self.wandb_exp_name,
-                    project=self.wandb_project,
-                    config=config)
+                    logdir=save_dir, experiment_name=self.wandb_exp_name, project=self.wandb_project, config=config)
                 writer = swanlab
             else:
-                raise ValueError(f'log_backend must be one of "wandb", "swanlab", got {self.log_backend}')
+                raise ValueError(f'report_to must be one of "wandb", "swanlab", got {self.report_to}')
 
             global_vars._GLOBAL_WANDB_WRITER = writer
 
@@ -723,7 +725,7 @@ class MegatronArguments(ExtraMegatronArguments):
         origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
 
         def on_save_checkpoint_success(*args, **kwargs):
-            if self.log_backend == 'swanlab':
+            if self.report_to == 'swanlab':
                 return
             origin_on_save_checkpoint_success(*args, **kwargs)
 
