@@ -30,9 +30,7 @@ megatron rlhf \
     --vllm_max_model_len 16384 \
     --sleep_level 1 \
     --offload_teacher_model true \
-    --log_interval 1 \
     --recompute_granularity selective \
-    --max_epochs 1 \
     --finetune \
     --no_save_optim \
     --no_save_rng \
