@@ -101,7 +101,7 @@ class SwanlabArguments:
             for local-only logging.
     """
     swanlab_token: Optional[str] = None
-    swanlab_project: str = "ms-swift"
+    swanlab_project: str = 'ms-swift'
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
     swanlab_notification_method: Optional[str] = None
