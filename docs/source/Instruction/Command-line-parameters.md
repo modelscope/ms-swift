@@ -488,7 +488,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### SWANLAB
 
-- swanlab_token: SwanLab的api-key。
+- swanlab_token: SwanLab的api-key。你也可以使用`SWANLAB_API_KEY`环境变量指定。
 - swanlab_project: swanlab的project，可以在页面中预先创建[https://swanlab.cn/space/~](https://swanlab.cn/space/~)或自动创建，默认为"ms-swift"。
 - swanlab_workspace: 默认为None，会使用api-key对应的username。
 - swanlab_exp_name: 实验名，可以为空，为空时默认传入--output_dir的值。

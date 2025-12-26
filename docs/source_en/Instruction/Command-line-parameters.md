@@ -499,7 +499,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 #### SWANLAB
 
-- swanlab_token: SwanLab's API key.
+- swanlab_token: The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY` environment variable.
 - swanlab_project: The SwanLab project, which can be created in advance on the page https://swanlab.cn/space/~ or created automatically. The default is "ms-swift".
 - swanlab_workspace: Defaults to `None`, will use the username associated with the API key.
 - swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default.
