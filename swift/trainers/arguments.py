@@ -407,6 +407,10 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
             Defaults to False.
         wandb_log_unique_prompts (Optional[bool]): Whether to log unique prompts to Weights & Biases for analysis
             during training. Defaults to None.
+        structured_outputs_regex (Optional[str]): A regular expression pattern for structured outputs (guided
+            decoding). When set, the model's generation is constrained to match the specified regex pattern. This is
+            useful for tasks requiring structured outputs like reasoning chains. Defaults to None (disabled).
+            Only effective when using vLLM backend (`use_vllm=True`).
     """
     # generation args
     top_k: int = 50
@@ -431,6 +435,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     vllm_server_group_port: Optional[List[int]] = None
     enable_flattened_weight_sync: bool = True
     async_generate: bool = False
+    # # structured outputs (guided decoding), only effective for vllm backend
+    structured_outputs_regex: Optional[str] = None
 
     sleep_level: int = 0
     move_model_batches: Optional[int] = None

@@ -116,6 +116,7 @@ class MegatronRolloutMixin:
         # sampling params
         self.temperature = getattr(args, 'temperature', 1.0)
         self.max_completion_length = args.max_completion_length
+        structured_outputs_regex = getattr(args, 'structured_outputs_regex', None)
 
         self.request_config = RequestConfig(
             n=1,
@@ -126,7 +127,8 @@ class MegatronRolloutMixin:
             repetition_penalty=getattr(args, 'repetition_penalty', 1.0),
             stop=getattr(args, 'stop_words', None),
             return_details=True,
-            logprobs=True)
+            logprobs=True,
+            structured_outputs_regex=structured_outputs_regex)
 
         self._last_loaded_step = -1
         self._step = 0

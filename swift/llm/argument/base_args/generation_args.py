@@ -31,6 +31,10 @@ class GenerationArguments:
         logprobs (bool): Whether to output log probabilities of the generated tokens. Defaults to False.
         top_logprobs (Optional[int]): The number of top log probabilities to return for each token position. Requires
             `logprobs` to be True. Defaults to None.
+        structured_outputs_regex (Optional[str]): A regular expression pattern for structured outputs (guided decoding).
+            When set, the model's generation is constrained to match the specified regex pattern. This is useful for
+            tasks requiring structured outputs like reasoning chains. Only effective when `infer_backend` is 'vllm'.
+            Defaults to None.
     """
 
     # generation config
@@ -46,6 +50,8 @@ class GenerationArguments:
     stop_words: List[str] = field(default_factory=list)
     logprobs: bool = False
     top_logprobs: Optional[int] = None
+    # structured outputs (guided decoding), only effective for vllm backend
+    structured_outputs_regex: Optional[str] = None
 
     def _init_stream(self):
         if self.stream is None:
@@ -66,4 +72,5 @@ class GenerationArguments:
             stream=self.stream,
             repetition_penalty=self.repetition_penalty,
             logprobs=self.logprobs,
-            top_logprobs=self.top_logprobs)
+            top_logprobs=self.top_logprobs,
+            structured_outputs_regex=self.structured_outputs_regex)
