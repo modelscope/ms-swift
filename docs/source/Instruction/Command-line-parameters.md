@@ -214,7 +214,7 @@ gradient_checkpointing: true
   - 注意：当使用DDP而不使用deepspeed/fsdp，且gradient_checkpointing_kwargs为None，会默认设置其为`'{"use_reentrant": false}'`而避免出现报错。
 - full_determinism: 确保训练中获得可重现的结果，注意：这会对性能产生负面影响。默认为False。
 - 🔥report_to: 默认值为`tensorboard`。你也可以指定`--report_to tensorboard wandb swanlab`、`--report_to all`。
-  - 如果你指定了`--report_to wandb`，你可以根据`WANDB_PROJECT`输入项目名称，`WANDB_API_KEY`指定账户对应的API KEY。
+  - 如果你指定了`--report_to wandb`，你可以通过`WANDB_PROJECT`设置项目名称，`WANDB_API_KEY`指定账户对应的API KEY。
 - logging_first_step: 是否记录第一个step的日志，默认为True。
 - logging_steps: 日志打印间隔，默认为5。
 - router_aux_loss_coef: 用于moe模型训练时，设置 aux_loss 的权重，默认为`0.`。
