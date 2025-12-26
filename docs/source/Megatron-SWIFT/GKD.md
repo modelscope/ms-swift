@@ -20,7 +20,7 @@ Megatron GKD 当前已支持以下功能：
 
 - **教师模型在线生成**（`seq_kd=True`）：当前 Sequential KD 模式下的教师模型生成暂不支持
 - **非vLLM生成**：On-policy 生成当前仅支持 vLLM
-- **教师模型使用不同并行参数**: 将在未来版本支持
+- **教师模型使用与学生模型不同的并行参数**: 将在未来版本支持
 
 ⚠️ 注意事项：
 - **On-policy 生成**：需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）

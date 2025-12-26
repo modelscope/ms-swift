@@ -20,7 +20,7 @@ Megatron GKD currently supports the following features:
 
 - **Teacher Model Online Generation** (`seq_kd=True`): Teacher model generation in Sequential KD mode is not yet supported
 - **Non-vLLM Generation**: On-policy generation currently only supports vLLM
-- **Teacher Model with Different Parallel Parameters**: Will be supported in future versions
+- **Teacher model with different parallel parameters**: Will be supported in future versions
 
 ⚠️ Notes:
 - **On-policy Generation**: Requires vLLM (`--use_vllm true --vllm_mode colocate/server`)
