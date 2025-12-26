@@ -178,6 +178,8 @@ class TrainArgumentsMixin:
             logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = json_parse_to_dict(self.lr_scheduler_kwargs)
+        if 'wandb' in self.report_to:
+            os.environ.setdefault('WANDB_PROJECT', 'ms-swift')
         if self.vit_gradient_checkpointing is None:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:

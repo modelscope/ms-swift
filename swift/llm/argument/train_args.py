@@ -95,7 +95,7 @@ class SwanlabArguments:
             Supports 'dingtalk', 'lark', 'email', 'discord', 'wxwork', 'slack'.
         swanlab_webhook_url (Optional[str]): Defaults to None. The webhook URL corresponding to
             SwanLab's `swanlab_notification_method`.
-        swanlab_secret (Optional[str]): Defaults to None. The secret corresponding to 
+        swanlab_secret (Optional[str]): Defaults to None. The secret corresponding to
             SwanLab's `swanlab_notification_method`.
         swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
             for local-only logging.
@@ -121,9 +121,8 @@ class SwanlabArguments:
             swanlab.login(self.swanlab_token)
 
         if self.swanlab_notification_method is not None:
-            from swanlab.plugin.notification import (
-                LarkCallback, DingTalkCallback, EmailCallback, DiscordCallback, WXWorkCallback, SlackCallback
-            )
+            from swanlab.plugin.notification import (LarkCallback, DingTalkCallback, EmailCallback, DiscordCallback,
+                                                     WXWorkCallback, SlackCallback)
             notification_mapping = {
                 'lark': LarkCallback,
                 'dingtalk': DingTalkCallback,

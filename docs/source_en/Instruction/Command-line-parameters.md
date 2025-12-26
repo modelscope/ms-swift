@@ -217,7 +217,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
   - Note: When using DDP without DeepSpeed/FSDP and `gradient_checkpointing_kwargs` is `None`, it defaults to `'{"use_reentrant": false}'` to prevent errors.
 - full_determinism: Ensures reproducible results during training. Note: This may negatively impact performance. Default is `False`.
 - 🔥report_to: Default is `'tensorboard'`. You can specify multiple loggers, e.g., `--report_to tensorboard wandb swanlab`, or `--report_to all`.
-  - If you specify `--report_to wandb`, you can set the project name via `WANDB_PROJECT` (defaults to "ms-swift"), and specify the API KEY corresponding to your account via `WANDB_API_KEY`.
+  - If you specify `--report_to wandb`, you can set the project name via `WANDB_PROJECT`, and specify the API KEY corresponding to your account via `WANDB_API_KEY`.
 - logging_first_step: Whether to log metrics at the first step. Default is `True`.
 - logging_steps: Interval for logging. Default is 5.
 - router_aux_loss_coef: Used in MoE model training to set the weight of auxiliary loss. Default is `0.`.
