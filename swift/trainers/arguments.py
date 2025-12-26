@@ -46,7 +46,8 @@ class TrainArgumentsMixin:
         lr_scheduler_kwargs (Optional[Union[dict, str]]): Additional keyword arguments for the learning rate scheduler,
             passed as a JSON string or a dictionary. Defaults to None.
         report_to (List[str]): The list of integrations to report results to (e.g., 'tensorboard', 'wandb'). Defaults
-            to ['tensorboard'].
+            to ['tensorboard']. If you specify `--report_to wandb`, you can set the project name through `WANDB_PROJECT`
+            and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
         dataloader_num_workers (Optional[int]): The number of subprocesses to use for data loading. Defaults to None.
         dataloader_persistent_workers (bool): If True, the data loader workers will not be shut down after a dataset
             has been consumed once. Defaults to False.
