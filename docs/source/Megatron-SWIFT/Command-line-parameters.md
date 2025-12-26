@@ -325,7 +325,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
-- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'和'rm'。
+- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'、'rm'和'gkd'。
 - loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
@@ -404,6 +404,21 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking 阈值，来自 DeepSeek-V3.2 论文。当设置此值时，会计算每个序列的 `mean(old_policy_logps - policy_logps)`，若该值大于阈值且该序列的优势为负，则 mask 掉该序列不参与损失计算。默认为None，不启用。具体参考[文档](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking)。
 
 内置奖励函数参数参考[文档](../Instruction/Command-line-parameters.md#奖励函数参数)
+
+### GKD参数
+- teacher_model: 教师模型的路径或模型 ID，必需参数。
+- teacher_model_type: 教师模型类型，默认为None，自动检测。
+- teacher_model_revision: 教师模型版本，默认为None。
+- beta: JSD 散度插值系数。0.0 代表 Forward KL，0.5 代表对称 JSD，1.0 代表 Reverse KL。默认为0.5。
+- lmbda: On-Policy 学习触发概率。0.0 代表纯 Off-Policy，1.0 代表纯 On-Policy。默认为0.5。
+- seq_kd: 是否使用教师生成的响应（Sequential KD），当前暂不支持。默认为False。
+- temperature: 用于采样和损失计算的温度参数。默认为0.9。
+- offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
+- sft_alpha: SFT 损失的混合系数，`loss = jsd_loss + sft_alpha * sft_loss`。当使用数据集响应（Off-Policy）时生效。默认为0。
+- max_completion_length: 生成时的最大 token 数。默认为512。
+- vllm_mode: 同 GRPO 参数，用于 On-Policy 生成。colocate 模式下在程序内部署 vLLM。
+  - 注意：On-Policy 生成需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）。
+  - 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到 Off-Policy 模式。
 
 ## 导出参数
 这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。

@@ -103,7 +103,7 @@ elif seq_kd:
     y = teacher.generate(x)
     source = "teacher"
 else:
-    # Mode 3: Off-Policy 学习，使用数据集中的输出序列
+    # Mode 3: 使用数据集中的输出序列
     y = y_ground_truth
     source = "dataset"
 
@@ -128,7 +128,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 **数据来源**：$y \sim P_{\text{teacher}}(\cdot | x)$
 
-### Mode 3: Off-Policy 学习（其他情况）
+### Mode 3: 离线学习（其他情况）
 
 **数据来源**：$y = y^* \sim \text{Dataset}$
 
@@ -143,9 +143,10 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 |------|------|--------|---------|------|
 | `--teacher_model` | str | 必需 | - | 教师模型路径或模型 ID |
 | `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 纯 Off-Policy<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
+| `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，仅对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
 
 ## 采样加速

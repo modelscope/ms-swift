@@ -1,6 +1,6 @@
 # GKD
 
-GKD (Generalized Knowledge Distillation) training algorithm is proposed in the paper [On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes](https://arxiv.org/pdf/2306.13649). This algorithm transfers knowledge from the teacher model to the student model by combining off-policy and on-policy learning strategies.
+GKD (Generalized Knowledge Distillation) training algorithm is proposed in the paper [On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes](https://arxiv.org/pdf/2306.13649). This algorithm transfers knowledge from the teacher model to the student model by combining offline and on-policy learning strategies.
 
 ## Loss Function
 
@@ -103,7 +103,7 @@ elif seq_kd:
     y = teacher.generate(x)
     source = "teacher"
 else:
-    # Mode 3: Off-Policy learning, use output sequence from dataset
+    # Mode 3: Offline learning, use output sequence from dataset
     y = y_ground_truth
     source = "dataset"
 
@@ -128,7 +128,7 @@ Set parameter `seq_kd=True`, when on-policy is not triggered, use teacher model 
 
 **Data Source**: $y \sim P_{\text{teacher}}(\cdot | x)$
 
-### Mode 3: Off-Policy Learning (other cases)
+### Mode 3: Offline Learning (other cases)
 
 **Data Source**: $y = y^* \sim \text{Dataset}$
 
@@ -143,7 +143,7 @@ We can perform GKD training by setting the following parameters:
 |------|------|--------|---------|------|
 | `--teacher_model` | str | Required | - | Teacher model path or model ID |
 | `--beta` | float | 0.5 | [0.0, 1.0] | Divergence interpolation coefficient<br>• 0.0: Forward KL <br>• 0.5: JSD (balanced)<br>• 1.0: Reverse KL |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Off-Policy<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Offline<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | True/False | Whether to use teacher-generated sequences<br>• False: Use dataset when not on-policy<br>• True: Use teacher generation when not on-policy |
 | `--temperature` | float | 0.9 | > 0 | Generation sampling temperature, controls randomness |
 | `--max_completion_length` | int | 512 | > 0 | Maximum number of tokens during generation |

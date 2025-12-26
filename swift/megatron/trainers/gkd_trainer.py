@@ -94,7 +94,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _load_teacher_model(self, teacher_model_path: str, model_type: str):
         megatron_args = get_args()
-
+        vp_size = getattr(megatron_args, 'virtual_pipeline_model_parallel_size')
+        assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
         teacher_model_info, _ = get_model_info_meta(
             teacher_model_path,
             model_type=getattr(self.args, 'teacher_model_type', None),
