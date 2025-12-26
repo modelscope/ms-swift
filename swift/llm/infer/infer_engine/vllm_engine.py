@@ -443,8 +443,7 @@ class VllmEngine(InferEngine):
         # vLLM v0.12+ uses 'structured_outputs' parameter, older versions use 'guided_decoding'
         if request_config.structured_outputs_regex:
             structured_outputs_param = StructuredOutputsParams(regex=request_config.structured_outputs_regex)
-            if hasattr(SamplingParams,
-                       'structured_outputs') or 'structured_outputs' in [f for f in SamplingParams.__struct_fields__]:
+            if hasattr(SamplingParams, 'structured_outputs'):
                 kwargs['structured_outputs'] = structured_outputs_param
             else:
                 # Fallback for older vLLM versions
