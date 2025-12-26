@@ -489,7 +489,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 #### SWANLAB
 
 - swanlab_token: SwanLab的api-key。
-- swanlab_project: swanlab的project，需要在页面中预先创建好:[https://swanlab.cn/space/~](https://swanlab.cn/space/~)。
+- swanlab_project: swanlab的project，可以在页面中预先创建[https://swanlab.cn/space/~](https://swanlab.cn/space/~)或自动创建，默认为"ms-swift"。
 - swanlab_workspace: 默认为None，会使用api-key对应的username。
 - swanlab_exp_name: 实验名，可以为空，为空时默认传入--output_dir的值。
 - swanlab_notification_method: 在训练完成/发生错误时，swanlab的通知方式，具体参考[这里](https://docs.swanlab.cn/plugin/notification-dingtalk.html)。支持'dingtalk'、'lark'、'email'、'discord'、'wxwork'、'slack'。
