@@ -146,7 +146,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
-| `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，仅对非student生成结果生效 |
+| `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
 
 ## 采样加速

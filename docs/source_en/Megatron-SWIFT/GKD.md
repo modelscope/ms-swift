@@ -1,6 +1,6 @@
 # GKD
 
-**Version Requirement**: ms-swift >= 3.11
+**Version Requirement**: ms-swift >= 3.12
 
 If you are new to GKD, please refer to the [GKD Documentation](../Instruction/GKD.md) first.
 
@@ -38,7 +38,7 @@ Megatron GKD currently supports the following features:
 | `--lmbda` | float | 0.5 | On-Policy learning probability:<br>• 0.0: Pure Off-Policy<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | Use teacher-generated responses (not yet supported) |
 | `--temperature` | float | 0.9 | Temperature for sampling and loss computation |
-| `--offload_teacher_model` | bool | False | Offload teacher model to CPU to save memory |
+| `--sft_alpha` | float | 0 | Mix in a  proportion of SFT loss; applied to non-student-generated completions |
 | `--max_completion_length` | int | 512 | Maximum tokens for generation |
 
 ### Batch-related Parameters

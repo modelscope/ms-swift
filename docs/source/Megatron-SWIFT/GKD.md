@@ -1,6 +1,6 @@
 # GKD
 
-**版本依赖**：ms-swift >= 3.11
+**版本依赖**：ms-swift >= 3.12
 
 如果你是首次使用 GKD，请先参考 [GKD文档](../Instruction/GKD.md)。
 
@@ -38,7 +38,7 @@ Megatron GKD 当前已支持以下功能：
 | `--lmbda` | float | 0.5 | On-Policy 学习触发概率：<br>• 0.0: 纯 Off-Policy<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | 是否使用教师生成的响应（当前暂不支持） |
 | `--temperature` | float | 0.9 | 温度参数，用于采样和损失计算 |
-| `--offload_teacher_model` | bool | False | 是否将教师模型卸载到 CPU 以节省显存 |
+| `--sft_alpha` | float | 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | 生成时的最大 token 数 |
 
 ### 批量相关参数

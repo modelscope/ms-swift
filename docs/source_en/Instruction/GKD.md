@@ -146,6 +146,7 @@ We can perform GKD training by setting the following parameters:
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Offline<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | True/False | Whether to use teacher-generated sequences<br>• False: Use dataset when not on-policy<br>• True: Use teacher generation when not on-policy |
 | `--temperature` | float | 0.9 | > 0 | Generation sampling temperature, controls randomness |
+| `--sft_alpha` | float | 0 | >= 0 | Mix in a proportion of SFT loss; applied to non-student-generated completions |
 | `--max_completion_length` | int | 512 | > 0 | Maximum number of tokens during generation |
 
 ## Sampling Acceleration
