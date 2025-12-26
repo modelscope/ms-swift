@@ -2,14 +2,11 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field, fields
-from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import megatron.core
 import torch
-from megatron.core import parallel_state
-from megatron.training import global_vars, is_last_rank, wandb_utils
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -682,54 +679,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
-
-    @staticmethod
-    def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        create_group_origin = parallel_state.create_group
-
-        def create_group(ranks=None, timeout=None, *args, **kwargs):
-            if timeout is None:
-                timeout = timedelta(minutes=distributed_timeout_minutes)
-            return create_group_origin(ranks, timeout, *args, **kwargs)
-
-        parallel_state.create_group = create_group
-
-    def _patch_megatron_swanlab(self):
-
-        def _set_wandb_writer(*args, **kwargs):
-            assert global_vars._GLOBAL_WANDB_WRITER is None
-            if self.report_to is None or not is_last_rank():
-                return
-            config = vars(self)
-            save_dir = self.wandb_save_dir
-            if self.report_to == 'wandb':
-                import wandb
-                if save_dir is None:
-                    save_dir = os.path.join(self.save, 'wandb')
-                wandb.init(dir=save_dir, name=self.wandb_exp_name, project=self.wandb_project, config=config)
-                writer = wandb
-            elif self.report_to == 'swanlab':
-                import swanlab
-                if save_dir is None:
-                    save_dir = os.path.join(self.save, 'swanlab')
-                swanlab.init(
-                    logdir=save_dir, experiment_name=self.wandb_exp_name, project=self.wandb_project, config=config)
-                writer = swanlab
-            else:
-                raise ValueError(f'report_to must be one of "wandb", "swanlab", got {self.report_to}')
-
-            global_vars._GLOBAL_WANDB_WRITER = writer
-
-        global_vars._set_wandb_writer = _set_wandb_writer
-
-        origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
-
-        def on_save_checkpoint_success(*args, **kwargs):
-            if self.report_to == 'swanlab':
-                return
-            origin_on_save_checkpoint_success(*args, **kwargs)
-
-        wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
 
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')

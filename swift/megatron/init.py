@@ -8,6 +8,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from copy import copy
+from datetime import timedelta
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -815,6 +816,61 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
+def _patch_megatron_timeout():
+    from megatron.training import get_args
+    from megatron.core import parallel_state
+
+    create_group_origin = parallel_state.create_group
+
+    def create_group(ranks=None, timeout=None, *_args, **kwargs):
+        args = get_args()
+        if timeout is None:
+            timeout = timedelta(minutes=args.distributed_timeout_minutes)
+        return create_group_origin(ranks, timeout, *_args, **kwargs)
+
+    parallel_state.create_group = create_group
+
+
+def _patch_megatron_swanlab():
+    from megatron.training import global_vars, is_last_rank, wandb_utils, get_args
+
+    def _set_wandb_writer(*_args, **kwargs):
+        args = get_args()
+        assert global_vars._GLOBAL_WANDB_WRITER is None
+        if args.report_to is None or not is_last_rank():
+            return
+        config = vars(args)
+        save_dir = args.wandb_save_dir
+        if args.report_to == 'wandb':
+            import wandb
+            if save_dir is None:
+                save_dir = os.path.join(args.save, 'wandb')
+            wandb.init(dir=save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=config)
+            writer = wandb
+        elif args.report_to == 'swanlab':
+            import swanlab
+            if save_dir is None:
+                save_dir = os.path.join(args.save, 'swanlab')
+            swanlab.init(
+                logdir=save_dir, experiment_name=args.wandb_exp_name, project=args.wandb_project, config=config)
+            writer = swanlab
+        else:
+            raise ValueError(f'report_to must be one of "wandb", "swanlab", got {args.report_to}')
+
+        global_vars._GLOBAL_WANDB_WRITER = writer
+
+    global_vars._set_wandb_writer = _set_wandb_writer
+
+    origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
+
+    def on_save_checkpoint_success(*_args, **kwargs):
+        if args.report_to == 'swanlab':
+            return
+        origin_on_save_checkpoint_success(*_args, **kwargs)
+
+    wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
@@ -832,6 +888,8 @@ def _patch_megatron():
     _patch__write_item()
     _patch_megatron_tokenizer()
     _patch_mtp()
+    _patch_megatron_timeout()
+    _patch_megatron_swanlab()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
