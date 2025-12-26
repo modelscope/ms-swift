@@ -374,11 +374,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for encoded_batch in encoded_batches:
             # Deep copy to avoid modifying original batch
             teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
+            teacher_batch.pop('data_source', None)
             teacher_data = self._prepare_batch(teacher_batch)
             teacher_data.pop('loss_scale', None)
             # Remove labels so returns logits instead of loss
             teacher_data.pop('labels', None)
-            teacher_data.pop('data_source', None)
             # Teacher forward with args override for correct hidden_size
             with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
@@ -676,13 +676,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
+            data = next(data_iterator)
+            data_source = data.pop('data_source', DataSource.DATASET)
+            teacher_logits = data.pop('teacher_logits', None)
+            data = self._prepare_batch(data, vp_stage)
         timers('batch-generator').stop()
 
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
-        teacher_logits = data.pop('teacher_logits', None)
-        data_source = data.pop('data_source', DataSource.DATASET)
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
