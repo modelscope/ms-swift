@@ -20,15 +20,23 @@ For detailed environment setup, please refer to the [Ascend PyTorch installation
 ## Environment Preparation
 
 Experiment Environment: 8 * Ascend 910B3 64G
-
+### Environment Installation
 ```shell
 # Create a new conda virtual environment (optional)
 conda create -n swift-npu python=3.10 -y
 conda activate swift-npu
 
+# Note: Before proceeding with subsequent operations, you need to source and activate CANN environment first
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
 # Set pip global mirror (optional, to speed up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install ms-swift -U
+
+# Install from source
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
 
 # Install torch-npu
 pip install torch-npu decorator
@@ -41,8 +49,20 @@ pip install evalscope[opencompass]
 # If you need to use vllm-ascend for inference, please install the following packages
 pip install vllm==0.11.0
 pip install vllm-ascend==0.11.0rc3
+```
 
-# If you need to use MindSpeed ​​(Megatron-LM), please install the following packages
+Check if the test environment is installed correctly and whether the NPU can be loaded properly.
+```python
+from transformers.utils import is_torch_npu_available
+import torch
+
+print(is_torch_npu_available())  # True
+print(torch.npu.device_count())  # 8
+print(torch.randn(10, device='npu:0'))
+```
+
+**If you need to use MindSpeed (Megatron-LM), please follow the guide below to install the necessary dependencies**
+```shell
 # 1. Obtain and switch Megatron-LM to core_v0.12.1
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
@@ -60,17 +80,11 @@ cd ..
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
-
-Check if the test environment is installed correctly and whether the NPU can be loaded properly.
-```python
-from transformers.utils import is_torch_npu_available
-import torch
-
-print(is_torch_npu_available())  # True
-print(torch.npu.device_count())  # 8
-print(torch.randn(10, device='npu:0'))
+Run the following command to verify if MindSpeed (Megatron-LM) is configured successfully:
+```shell
+python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU environment Megatron-SWIFT configuration verified successfully!')"
 ```
-
+### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
 ```shell
 (valle) root@valle:~/src# npu-smi info -t topo
@@ -95,7 +109,7 @@ Legend:
   NA   = Unknown relationship.
 ```
 
-Check the status of the NPU. Detailed information about the `npu-smi` command can be found in the [official documentation](https://support.huawei.com/enterprise/zh/doc/EDOC1100079287/10dcd668).
+Check the status of the NPU. For detailed information about the `npu-smi` command, please refer to the [official documentation](https://support.huawei.com/enterprise/en/doc/EDOC1100079287/10dcd668).
 ```shell
 (valle) root@valle:~/src# npu-smi info
 +------------------------------------------------------------------------------------------------+
@@ -345,6 +359,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | Using sglang as inference engine |
 
 
-## NPU Wechat Group
+## NPU WeChat Group
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/npu.png" width="250">
