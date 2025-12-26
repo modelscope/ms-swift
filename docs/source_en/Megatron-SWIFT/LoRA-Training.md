@@ -10,6 +10,8 @@ For environment setup, please refer to the [Quick Start Guide](./Quick-start.md)
 ### Converting HF to Mcore
 
 Below, we introduce weight conversion using the `swift export` and `megatron export` commands respectively. Compared to `swift export`, `megatron export` supports multi-node and LoRA incremental weight conversion, but is also more complex, requiring additional specification of parallelism parameters during export, such as `--tensor_model_parallel_size` and `--export_model_parallel_size`. For details, refer to the [Mcore-Bridge Documentation](./Mcore-Bridge.md). To use the `swift export` command, refer to the [Quick Start Documentation](./Quick-start.md).
+- `swift export` uses a single process, places HF weights on the GPU, and uses device_map for parallelization; mcore weights are placed on the CPU without enabling parallelization. This approach is very easy to debug and test the precision alignment between HF and mcore.
+- `megatron export` uses torchrun to launch multiple processes, places mcore weights on the GPU, supports enabling various parallelization methods, fp8, mtp, etc., with comprehensive functionality. If precision alignment testing is needed, the last rank will load HF weights and place them on the CPU.
 
 
 ```shell

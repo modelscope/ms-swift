@@ -141,7 +141,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             if isinstance(val, list) and val and min(val) == max(val):
                 res[key] = val[0]
         n_shared_experts = res.pop('n_shared_experts')
-    elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
+    elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM', 'Glm4ForCausalLM'}:
         res['rotary_interleaved'] = True
     elif llm_architectures == 'GptOssForCausalLM':
         res['disable_bias_linear'] = False
@@ -184,11 +184,15 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 for i in range(res['num_layers'])
             ]
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
-    if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
+    elif architectures == 'Glm4vForConditionalGeneration':
+        res['rotary_interleaved'] = True
+    rope_scaling = res.get('rope_scaling') or {}
+    if 'partial_rotary_factor' not in res and 'partial_rotary_factor' in rope_scaling:
+        res['partial_rotary_factor'] = rope_scaling['partial_rotary_factor']
+    if rope_scaling.get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
-        res['mrope_section'] = res['rope_scaling']['mrope_section']
-        mrope_interleaved = res['rope_scaling'].get('mrope_interleaved', False) or res['rope_scaling'].get(
-            'interleaved', False)
+        res['mrope_section'] = rope_scaling['mrope_section']
+        mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
 
     if first_k_dense_replace is not None:

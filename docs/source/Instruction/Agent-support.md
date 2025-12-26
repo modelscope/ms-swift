@@ -198,7 +198,7 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 2. 正则匹配示例：忽略空思维块
 
-在训练推理模型时，我们可能需要忽略数据集中存在的形如 `<think>\n\n</think>\n\n`的空思维标记损失计算。此时可使用 `--loss_scale ignore_empty_think`（配置文件详见 [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)）。该配置采用正则表达式匹配方式，字典映射的列表只需指定一个值，表示匹配内容的损失权重。该设置的具体效果如下：
+在训练推理模型时，我们可能需要忽略数据集中存在的形如 `'<think>\n\n</think>\n\n'`的空思维标记损失计算。此时可使用 `--loss_scale ignore_empty_think`（配置文件详见 [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)）。该配置采用正则表达式匹配方式，字典映射的列表只需指定一个值，表示匹配内容的损失权重。该设置的具体效果如下：
 
 - 所有与正则表达式`<think>\\s*</think>\\s*`匹配的字符串，loss_scale为0，即不计算损失。
 

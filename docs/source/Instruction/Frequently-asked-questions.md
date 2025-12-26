@@ -40,15 +40,6 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 ### Q12: 我想控制一下从网上下载下来的原始模型权重的位置，怎么才能做到把原始的模型放在指定的文件夹里呢？
 可以配置环境变量`MODELSCOPE_CACHE=your_path`将原始的模型存到指定路径；如果用sdk下载，通过`cache_dir="本地地址"`；也可以使用`modelscope download`命令行工具或`git`下载，详见modelscope文档[模型下载](https://modelscope.cn/docs/models/download)。训练时`--model`配置本地路径即可。如果需要在离线环境训练，配置`--check_model false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
-### Q13: 有人在用ms-swift遇到过这个问题？
-```text
-[rank6]: pydantic_core._pydantic_core.ValidationError: 1 validation error for DeepSpeedZeroConfig
-[rank6]: stage3_prefetch_bucket_size
-[rank6]: Input should be a valid integer, got a number with a fractional part [type=int_from_float,input_value=11560550.4，in put_type=float]
-[rank6]: For further information visit https://errors.pydantic.dev/2.8/v/int_fro_float
-```
-`deepspeed`版本降到`0.14.*`。
-
 ### Q14: 有微调qwen-2-vl的完整的教程和命令行吗？
 参考多模态模型训练的[例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal)。
 
@@ -83,7 +74,7 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 配置`--freeze_vit true`，以及限制最大像素的参数`--max_pixels`。
 
 ### Q25: 没有适配model_type的模型，sft时可以自定义special_tokens和chat_template吗？
-可以。参考接入模型的PR以及自定义模型数据集文档。
+可以。参考[注册多模态模型最佳实践](https://swift.readthedocs.io/zh-cn/latest/BestPractices/MLLM-Registration.html)。
 
 ### Q26: 可以在python脚本里面用DPO去训练qwen2-vl吗？
 可以。从`swift.llm`中导入`rlhf_main` 和`RLHFArguments`。
@@ -97,8 +88,8 @@ V100机器要用fp32训练qwen2。
 ### Q29: 想问一下，swift，能支持蒸馏吗？
 参考这个[例子](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh)。
 
-### Q30: 当前训练完默认最多保存两个checkpoint，如果想多保存几个应该怎么修改呢？
-`--save_total_limit`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
+### Q30: 当前训练完默认保存多少个checkpoint？
+默认保存所有的checkpoint，详见[命令行参数 save_total_limit](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。该参数在megatron swift中不支持，请设置save_interval保存checkpoint，详见[megatron swift命令行参数](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
 
 ### Q31: Grounding任务中通用数据格式支持一个类别有多个实例吗？
 目前均支持了一个物体对应多个bbox，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)。
@@ -516,6 +507,99 @@ rollout应该是不兼容pipeline parallel。
 ### Q147: 多机多卡训练，只有主节点有日志，是正常的吗？
 正常的。
 
+### Q148: swift能够支持设置最小的learning rate吗，感觉最后减到太小了
+可以设置，`--lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'`。
+
+### Q149: 设置了split_dataset_ratio，但是一直到训练结束也没有验证集的验证过程，是哪里没配置好吗？
+流式读取streaming不划分验证集，设置一下val_dataset。
+
+### Q150: grpo支持channel_loss吗
+不支持。
+
+### Q151: 请问grpo有什么办法透传task_id吗？想区别训练集的不同task。
+[多任务训练](https://swift.readthedocs.io/zh-cn/latest/Instruction/GRPO/DeveloperGuide/multi_task.html)。
+
+### Q152: 目前支持用yaml文件配置grpo和sft吗？
+都支持的，该配置是在main.py中直接处理成命令行。
+
+### Q153: swift支持多节点的分布式训练吗？
+参考这里的[例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)。
+
+### Q154: 几个任务一起finetune vlm，不同任务视频采样规则不一致，ms swift是否支持？在哪里配置？
+[命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)看下`interleave_prob`。
+
+### Q155: 请教gkd现在支持教师和学生模型tokenizer不一样吗？
+不支持。
+
+### Q156: 请问现在是不支持use_liger_kernel和log_entropy一起用吗？
+不支持。
+
+### Q157: 训练grpo的时候，进行观察的时候，怎么没有熵这个曲线呀
+设置`--log_entropy true`，算entropy会有额外的一点开销，所以没有默认记录。
+
+### Q158: swift里把图像读进来转换成tensor的位置在哪里？
+Template的_encode方法。
+
+### Q159: 问一下，原始数据集包含question和answer两列，命令行做映射之后--columns {"question": "query", "answer": "response"}，奖励函数无论是用answer还是response都会报错没有列。怎么样才能把数据集的列透传进去呢？
+这些是保留列，换个列名。
+
+### Q160: 想问下，ms-swift对qwen3-30b-a3b的moe模型lora微调，aux-loss基本没变化，即使设置aux-loss-coef为1也没变化。
+all-router也加到target_modules。
+
+### Q161: 下面的脚本，可以按epoch保存checkpoint吗？
+```shell
+megatron sft \
+    --load "$MODEL_PATH" \
+    --dataset "$DATA_PATH"  \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 16 \
+    --target_modules all-linear \
+    --sequence_parallel true \
+    --micro_batch_size 4 \
+    --global_batch_size 128 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --attention_backend flash \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-4 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-5 \
+    --max_epochs 2 \
+    --save "$OUTPUT_PATH" \
+    --split_dataset_ratio 0.02 \
+    --save_interval 25 \
+    --max_length 8192 \
+    --finetune false \
+    --num_workers 4 \
+    --no_load_rng true \
+    --no_load_optim true \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+还没支持按epoch存储。
+
+### Q162: 请问下，遇到这个报错，怎么处理？安装了apex也不行
+```text
+RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
+```
+设置一下`--no_gradient_accumulation_fusion true`。
+
+### Q163: moe的lora训练，target_modules参数设置了all-linear，是包括了路由器模块吗？
+看gate是否是nn.Linear实现，如果是nn.Parameter就不训练，详见命令行参数[target_parameters](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#tuner)。
+
+### Q164: grpo训练colocate模式不支持use_async_engine吗？
+不支持。
+
+### Q165: qlora训练后的模型可以merge吗？
+参考[qlora例子](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora)。
+
 ## 推理
 
 ### Q1:swift推理有文档吗？
@@ -652,11 +736,8 @@ CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwe
 ### Q35: swift sample的时候，好像不支持batch？好像是for循环一个个例子sample，有点慢
 有一个[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/rft/rft.py)，可以用多进程对数据集拆分采样。
 
-### Q36: 请问swift支持embedding模型的推理吗？出现如下报错了
-```text
-[rank0]:[W511 17:18:01.815062493ProcessGroupNCCL.cpp:1250]Warning: WARNING: process group has NOT been destroyed before we destruct Proc essGroupNCCL. On normal program exit, the application should call des troy_process_group to ensure that any pendingNCCL operations have fi nished in this process. In rare cases this process can exit before th is point and block the progress of another member of the process grou p. This constraint has always been present, but this warning has onl y been added since PyTorch 2.4 (function operator( ))
-```
-embedding模型推理请使用官方模型代码，swift还没支持。
+### Q36: 请问swift支持embedding模型的推理吗？
+参考这里的[例子](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py)。
 
 ### Q37: swift框架推理支持模型或者张量并行么？训练不会oom，推理时候报oom了
 ```shell
@@ -717,6 +798,18 @@ topk设置成1就可以了。
 raise ValueError(f"Unknown initialization {init_lora_weights=}") ValueError: Unknown initialization init_lora_weights='lora-ga'
 ```
 在你的checkpoint文件夹里面有一个叫converted的文件夹，用那个。
+
+### Q49: 使用swift infer命令进行推理，支持多机推理吗？
+如果单节点放得下模型，外面封装k8s就行。如果单节点放不下那就不支持。
+
+### Q50: 推理时如何计算acc/rouge等指标？
+参考[推理参数metric](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id14)。
+
+### Q51: 如何将system_prompt置空？我删除了--system参数，但是它会给我加上默认的system。
+设置`--system ''`。
+
+### Q52: 推理数据里面有一个extra字段，推理结果没法保存这个字段，应该如何设置才能保存额外的字段呢？
+设置`--remove_unused_columns false`。
 
 ## 部署
 
@@ -791,6 +884,9 @@ system优先级：数据集中的>命令行的>template中默认的。
 
 ### Q22: swift pt engine部署模型后，推理无法并行，数据也没办法分配到其他显卡上，用的全是第一张卡。
 尝试swift infer，deploy不支持DDP。
+
+### Q23: swift deploy部署的模型，怎么在客户端禁止thinking？我在请求的时候加了extra body也不行。
+现在只能在swift deploy启动的时候禁止thinking。
 
 ## 评测
 
@@ -981,3 +1077,9 @@ swift eval不支持ddp方式启动。
 
 ### Q35: 请问，使用evalscope评测 如何控制input token为固定长度？
 控制长度只支持random数据集，参考[文档](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/stress_test/examples.html#random)。
+
+### Q36: evalscope app找不到报告是怎么回事，outputs目录下明明有对应的记录
+可能是推理性能压测，evalscope perf可视化参考[文档](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/stress_test/examples.html#id5)。
+
+### Q37: 请问哪里可以看到swift评测的时候送入的query除了问题之外还有哪些额外的字段呢？
+最简单的方法是看输出的reviews文件中的input字段，是输入给模型的内容转换后的markdown格式。如果用backend是opencompass的话没有这些，需要用native backend。

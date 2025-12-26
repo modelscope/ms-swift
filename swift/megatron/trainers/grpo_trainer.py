@@ -32,7 +32,7 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from ..utils import forward_step_helper, get_padding_to
+from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
@@ -56,6 +56,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._prepare_rewards()
         self._prepare_scheduler()  # TODO
         self._init_rollout_engine()  # Use mixin's rollout engine initialization
+        # Initialize trainer state for reward functions to access training progress
+        # Will be updated with actual values from Megatron args during training
+        self.state = MegatronTrainerState()
 
     def train(self, train_dataset, val_dataset, data_collator):
         # Store dataset provider for lazy resample iterator initialization
@@ -610,7 +613,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         device = self.device
         rewards_per_func = torch.zeros((len(batch), len(self.reward_funcs)), device=device)
         completions = [inp['messages'][-1]['content'] for inp in batch]
-        reward_kwargs = {}  # TODO: training step info
+
+        reward_kwargs = {'trainer_state': self.get_trainer_state()}
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with profiling_context(self, reward_func_name):
@@ -628,6 +632,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
+            reward_kwargs.pop('trainer_state')
             row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
@@ -1679,8 +1684,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         log_ratio = per_token_logps - rollout_per_token_logps
         log_ratio = log_ratio * completion_mask
 
-        # 2a. kl: Direct estimator for KL(π_training || π_rollout)
-        kl = masked_mean(log_ratio, completion_mask)
+        # 2a. kl: Direct estimator for KL(π_rollout || π_training)
+        kl = masked_mean(-log_ratio, completion_mask)
         metrics['kl'] = gather(kl.unsqueeze(0), group=dp_group).nanmean()
 
         # 2b. k3_kl: K3 estimator for KL
@@ -1801,3 +1806,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'loss_type': str(self.args.loss_type)
         }
         return config
+
+    def get_trainer_state(self):
+        args = get_args()
+        self.state.update(
+            global_step=getattr(args, 'curr_iteration', 0) or 0, max_steps=getattr(args, 'train_iters', 0) or 0)
+        return self.state

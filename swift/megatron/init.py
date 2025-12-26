@@ -716,17 +716,15 @@ def _patch_mrope():
         else:
             # first part even vector components, second part odd vector components,
             #  2 * dim in dimension size
-            if not self.rotary_interleaved:
-                emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+            if self.rotary_interleaved:
+                emb = torch.cat([m[i % 3] for i, m in enumerate(freqs.split(mrope_section, dim=-1))], dim=-1)
+                emb = emb.repeat_interleave(2, dim=-1)
             else:
-                bs = freqs.shape[1]
-                emb = torch.stack((freqs.reshape(3, bs, -1, 1), freqs.reshape(3, bs, -1, 1)),
-                                  dim=-1).view(3, bs, freqs.shape[2], -1)
-
-            # generate freqs with mrope_section
-            # shape (bs, seq_length, 2 * dim)
-            mrope_section = mrope_section * 2
-            emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
+                emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+                # generate freqs with mrope_section
+                # shape (bs, seq_length, 2 * dim)
+                mrope_section = mrope_section * 2
+                emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
 
         # shape (seq_length, bs, 1, 2 * dim)
         emb = emb[..., None, :].transpose(0, 1).contiguous()

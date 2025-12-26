@@ -719,6 +719,12 @@ class SequenceParallel:
                     extra_values[i], dim=extra_split_values[i][2], position_ids=real_position_ids)
         return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale, extra_values
 
+    def _gather_object_dp(self, input_data):
+        """Gather object for data parallel"""
+        input_data_list = [None] * self.dp_world_size
+        dist.all_gather_object(input_data_list, input_data, group=self.dp_group)
+        return [x for y in input_data_list for x in y]
+
     def _init_device_mesh(self):
         """Initialize device mesh for sequence and ring parallel.
 

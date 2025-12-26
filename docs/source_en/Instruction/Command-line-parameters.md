@@ -52,13 +52,14 @@ The command-line arguments will be introduced in four categories: basic argument
 - init_strategy: Strategy for initializing uninitialized parameters when loading a model (especially useful for custom architectures). Options: `'zero'`, `'uniform'`, `'normal'`, `'xavier_uniform'`, `'xavier_normal'`, `'kaiming_uniform'`, `'kaiming_normal'`, `'orthogonal'`. Default is `None`.
 
 ### Data Arguments
-- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. Each dataset should be specified in the format: `'dataset_id_or_path:subset#sample_count'`, where subset and sample count are optional. Local datasets support formats such as jsonl, csv, json, and folders. **Open-source datasets from the hub can be used offline by `git clone`-ing them locally and passing the local folder path**. For custom dataset formats, refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md). You can use multiple datasets by passing `--dataset <dataset1> <dataset2>`.
+- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. Each dataset should be specified in the format: `'dataset_id_or_path:subset#sample_size'`, where subset and sample size are optional. Local datasets support formats such as jsonl, csv, json, and folders. **Open-source datasets from the hub can be used offline by `git clone`-ing them locally and passing the local folder path**. For custom dataset formats, refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md). You can use multiple datasets by passing `--dataset <dataset1> <dataset2>`.
   - Subset: This parameter is only effective when the dataset is a dataset ID or a folder. If subsets were specified during registration and only one exists, that subset is selected by default; otherwise, the default subset `'default'` is used. You can select multiple subsets using `/`, e.g., `<dataset_id>:subset1/subset2`. You can also use `'all'` to select all registered subsets, e.g., `<dataset_id>:all`. See an example of registration [here](https://modelscope.cn/datasets/swift/garbage_competition).
-  - Sampling count: By default, the full dataset is used. You can sample the dataset by specifying `#sample_count`. If the sample count is less than the total number of samples, random sampling without replacement is performed. If the sample count exceeds the total, the dataset is repeated `sample_count // total_samples` times, with an additional `sample_count % total_samples` samples randomly sampled. Note: For streaming datasets (`--streaming true`), only sequential sampling is performed. If `--dataset_shuffle false` is set, non-streaming datasets also use sequential sampling.
+  - Sampling size: Uses the complete dataset by default. You can sample from the selected dataset by setting `#sample_size`, for example `<dataset_path#1000>`. If the sample size is less than the total number of samples, random sampling without replacement is performed. If the sample count exceeds the total, the dataset is repeated `sample_size // total_samples` times, with an additional `sample_size % total_samples` samples randomly sampled. Note: For streaming datasets (`--streaming true`), only sequential sampling is performed. If `--dataset_shuffle false` is set, non-streaming datasets also use sequential sampling.
 - 🔥val_dataset: A list of validation dataset IDs or paths. Default is `[]`.
 - 🔥cached_dataset: Use cached datasets (generated with the command `swift export --to_cached_dataset true ...`) to avoid GPU time being occupied by tokenization during training/inference on large datasets. This parameter is used to set the folder path(s) of cached training datasets, and defaults to `[]`. For examples, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
   - Note: In "ms-swift>=3.11", cached_dataset only stores an additional length field in the dataset (to avoid storage pressure) and filters out data samples that would cause errors. During training/inference, the `--max_length` parameter is supported for filtering/truncating excessively long data and the `--packing` parameter is supported. The actual data preprocessing process occurs synchronously during training and overlaps with the training process, which does not affect training speed.
   - cached_dataset is universal between `ms-swift` and `Megatron-SWIFT`, and supports pt/sft/infer/rlhf (requires "ms-swift>=3.11"), use `--template_mode` to set the training type; in "ms-swift>=3.12", it supports embedding/reranker/seq_cls tasks, use `--task_type` to set the task type.
+  - In "ms-swift>=3.12", support for sampling from cache_dataset has been added, with the syntax `<cached_dataset_path>#sample_size`. It supports cases where the sample size is both greater than and less than the number of samples. For functionality and implementation, refer to the introduction of `--dataset`.
 - cached_val_dataset: Folder path(s) for cached validation datasets, default is `[]`.
 - 🔥split_dataset_ratio: The ratio for splitting a validation set from the training set when `val_dataset` is not specified. Default is `0.`, meaning no splitting occurs.
   - Note: In "ms-swift<3.6", the default value was `0.01`.
@@ -73,8 +74,8 @@ The command-line arguments will be introduced in four categories: basic argument
 - streaming: Whether to stream and process the dataset on-the-fly. Default is `False`. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
   - Note: You must set `--max_steps` explicitly, as streaming datasets do not have a defined length. You can achieve behavior equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and a large `max_steps`. Alternatively, set `max_epochs` to ensure training stops after the specified number of epochs, allowing model evaluation and checkpoint saving.
   - Note: Streaming avoids waiting for preprocessing by overlapping it with training. However, preprocessing is only performed on rank 0 and then distributed to other processes. **This is typically less efficient than non-streaming data sharding**. When the training `world_size` is large, preprocessing and data distribution can become a bottleneck.
-- interleave_prob: Default is `None`. By default, multiple datasets are combined using `concatenate_datasets` from the datasets library. If this parameter is set, `interleave_datasets` is used instead. This is typically used for combining streaming datasets and is passed directly to `interleave_datasets`.
-- stopping_strategy: Options are `"first_exhausted"` or `"all_exhausted"`. Default is `"first_exhausted"`. Passed to the `interleave_datasets` function.
+- interleave_prob: Default is `None`. By default, multiple datasets are combined using `concatenate_datasets` from the datasets library. If this parameter is set, `interleave_datasets` is used instead. This is typically used for combining streaming datasets and is passed directly to `interleave_datasets`. This parameter does not apply to `--val_dataset`.
+- stopping_strategy: Options are `"first_exhausted"` or `"all_exhausted"`. Default is `"first_exhausted"`. Passed to the `interleave_datasets` function. This parameter does not apply to `--val_dataset`.
 - shuffle_buffer_size:  Specifies the shuffle buffer size for **streaming datasets**. Default is `1000`. Only effective when `dataset_shuffle` is `True`.
 - download_mode: Dataset download mode. Options: `'reuse_dataset_if_exists'` or `'force_redownload'`. Default is `'reuse_dataset_if_exists'`.
   - Typically set to `--download_mode force_redownload` when encountering errors with hub datasets.
@@ -104,21 +105,25 @@ The command-line arguments will be introduced in four categories: basic argument
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
   - Note: `swift pt` defaults to `False`, using the generation template. This setting provides good **compatibility with multimodal models**.
+- padding_side: Padding side when training with `batch_size >= 2`. Options: `'left'`, `'right'`. Default is `'right'`.
+  - Note: PPO and GKD default to `'left'`. (During inference with `batch_size >= 2`, only left-padding is applied.)
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
-- padding_side: Padding side when training with `batch_size >= 2`. Options: `'left'`, `'right'`. Default is `'right'`.
-  - Note: PPO and GKD default to `'left'`. (During inference with `batch_size >= 2`, only left-padding is applied.)
-- loss_scale: Loss weighting strategy for training tokens. Default is `'default'`, meaning all response tokens (including history) are weighted at 1 in cross-entropy loss (**tokens from system/user/multimodal inputs in messages, and `tool_response` in Agent training, are excluded from loss calculation**). Options include `'default'`, `'last_round'`, `'all'`, `'ignore_empty_think'`, `'last_round_with_ignore_empty_think'`, and agent-specific scales: `'react'`, `'hermes'`, `'qwen'`, `'agentflan'`, `'alpha_umi'`, etc. See [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py) for full list.
-  - 'last_round': Only compute loss for the final round of response. (Commonly used; **RLHF defaults to this**)
-  - 'all': Compute loss for all tokens. (**`swift pt` defaults to this**)
-  - 'ignore_empty_think': Based on 'default', ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
-  - 'last_round_with_ignore_empty_think': Based on 'last_round', ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
-  - `'react'`, `'hermes'`, `'qwen'`: Based on `'default'`, adjust the loss weight of the `tool_call` portion to 2.
+- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py). ms-swift>=3.12 supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
+  - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are not included in loss calculation**). (**Default value for SFT**)
+  - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round means all content after the last "user", previously it only included the last "assistant". (**Default value for RLHF**)
+  - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
+  - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+  - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
 - sequence_parallel_size: Size for sequence parallelism. Default is 1. Currently supported in CPT/SFT/DPO/GRPO. Training scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
-- response_prefix: Prefix string for the model's response. For example, QwQ-32B sets `response_prefix` to `'\<think\>\n'`. This parameter only takes effect during inference. Default is `None`, automatically determined by the model.
 - template_backend: Backend for template processing. Options are `'swift'` or `'jinja'`. Default is `'swift'`. If `'jinja'` is used, `apply_chat_template` from Transformers will be applied.
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).
+- response_prefix: The prefix string for responses, this parameter only takes effect during inference. Default is None, determined by the enable_thinking parameter and template type.
+- enable_thinking: (ms-swift>=3.12) This parameter takes effect during inference, indicating whether to enable thinking mode. Default is None, the default value is determined by the template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates). If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix. If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`. Note: The priority of this parameter is lower than the response_prefix parameter.
+  - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled, we will remove historical thinking content during both inference and training (the thinking content of the last round is retained, i.e., the content after the last user message). If the basic strategy of loss_scale during training is not last_round, for example 'default', then historical thinking content will not be removed.
+- add_non_thinking_prefix: This parameter only takes effect during training, indicating whether to add a non-thinking prefix to data samples whose assistant part does not start with the thinking marker `'<think>'` (typically hybrid thinking models contain a non-thinking prefix). This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True. For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`. Note: During training, if the basic strategy of loss_scale is last_round, this modification is only applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to every round of data. If set to False, no non-thinking prefix is added to data samples.
+
 
 ### Generation Arguments
 
@@ -212,6 +217,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
   - Note: When using DDP without DeepSpeed/FSDP and `gradient_checkpointing_kwargs` is `None`, it defaults to `'{"use_reentrant": false}'` to prevent errors.
 - full_determinism: Ensures reproducible results during training. Note: This may negatively impact performance. Default is `False`.
 - 🔥report_to: Default is `'tensorboard'`. You can specify multiple loggers, e.g., `--report_to tensorboard wandb swanlab`, or `--report_to all`.
+  - If you specify `--report_to wandb`, you can set the project name through `WANDB_PROJECT` and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
 - logging_first_step: Whether to log metrics at the first step. Default is `True`.
 - logging_steps: Interval for logging. Default is 5.
 - router_aux_loss_coef: Used in MoE model training to set the weight of auxiliary loss. Default is `0.`.
@@ -248,8 +254,12 @@ Other important parameters:
 - 🔥dataloader_num_workers: Default is `None`. On Windows, set to 0; otherwise, 1.
 - dataloader_pin_memory: Default is `True`.
 - dataloader_persistent_workers: Default is `False`.
-- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, set to 10.
+- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, it is set to 2. Number of batches loaded in advance by each worker. 2 means there will be a total of 2 * num_workers batches prefetched across all workers.
+  - In "ms-swift<3.12", the default value is 10, which may cause out of memory issues.
 - train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
+- optim: The optimizer, defaults to `"adamw_torch"` (for torch>=2.8 `"adamw_torch_fused"`). For a complete list of optimizers, please see `OptimizerNames` in [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py).
+- optim_args: Optional arguments to pass to the optimizer, defaults to None.
+- group_by_length: (ms-swift>=3.12) Whether to group samples with approximately the same length together in the training dataset (with a random factor) to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
   - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
@@ -465,7 +475,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
-- 🔥packing: Packs data samples of varying lengths into samples of uniform length, achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples remain independent and invisible to each other. This parameter defaults to `False` and currently supports CPT/SFT/DPO/KTO/GKD. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
+- 🔥packing: Packs data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples remain independent and invisible to each other. This parameter defaults to `False` and currently supports CPT/SFT/DPO/KTO/GKD. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
   - "ms-swift>=3.12" has newly added support for packing in embedding/reranker/seq_cls tasks.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
@@ -489,13 +499,14 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 #### SWANLAB
 
-- swanlab_token: SwanLab's API key
-- swanlab_project: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
-- swanlab_workspace: Defaults to `None`, will use the username associated with the API key
-- swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
-- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
-- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
-- swanlab_mode: Optional values are `cloud` and `local`, representing cloud mode or local mode
+- swanlab_token: The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY` environment variable.
+- swanlab_project: The SwanLab project, which can be created in advance on the page [https://swanlab.cn/space/~](https://swanlab.cn/space/~) or created automatically. The default is "ms-swift".
+- swanlab_workspace: Defaults to `None`, will use the username associated with the API key.
+- swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default.
+- swanlab_notification_method: The notification method for SwanLab when training completes or errors occur. For details, refer to [here](https://docs.swanlab.cn/plugin/notification-dingtalk.html). Supports 'dingtalk', 'lark', 'email', 'discord', 'wxwork', 'slack'.
+- swanlab_webhook_url: Defaults to None. The webhook URL corresponding to SwanLab's `swanlab_notification_method`.
+- swanlab_secret: Defaults to None. The secret corresponding to SwanLab's `swanlab_notification_method`.
+- swanlab_mode: Optional values are `cloud` and `local`, representing cloud mode or local mode.
 
 ### RLHF Arguments
 

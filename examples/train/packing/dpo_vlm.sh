@@ -29,4 +29,5 @@ swift rlhf \
     --dataset_num_proc 64 \
     --attn_impl flash_attn \
     --save_only_model true \
+    --rpo_alpha 0.1 \
     --packing true

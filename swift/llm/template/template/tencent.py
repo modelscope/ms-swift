@@ -22,8 +22,9 @@ class HunYuanVLTemplateMeta(TemplateMeta):
 
 class HunYuanVLTemplate(Template):
     image_token_id = 120120
-    image_token = '<｜hy_place▁holder▁no▁102｜>'
-    image_placeholder = ['<｜hy_place▁holder▁no▁102｜>']
+    placeholder_tokens = ['<｜hy_place▁holder▁no▁102｜>']
+
+    # support_padding_free = True  # position_ids with batch_dim of 0 does not support padding_free
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -84,6 +85,13 @@ class HunYuanVLTemplate(Template):
             attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
             encoded['attention_mask'] = attention_mask
         return encoded
+
+    def _pad_3d_position_ids(self,
+                             position_ids: List[torch.Tensor],
+                             padding_value: float = 0.,
+                             batch_dim: int = 1) -> torch.Tensor:
+        batch_dim = 0
+        return super()._pad_3d_position_ids(position_ids, padding_value, batch_dim)
 
 
 register_template(HunYuanVLTemplateMeta(MLLMTemplateType.hunyuan_ocr, template_cls=HunYuanVLTemplate))
