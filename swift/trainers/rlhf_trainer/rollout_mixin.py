@@ -107,7 +107,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.async_generate = args.async_generate
 
         # Enable logprobs for vLLM importance sampling if requested
-        guided_decoding_regex = getattr(args, 'vllm_guided_decoding_regex', None)
+        structured_outputs_regex = getattr(args, 'vllm_structured_outputs_regex', None)
 
         self.request_config = RequestConfig(
             n=1,
@@ -119,7 +119,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             stop=args.stop_words,
             return_details=True,
             logprobs=args.use_vllm,
-            guided_decoding_regex=guided_decoding_regex)
+            structured_outputs_regex=structured_outputs_regex)
 
         self.disable_rollout_importance_sampling = False
 

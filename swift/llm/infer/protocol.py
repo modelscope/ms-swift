@@ -65,8 +65,8 @@ class RequestConfig:
     length_penalty: float = 1.
     # Return token_ids additionally (non-stream)
     return_details: bool = False
-    # vLLM guided decoding (structured outputs)
-    guided_decoding_regex: Optional[str] = None
+    # vLLM structured outputs (guided decoding)
+    structured_outputs_regex: Optional[str] = None
 
     def __post_init__(self):
         if self.stop is None:

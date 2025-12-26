@@ -32,9 +32,11 @@ try:
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
     from vllm.pooling_params import PoolingParams
     try:
-        from vllm.sampling_params import GuidedDecodingParams
+        # vLLM v0.12+ uses StructuredOutputsParams
+        from vllm.sampling_params import StructuredOutputsParams
     except ImportError:
-        from vllm.sampling_params import StructuredOutputsParams as GuidedDecodingParams
+        # Fallback for older vLLM versions
+        from vllm.sampling_params import GuidedDecodingParams as StructuredOutputsParams
 except Exception:
     raise
 
@@ -437,9 +439,16 @@ class VllmEngine(InferEngine):
             if hasattr(SamplingParams, key):
                 kwargs[key] = getattr(request_config, key)
 
-        # Handle guided decoding (structured outputs)
-        if request_config.guided_decoding_regex:
-            kwargs['guided_decoding'] = GuidedDecodingParams(regex=request_config.guided_decoding_regex)
+        # Handle structured outputs (guided decoding)
+        # vLLM v0.12+ uses 'structured_outputs' parameter, older versions use 'guided_decoding'
+        if request_config.structured_outputs_regex:
+            structured_outputs_param = StructuredOutputsParams(regex=request_config.structured_outputs_regex)
+            if hasattr(SamplingParams,
+                       'structured_outputs') or 'structured_outputs' in [f for f in SamplingParams.__struct_fields__]:
+                kwargs['structured_outputs'] = structured_outputs_param
+            else:
+                # Fallback for older vLLM versions
+                kwargs['guided_decoding'] = structured_outputs_param
 
         res = SamplingParams(**kwargs)
 
