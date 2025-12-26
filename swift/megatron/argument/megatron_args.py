@@ -9,6 +9,7 @@ import json
 import megatron.core
 import torch
 from megatron.core import parallel_state
+from megatron.training import global_vars, is_last_rank, wandb_utils
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -346,6 +347,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
 
+    log_backend: Optional[Literal['wandb', 'swanlab']] = None
+
     # visual
     vit_gradient_checkpointing: bool = True
     vit_lr: Optional[float] = None
@@ -575,7 +578,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_level: Optional[str] = None
-    wandb_project: Optional[str] = None
+    wandb_project: str = 'megatron-swift'
     wandb_exp_name: Optional[str] = None
     wandb_save_dir: Optional[str] = None
 
@@ -659,6 +662,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_layer_freq = '1'
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
+        # log
+        if self.wandb_exp_name is None:
+            self.wandb_exp_name = self.save
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -688,6 +694,41 @@ class MegatronArguments(ExtraMegatronArguments):
 
         parallel_state.create_group = create_group
 
+    def _patch_megatron_swanlab(self):
+
+        def _set_wandb_writer(*args, **kwargs):
+            assert global_vars._GLOBAL_WANDB_WRITER is None
+            if self.log_backend is None or not is_last_rank():
+                return
+            config = vars(self)
+            if self.log_backend == 'wandb':
+                import wandb
+                wandb.init(dir=self.wandb_save_dir, name=self.wandb_exp_name, project=self.wandb_project, config=config)
+                writer = wandb
+            elif self.log_backend == 'swanlab':
+                import swanlab
+                swanlab.init(
+                    logdir=self.wandb_save_dir,
+                    experiment_name=self.wandb_exp_name,
+                    project=self.wandb_project,
+                    config=config)
+                writer = swanlab
+            else:
+                raise ValueError(f'log_backend must be one of "wandb", "swanlab", got {self.log_backend}')
+
+            global_vars._GLOBAL_WANDB_WRITER = writer
+
+        global_vars._set_wandb_writer = _set_wandb_writer
+
+        origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
+
+        def on_save_checkpoint_success(*args, **kwargs):
+            if self.log_backend == 'swanlab':
+                return
+            origin_on_save_checkpoint_success(*args, **kwargs)
+
+        wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
+
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.train_type == 'lora':
@@ -699,6 +740,7 @@ class MegatronArguments(ExtraMegatronArguments):
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._set_default()
+        self._patch_megatron_swanlab()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
