@@ -214,6 +214,7 @@ gradient_checkpointing: true
   - 注意：当使用DDP而不使用deepspeed/fsdp，且gradient_checkpointing_kwargs为None，会默认设置其为`'{"use_reentrant": false}'`而避免出现报错。
 - full_determinism: 确保训练中获得可重现的结果，注意：这会对性能产生负面影响。默认为False。
 - 🔥report_to: 默认值为`tensorboard`。你也可以指定`--report_to tensorboard wandb swanlab`、`--report_to all`。
+  - 如果你指定了`--report_to wandb`，你可以通过`WANDB_PROJECT`设置项目名称，`WANDB_API_KEY`指定账户对应的API KEY。
 - logging_first_step: 是否记录第一个step的日志，默认为True。
 - logging_steps: 日志打印间隔，默认为5。
 - router_aux_loss_coef: 用于moe模型训练时，设置 aux_loss 的权重，默认为`0.`。
@@ -464,7 +465,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - add_version: 在output_dir上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - 🔥create_checkpoint_symlink: 额外创建checkpoint软链接，方便书写自动化训练脚本。best_model和last_model的软链接路径分别为f'{output_dir}/best'和f'{output_dir}/last'。
-- 🔥packing: 将不同长度的数据样本打包成统一长度的样本，实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attn_impl flash_attn` 时，可确保packed样本内的不同序列之间相互独立，互不可见。该参数默认为`False`，目前支持 CPT/SFT/DPO/KTO/GKD。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+- 🔥packing: 将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attn_impl flash_attn` 时，可确保packed样本内的不同序列之间相互独立，互不可见。该参数默认为`False`，目前支持 CPT/SFT/DPO/KTO/GKD。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
   - "ms-swift>=3.12"新支持了embedding/reranker/seq_cls任务的packing。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
@@ -487,12 +488,13 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### SWANLAB
 
-- swanlab_token: SwanLab的api-key。
-- swanlab_project: swanlab的project，需要在页面中预先创建好:[https://swanlab.cn/space/~](https://swanlab.cn/space/~)。
+- swanlab_token: SwanLab的api-key。你也可以使用`SWANLAB_API_KEY`环境变量指定。
+- swanlab_project: swanlab的project，可以在页面中预先创建[https://swanlab.cn/space/~](https://swanlab.cn/space/~)或自动创建，默认为"ms-swift"。
 - swanlab_workspace: 默认为None，会使用api-key对应的username。
 - swanlab_exp_name: 实验名，可以为空，为空时默认传入--output_dir的值。
-- swanlab_lark_webhook_url: 默认为None。swanlab的lark webhook url，用于推送实验结果到飞书。
-- swanlab_lark_secret: 默认为None。swanlab的lark secret，用于推送实验结果到飞书。
+- swanlab_notification_method: 在训练完成/发生错误时，swanlab的通知方式，具体参考[这里](https://docs.swanlab.cn/plugin/notification-dingtalk.html)。支持'dingtalk'、'lark'、'email'、'discord'、'wxwork'、'slack'。
+- swanlab_webhook_url: 默认为None。swanlab的`swanlab_notification_method`对应的 webhook url。
+- swanlab_secret: 默认为None。swanlab的`swanlab_notification_method`对应的 secret。
 - swanlab_mode: 可选cloud和local，云模式或者本地模式。
 
 

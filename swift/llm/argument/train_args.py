@@ -83,26 +83,32 @@ class SwanlabArguments:
     experiments.
 
     Args:
-        swanlab_token (Optional[str]): The API key for SwanLab.
-        swanlab_project (Optional[str]): The SwanLab project name. This project must be created in advance on the
-            SwanLab website.
+        swanlab_token (Optional[str]): The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY`
+            environment variable.
+        swanlab_project (str): The SwanLab project, which can be created in advance on the page
+            [https://swanlab.cn/space/~](https://swanlab.cn/space/~) or created automatically.
+            The default is "ms-swift".
         swanlab_workspace (Optional[str]): The SwanLab workspace. Defaults to `None`, in which case the username
             associated with the API key will be used.
         swanlab_exp_name (Optional[str]): The name of the experiment. If `None`, it will default to the value of the
             `output_dir` argument.
-        swanlab_lark_webhook_url (Optional[str]): The Lark (Feishu) webhook URL for SwanLab, used for sending
-            experiment result notifications. Defaults to `None`.
-        swanlab_lark_secret (Optional[str]): The secret for the Lark webhook, used for authentication. Defaults to
-            `None`.
+        swanlab_notification_method (Optional[str]): The notification method for SwanLab when training completes
+            or errors occur. For details, refer to [here](https://docs.swanlab.cn/plugin/notification-dingtalk.html).
+            Supports 'dingtalk', 'lark', 'email', 'discord', 'wxwork', 'slack'.
+        swanlab_webhook_url (Optional[str]): Defaults to None. The webhook URL corresponding to
+            SwanLab's `swanlab_notification_method`.
+        swanlab_secret (Optional[str]): Defaults to None. The secret corresponding to
+            SwanLab's `swanlab_notification_method`.
         swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
             for local-only logging.
     """
     swanlab_token: Optional[str] = None
-    swanlab_project: Optional[str] = None
+    swanlab_project: str = 'ms-swift'
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
-    swanlab_lark_webhook_url: Optional[str] = None
-    swanlab_lark_secret: Optional[str] = None
+    swanlab_notification_method: Optional[str] = None
+    swanlab_webhook_url: Optional[str] = None
+    swanlab_secret: Optional[str] = None
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -116,13 +122,27 @@ class SwanlabArguments:
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
 
-        if self.swanlab_lark_webhook_url is not None:
-            from swanlab.plugin.notification import LarkCallback
-            lark_callback = LarkCallback(
-                webhook_url=self.swanlab_lark_webhook_url,
-                secret=self.swanlab_lark_secret,
+        if self.swanlab_notification_method is not None:
+            from swanlab.plugin.notification import (LarkCallback, DingTalkCallback, EmailCallback, DiscordCallback,
+                                                     WXWorkCallback, SlackCallback)
+            notification_mapping = {
+                'lark': LarkCallback,
+                'dingtalk': DingTalkCallback,
+                'email': EmailCallback,
+                'discord': DiscordCallback,
+                'wxwork': WXWorkCallback,
+                'slack': SlackCallback,
+            }
+            callback_cls = notification_mapping.get(self.swanlab_notification_method)
+            if callback_cls is None:
+                raise ValueError(
+                    f'Unsupported swanlab_notification_method: "{self.swanlab_notification_method}". Supported methods'
+                    f' are: {list(notification_mapping.keys())}')
+            callback = callback_cls(
+                webhook_url=self.swanlab_webhook_url,
+                secret=self.swanlab_secret,
             )
-            swanlab.register_callbacks([lark_callback])
+            swanlab.register_callbacks([callback])
 
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,
