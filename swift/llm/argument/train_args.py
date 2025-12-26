@@ -134,8 +134,8 @@ class SwanlabArguments:
             callback_cls = notification_mapping.get(self.swanlab_notification_method)
             if callback_cls is None:
                 raise ValueError(
-                    f'Unsupported swanlab_notification_method: "{self.swanlab_notification_method}". '
-                    f'Supported methods are: {list(notification_mapping.keys())}')
+                    f'Unsupported swanlab_notification_method: "{self.swanlab_notification_method}". Supported methods'
+                    f' are: {list(notification_mapping.keys())}')
             callback = callback_cls(
                 webhook_url=self.swanlab_webhook_url,
                 secret=self.swanlab_secret,
