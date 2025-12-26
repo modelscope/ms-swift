@@ -500,7 +500,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 #### SWANLAB
 
 - swanlab_token: The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY` environment variable.
-- swanlab_project: The SwanLab project, which can be created in advance on the page https://swanlab.cn/space/~ or created automatically. The default is "ms-swift".
+- swanlab_project: The SwanLab project, which can be created in advance on the page [https://swanlab.cn/space/~](https://swanlab.cn/space/~) or created automatically. The default is "ms-swift".
 - swanlab_workspace: Defaults to `None`, will use the username associated with the API key.
 - swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default.
 - swanlab_notification_method: The notification method for SwanLab when training completes or errors occur. For details, refer to [here](https://docs.swanlab.cn/plugin/notification-dingtalk.html). Supports 'dingtalk', 'lark', 'email', 'discord', 'wxwork', 'slack'.

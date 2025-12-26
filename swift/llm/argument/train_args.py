@@ -86,7 +86,8 @@ class SwanlabArguments:
         swanlab_token (Optional[str]): The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY`
             environment variable.
         swanlab_project (str): The SwanLab project, which can be created in advance on the page
-            https://swanlab.cn/space/~ or created automatically. The default is "ms-swift".
+            [https://swanlab.cn/space/~](https://swanlab.cn/space/~) or created automatically.
+            The default is "ms-swift".
         swanlab_workspace (Optional[str]): The SwanLab workspace. Defaults to `None`, in which case the username
             associated with the API key will be used.
         swanlab_exp_name (Optional[str]): The name of the experiment. If `None`, it will default to the value of the
