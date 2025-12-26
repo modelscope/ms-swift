@@ -60,6 +60,7 @@ class RLHFMegatronArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+
     use_vllm: bool = True
     vllm_mode: Optional[Literal['server', 'colocate']] = None
 
@@ -73,7 +74,6 @@ class RLHFMegatronArgumentsMixin:
     vllm_max_num_seqs: Optional[int] = None
     vllm_mm_processor_cache_gb: Optional[float] = None
     vllm_engine_kwargs: Optional[Dict[str, Any]] = None
-    vllm_structured_outputs_regex: Optional[str] = None
 
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False

@@ -142,6 +142,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
   - Note: The `eos_token` is removed from the output response, while additional stop words are preserved in the output.
 - logprobs: Whether to return log probabilities. Default is `False`.
 - top_logprobs: Number of top log probabilities to return. Default is `None`.
+- structured_outputs_regex: A regular expression pattern for structured outputs (guided decoding). When set, the model's generation is constrained to match the specified regex pattern. Only effective when `infer_backend` is `vllm`. Default is `None`.
 
 ### Quantization Arguments
 
@@ -622,7 +623,6 @@ The meanings of the following parameters can be referenced [here](https://huggin
   When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
   When set to `per_round`, each individual turn's output length is limited separately.
   Defaults to `per_round`. Currently only takes effect in colocate mode.
-- vllm_structured_outputs_regex: A regular expression pattern for vLLM structured outputs (guided decoding). When set, the model's generation is constrained to match the specified regex pattern. This is useful for tasks requiring structured outputs like reasoning chains (e.g., `r"<reasoning>\\n.*\\n</reasoning>\\n<answer>\\n.*\\n</answer>"`). Defaults to None.
 - num_iterations: The number of updates per data sample, corresponding to the $\mu$ value in the GRPO paper. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.

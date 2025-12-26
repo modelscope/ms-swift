@@ -107,7 +107,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.async_generate = args.async_generate
 
         # Enable logprobs for vLLM importance sampling if requested
-        structured_outputs_regex = getattr(args, 'vllm_structured_outputs_regex', None)
+        structured_outputs_regex = getattr(args, 'structured_outputs_regex', None)
 
         self.request_config = RequestConfig(
             n=1,

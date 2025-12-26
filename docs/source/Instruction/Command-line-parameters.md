@@ -140,6 +140,7 @@
   - 注意：eos_token会在输出respsone中被删除，额外停止词会在输出中保留。
 - logprobs: 是否输出logprobs，默认为False。
 - top_logprobs: 输出top_logprobs的数量，默认为None。
+- structured_outputs_regex: 结构化输出（引导解码）的正则表达式模式。设置后，模型生成将被约束为匹配指定的正则表达式模式。仅在`infer_backend`为`vllm`时生效。默认为`None`。
 
 ### 量化参数
 以下为加载模型时量化的参数，具体含义可以查看[量化](https://huggingface.co/docs/transformers/main/en/main_classes/quantization)文档。这里不包含`swift export`中涉及的`gptq`、`awq`量化参数。
@@ -606,7 +607,6 @@ reward模型参数将在PPO、GRPO中使用。
   - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
   `total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
-- vllm_structured_outputs_regex: vLLM结构化输出（引导解码）的正则表达式模式。设置后，模型生成将被约束为匹配指定的正则表达式模式，例如推理链（如`r"<reasoning>\\n.*\\n</reasoning>\\n<answer>\\n.*\\n</answer>"`）。默认为None。
 - num_iterations: 每条数据的更新次数，[GRPO论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。

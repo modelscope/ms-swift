@@ -121,7 +121,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.enable_offload = False
 
         # sampling params
-        structured_outputs_regex = getattr(args, 'vllm_structured_outputs_regex', None)
+        structured_outputs_regex = getattr(args, 'structured_outputs_regex', None)
 
         self.request_config = RequestConfig(
             n=1,
