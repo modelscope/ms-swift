@@ -864,6 +864,7 @@ def _patch_megatron_swanlab():
     origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
 
     def on_save_checkpoint_success(*_args, **kwargs):
+        args = get_args()
         if args.report_to == 'swanlab':
             return
         origin_on_save_checkpoint_success(*_args, **kwargs)
