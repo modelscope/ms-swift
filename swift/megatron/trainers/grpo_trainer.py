@@ -1509,7 +1509,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                     import swanlab
                     headers = list(table.keys())
                     rows = []
-                    for i in range(len(table['step'])):
+                    for i in range(len(table['gen_step'])):
                         row = [table[header][i] for header in headers]
                         rows.append(row)
                     swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
