@@ -53,9 +53,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.processing_class = self.template.processor
         self._prepare_metrics()
         self._init_grpo_params()
+        self._init_rollout_engine()
         self._prepare_rewards()
-        self._prepare_scheduler()  # TODO
-        self._init_rollout_engine()  # Use mixin's rollout engine initialization
+        self._prepare_scheduler()
         # Initialize trainer state for reward functions to access training progress
         # Will be updated with actual values from Megatron args during training
         self.state = MegatronTrainerState()
