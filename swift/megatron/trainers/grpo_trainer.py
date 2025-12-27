@@ -1228,14 +1228,25 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             }
             self.jsonl_writer.append(table)
             wandb_writer = get_wandb_writer()
+            args = get_args()
             if wandb_writer:
-                df = pd.DataFrame(table)
-                if self.wandb_log_unique_prompts:
-                    df = df.drop_duplicates(subset=['prompt'])
-                # if not self.init_custom_metric:
-                #     wandb_writer.define_metric('completions', step_metric='gen_step')
-                #     self.init_custom_metric = True
-                wandb_writer.log({'completions': wandb.Table(dataframe=df)})
+                if args.report_to == 'wandb':
+                    df = pd.DataFrame(table)
+                    if self.wandb_log_unique_prompts:
+                        df = df.drop_duplicates(subset=['prompt'])
+                    # if not self.init_custom_metric:
+                    #     wandb_writer.define_metric('completions', step_metric='gen_step')
+                    #     self.init_custom_metric = True
+                    wandb_writer.log({'completions': wandb.Table(dataframe=df)})
+                elif args.report_to == 'swanlab':
+                    import swanlab
+                    headers = list(table.keys())
+                    rows = []
+                    for i in range(len(table['gen_step'])):
+                        row = [table[header][i] for header in headers]
+                        rows.append(row)
+                    swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
+
             self._last_logged_step = self._step
 
         return loss, reporting_metric

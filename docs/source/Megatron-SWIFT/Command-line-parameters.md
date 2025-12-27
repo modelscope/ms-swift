@@ -139,9 +139,10 @@
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
 - logging_level: 日志级别。默认为None。
-- wandb_project: wandb 项目名称。默认为''，即忽略wandb。
-- wandb_exp_name: wandb 实验名称。默认为''。
-- wandb_save_dir: 本地保存 wandb 结果的路径。默认为''。
+- report_to: (ms-swift>=3.12) 启用的日志后端。默认为None。可选项为'wandb'和'swanlab'。（tensorboard会一直启动）。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
+- wandb_project: wandb/swanlab 项目名称，取决于`report_to`。默认为'megatron-swift'。
+- wandb_exp_name: wandb/swanlab 实验名称。默认为`--save`的值。
+- wandb_save_dir: 本地保存 wandb/swanlab 结果的路径。默认为None，即存储在`f'{args.save}/wandb'`或`f'{args.save}/swanlab'`。
 
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为`-1`，根据验证数据集的数量设置合适的值。**若验证集数量少于global_batch_size，则不进行评估**。若使用流式数据集，该值需要手动设置。

@@ -2,13 +2,11 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field, fields
-from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import megatron.core
 import torch
-from megatron.core import parallel_state
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -362,6 +360,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
 
+    report_to: Optional[Literal['wandb', 'swanlab']] = None
+
     # visual
     vit_gradient_checkpointing: bool = True
     vit_lr: Optional[float] = None
@@ -591,7 +591,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_level: Optional[str] = None
-    wandb_project: Optional[str] = None
+    wandb_project: str = 'megatron-swift'
     wandb_exp_name: Optional[str] = None
     wandb_save_dir: Optional[str] = None
 
@@ -675,6 +675,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_layer_freq = '1'
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
+        # log
+        if self.wandb_exp_name is None:
+            self.wandb_exp_name = self.save
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -692,17 +695,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
-
-    @staticmethod
-    def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        create_group_origin = parallel_state.create_group
-
-        def create_group(ranks=None, timeout=None, *args, **kwargs):
-            if timeout is None:
-                timeout = timedelta(minutes=distributed_timeout_minutes)
-            return create_group_origin(ranks, timeout, *args, **kwargs)
-
-        parallel_state.create_group = create_group
 
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
@@ -724,7 +716,6 @@ class MegatronArguments(ExtraMegatronArguments):
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
-        self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)

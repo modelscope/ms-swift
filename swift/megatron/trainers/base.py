@@ -719,12 +719,30 @@ class BaseMegatronTrainer(ABC):
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+    def _get_metrics(self, total_loss_dict, mode):
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
-        total_loss_dict.update({
+        return {
             k: torch.tensor([v * advanced_iters], device='cuda')
             for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
-        })
+        }
+
+    def _remove_log(self, total_loss_dict):
+        pass
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
+        writer = get_tensorboard_writer()
+        wandb_writer = get_wandb_writer()
+        metrics = self._get_metrics(total_loss_dict, mode)
+        total_loss_dict.update(metrics)
+        self._remove_log(total_loss_dict)
+        if iteration is None:
+            args = get_args()
+            iteration = args.curr_iteration + 1
+        if writer:
+            for k, v in metrics.items():
+                writer.add_scalar(k, v, iteration)
+        if wandb_writer:
+            wandb_writer.log(metrics, iteration)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
@@ -800,7 +818,9 @@ class BaseMegatronTrainer(ABC):
             writer.add_scalar('batch-size vs samples', batch_size, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'batch-size': batch_size}, iteration)
-            for key in loss_dict:
+            log_loss_dict = loss_dict.copy()
+            self._remove_log(log_loss_dict)
+            for key in log_loss_dict:
                 writer.add_scalar(key, loss_dict[key], iteration)
                 writer.add_scalar(key + ' vs samples', loss_dict[key], args.consumed_train_samples)
                 if wandb_writer:
