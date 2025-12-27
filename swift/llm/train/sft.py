@@ -51,6 +51,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
+        # Apply tiled MLP before model instantiation
+        if getattr(args, 'use_tiled_mlp', False):
+            from swift.plugin.tiled_mlp import apply_tiled_mlp
+            apply_tiled_mlp(args.model_type, num_shards=getattr(args, 'tiled_mlp_num_shards', None))
         self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
