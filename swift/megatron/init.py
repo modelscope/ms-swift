@@ -841,21 +841,17 @@ def _patch_megatron_swanlab():
             return
         config = vars(args)
         save_dir = args.wandb_save_dir
+        if save_dir is None:
+            save_dir = os.path.join(args.save, args.report_to)
         if args.report_to == 'wandb':
             import wandb
-            if save_dir is None:
-                save_dir = os.path.join(args.save, 'wandb')
             wandb.init(dir=save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=config)
             writer = wandb
         elif args.report_to == 'swanlab':
             import swanlab
-            if save_dir is None:
-                save_dir = os.path.join(args.save, 'swanlab')
             swanlab.init(
                 logdir=save_dir, experiment_name=args.wandb_exp_name, project=args.wandb_project, config=config)
             writer = swanlab
-        else:
-            raise ValueError(f'report_to must be one of "wandb", "swanlab", got {args.report_to}')
 
         global_vars._GLOBAL_WANDB_WRITER = writer
 
