@@ -156,6 +156,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
     metric: Literal['acc', 'rouge'] = None
     # for pt engine
     max_batch_size: int = 1
+    cache_impl: str = None
 
     # only for inference
     val_dataset_sample: Optional[int] = None
