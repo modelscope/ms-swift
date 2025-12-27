@@ -174,7 +174,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def _get_metrics(self, total_loss_dict, mode):
-        metrics = super().add_metrics(total_loss_dict, mode)
+        metrics = super()._get_metrics(total_loss_dict, mode)
         for key in ['chosen', 'rejected']:
             count = total_loss_dict.get(f'count/{key}')
             if count is None or count.item() == 0:
