@@ -116,6 +116,7 @@ class GLM4VTemplate(Template):
 
 class GLM4vPackingTemplateMixin:
     support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+    use_model = True
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         for r in row:
@@ -150,6 +151,17 @@ class GLM4vPackingTemplateMixin:
                 res.update(get_packed_seq_params(text_position_ids))
         return res
 
+    def _patch_create_causal_mask(self, modeling_module):
+        create_causal_mask = modeling_module.create_causal_mask
+
+        def new_create_causal_mask(*args, **kwargs):
+            position_ids = kwargs.get('position_ids')
+            if position_ids is not None and position_ids.dim() == 3:
+                kwargs['position_ids'] = None
+            return create_causal_mask(*args, **kwargs)
+
+        modeling_module.create_causal_mask = new_create_causal_mask
+
 
 class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
     begin_of_image_token = 151339
@@ -162,6 +174,10 @@ class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
         if processor is None:
             return
         super().init_processor(processor)
+        if not getattr(GLM4_1VTemplate, '_patched', False) and self.padding_free:
+            GLM4_1VTemplate._patched = True
+            from transformers.models.glm4v import modeling_glm4v
+            self._patch_create_causal_mask(modeling_glm4v)
         self.image_token = self._tokenize('<|image|>')[0]
         self.video_token = self._tokenize('<|video|>')[0]
 
@@ -311,12 +327,11 @@ register_template(
         agent_template='glm4_7',
     ))
 
-register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
+register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate, agent_template='glm4_5'))
 
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ['<|image|>', '<|video|>']
-    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -359,6 +374,13 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
         inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
         inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
+
+    def init_processor(self, processor) -> None:
+        super().init_processor(processor)
+        if not getattr(GLM4_5VTemplate, '_patched', False) and self.padding_free:
+            GLM4_5VTemplate._patched = True
+            from transformers.models.glm4v_moe import modeling_glm4v_moe
+            self._patch_create_causal_mask(modeling_glm4v_moe)
 
 
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))

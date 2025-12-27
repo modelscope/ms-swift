@@ -39,7 +39,7 @@ from tqdm.auto import tqdm
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
+from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
@@ -1171,7 +1171,7 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
-    def _prepare_batch(self, data, vp_stage, num_samples=None):
+    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
@@ -1229,3 +1229,13 @@ class BaseMegatronTrainer(ABC):
                     'seq2seq_mode': 'sft',
                 }
         return {}
+
+    def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
+        if packed_seq_params is None:
+            last_token_idx = get_last_valid_indices((~attention_mask[:, 0, -1]).long())
+            last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
+        else:
+            num_samples = num_samples or packed_seq_params.num_samples
+            last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
+            last_tokens = output_tensor[0, last_token_idx]
+        return last_tokens

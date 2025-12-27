@@ -32,11 +32,10 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
                          remove_response)
 from ..argument import MegatronArguments, MegatronRLHFArguments
-from ..utils import forward_step_helper, get_padding_to
+from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
-from .utils import (gather, gather_object, get_swift_datasets_provider, load_megatron_model_to_gpu,
-                    load_megatron_optimizer, offload_megatron_model_to_cpu, offload_megatron_optimizer,
-                    profiling_context, profiling_decorator)
+from .rollout_mixin import MegatronRolloutMixin
+from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
 
 if is_wandb_available():
     import wandb
@@ -44,7 +43,7 @@ if is_wandb_available():
 logger = get_logger()
 
 
-class MegatronGRPOTrainer(MegatronRLHFTrainer):
+class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronRLHFArguments, template: Template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client')
@@ -54,9 +53,12 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.processing_class = self.template.processor
         self._prepare_metrics()
         self._init_grpo_params()
+        self._init_rollout_engine()
         self._prepare_rewards()
-        self._prepare_scheduler()  # TODO
-        self._prepare_rollout_engine()
+        self._prepare_scheduler()
+        # Initialize trainer state for reward functions to access training progress
+        # Will be updated with actual values from Megatron args during training
+        self.state = MegatronTrainerState()
 
     def train(self, train_dataset, val_dataset, data_collator):
         # Store dataset provider for lazy resample iterator initialization
@@ -67,19 +69,18 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         super().train(train_dataset, val_dataset, data_collator)
 
     def _init_grpo_params(self):
+        """Initialize GRPO-specific parameters.
+
+        Note: Common rollout params (world_size, process_index, device, request_config, etc.)
+        are initialized by MegatronRolloutMixin._init_rollout_params().
+        """
         args: MegatronArguments = self.args
-        # distributed params
-        self.world_size = torch.distributed.get_world_size()
-        self.process_index = torch.distributed.get_rank()
-        self.is_main_process = is_last_rank()
-        self.device = get_current_device()
-        # algorithm params
+
+        # GRPO algorithm params
         self.num_generations = args.num_generations  # G in the GRPO paper
         self.num_generations_eval = args.num_generations_eval or self.num_generations
         self.beta = args.beta
-        self.temperature = args.temperature
         self.loss_type = args.loss_type
-        self.max_completion_length = args.max_completion_length
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.top_entropy_quantile = args.top_entropy_quantile
@@ -118,206 +119,24 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         self.micro_batch_size = args.micro_batch_size
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
 
-        self.enable_offload = False
-
-        # sampling params
-        self.request_config = RequestConfig(
-            n=1,
-            max_tokens=args.max_completion_length,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            top_k=args.top_k,
-            repetition_penalty=args.repetition_penalty,
-            stop=args.stop_words,
-            return_details=True,
-            logprobs=True)  # Enable logprobs for rollout importance sampling
-
-        self._step = 0
-        self._last_loaded_step = -1
-        self._rollout_group = None  # Will be lazily initialized
-
         # truncation_strategy support
         self.truncation_strategy = self.template.truncation_strategy
 
-    def _prepare_rollout_engine(self):
-        args = self.args
-        self.vllm_mode = args.vllm_mode
-        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
-        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
-        self.use_vllm = args.use_vllm
-        self.async_generate = args.async_generate  # TODO
-        self.vllm_use_async_engine = False
-        self.enable_offload = False
+    def _init_rollout_engine(self):
+        """Initialize rollout engine with GRPO-specific extensions."""
+        super()._init_rollout_engine()
+
+        # GRPO-specific initialization
+        self.async_generate = self.args.async_generate  # TODO
         self.use_gym_env = False
         self.enable_server_multi_turn = False  # TODO
-        self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        self._buffered_inputs = None
 
+        # Rollout importance sampling requires vLLM >= 0.10.2
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
-        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
-        assert self.use_vllm
-        if not is_vllm_available():
-            raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                              'Please install vLLM with `pip install vllm -U` to use it.')
-        if self.vllm_mode == 'server':
-            pass
-        elif self.vllm_mode == 'colocate':
-            if not self.world_size % self.vllm_tensor_parallel_size == 0:
-                raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
-                                 f'({self.world_size}) evenly.')
-
-            self.enable_offload = self.args.offload_model or self.args.offload_optimizer
-            context = self.offload_context if self.enable_offload else nullcontext
-
-            with context():
-                set_expandable_segments(False)
-                self.engine = self.prepare_vllm()
-                if self.args.sleep_level > 0:
-                    self.engine.engine.sleep(self.args.sleep_level)
-                set_expandable_segments(True)
-        else:
-            raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
-
-    def prepare_vllm(self):
-        from swift.llm.infer.infer_engine import GRPOVllmEngine
-        args = self.args
-        max_num_seqs = args.vllm_max_num_seqs or self.per_device_generation_batch_size * self.vllm_tensor_parallel_size
-        vllm_template = copy(self.template)
-        vllm_template.padding_free = False
-        vllm_template.sequence_parallel_size = 1
-        logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
-
-        # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
-        vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
-        load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
-        engine = GRPOVllmEngine(
-            self.hf_model_dir,
-            args.torch_dtype,
-            model_type=args.model_type,
-            use_async_engine=False,
-            tensor_parallel_size=self.vllm_tensor_parallel_size,
-            gpu_memory_utilization=self.vllm_gpu_memory_utilization,
-            enable_prefix_caching=self.args.vllm_enable_prefix_caching,
-            max_num_seqs=max_num_seqs,
-            enforce_eager=self.args.vllm_enforce_eager,
-            limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
-            enable_sleep_mode=self.args.sleep_level > 0,
-            max_model_len=self.args.vllm_max_model_len,
-            seed=self.process_index // self.vllm_tensor_parallel_size,
-            disable_cascade_attn=self.args.vllm_disable_cascade_attn,
-            load_format=load_format,
-            mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
-            template=vllm_template,
-            distributed_executor_backend='external_launcher',
-            engine_kwargs=vllm_engine_kwargs,
-            logprobs_mode=logprobs_mode)
-        if self.vllm_tensor_parallel_size > 1:
-            self.vllm_tp_group = vllm_ps.get_tp_group().device_group
-        self._buffered_inputs = None
-        return engine
-
-    @profiling_decorator
-    def _move_model_to_vllm(self):
-        # Handle LoRA: merge adapters before exporting weights
-        is_lora_training = self.args.train_type == 'lora'
-
-        try:
-            if is_lora_training:
-                self.merge_lora_adapters()
-
-            # Export and load weights incrementally to avoid memory spikes
-            self._export_and_load_weights()
-
-        finally:
-            # Unmerge adapters to restore training state
-            if is_lora_training:
-                self.unmerge_lora_adapters()
-
-        # Reset prefix cache
-        if self.vllm_mode == 'server' and self.is_main_process:
-            self.vllm_client.reset_prefix_cache()
-        elif self.vllm_mode == 'colocate':
-            self.engine.engine.reset_prefix_cache()
-
-    @property
-    def bridge(self):
-        if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls(disable_tqmd=True)
-        return self._bridge
-
-    def _export_and_load_weights(self):
-        """
-        Export weights from Megatron models and load to vLLM incrementally.
-
-        For colocate mode: llm_model.load_weights accepts an iterator, so pass it directly.
-        For server mode: Process weights in buckets to avoid memory spikes.
-        """
-        # Export weights returns an iterator
-        target_device = None
-        if self.args.offload_bridge:
-            target_device = 'cpu'
-        with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
-
-        if self.vllm_mode == 'colocate':
-            # Colocate mode: load_weights supports iterator, pass directly
-            llm_model = self.engine.inner_model
-            llm_model.load_weights(weight_iterator)
-        elif self.vllm_mode == 'server':
-            # Server mode: process in buckets and sync with flattened tensors
-            self._load_weights_to_server_in_buckets(weight_iterator)
-
-    def _load_weights_to_server_in_buckets(self, weight_iterator):
-        """
-        Load weights to vLLM server in buckets using FlattenedTensorBucket.
-
-        Args:
-            weight_iterator: Iterator of (name, tensor) tuples from export_weights
-        """
-        # Get bucket size from environment or use default
-        bucket_size_mb = int(os.environ.get('SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE', 512))
-        bucket_size_bytes = bucket_size_mb * 1024 * 1024
-
-        current_bucket = []
-        current_size = 0
-
-        for name, param in weight_iterator:
-            param_size = param.numel() * param.element_size()
-            current_bucket.append((name, param))
-            current_size += param_size
-
-            # If adding this param would exceed bucket size, process current bucket first
-            if current_size > bucket_size_bytes and current_bucket:
-                self._sync_bucket_to_server(current_bucket)
-                current_bucket = []
-                current_size = 0
-
-        # Process remaining parameters in the last bucket
-        if current_bucket:
-            self._sync_bucket_to_server(current_bucket)
-
-    def _sync_bucket_to_server(self, bucket_params: List[Tuple[str, torch.Tensor]]):
-        """
-        Synchronize a bucket of parameters to vLLM server using flattened tensors.
-
-        Args:
-            bucket_params: List of (name, tensor) tuples to sync
-        """
-        if not bucket_params or not self.is_main_process:
-            return
-
-        # Create FlattenedTensorBucket for efficient transfer
-        bucket = FlattenedTensorBucket(named_tensors=bucket_params)
-        metadatas = bucket.get_metadata()
-        flattened_tensor = bucket.get_flattened_tensor()
-
-        # Directly call vllm_client to update weights
-        self.vllm_client.update_flattened_params(metadatas, flattened_tensor)
-
-        # Clean up to free memory immediately
-        del bucket, metadatas, flattened_tensor
 
     def _prepare_rewards(self):
         # TODO: reward model
@@ -382,68 +201,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
-
-    def _get_rollout_group(self):
-        """
-        Get or create the rollout process group (TP×PP×CP).
-
-        The rollout group is used for:
-        1. Data slicing: distributing rollout data across ranks with same data samples
-        2. Gather operations: collecting results from ranks with same data samples
-
-        Note: Groups are created per data parallel index, containing TP×PP×CP ranks each.
-        This follows Megatron's data_iterator logic where same data_parallel_rank processes
-        identical data samples.
-
-        Key insight: ranks with the SAME data parallel index process the SAME data samples
-        and must coordinate for rollout data distribution.
-        Megatron rank order: TP → CP → EP → DP → PP
-        """
-        if self._rollout_group is not None:
-            return self._rollout_group
-
-        cp_size = mpu.get_context_parallel_world_size()
-        if cp_size == 1:
-            # No CP, use the standard MODEL_PARALLEL_GROUP
-            self._rollout_group = mpu.get_model_parallel_group()
-            return self._rollout_group
-
-        # Use RankGenerator to create rollout groups following Megatron-LM logic
-        global_rank = torch.distributed.get_rank()
-
-        # Get parallel dimensions
-        tp_size = mpu.get_tensor_model_parallel_world_size()
-        pp_size = mpu.get_pipeline_model_parallel_world_size()
-        dp_size = mpu.get_data_parallel_world_size()
-        cp_size = mpu.get_context_parallel_world_size()
-
-        # Create RankGenerator following Megatron-LM pattern
-        # Order: tp-cp-ep-dp-pp (default in Megatron-LM)
-        decoder_rank_generator = mpu.RankGenerator(
-            tp=tp_size,
-            ep=1,
-            dp=dp_size,
-            pp=pp_size,
-            cp=cp_size,
-            order='tp-cp-ep-dp-pp',
-            rank_offset=0,
-        )
-
-        # Create rollout groups based on data consistency from data_iterator
-        # Same data_parallel_rank processes same data - group ranks with same DP index
-        if not hasattr(self, '_rollout_groups_created'):
-            # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
-            dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
-            for dp_group_ranks in dp_groups:
-                # Sort for consistency
-                dp_group_ranks = sorted(dp_group_ranks)
-                group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
-
-                if global_rank in dp_group_ranks:
-                    self._rollout_group = group
-            self._rollout_groups_created = True
-
-        return self._rollout_group
 
     def _init_resample_data_iterator(self):
         """
@@ -836,27 +593,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             outputs = all_outputs if self.is_main_process else []
         return outputs
 
-    def _colocate_rollout(self, batch, request_config: RequestConfig):
-        if self.vllm_tensor_parallel_size > 1:
-            local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
-            local_input_length = len(batch)
-            all_input_lengths = [None] * self.vllm_tensor_parallel_size
-            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
-
-            start_idx = sum(all_input_lengths[:local_rank_in_group])
-            end_idx = start_idx + all_input_lengths[local_rank_in_group]
-
-            gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
-            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
-            batch = [p for sublist in gathered_batch for p in sublist]
-
-        outputs: List[RolloutOutput] = self.engine.infer(infer_requests=batch, request_config=request_config)
-
-        if self.vllm_tensor_parallel_size > 1:
-            outputs = outputs[start_idx:end_idx]
-
-        return outputs
-
     @profiling_decorator
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
         """Score completions using all reward functions.
@@ -877,7 +613,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         device = self.device
         rewards_per_func = torch.zeros((len(batch), len(self.reward_funcs)), device=device)
         completions = [inp['messages'][-1]['content'] for inp in batch]
-        reward_kwargs = {}  # TODO: training step info
+
+        reward_kwargs = {'trainer_state': self.get_trainer_state()}
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with profiling_context(self, reward_func_name):
@@ -895,6 +632,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
+            reward_kwargs.pop('trainer_state')
             row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
@@ -1516,26 +1254,6 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             output_tensor, labels, data['packed_seq_params'], packed_seq_params.num_samples, per_token=per_token)
         return data
 
-    @contextmanager
-    def offload_context(self):
-        if self.args.offload_model:
-            offload_megatron_model_to_cpu(self.wrapped_models)
-            if hasattr(self, 'ref_models') and self.ref_models:
-                offload_megatron_model_to_cpu(self.ref_models)
-        if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-            offload_megatron_optimizer(self.optimizer)
-
-        try:
-            yield
-        finally:
-            # reload (load back) model when exiting context
-            if self.args.offload_model:
-                load_megatron_model_to_gpu(self.wrapped_models)
-                if hasattr(self, 'ref_models') and self.ref_models:
-                    load_megatron_model_to_gpu(self.ref_models)
-            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-                load_megatron_optimizer(self.optimizer)
-
     def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert raw input data into RolloutInferRequest objects"""
 
@@ -2088,3 +1806,9 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
             'loss_type': str(self.args.loss_type)
         }
         return config
+
+    def get_trainer_state(self):
+        args = get_args()
+        self.state.update(
+            global_step=getattr(args, 'curr_iteration', 0) or 0, max_steps=getattr(args, 'train_iters', 0) or 0)
+        return self.state

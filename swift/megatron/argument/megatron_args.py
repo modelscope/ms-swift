@@ -21,11 +21,11 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = None
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
-    beta: float = 0.1
+    beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
@@ -39,6 +39,18 @@ class RLHFMegatronArgumentsMixin:
 
     # rm
     center_rewards_coefficient: Optional[float] = None
+
+    # gkd
+    teacher_model: Optional[str] = field(default=None)
+    teacher_model_type: Optional[str] = field(default=None)
+    teacher_model_revision: Optional[str] = field(default=None)
+    lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
+    seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
+    offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
+    sft_alpha: float = 0.0  # Weight for SFT loss in GKD (0 = pure JSD, >0 = JSD + sft_alpha * SFT)
+
+    # grpo/gkd
+    temperature: float = 0.9  # Temperature for sampling and loss computation
 
     # grpo
     generation_batch_size: Optional[int] = None
@@ -60,6 +72,7 @@ class RLHFMegatronArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+
     use_vllm: bool = True
     vllm_mode: Optional[Literal['server', 'colocate']] = None
 
@@ -166,6 +179,9 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type is None:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
+        default_beta = {'gkd': 0.5, 'grpo': 0.04}
+        if self.beta is None:
+            self.beta = default_beta.get(self.rlhf_type, 0.1)
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
@@ -329,7 +345,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 10
+    dataloader_prefetch_factor: int = 2
     group_by_length: bool = False
 
     architectures: Optional[str] = None
@@ -721,6 +737,12 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
+        if not self.no_gradient_accumulation_fusion:
+            try:
+                import apex
+            except ImportError:
+                logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
+                self.no_gradient_accumulation_fusion = True
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:

@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
 from functools import partial
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import torch
 from megatron.core import mpu
@@ -40,17 +40,23 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="kto"` only supports padding_free.'
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):
         labels = data['labels']
-        packed_seq_params = data['packed_seq_params']
+        packed_seq_params = data.get('packed_seq_params')
+        num_samples = output_tensor.shape[0] if packed_seq_params is None else packed_seq_params.num_samples
         output = self._get_input_tensor(output_tensor, is_KL, is_ref, length, dim=1)
-        return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
+        return self.get_logps(output, labels, packed_seq_params, num_samples)
+
+    def _get_kto_length(self, data: Dict[str, Any]) -> int:
+        if 'packed_seq_params' in data:
+            return data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        else:
+            return data['position_ids'].shape[-1]
 
     def loss_func(self, output_tensor, *, data, kl_data, label):
-        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        length = self._get_kto_length(data)
         policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
         ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
         if self.args.calculate_KL:
@@ -121,7 +127,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
 
-        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        length = self._get_kto_length(data)
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:
