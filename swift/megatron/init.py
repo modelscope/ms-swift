@@ -670,10 +670,8 @@ def _patch__write_item():
 
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
-    from megatron.core import parallel_state
     import megatron.core
-    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
-                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
 
