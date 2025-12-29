@@ -51,5 +51,4 @@ megatron rlhf \
     --padding_free true \
     --sequence_parallel true \
     --log_completions true \
-    --wandb_project megatron_swift \
-    --wandb_exp_name megatron_grpo \
+    --report_to wandb

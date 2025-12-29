@@ -45,7 +45,7 @@ class SubsetDataset:
 class DatasetMeta:
     ms_dataset_id: Optional[str] = None
     hf_dataset_id: Optional[str] = None
-    dataset_path: Optional[str] = None
+    dataset_path: Optional[str] = None  # or dataset_dir
     dataset_name: Optional[str] = None
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None

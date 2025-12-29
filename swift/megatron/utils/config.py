@@ -110,8 +110,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     window_size = res.pop('window_size', None)
     if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
-            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
-            'Qwen3VLMoeForConditionalGeneration'
+            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3OmniForConditionalGeneration',
+            'Qwen3VLForConditionalGeneration', 'Qwen3VLMoeForConditionalGeneration'
     }:
         res['qk_layernorm'] = True
     if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {

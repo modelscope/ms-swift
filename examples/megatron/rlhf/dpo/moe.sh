@@ -43,4 +43,5 @@ megatron rlhf \
     --use_precision_aware_optimizer true \
     --optimizer_offload_fraction 1 \
     --beta 0.1 \
+    --rpo_alpha 0.1 \
     --loss_type sigmoid

@@ -32,4 +32,5 @@ swift rlhf \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
+    --rpo_alpha 0.1 \
     --dataset_num_proc 4

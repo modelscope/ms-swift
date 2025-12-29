@@ -41,5 +41,6 @@ megatron rlhf \
     --no_save_rng true \
     --sequence_parallel true \
     --attention_backend flash \
+    --rpo_alpha 0.1 \
     --beta 0.1 \
     --loss_type sigmoid

@@ -528,7 +528,7 @@ class Template(ProcessorMixin):
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
-                for prefix in ['chosen', 'rejected']:
+                for prefix in ['chosen', 'rejected']:  # rm
                     encoded.pop(f'{prefix}_labels', None)
                     encoded.pop(f'{prefix}_loss_scale', None)
             else:
@@ -1703,7 +1703,8 @@ class Template(ProcessorMixin):
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         elif self.use_megatron:
             for encoded in batch:
-                encoded['position_ids'] = list(range(len(encoded['labels'])))
+                val = encoded['input_ids'] if encoded.get('labels') is None else encoded['labels']
+                encoded['position_ids'] = list(range(len(val)))
 
         res = {}
         if self.padding_free:
@@ -1779,7 +1780,7 @@ class Template(ProcessorMixin):
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
                 for i, seq_len in enumerate(seq_lens):
-                    res['attention_mask'][i, :, seq_len:] = 0
+                    res['attention_mask'][i, :, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']
 
         for key, pad_value in zip(keys, pad_values):

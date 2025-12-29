@@ -142,6 +142,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
   - Note: The `eos_token` is removed from the output response, while additional stop words are preserved in the output.
 - logprobs: Whether to return log probabilities. Default is `False`.
 - top_logprobs: Number of top log probabilities to return. Default is `None`.
+- structured_outputs_regex: A regular expression pattern for structured outputs (guided decoding). When set, the model's generation is constrained to match the specified regex pattern. Only effective when `infer_backend` is `vllm`. Default is `None`.
 
 ### Quantization Arguments
 
@@ -217,6 +218,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
   - Note: When using DDP without DeepSpeed/FSDP and `gradient_checkpointing_kwargs` is `None`, it defaults to `'{"use_reentrant": false}'` to prevent errors.
 - full_determinism: Ensures reproducible results during training. Note: This may negatively impact performance. Default is `False`.
 - 🔥report_to: Default is `'tensorboard'`. You can specify multiple loggers, e.g., `--report_to tensorboard wandb swanlab`, or `--report_to all`.
+  - If you specify `--report_to wandb`, you can set the project name through `WANDB_PROJECT` and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
 - logging_first_step: Whether to log metrics at the first step. Default is `True`.
 - logging_steps: Interval for logging. Default is 5.
 - router_aux_loss_coef: Used in MoE model training to set the weight of auxiliary loss. Default is `0.`.
@@ -253,7 +255,8 @@ Other important parameters:
 - 🔥dataloader_num_workers: Default is `None`. On Windows, set to 0; otherwise, 1.
 - dataloader_pin_memory: Default is `True`.
 - dataloader_persistent_workers: Default is `False`.
-- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, set to 10.
+- dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, it is set to 2. Number of batches loaded in advance by each worker. 2 means there will be a total of 2 * num_workers batches prefetched across all workers.
+  - In "ms-swift<3.12", the default value is 10, which may cause out of memory issues.
 - train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
 - optim: The optimizer, defaults to `"adamw_torch"` (for torch>=2.8 `"adamw_torch_fused"`). For a complete list of optimizers, please see `OptimizerNames` in [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py).
 - optim_args: Optional arguments to pass to the optimizer, defaults to None.
@@ -473,7 +476,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
-- 🔥packing: Packs data samples of varying lengths into samples of uniform length, achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples remain independent and invisible to each other. This parameter defaults to `False` and currently supports CPT/SFT/DPO/KTO/GKD. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
+- 🔥packing: Use the `padding_free` method to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples remain independent and invisible to each other. This parameter defaults to `False` and currently supports CPT/SFT/DPO/KTO/GKD. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
   - "ms-swift>=3.12" has newly added support for packing in embedding/reranker/seq_cls tasks.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
@@ -497,13 +500,14 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 #### SWANLAB
 
-- swanlab_token: SwanLab's API key
-- swanlab_project: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
-- swanlab_workspace: Defaults to `None`, will use the username associated with the API key
-- swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
-- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
-- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
-- swanlab_mode: Optional values are `cloud` and `local`, representing cloud mode or local mode
+- swanlab_token: The API key for SwanLab. You can also specify it using the `SWANLAB_API_KEY` environment variable.
+- swanlab_project: The SwanLab project, which can be created in advance on the page [https://swanlab.cn/space/~](https://swanlab.cn/space/~) or created automatically. The default is "ms-swift".
+- swanlab_workspace: Defaults to `None`, will use the username associated with the API key.
+- swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default.
+- swanlab_notification_method: The notification method for SwanLab when training completes or errors occur. For details, refer to [here](https://docs.swanlab.cn/plugin/notification-dingtalk.html). Supports 'dingtalk', 'lark', 'email', 'discord', 'wxwork', 'slack'.
+- swanlab_webhook_url: Defaults to None. The webhook URL corresponding to SwanLab's `swanlab_notification_method`.
+- swanlab_secret: Defaults to None. The secret corresponding to SwanLab's `swanlab_notification_method`.
+- swanlab_mode: Optional values are `cloud` and `local`, representing cloud mode or local mode.
 
 ### RLHF Arguments
 

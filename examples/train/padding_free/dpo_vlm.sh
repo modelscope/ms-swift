@@ -30,4 +30,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --attn_impl flash_attn \
     --save_only_model true \
+    --rpo_alpha 0.1 \
     --padding_free true

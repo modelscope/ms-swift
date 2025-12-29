@@ -29,4 +29,5 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
+    --rpo_alpha 0.1 \
     --save_only_model true

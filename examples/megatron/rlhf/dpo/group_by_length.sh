@@ -1,4 +1,4 @@
-# 4 * 28GiB; 3.4s/it
+# 4 * 56GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -11,9 +11,10 @@ megatron rlhf \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
-    --packing true \
-    --micro_batch_size 1 \
-    --global_batch_size 4 \
+    --padding_free false \
+    --group_by_length true \
+    --micro_batch_size 4 \
+    --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
@@ -32,7 +33,7 @@ megatron rlhf \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash \
+    --attention_backend unfused \
     --beta 0.1 \
     --rpo_alpha 0.1 \
     --loss_type sigmoid

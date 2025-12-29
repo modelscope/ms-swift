@@ -130,6 +130,7 @@ result.mp4
 output/
 outputs/
 wandb/
+swanlog/
 *.out
 benchmarks/
 eval_output/
@@ -142,6 +143,9 @@ result/
 images
 /custom/
 megatron_output/
+/*-mcore/
+/*-hf/
+/*_cached_dataset/
 
 # Pytorch
 *.pth

@@ -39,7 +39,7 @@ from tqdm.auto import tqdm
 from swift.llm import Template, dynamic_gradient_checkpointing
 from swift.plugin import MeanMetric
 from swift.trainers import SwiftMixin
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_logger, ms_logger_context
+from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
 from ..tuners import LoraParallelLinear
 from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
@@ -719,12 +719,30 @@ class BaseMegatronTrainer(ABC):
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
+    def _get_metrics(self, total_loss_dict, mode):
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
-        total_loss_dict.update({
+        return {
             k: torch.tensor([v * advanced_iters], device='cuda')
             for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
-        })
+        }
+
+    def _remove_log(self, total_loss_dict):
+        pass
+
+    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
+        writer = get_tensorboard_writer()
+        wandb_writer = get_wandb_writer()
+        metrics = self._get_metrics(total_loss_dict, mode)
+        total_loss_dict.update(metrics)
+        self._remove_log(total_loss_dict)
+        if iteration is None:
+            args = get_args()
+            iteration = args.curr_iteration + 1
+        if writer:
+            for k, v in metrics.items():
+                writer.add_scalar(k, v, iteration)
+        if wandb_writer:
+            wandb_writer.log(metrics, iteration)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
@@ -800,7 +818,9 @@ class BaseMegatronTrainer(ABC):
             writer.add_scalar('batch-size vs samples', batch_size, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'batch-size': batch_size}, iteration)
-            for key in loss_dict:
+            log_loss_dict = loss_dict.copy()
+            self._remove_log(log_loss_dict)
+            for key in log_loss_dict:
                 writer.add_scalar(key, loss_dict[key], iteration)
                 writer.add_scalar(key + ' vs samples', loss_dict[key], args.consumed_train_samples)
                 if wandb_writer:
@@ -1171,7 +1191,7 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
-    def _prepare_batch(self, data, vp_stage, num_samples=None):
+    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
@@ -1229,3 +1249,13 @@ class BaseMegatronTrainer(ABC):
                     'seq2seq_mode': 'sft',
                 }
         return {}
+
+    def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
+        if packed_seq_params is None:
+            last_token_idx = get_last_valid_indices((~attention_mask[:, 0, -1]).long())
+            last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
+        else:
+            num_samples = num_samples or packed_seq_params.num_samples
+            last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
+            last_tokens = output_tensor[0, last_token_idx]
+        return last_tokens
