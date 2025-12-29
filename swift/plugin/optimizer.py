@@ -101,73 +101,148 @@ def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
 
 
 def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
-    """
-    Create MuonClip optimizer.
-    - Parse args.optim_args as key=value pairs (with basic type casting).
-    - Group Q/K projection weights separately for QK clipping.
-    - Instantiate MuonClip using args.* plus **optim_args (like create_muon_optimizer).
-    """
     from swift.plugin.muonclip import MuonClip
 
-    # parse args.optim_args (same style as create_muon_optimizer, but with type casting)
+    # parse args.optim_args
     optim_args = {}
-    if getattr(args, 'optim_args', None):
-        for mapping in args.optim_args.replace(' ', '').split(','):
+    raw = getattr(args, 'optim_args', None)
+    if raw:
+        for mapping in raw.replace(' ', '').split(','):
             if not mapping:
                 continue
+            if '=' not in mapping:
+                continue
             key, value = mapping.split('=', 1)
+            if not key:
+                continue
 
-            # basic casting
-            v = value
             lv = value.lower()
             if lv in ('true', 'false'):
-                v = (lv == 'true')
+                value = (lv == 'true')
             else:
                 try:
                     f = float(value)
-                    v = int(f) if f.is_integer() else f
+                    value = int(f) if f.is_integer() else f
                 except ValueError:
-                    v = value
+                    pass
 
-            optim_args[key] = v
+            optim_args[key] = value
 
-    # resolve embed/lm_head keys (align with your create_muon_optimizer logic)
+    # resolve keys like create_muon_optimizer
     model_arch = model.model_meta.model_arch
     embed_key = getattr(model_arch, 'embedding', None) or 'embed_tokens'
     lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
 
-    # group params
-    qk_params, other_params = [], []
+    # hyperparams (single-source of truth)
+    lr = args.learning_rate
+    weight_decay = optim_args.get('weight_decay', args.weight_decay)
+    momentum = optim_args.get('momentum', 0.95)
+    nesterov = optim_args.get('nesterov', False)
+    newton_schulz_steps = optim_args.get('newton_schulz_steps', 5)
+    qk_clip_tau = optim_args.get('qk_clip_tau', 100.0)
+    qk_clip_enabled = optim_args.get('qk_clip_enabled', True)
+
+    # collect trainable params and group them
+    muon_named = []
+    rest_named = []
+
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
 
         is_muon_candidate = (p.ndim >= 2 and embed_key not in name and lm_head_key not in name)
-        is_qk_name = any(x in name.lower() for x in ['wq', 'wk', 'q_proj', 'k_proj', 'query', 'key'])
-
-        if is_muon_candidate and is_qk_name:
-            qk_params.append(p)
+        if is_muon_candidate:
+            muon_named.append((name, p))
         else:
-            other_params.append(p)
+            rest_named.append((name, p))
 
+    def _is_qk_name(name: str) -> bool:
+        ln = name.lower()
+        # qwen2.5/qwen3 common patterns
+        return ('q_proj' in ln) or ('k_proj' in ln) or ('.wq' in ln) or ('.wk' in ln) or ('/wq' in ln) or ('/wk' in ln)
+
+    qk_muon_params = []
+    other_muon_params = []
+    for name, p in muon_named:
+        (qk_muon_params if _is_qk_name(name) else other_muon_params).append(p)
+
+    rest_params = [p for _, p in rest_named]
+
+    # build param groups (behavior unchanged)
     param_groups = []
-    if qk_params:
-        param_groups.append({'params': qk_params, 'lr': args.learning_rate, 'is_qk': True})
-    if other_params:
-        param_groups.append({'params': other_params, 'lr': args.learning_rate, 'is_qk': False})
+
+    if qk_muon_params:
+        param_groups.append({
+            'params': qk_muon_params,
+            'lr': lr,
+            'momentum': momentum,
+            'weight_decay': weight_decay,
+            'nesterov': nesterov,
+            'newton_schulz_steps': newton_schulz_steps,
+            'qk_clip_tau': qk_clip_tau,
+            'qk_clip_enabled': qk_clip_enabled,
+            'apply_muon': True,
+            'is_qk': True,
+        })
+
+    if other_muon_params:
+        param_groups.append({
+            'params': other_muon_params,
+            'lr': lr,
+            'momentum': momentum,
+            'weight_decay': weight_decay,
+            'nesterov': nesterov,
+            'newton_schulz_steps': newton_schulz_steps,
+            'qk_clip_tau': qk_clip_tau,
+            'qk_clip_enabled': qk_clip_enabled,
+            'apply_muon': True,
+            'is_qk': False,
+        })
+
+    if rest_params:
+        param_groups.append({
+            'params': rest_params,
+            'lr': lr,
+            'momentum': momentum,
+            'weight_decay': weight_decay,
+            'nesterov': nesterov,
+            'newton_schulz_steps': newton_schulz_steps,
+            'qk_clip_tau': qk_clip_tau,
+            'qk_clip_enabled': qk_clip_enabled,
+            'apply_muon': False,
+            'is_qk': False,
+        })
+
+    # safety fallback
     if not param_groups:
         all_params = [p for _, p in model.named_parameters() if p.requires_grad]
-        param_groups = [{'params': all_params, 'lr': args.learning_rate, 'is_qk': False}]
+        param_groups = [{
+            'params': all_params,
+            'lr': lr,
+            'momentum': momentum,
+            'weight_decay': weight_decay,
+            'nesterov': nesterov,
+            'newton_schulz_steps': newton_schulz_steps,
+            'qk_clip_tau': qk_clip_tau,
+            'qk_clip_enabled': qk_clip_enabled,
+            'apply_muon': True,
+            'is_qk': False,
+        }]
 
-    allowed = {'lr', 'momentum', 'weight_decay', 'nesterov', 'newton_schulz_steps', 'qk_clip_tau'}
-    optim_args = {k: v for k, v in optim_args.items() if k in allowed}
-
-    return MuonClip(
+    # Only pass supported init kwargs; real behavior comes from param_groups
+    optimizer = MuonClip(
         param_groups,
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay,
-        **optim_args,
-    ), None
+        lr=lr,
+        momentum=momentum,
+        weight_decay=weight_decay,
+        nesterov=nesterov,
+        newton_schulz_steps=newton_schulz_steps,
+        qk_clip_tau=qk_clip_tau,
+        qk_clip_enabled=qk_clip_enabled,
+    )
+
+    return optimizer, None
+
 
 
 def get_param_startswith(model,
