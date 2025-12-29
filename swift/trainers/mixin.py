@@ -712,15 +712,6 @@ class SwiftMixin:
                     return get_lm_head_model(self.model, model_meta=self.model.model_meta)
                 return get_llm_model(self.model, model_meta=self.model.model_meta)
 
-            # Temporary guardrail:
-            # RP>1 implies ring-attention/zigzag workflow which requires careful task-specific pooling/restore.
-            # We have not fully validated seq_cls/reranker/embedding under RP>1 yet, so fail fast.
-            if sp_enabled and task_type in {'seq_cls', 'reranker', 'embedding', 'generative_reranker'}:
-                from swift.trainers.sequence_parallel import sequence_parallel
-                rp_world_size = getattr(sequence_parallel, 'rp_world_size', None)
-                if isinstance(rp_world_size, int) and rp_world_size > 1:
-                    raise NotImplementedError(f'task_type={task_type} with ring-attention is not supported yet. ')
-
             # --- seq_cls / reranker / generative_reranker unified pipeline ---
             if task_type in {'seq_cls', 'reranker', 'generative_reranker', 'embedding'}:
                 llm_model = _get_hook_target_model(task_type)
