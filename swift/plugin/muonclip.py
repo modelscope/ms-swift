@@ -4,8 +4,8 @@ from contextlib import suppress
 from typing import Optional
 
 import torch
-from torch.optim import Optimizer
 import torch.nn.functional as F
+from torch.optim import Optimizer
 
 
 class _MaxLogitsTracker:
