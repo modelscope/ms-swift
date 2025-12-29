@@ -467,7 +467,7 @@ class Qwen3OmniBridge(GPTBridge):
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_omni, [
-            ModelType.qwen3_omni,
+            ModelType.qwen3_omni_moe,
         ],
         model_cls=Qwen3VLGPTModel,
         bridge_cls=Qwen3OmniBridge,
@@ -492,7 +492,7 @@ register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_vl, [
             ModelType.qwen3_vl,
-            ModelType.qwen3_moe_vl,
+            ModelType.qwen3_vl_moe,
         ],
         model_cls=Qwen3VLGPTModel,
         bridge_cls=MultimodalGPTBridge,

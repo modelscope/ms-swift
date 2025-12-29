@@ -67,7 +67,7 @@ class ModelMeta:
 
     template: Optional[str] = None
     model_arch: Optional[str] = None
-    architectures: List[str] = field(default_factory=list)
+    hf_model_type: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
@@ -90,6 +90,8 @@ class ModelMeta:
         assert not isinstance(self.get_function, str)  # check ms-swift4.0
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
+        if len(hf_model_type) == 0:
+            hf_model_type.append(model_type)
 
         if self.model_type in MLLMModelType.__dict__:
             self.is_multimodal = True
@@ -219,35 +221,35 @@ def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
     if not is_deepspeed_zero3_enabled():
         return
     try:
-        architecture = model.config.architectures[0]
+        hf_model_type = model.config.model_type
     except Exception:
         return
     if z3_leaf_modules is None:
-        if architecture == 'Qwen3VLMoeForConditionalGeneration':
+        if hf_model_type == 'qwen3_vl_moe':
             from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
             z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
-        elif architecture == 'Qwen3OmniMoeForConditionalGeneration':
+        elif hf_model_type == 'qwen3_omni_moe':
             from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerTextSparseMoeBlock
             z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
-        elif architecture == 'Qwen2MoeForCausalLM':
+        elif hf_model_type == 'qwen2_moe':
             from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
             z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
-        elif architecture == 'Qwen3MoeForCausalLM':
+        elif hf_model_type == 'qwen3_moe':
             from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
             z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
-        elif architecture == 'Glm4MoeForCausalLM':
+        elif hf_model_type == 'glm4_moe':
             from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
             z3_leaf_modules = [Glm4MoeMoE]
-        elif architecture == 'Glm4vMoeForConditionalGeneration':
+        elif hf_model_type == 'glm4v_moe':
             from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
             z3_leaf_modules = [Glm4vMoeTextMoE]
-        elif architecture == 'GptOssForCausalLM':
+        elif hf_model_type == 'gpt_oss':
             from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
             z3_leaf_modules = [GptOssMLP]
-        elif architecture == 'Llama4ForCausalLM':
+        elif hf_model_type == 'llama4':
             from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
             z3_leaf_modules = [Llama4TextMoe]
-        elif architecture == 'Qwen3NextForCausalLM':
+        elif hf_model_type == 'qwen3_next':
             from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
             z3_leaf_modules = [Qwen3NextSparseMoeBlock]
 
@@ -579,8 +581,9 @@ def _get_arch_mapping():
     return res
 
 
-def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
+def get_matched_model_types(hf_model_type: Optional[List[str]]) -> List[str]:
     """Get possible model_type."""
+    # TODO
     architectures = architectures or ['null']
     if architectures:
         architectures = architectures[0]
@@ -613,8 +616,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
-        architectures = HfConfigFactory.get_config_attr(config, 'architectures')
-        model_types = get_matched_model_types(architectures)
+        hf_model_type = HfConfigFactory.get_config_attr(config, 'model_type')
+        model_types = get_matched_model_types(hf_model_type)
         if len(model_types) > 1:
             raise ValueError('Failed to automatically match `model_type`. '
                              f'Please explicitly pass the `model_type` for `{model_dir}`. '

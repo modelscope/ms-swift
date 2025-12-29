@@ -493,7 +493,6 @@ register_model(
         ],
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen,
-        architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
     ))
 
@@ -605,7 +604,6 @@ register_model(
                 TemplateType.qwen3_thinking),
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 
@@ -623,7 +621,6 @@ register_model(
             ], TemplateType.qwen3_thinking)
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3NextForCausalLM'],
         requires=['transformers>=4.57'],
     ))
 
@@ -1054,7 +1051,7 @@ register_model(
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
+def get_model_tokenizer_qwen3_vl_moe(model_dir, *args, **kwargs):
     from transformers import Qwen3VLMoeForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
     compat_qwen_vl_utils(image_patch_size=16)
@@ -1069,7 +1066,7 @@ def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_moe_vl, [
+        MLLMModelType.qwen3_vl_moe, [
             ModelGroup([
                 Model('Qwen/Qwen3-VL-30B-A3B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct'),
                 Model('Qwen/Qwen3-VL-30B-A3B-Thinking', 'Qwen/Qwen3-VL-30B-A3B-Thinking'),
@@ -1081,9 +1078,9 @@ register_model(
                 Model('Qwen/Qwen3-VL-235B-A22B-Thinking-FP8', 'Qwen/Qwen3-VL-235B-A22B-Thinking-FP8'),
             ], TemplateType.qwen3_vl),
         ],
-        get_model_tokenizer_qwen3_moe_vl,
+        get_model_tokenizer_qwen3_vl_moe,
         model_arch=ModelArch.qwen3_vl,
-        architectures=['Qwen3VLMoeForConditionalGeneration'],
+        hf_model_type=['qwen3_vl_moe'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
@@ -1302,7 +1299,7 @@ def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_omni,
+        MLLMModelType.qwen3_omni_moe,
         [
             ModelGroup([
                 Model('Qwen/Qwen3-Omni-30B-A3B-Instruct', 'Qwen/Qwen3-Omni-30B-A3B-Instruct'),
@@ -1312,7 +1309,6 @@ register_model(
         ],
         get_model_tokenizer_qwen3_omni,
         model_arch=ModelArch.qwen3_omni,
-        architectures=['Qwen3OmniMoeForConditionalGeneration'],
         requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
         tags=['vision', 'video', 'audio'],
     ))

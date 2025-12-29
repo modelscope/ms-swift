@@ -96,7 +96,7 @@ register_model(
             ]),
         ],
         get_model_tokenizer_yuan,
-        template= TemplateType.yuan,
+        template=TemplateType.yuan,
         model_arch=ModelArch.llama,
         architectures=['YuanForCausalLM'],
     ))
@@ -353,7 +353,6 @@ register_model(
         ],
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.gpt_oss,
-        architectures=['GptOssForCausalLM'],
         ignore_patterns=['metal/', 'original/'],
         requires=['transformers>=4.55']))
 

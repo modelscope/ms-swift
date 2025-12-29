@@ -18,7 +18,7 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
 
 def get_template(
     template_type: str,
-    processor: Processor,
+    processor: Optional[Processor],
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     *,
@@ -40,6 +40,7 @@ def get_template(
     enable_thinking: Optional[bool] = None,
     add_non_thinking_prefix: bool = True,
 ) -> 'Template':
+    # We don't use the design of directly passing in model_id_or_path, because this would require hub_kwargs.
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(

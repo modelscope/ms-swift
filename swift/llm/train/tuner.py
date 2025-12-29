@@ -56,7 +56,7 @@ def apply_liger(model_type: str):
             apply_liger_kernel_to_mllama()
         elif model_type in (ModelType.qwen2_vl):
             apply_liger_kernel_to_qwen2_vl()
-        elif model_type in (ModelType.qwen2_5_vl, ModelType.qwen3_vl, ModelType.qwen3_moe_vl, ModelType.qvq):
+        elif model_type in (ModelType.qwen2_5_vl, ModelType.qwen3_vl, ModelType.qwen3_vl_moe, ModelType.qvq):
             apply_liger_kernel_to_qwen2_5_vl()
         elif model_type in (ModelType.glm4, ModelType.glm4_0414, ModelType.glm4_z1_rumination):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4
@@ -64,7 +64,7 @@ def apply_liger(model_type: str):
         elif model_type in (ModelType.glm4v, ModelType.glm4_1v):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4v
             apply_liger_kernel_to_glm4v()
-        elif model_type in (ModelType.glm4_5v):
+        elif model_type in (ModelType.glm4v_moe):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4v_moe
             apply_liger_kernel_to_glm4v_moe()
         elif model_type in (ModelType.internvl_hf, ModelType.internvl_gpt_hf):

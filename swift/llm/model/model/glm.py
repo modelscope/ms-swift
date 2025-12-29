@@ -420,7 +420,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4_5,
+        LLMModelType.glm4_moe,
         [
             ModelGroup([
                 Model('ZhipuAI/GLM-4.5-Air-Base', 'zai-org/GLM-4.5-Air-Base'),
@@ -440,12 +440,11 @@ register_model(
             ], TemplateType.glm4_7),
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Glm4MoeForCausalLM'],
         requires=['transformers>=4.54'],
     ))
 
 
-def get_model_tokenizer_glm4_5v(*args, **kwargs):
+def get_model_tokenizer_glm4v_moe(*args, **kwargs):
     from transformers import Glm4vMoeForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vMoeForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
@@ -456,7 +455,7 @@ def get_model_tokenizer_glm4_5v(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.glm4_5v,
+        MLLMModelType.glm4v_moe,
         [
             ModelGroup([
                 Model('ZhipuAI/GLM-4.5V', 'zai-org/GLM-4.5V'),
@@ -468,9 +467,8 @@ register_model(
             ],
                        requires=['transformers>=5.0.0.dev']),
         ],
-        get_model_tokenizer_glm4_5v,
+        get_model_tokenizer_glm4v_moe,
         template=TemplateType.glm4_5v,
         model_arch=ModelArch.glm4_1v,
-        architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56'],
     ))
