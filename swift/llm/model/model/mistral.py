@@ -238,28 +238,13 @@ register_model(
                 Model('mistralai/Ministral-3-14B-Base-2512', 'mistralai/Ministral-3-14B-Base-2512'),
                 Model('mistralai/Ministral-3-14B-Instruct-2512', 'mistralai/Ministral-3-14B-Instruct-2512'),
                 Model('mistralai/Ministral-3-14B-Instruct-2512-BF16', 'mistralai/Ministral-3-14B-Instruct-2512-BF16'),
-            ]),
-        ],
-        TemplateType.mistral_2512,
-        get_model_tokenizer_mistral_2512,
-        architectures=['Mistral3ForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf,
-        requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6'],
-        tags=['vision'],
-        ignore_patterns=[],
-    ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mistral_2512_thinking,
-        [
+            ], TemplateType.mistral_2512),
             ModelGroup([
                 Model('mistralai/Ministral-3-3B-Reasoning-2512', 'mistralai/Ministral-3-3B-Reasoning-2512'),
                 Model('mistralai/Ministral-3-8B-Reasoning-2512', 'mistralai/Ministral-3-8B-Reasoning-2512'),
                 Model('mistralai/Ministral-3-14B-Reasoning-2512', 'mistralai/Ministral-3-14B-Reasoning-2512'),
-            ]),
+            ], TemplateType.mistral_2512_thinking),
         ],
-        TemplateType.mistral_2512_thinking,
         get_model_tokenizer_mistral_2512,
         architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,

@@ -47,11 +47,13 @@ class ModelGroup:
     models: List[Model]
 
     # Higher priority. If set to None, the attributes of the ModelMeta will be used.
+    template: Optional[str] = None
     ignore_patterns: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
+        assert not isinstance(self.template, (list, tuple))  # check ms-swift4.0
         assert isinstance(self.models, (tuple, list)), f'self.models: {self.models}'
 
 
@@ -61,9 +63,9 @@ class ModelMeta:
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
-    template: Optional[str]
     get_function: GetModelTokenizerFunction
 
+    template: Optional[str] = None
     model_arch: Optional[str] = None
     architectures: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
@@ -85,6 +87,7 @@ class ModelMeta:
         from .constant import MLLMModelType, RMModelType, RerankerModelType
         if self.template is None:
             self.template = 'dummy'
+        assert not isinstance(self.get_function, str)  # check ms-swift4.0
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
 

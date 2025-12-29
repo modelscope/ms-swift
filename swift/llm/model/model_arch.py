@@ -90,6 +90,8 @@ class MLLMModelArch:
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
+    # Multimodal models typically require specifying model_arch,
+    # while text-only models usually do not need to specify model_arch.
     pass
 
 

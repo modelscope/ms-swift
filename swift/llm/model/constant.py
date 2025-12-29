@@ -8,19 +8,10 @@ class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
-    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
-    qwq_preview = 'qwq_preview'
-    qwq = 'qwq'
     qwen3 = 'qwen3'
-    qwen3_guard = 'qwen3_guard'
-    qwen3_thinking = 'qwen3_thinking'
-    qwen3_nothinking = 'qwen3_nothinking'
-    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
-    qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_next = 'qwen3_next'
-    qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
 
     qwen2_gte = 'qwen2_gte'
@@ -36,8 +27,6 @@ class LLMModelType:
     reflection = 'reflection'
     megrez = 'megrez'
     yi = 'yi'
-    yi_coder = 'yi_coder'
-    sus = 'sus'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
 
@@ -140,7 +129,6 @@ class LLMModelType:
     hunyuan = 'hunyuan'
     ernie = 'ernie'
     gemma_emb = 'gemma_emb'
-    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
     minimind = 'minimind'
 
@@ -220,7 +208,6 @@ class MLLMModelType:
     llava_onevision_hf = 'llava_onevision_hf'
     yi_vl = 'yi_vl'
     ernie_vl = 'ernie_vl'
-    ernie_vl_thinking = 'ernie_vl_thinking'
 
     llava_llama3_1_hf = 'llava_llama3_1_hf'  # DaozeZhang
     llava_llama3_hf = 'llava_llama3_hf'  # xtuner
@@ -279,7 +266,6 @@ class MLLMModelType:
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'
-    mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
 

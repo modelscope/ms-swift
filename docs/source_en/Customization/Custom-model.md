@@ -14,8 +14,8 @@ The `register_model` function registers a model in the `MODEL_MAPPING`. You can 
 
 - model_type: Required. The model type, which is also the unique ID.
 - model_groups: Required. Lists the ModelScope/HuggingFace model IDs and local paths. Running the [run_model_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_model_info.py) file will automatically generate the [supported models documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) and automatically match the model_type based on the `--model` suffix.
-- template: Required. The default template type when `--template` is not specified in the command line.
 - get_function: Required. The loading function for the model and tokenizer/processor (for multi-modal models). LLM is typically set to `get_model_tokenizer_with_flash_attn`.
+- template: The default template type when `--template` is not additionally specified in the command line. Defaults to None.
 - model_arch: The model architecture. Defaults to None. Multi-modal model training requires setting this parameter to determine the prefix for llm/vit/aligner.
 - architectures: The architectures item in config.json, used to automatically match the model with its model_type. Defaults to `[]`.
 - additional_saved_files: Files that need to be additionally saved during full parameter training and merge-lora. Defaults to `[]`.

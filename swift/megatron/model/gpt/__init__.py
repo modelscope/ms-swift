@@ -10,9 +10,6 @@ register_megatron_model(
         [
             ModelType.qwen2,
             ModelType.qwen2_5,
-            ModelType.qwq,
-            ModelType.qwq_preview,
-            ModelType.qwen2_5_math,
             ModelType.llama,
             ModelType.llama3,
             ModelType.llama3_1,
@@ -23,8 +20,6 @@ register_megatron_model(
             ModelType.deepseek,
             ModelType.deepseek_r1_distill,
             ModelType.yi,
-            ModelType.yi_coder,
-            ModelType.sus,
             ModelType.skywork_o1,
             ModelType.openbuddy_llama,
             ModelType.openbuddy_llama3,

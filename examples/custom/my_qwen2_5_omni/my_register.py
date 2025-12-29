@@ -74,9 +74,9 @@ register_model(
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],
-        'my_qwen2_5_omni',
         # Function to get model and processor.
-        get_model_tokenizer_qwen2_5_omni,
+        get_function=get_model_tokenizer_qwen2_5_omni,
+        template='my_qwen2_5_omni',
         is_multimodal=True,  # Whether it's a multimodal model
         model_arch='my_qwen2_5_omni',  # Usually set only for multimodal models
         # Used for automatic model_type matching
