@@ -77,45 +77,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
 
-        # Adjust EP parameters for Dense/MoE compatibility before Megatron initialization.
-        # Megatron's validate_args requires num_experts to be set when EP > 1.
-        # If student is Dense but user configured EP > 1 (expecting MoE teacher),
-        # we need to reset EP to 1 for student initialization.
-        self._adjust_ep_for_dense_student()
-
         super().train(train_dataset, val_dataset, data_collator)
-
-    def _adjust_ep_for_dense_student(self):
-        """Adjust EP parameters when student is Dense but EP > 1 is configured.
-
-        This handles the case where:
-        - Student is Dense (no num_experts)
-        - User configured EP > 1 (expecting to use EP for MoE teacher)
-
-        We reset EP to 1 for student initialization to avoid Megatron's validation error.
-        The original EP will be restored when loading MoE teacher model.
-        """
-        args = self.args
-        student_is_moe = getattr(args, 'num_experts', None) is not None
-
-        if not student_is_moe:
-            # Student is Dense, check if EP is configured
-            ep_size = getattr(args, 'expert_model_parallel_size', 1)
-            etp_size = getattr(args, 'expert_tensor_parallel_size', 1)
-
-            if ep_size > 1 or etp_size > 1:
-                # Save original EP settings for MoE teacher
-                self._original_ep_size = ep_size
-                self._original_etp_size = etp_size
-
-                # Reset EP to 1 for Dense student
-                args.expert_model_parallel_size = 1
-                args.expert_tensor_parallel_size = 1
-
-                # Also update extra_args if it exists
-                if hasattr(args, 'extra_args') and args.extra_args is not None:
-                    args.extra_args['expert_model_parallel_size'] = 1
-                    args.extra_args['expert_tensor_parallel_size'] = 1
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         """Setup model and optimizer, including teacher model.
@@ -223,10 +185,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
             # Restore original EP settings if they were saved during _adjust_ep_for_dense_student.
             # This allows MoE teacher to use EP > 1 even when student is Dense.
-            if hasattr(self, '_original_ep_size'):
-                megatron_args.expert_model_parallel_size = self._original_ep_size
-            if hasattr(self, '_original_etp_size'):
-                megatron_args.expert_tensor_parallel_size = self._original_etp_size
+            if self.student_is_moe:
+                megatron_args.expert_model_parallel_size = self.student_ep_size
+                megatron_args.expert_tensor_parallel_size = self.student_etp_size
         else:
             # Dense teacher cannot use expert parallelism.
             # Reset EP to 1 to avoid "num_moe_experts must be non None to use expert-parallel" error.
@@ -795,8 +756,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         This is called before Megatron's validate_args, allowing us to reset EP to 1
         when student is Dense but EP > 1 was configured (for MoE teacher).
         """
-        if hasattr(self, '_original_ep_size') or hasattr(self, '_original_etp_size'):
+        student_is_moe = getattr(args, 'num_experts', None) is not None
+        if not student_is_moe:
             # Reset EP to 1 in Megatron args for Dense student
+            self._original_ep_size = args.expert_model_parallel_size
+            self._original_etp_size = args.expert_tensor_parallel_size
             args.expert_model_parallel_size = 1
             args.expert_tensor_parallel_size = 1
+        self.student_is_moe = student_is_moe
         return self._origin_validate_args(args, *_args, **kwargs)
