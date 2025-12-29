@@ -121,6 +121,6 @@ register_model(
             ], TemplateType.sus),
         ],
         get_model_tokenizer_yi,
-        architectures=['LlamaForCausalLM'],
+        hf_model_type=['llama'],
         model_arch=ModelArch.llama,
     ))

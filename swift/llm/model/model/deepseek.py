@@ -281,32 +281,6 @@ register_model(
         tags=['vision'],
     ))
 
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek_r1_distill,
-        [
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-14B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B'),
-                Model('iic/QwenLong-L1-32B', 'Tongyi-Zhiwen/QwenLong-L1-32B'),
-            ],
-                       requires=['transformers>=4.37']),
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-70B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'),
-            ]),
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B', 'deepseek-ai/DeepSeek-R1-0528-Qwen3-8B'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.deepseek_r1,
-        architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM', 'Qwen3ForCausalLM'],
-        model_arch=ModelArch.llama,
-    ))
-
 
 def get_model_tokenizer_deepseek_ocr(*args, **kwargs):
     from transformers import AutoModel

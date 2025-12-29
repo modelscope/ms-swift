@@ -68,6 +68,28 @@ register_model(
             ],
                        TemplateType.llama,
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
+            ModelGroup([
+                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
+                Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
+            ],
+                       template=TemplateType.atom),
+            ModelGroup([
+                Model('langboat/Mengzi3-13B-Base', 'Langboat/Mengzi3-13B-Base'),
+            ],
+                       template=TemplateType.mengzi),
+            ModelGroup([
+                Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
+            ],
+                       template=TemplateType.numina,
+                       tags=['math']),
+            ModelGroup([
+                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
+                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
+            ],
+                       template=TemplateType.ziya),
+            ModelGroup([
+                Model('InfiniAI/Megrez-3b-Instruct', 'Infinigence/Megrez-3B-Instruct'),
+            ], TemplateType.megrez),
             # deepseek
             ModelGroup([
                 Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
@@ -96,6 +118,16 @@ register_model(
                 TemplateType.deepseek,
                 tags=['coding'],
             ),
+            # MiniMind2
+            ModelGroup(
+                [
+                    # MiniMind2
+                    Model('gongjy/MiniMind2', 'jingyaogong/MiniMind2'),
+                    # MiniMind2-Small
+                    Model(None, 'jingyaogong/MiniMind2-Small'),
+                ],
+                TemplateType.minimind,
+                requires=['transformers>=4.57.1']),
             # llama3
             ModelGroup(
                 [
@@ -173,6 +205,11 @@ register_model(
                        TemplateType.llama3_2,
                        requires=['transformers>=4.43']),
             ModelGroup([
+                Model('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B', 'Skywork/Skywork-o1-Open-Llama-3.1-8B'),
+            ],
+                       TemplateType.skywork_o1,
+                       requires=['transformers>=4.43']),
+            ModelGroup([
                 Model('LLM-Research/Llama-3.2-1B', 'meta-llama/Llama-3.2-1B'),
                 Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
                 Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
@@ -190,10 +227,18 @@ register_model(
                 Model('ZhipuAI/LongWriter-llama3.1-8b', 'zai-org/LongWriter-llama3.1-8b'),
             ],
                        TemplateType.longwriter_llama,
-                       requires=['transformers>=4.43'])
+                       requires=['transformers>=4.43']),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'),
+                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-70B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'),
+            ], TemplateType.deepseek_r1),
+            ModelGroup([
+                Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
+            ],
+                       TemplateType.reflection,
+                       requires=['transformers>=4.43']),
         ],
         get_model_tokenizer_llama,
-        architectures=['LlamaForCausalLM'],
         model_arch=ModelArch.llama,
     ))
 
@@ -296,92 +341,4 @@ register_model(
         model_arch=ModelArch.llama3_1_omni,
         requires=['openai-whisper'],
         tags=['audio'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.reflection,
-        [
-            ModelGroup([
-                Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.reflection,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-        requires=['transformers>=4.43'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.atom,
-        [
-            ModelGroup([
-                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
-                Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.atom,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.mengzi3,
-        [
-            ModelGroup([
-                Model('langboat/Mengzi3-13B-Base', 'Langboat/Mengzi3-13B-Base'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.mengzi,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.numina,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.numina,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-        tags=['math'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.ziya,
-        [
-            ModelGroup([
-                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
-                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.ziya,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.megrez,
-        [
-            ModelGroup([
-                Model('InfiniAI/Megrez-3b-Instruct', 'Infinigence/Megrez-3B-Instruct'),
-            ]),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.megrez,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
     ))

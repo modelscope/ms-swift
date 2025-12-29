@@ -251,7 +251,7 @@ register_model(
             ]),
         ],
         get_model_tokenizer_sentence_transformers,
-        architectures=['Qwen2ForCausalLM']))
+        hf_model_type=['qwen2']))
 
 register_model(
     ModelMeta(

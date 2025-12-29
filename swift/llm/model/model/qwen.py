@@ -99,7 +99,6 @@ register_model(
         ],
         get_model_tokenizer_qwen,
         template=TemplateType.qwen,
-        architectures=['QWenLMHeadModel'],
         model_arch=ModelArch.qwen))
 
 register_model(
@@ -111,7 +110,7 @@ register_model(
         ])],
         get_model_tokenizer_qwen,
         template=TemplateType.modelscope_agent,
-        architectures=['QWenLMHeadModel'],
+        hf_model_type=['qwen'],
         model_arch=ModelArch.qwen))
 
 
@@ -165,7 +164,7 @@ register_model(
         get_model_tokenizer_qwen_audio,
         template=TemplateType.qwen_audio,
         model_arch=ModelArch.qwen_audio,
-        architectures=['QWenLMHeadModel'],
+        hf_model_type=['qwen'],
         additional_saved_files=['mel_filters.npz'],
         tags=['audio']))
 
@@ -245,7 +244,7 @@ register_model(
         get_model_tokenizer_qwen_vl,
         template=TemplateType.qwen_vl,
         model_arch=ModelArch.qwen_vl,
-        architectures=['QWenLMHeadModel'],
+        hf_model_type=['qwen'],
         additional_saved_files=['SimSun.ttf'],
         tags=['vision']))
 
@@ -469,9 +468,15 @@ register_model(
                 Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
                 Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
             ], TemplateType.qwq),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'),
+                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'),
+                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-14B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B'),
+                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B'),
+                Model('iic/QwenLong-L1-32B', 'Tongyi-Zhiwen/QwenLong-L1-32B'),
+            ], TemplateType.deepseek_r1),
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
         model_arch=ModelArch.llama))
 
@@ -531,6 +536,9 @@ register_model(
                 ],
                 TemplateType.qwen3),
             ModelGroup([
+                Model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B', 'deepseek-ai/DeepSeek-R1-0528-Qwen3-8B'),
+            ], TemplateType.deepseek_r1),
+            ModelGroup([
                 Model('Qwen/Qwen3Guard-Gen-0.6B', 'Qwen/Qwen3Guard-Gen-0.6B'),
                 Model('Qwen/Qwen3Guard-Gen-4B', 'Qwen/Qwen3Guard-Gen-4B'),
                 Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
@@ -545,10 +553,9 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
-            ], TemplateType.qwen3_nothinking)
+            ], TemplateType.qwen3_nothinking),
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM'],
         requires=['transformers>=4.51'],
         model_arch=ModelArch.llama))
 
@@ -775,7 +782,6 @@ register_model(
         ],
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
-        architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -808,7 +814,6 @@ register_model(
         ],
         get_model_tokenizer_qwen2_5_vl,
         model_arch=ModelArch.qwen2_vl,
-        architectures=['Qwen2_5_VLForConditionalGeneration'],
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -1046,7 +1051,6 @@ register_model(
         ],
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
-        architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
@@ -1118,7 +1122,6 @@ register_model(
         ],
         get_model_tokenizer_qwen2_5_omni,
         model_arch=ModelArch.qwen2_5_omni,
-        architectures=['Qwen2_5OmniModel', 'Qwen2_5OmniForConditionalGeneration'],
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
@@ -1330,7 +1333,6 @@ register_model(
         ], TemplateType.midashenglm)],
         get_model_tokenizer_midashenglm,
         model_arch=ModelArch.midashenglm,
-        architectures=['MiDashengLMModel'],
         requires=['transformers>=4.52', 'soundfile'],
         tags=['audio'],
     ))
@@ -1353,7 +1355,6 @@ register_model(
         ],
         get_model_tokenizer_qwen2_audio,
         model_arch=ModelArch.qwen2_audio,
-        architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45,<4.49', 'librosa'],
         tags=['audio'],
     ))
@@ -1403,28 +1404,16 @@ register_model(
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4', 'AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4'),
                 Model('AIDC-AI/Ovis1.6-Gemma2-27B', 'AIDC-AI/Ovis1.6-Gemma2-27B'),
-            ]),
-        ],
-        get_model_tokenizer_ovis,
-        template=TemplateType.ovis1_6,
-        model_arch=ModelArch.ovis,
-        architectures=['Ovis'],
-        tags=['vision'],
-        requires=['transformers>=4.42'],
-    ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.ovis1_6_llama3,
-        [
+            ],
+                       TemplateType.ovis1_6,
+                       requires=['transformers>=4.42']),
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Llama3.2-3B', 'AIDC-AI/Ovis1.6-Llama3.2-3B'),
-            ]),
+            ], TemplateType.ovis1_6_llama3),
         ],
         get_model_tokenizer_ovis,
-        template=TemplateType.ovis1_6_llama3,
         model_arch=ModelArch.ovis,
-        architectures=['Ovis'],
+        hf_model_type=['ovis'],
         tags=['vision'],
     ))
 
@@ -1444,7 +1433,7 @@ register_model(
         get_model_tokenizer_ovis,
         template=TemplateType.ovis2,
         model_arch=ModelArch.ovis,
-        architectures=['Ovis'],
+        hf_model_type=['ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
@@ -1477,7 +1466,7 @@ register_model(
         get_model_tokenizer_ovis2_5,
         template=TemplateType.ovis2_5,
         model_arch=ModelArch.ovis2_5,
-        architectures=['Ovis'],
+        hf_model_type=['ovis2_5'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
@@ -1527,7 +1516,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen3_emb,
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
-        architectures=['Qwen3ForCausalLM']))
+        hf_model_type=['qwen3']))
 
 register_model(
     ModelMeta(
@@ -1540,5 +1529,5 @@ register_model(
         ],
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen3_reranker,
-        architectures=['Qwen3ForCausalLM'],
+        hf_model_type=['qwen3'],
         task_type='reranker'))

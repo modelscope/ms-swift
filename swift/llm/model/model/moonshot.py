@@ -33,7 +33,6 @@ register_model(
         ],
         get_model_tokenizer_kimi_vl,
         template=TemplateType.kimi_vl,
-        architectures=['KimiVLForConditionalGeneration'],
         model_arch=ModelArch.llava_hf_legacy,
         requires=['transformers<4.49'],
     ))

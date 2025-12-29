@@ -177,7 +177,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         template=TemplateType.qwen2_gme,
         model_arch=ModelArch.qwen2_vl,
-        architectures=['Qwen2VLForConditionalGeneration'],
+        hf_model_type=['qwen2_vl'],
         tags=['vision']))
 
 

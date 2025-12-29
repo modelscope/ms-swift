@@ -63,5 +63,5 @@ register_model(
         get_model_tokenizer_codellama,
         template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
+        hf_model_type=['llama'],
     ))

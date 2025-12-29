@@ -39,7 +39,7 @@ register_model(
         ],
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
+        hf_model_type=['llama'],
     ))
 
 register_model(
