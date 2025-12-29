@@ -163,10 +163,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Reset MoE-related keys that are not in teacher config to None.
         # This ensures Dense teacher doesn't inherit MoE settings from MoE student,
         # and MoE teacher gets its own settings without interference from Dense student.
+        teacher_is_moe = teacher_megatron_config.get('num_experts') is not None
         for key in moe_related_keys:
             if key not in teacher_megatron_config and hasattr(megatron_args, key):
                 setattr(megatron_args, key, None)
-
+        if teacher_is_moe:
+            MegatronArguments._set_moe_default(megatron_args)
+            # Ensure moe_grouped_gemm is True for MoE models to use GroupedMLP,
+            # which is required by gpt_bridge weight loading logic.
+            if megatron_args.moe_grouped_gemm is None:
+                megatron_args.moe_grouped_gemm = True
         try:
             # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
             # but with teacher's model architecture (hidden_size, num_layers, etc.)

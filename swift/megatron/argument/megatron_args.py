@@ -659,6 +659,13 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.no_bias_dropout_fusion is None:
             self.no_bias_dropout_fusion = False
         # moe
+        MegatronArguments._set_moe_default(self)
+        # log
+        if self.wandb_exp_name is None:
+            self.wandb_exp_name = self.save
+
+    @staticmethod
+    def _set_moe_default(self):
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
         if self.moe_router_score_function is None:
@@ -672,12 +679,9 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.moe_router_enable_expert_bias is None:
             self.moe_router_enable_expert_bias = False
         if self.moe_layer_freq is None:
-            self.moe_layer_freq = '1'
+            self.moe_layer_freq = 1
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
-        # log
-        if self.wandb_exp_name is None:
-            self.wandb_exp_name = self.save
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
