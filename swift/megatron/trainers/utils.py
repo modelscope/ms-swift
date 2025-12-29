@@ -86,7 +86,7 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         qkv_format='thd')
 
 
-def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
+def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], dim: int):
     # TODO: compat bshd
     if dim < 0:
         dim = (dim + inputs.ndim) % inputs.ndim
@@ -127,15 +127,14 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
             keys.append('input_ids')
 
         packed_seq_params = batch.get('packed_seq_params')
-        if packed_seq_params is None:
-            return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
             if key not in keys:
                 continue
             if args.task_type == 'seq_cls' and key == 'labels':
                 continue
             if val is not None:
-                batch[key] = split_cp_inputs(val, packed_seq_params.cu_seqlens_q, -1)
+                batch[key] = split_cp_inputs(val, None if packed_seq_params is None else packed_seq_params.cu_seqlens_q,
+                                             -1)
 
     return batch
 
