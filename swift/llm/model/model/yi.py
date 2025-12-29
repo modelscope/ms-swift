@@ -113,7 +113,9 @@ register_model(
                 Model('01ai/Yi-Coder-9B', '01-ai/Yi-Coder-9B'),
                 Model('01ai/Yi-Coder-1.5B-Chat', '01-ai/Yi-Coder-1.5B-Chat'),
                 Model('01ai/Yi-Coder-9B-Chat', '01-ai/Yi-Coder-9B-Chat'),
-            ], TemplateType.yi_coder, tags=['coding']),
+            ],
+                       TemplateType.yi_coder,
+                       tags=['coding']),
             ModelGroup([
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
             ], TemplateType.sus),
