@@ -1016,7 +1016,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def forward_step(self, data_iterator, model):
         # train_batch_size
         # return: output_tensor, loss_func
-        data = self.get_batch(data_iterator)
         data = next(data_iterator)
         advantages = data.pop('advantages')
         truncated_mask = data.pop('truncated_mask')
