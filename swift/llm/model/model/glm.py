@@ -86,8 +86,8 @@ register_model(
                 tags=['coding'],
             ),
         ],
-        TemplateType.chatglm2,
         get_model_tokenizer_chatglm,
+        template=TemplateType.chatglm2,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm))
 
@@ -101,8 +101,8 @@ register_model(
                 Model('ZhipuAI/chatglm3-6b-128k', 'zai-org/chatglm3-6b-128k'),
             ])
         ],
-        TemplateType.glm4,
         get_model_tokenizer_chatglm,
+        template=TemplateType.glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.chatglm))
@@ -136,8 +136,8 @@ register_model(
                 Model('ZhipuAI/LongWriter-glm4-9b', 'zai-org/LongWriter-glm4-9b'),
             ])
         ],
-        TemplateType.glm4,
         get_model_tokenizer_glm4,
+        template=TemplateType.glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
         requires=['transformers>=4.42'],
@@ -153,9 +153,11 @@ register_model(
                 Model('ZhipuAI/GLM-4-32B-Base-0414', 'zai-org/GLM-4-32B-Base-0414'),
                 Model('ZhipuAI/GLM-Z1-9B-0414', 'zai-org/GLM-Z1-9B-0414'),
                 Model('ZhipuAI/GLM-Z1-32B-0414', 'zai-org/GLM-Z1-32B-0414'),
-            ])
+            ], TemplateType.glm4_0414),
+            ModelGroup([
+                Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
+            ], TemplateType.glm4_z1_rumination)
         ],
-        TemplateType.glm4_0414,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4ForCausalLM'],
         model_arch=ModelArch.chatglm,
@@ -164,25 +166,12 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4_z1_rumination,
-        [ModelGroup([
-            Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
-        ])],
-        TemplateType.glm4_z1_rumination,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Glm4ForCausalLM'],
-        model_arch=ModelArch.chatglm,
-        requires=['transformers>4.51'],
-    ))
-
-register_model(
-    ModelMeta(
         LLMModelType.longwriter_llama3_1,
         [ModelGroup([
             Model('ZhipuAI/LongWriter-llama3.1-8b', 'zai-org/LongWriter-llama3.1-8b'),
         ])],
-        TemplateType.longwriter_llama,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.longwriter_llama,
         architectures=['LlamaForCausalLM'],
         requires=['transformers>=4.43'],
         model_arch=ModelArch.llama,
@@ -194,8 +183,8 @@ register_model(
         [ModelGroup([
             Model('ZhipuAI/codegeex4-all-9b', 'zai-org/codegeex4-all-9b'),
         ])],
-        TemplateType.codegeex4,
         get_model_tokenizer_glm4,
+        template=TemplateType.codegeex4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
@@ -242,8 +231,8 @@ register_model(
                 requires=['transformers>=4.42'],
             )
         ],
-        TemplateType.glm4v,
         get_model_tokenizer_glm4v,
+        template=TemplateType.glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.glm4v,
     ))
@@ -283,8 +272,8 @@ register_model(
                 requires=['transformers>=5.0.0.dev'],
             ),
         ],
-        TemplateType.glm4_1v,
         get_model_tokenizer_glm4_1v,
+        template=TemplateType.glm4_1v,
         architectures=['Glm4vForConditionalGeneration'],
         model_arch=ModelArch.glm4_1v,
     ))
@@ -313,8 +302,8 @@ register_model(
                 Model('ZhipuAI/cogvlm-chat', 'zai-org/cogvlm-chat-hf'),
             ]),
         ],
-        TemplateType.cogvlm,
         get_model_tokenizer_cogvlm,
+        template=TemplateType.cogvlm,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
@@ -326,8 +315,8 @@ register_model(
                 Model('ZhipuAI/cogagent-chat', 'zai-org/cogagent-chat-hf'),
             ]),
         ],
-        TemplateType.cogagent_chat,
         get_model_tokenizer_cogvlm,
+        template=TemplateType.cogagent_chat,
         architectures=['CogAgentForCausalLM'],
         requires=['transformers<4.42', 'timm'],
         model_arch=ModelArch.cogvlm))
@@ -337,8 +326,8 @@ register_model(
         MLLMModelType.cogagent_vqa, [ModelGroup([
             Model('ZhipuAI/cogagent-vqa', 'zai-org/cogagent-vqa-hf'),
         ])],
-        TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
+        template=TemplateType.cogagent_vqa,
         architectures=['CogAgentForCausalLM'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
@@ -366,8 +355,8 @@ register_model(
                 Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'zai-org/cogvlm2-llama3-chinese-chat-19B'),
             ]),
         ],
-        TemplateType.cogvlm2,
         get_model_tokenizer_cogvlm2,
+        template=TemplateType.cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
@@ -380,8 +369,8 @@ register_model(
                 Model('ZhipuAI/cogvlm2-video-llama3-chat', 'zai-org/cogvlm2-video-llama3-chat'),
             ]),
         ],
-        TemplateType.cogvlm2_video,
         get_model_tokenizer_cogvlm2,
+        template=TemplateType.cogvlm2_video,
         architectures=['CogVLMVideoForCausalLM'],
         requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
         model_arch=ModelArch.cogvlm,
@@ -397,8 +386,8 @@ register_model(
                 Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
-        TemplateType.glm4,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.glm4,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
     ))
@@ -421,8 +410,8 @@ register_model(
                 Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
-        TemplateType.glm_edge_v,
         get_model_tokenizer_glm_edge_v,
+        template=TemplateType.glm_edge_v,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
         model_arch=ModelArch.glm_edge_v,
@@ -440,28 +429,16 @@ register_model(
                 Model('ZhipuAI/GLM-4.5-Base', 'zai-org/GLM-4.5-Base'),
                 Model('ZhipuAI/GLM-4.5', 'zai-org/GLM-4.5'),
                 Model('ZhipuAI/GLM-4.5-FP8', 'zai-org/GLM-4.5-FP8'),
-            ]),
+            ], TemplateType.glm4_5),
             ModelGroup([
                 Model('ZhipuAI/GLM-4.6', 'zai-org/GLM-4.6'),
                 Model('ZhipuAI/GLM-4.6-FP8', 'zai-org/GLM-4.6-FP8'),
-            ])
-        ],
-        TemplateType.glm4_5,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Glm4MoeForCausalLM'],
-        requires=['transformers>=4.54'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.glm4_7,
-        [
+            ], TemplateType.glm4_5),
             ModelGroup([
                 Model('ZhipuAI/GLM-4.7', 'zai-org/GLM-4.7'),
                 Model('ZhipuAI/GLM-4.7-FP8', 'zai-org/GLM-4.7-FP8'),
-            ]),
+            ], TemplateType.glm4_7),
         ],
-        TemplateType.glm4_7,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4MoeForCausalLM'],
         requires=['transformers>=4.54'],
@@ -491,8 +468,8 @@ register_model(
             ],
                        requires=['transformers>=5.0.0.dev']),
         ],
-        TemplateType.glm4_5v,
         get_model_tokenizer_glm4_5v,
+        template=TemplateType.glm4_5v,
         model_arch=ModelArch.glm4_1v,
         architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56'],
