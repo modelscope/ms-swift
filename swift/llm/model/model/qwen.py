@@ -463,9 +463,10 @@ register_model(
                 ],
                 TemplateType.qwen2_5_math,
                 tags=['math']),
-                 ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')], TemplateType.marco_o1),
+            ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')], TemplateType.marco_o1),
             ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')], TemplateType.qwq_preview),
-            ModelGroup([Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
+            ModelGroup([
+                Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
                 Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
             ], TemplateType.qwq),
         ],
@@ -538,6 +539,9 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
+            ], TemplateType.qwen3_thinking),
+            ModelGroup([
+                Model('iic/QwenLong-L1.5-30B-A3B', 'Tongyi-Zhiwen/QwenLong-L1.5-30B-A3B'),
             ], TemplateType.qwen3_thinking),
             ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
@@ -756,7 +760,8 @@ register_model(
                     Model('Qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
                     Model('Qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
                     Model('Qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
-                ], TemplateType.qwen2_vl),
+                ],
+                TemplateType.qwen2_vl),
             ModelGroup([
                 Model('bytedance-research/UI-TARS-2B-SFT', 'bytedance-research/UI-TARS-2B-SFT'),
                 Model('bytedance-research/UI-TARS-7B-SFT', 'bytedance-research/UI-TARS-7B-SFT'),
@@ -1358,7 +1363,6 @@ register_model(
     ))
 
 
-
 def get_model_tokenizer_ovis(*args, **kwargs):
     kwargs['attn_impl_keys'] = ['llm_attn_implementation']
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
@@ -1514,7 +1518,6 @@ register_model(
         architectures=['Qwen2ForProcessRewardModel'],
         requires=['transformers>=4.37'],
     ))
-
 
 register_model(
     ModelMeta(
