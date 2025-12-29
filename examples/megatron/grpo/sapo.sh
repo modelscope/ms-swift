@@ -52,5 +52,4 @@ megatron rlhf \
   --system examples/train/grpo/prompt.txt \
   --beta 0.001 \
   --padding_free true \
-  --wandb_project swift-megatron \
-  --wandb_exp_name xxx
+  --report_to wandb

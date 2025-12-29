@@ -173,20 +173,19 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         res[0]['label'] = data['label']
         return res
 
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
-        super().custom_log(total_loss_dict, mode)
-        res = {}
-        for k, v in total_loss_dict.items():
-            if k.startswith('count/') or k.endswith('_sum'):
-                continue
-            res[k] = v
+    def _get_metrics(self, total_loss_dict, mode):
+        metrics = super()._get_metrics(total_loss_dict, mode)
         for key in ['chosen', 'rejected']:
             count = total_loss_dict.get(f'count/{key}')
             if count is None or count.item() == 0:
                 continue
-            res[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
-            res[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
-        if 'rewards/chosen' in res and 'rewards/rejected' in res:
-            res['rewards/margins'] = res['rewards/chosen'] - res['rewards/rejected']
-        total_loss_dict.clear()
-        total_loss_dict.update(res)
+            metrics[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
+            metrics[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
+        if 'rewards/chosen' in metrics and 'rewards/rejected' in metrics:
+            metrics['rewards/margins'] = metrics['rewards/chosen'] - metrics['rewards/rejected']
+        return metrics
+
+    def _remove_log(self, total_loss_dict) -> None:
+        for k, v in total_loss_dict.copy().items():
+            if k.startswith('count/') or k.endswith('_sum'):
+                total_loss_dict.pop(k)

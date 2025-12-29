@@ -136,7 +136,7 @@ Running Environment:
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.25 | 0.23.1              | RLHF                                      |
+| trl          | >=0.15,<0.25 | 0.24.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.17.6              | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.5.5.post3         | Inference/Deployment                      |
