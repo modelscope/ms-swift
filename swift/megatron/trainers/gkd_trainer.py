@@ -76,7 +76,46 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.truncation_strategy == 'delete':
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
+
+        # Adjust EP parameters for Dense/MoE compatibility before Megatron initialization.
+        # Megatron's validate_args requires num_experts to be set when EP > 1.
+        # If student is Dense but user configured EP > 1 (expecting MoE teacher),
+        # we need to reset EP to 1 for student initialization.
+        self._adjust_ep_for_dense_student()
+
         super().train(train_dataset, val_dataset, data_collator)
+
+    def _adjust_ep_for_dense_student(self):
+        """Adjust EP parameters when student is Dense but EP > 1 is configured.
+
+        This handles the case where:
+        - Student is Dense (no num_experts)
+        - User configured EP > 1 (expecting to use EP for MoE teacher)
+
+        We reset EP to 1 for student initialization to avoid Megatron's validation error.
+        The original EP will be restored when loading MoE teacher model.
+        """
+        args = self.args
+        student_is_moe = getattr(args, 'num_experts', None) is not None
+
+        if not student_is_moe:
+            # Student is Dense, check if EP is configured
+            ep_size = getattr(args, 'expert_model_parallel_size', 1)
+            etp_size = getattr(args, 'expert_tensor_parallel_size', 1)
+
+            if ep_size > 1 or etp_size > 1:
+                # Save original EP settings for MoE teacher
+                self._original_ep_size = ep_size
+                self._original_etp_size = etp_size
+
+                # Reset EP to 1 for Dense student
+                args.expert_model_parallel_size = 1
+                args.expert_tensor_parallel_size = 1
+
+                # Also update extra_args if it exists
+                if hasattr(args, 'extra_args') and args.extra_args is not None:
+                    args.extra_args['expert_model_parallel_size'] = 1
+                    args.extra_args['expert_tensor_parallel_size'] = 1
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         """Setup model and optimizer, including teacher model.
@@ -147,7 +186,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'use_shared_expert_gate',
         }
 
-        keys_to_override = set(teacher_megatron_config.keys()) | essential_keys | moe_related_keys
+        # EP-related keys that need special handling for Dense/MoE compatibility.
+        # Dense models cannot use expert parallelism (EP > 1).
+        ep_related_keys = {
+            'expert_model_parallel_size',
+            'expert_tensor_parallel_size',
+        }
+
+        keys_to_override = (set(teacher_megatron_config.keys()) | essential_keys | moe_related_keys | ep_related_keys)
 
         original_config = {}
         for key in keys_to_override:
@@ -167,12 +213,25 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for key in moe_related_keys:
             if key not in teacher_megatron_config and hasattr(megatron_args, key):
                 setattr(megatron_args, key, None)
+
         if teacher_is_moe:
             MegatronArguments._set_moe_default(megatron_args)
             # Ensure moe_grouped_gemm is True for MoE models to use GroupedMLP,
             # which is required by gpt_bridge weight loading logic.
             if megatron_args.moe_grouped_gemm is None:
                 megatron_args.moe_grouped_gemm = True
+
+            # Restore original EP settings if they were saved during _adjust_ep_for_dense_student.
+            # This allows MoE teacher to use EP > 1 even when student is Dense.
+            if hasattr(self, '_original_ep_size'):
+                megatron_args.expert_model_parallel_size = self._original_ep_size
+            if hasattr(self, '_original_etp_size'):
+                megatron_args.expert_tensor_parallel_size = self._original_etp_size
+        else:
+            # Dense teacher cannot use expert parallelism.
+            # Reset EP to 1 to avoid "num_moe_experts must be non None to use expert-parallel" error.
+            megatron_args.expert_model_parallel_size = 1
+            megatron_args.expert_tensor_parallel_size = 1
         try:
             # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
             # but with teacher's model architecture (hidden_size, num_layers, etc.)
@@ -729,3 +788,15 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return student_output, partial(
             self.loss_func, labels=labels, teacher_logits=teacher_logits, data_source=data_source)
+
+    def patched_validate_args(self, args, *_args, **kwargs):
+        """Override patched_validate_args to adjust EP parameters for Dense student.
+
+        This is called before Megatron's validate_args, allowing us to reset EP to 1
+        when student is Dense but EP > 1 was configured (for MoE teacher).
+        """
+        if hasattr(self, '_original_ep_size') or hasattr(self, '_original_etp_size'):
+            # Reset EP to 1 in Megatron args for Dense student
+            args.expert_model_parallel_size = 1
+            args.expert_tensor_parallel_size = 1
+        return self._origin_validate_args(args, *_args, **kwargs)
