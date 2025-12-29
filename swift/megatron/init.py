@@ -670,10 +670,8 @@ def _patch__write_item():
 
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
-    from megatron.core import parallel_state
     import megatron.core
-    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
-                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
 
@@ -729,10 +727,6 @@ def _patch_mrope():
 
         # shape (seq_length, bs, 1, 2 * dim)
         emb = emb[..., None, :].transpose(0, 1).contiguous()
-        if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
-            # slice rotary_pos_emb along sequence dimension and select the parition of the current
-            # CP rank
-            emb = get_pos_emb_on_this_cp_rank(emb, 0, parallel_state.get_context_parallel_group())
         return emb
 
     MultimodalRotaryEmbedding.forward = forward
