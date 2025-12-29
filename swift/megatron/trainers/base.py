@@ -139,7 +139,6 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Setting args.eval_iters: {args.eval_iters}')
             return res
 
-        # Save original validate_args for use in patched_validate_args
         self._origin_validate_args = origin_validate_args
 
         training.initialize_megatron = initialize_megatron
@@ -1261,9 +1260,4 @@ class BaseMegatronTrainer(ABC):
         return last_tokens
 
     def patched_validate_args(self, args, *_args, **kwargs):
-        """Patched validate_args that can be overridden by subclasses for custom validation logic.
-
-        Subclasses should call self._origin_validate_args(args, *_args, **kwargs) to invoke
-        the original Megatron validate_args function.
-        """
         return self._origin_validate_args(args, *_args, **kwargs)
