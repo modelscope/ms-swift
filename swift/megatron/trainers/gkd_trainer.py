@@ -123,7 +123,31 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Store original student model config from Megatron global args
         # We need to override these with teacher's config temporarily
         essential_keys = {'hf_model_type', 'model_dir'}
-        keys_to_override = set(teacher_megatron_config.keys()) | essential_keys
+
+        # MoE-related keys that must be explicitly handled for Dense/MoE compatibility.
+        # When student is MoE and teacher is Dense (or vice versa), these keys need to be
+        # properly reset to ensure correct model architecture creation.
+        moe_related_keys = {
+            'num_experts',
+            'moe_ffn_hidden_size',
+            'moe_shared_expert_intermediate_size',
+            'moe_router_topk',
+            'moe_router_num_groups',
+            'moe_router_group_topk',
+            'moe_router_pre_softmax',
+            'moe_router_score_function',
+            'moe_router_bias_update_rate',
+            'moe_router_topk_scaling_factor',
+            'moe_router_load_balancing_type',
+            'moe_router_enable_expert_bias',
+            'moe_apply_probs_on_input',
+            'moe_layer_freq',
+            'moe_grouped_gemm',
+            'moe_use_legacy_grouped_gemm',
+            'use_shared_expert_gate',
+        }
+
+        keys_to_override = set(teacher_megatron_config.keys()) | essential_keys | moe_related_keys
 
         original_config = {}
         for key in keys_to_override:
@@ -135,6 +159,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             setattr(megatron_args, key, value)
         megatron_args.hf_model_type = teacher_model_type
         megatron_args.model_dir = teacher_model_info.model_dir
+
+        # Reset MoE-related keys that are not in teacher config to None.
+        # This ensures Dense teacher doesn't inherit MoE settings from MoE student,
+        # and MoE teacher gets its own settings without interference from Dense student.
+        for key in moe_related_keys:
+            if key not in teacher_megatron_config and hasattr(megatron_args, key):
+                setattr(megatron_args, key, None)
 
         try:
             # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
