@@ -291,24 +291,22 @@ register_model(
         ],
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.dots1,
-        architectures=['Dots1ForCausalLM'],
         requires=['transformers>=4.53'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.hunyuan_moe,
+        LLMModelType.hunyuan,
         [ModelGroup([
             Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
         ])],
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.hunyuan_moe,
-        architectures=['HunYuanMoEV1ForCausalLM'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.hunyuan,
+        LLMModelType.hunyuan_v1_dense,
         [
             ModelGroup([
                 Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct', 'tencent/Hunyuan-0.5B-Instruct'),
@@ -340,7 +338,6 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         template=TemplateType.hunyuan,
         requires=['transformers>=4.55.0.dev0'],
-        architectures=['HunYuanDenseV1ForCausalLM'],
     ))
 
 register_model(

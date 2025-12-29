@@ -45,37 +45,37 @@ register_template(
 
 
 @dataclass
-class GLM4TemplateMeta(GLMTemplateMeta):
+class ChatGLM4TemplateMeta(GLMTemplateMeta):
     prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
     chat_sep: Optional[Prompt] = field(default_factory=list)
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
-    agent_template: str = 'glm4'
+    agent_template: str = 'chatglm4'
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
 @dataclass
-class GLM4_0414TemplateMeta(GLM4TemplateMeta):
+class GLM4TemplateMeta(ChatGLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
-    agent_template: str = 'glm4_0414'
+    agent_template: str = 'glm4'
 
 
 @dataclass
-class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
+class GLM4_5TemplateMeta(GLM4TemplateMeta):
     agent_template: str = 'glm4_5'
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
 
 
-class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
+class GLM4VTemplateMeta(GLM4TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
 
-class GLM4VTemplate(Template):
+class ChatGLM4VTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -163,7 +163,13 @@ class GLM4vPackingTemplateMixin:
         modeling_module.create_causal_mask = new_create_causal_mask
 
 
-class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
+register_template(
+    ChatGLM4TemplateMeta(MLLMTemplateType.chatglm4v, template_cls=ChatGLM4VTemplate, suffix=['<|endoftext|>']))
+
+register_template(ChatGLM4TemplateMeta(LLMTemplateType.chatglm4, template_cls=GLM4Template))
+
+
+class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
     begin_of_image_token = 151339
     end_of_image_token = 151340
     begin_of_video_token = 151341
@@ -174,8 +180,8 @@ class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
         if processor is None:
             return
         super().init_processor(processor)
-        if not getattr(GLM4_1VTemplate, '_patched', False) and self.padding_free:
-            GLM4_1VTemplate._patched = True
+        if not getattr(GLM4VTemplate, '_patched', False) and self.padding_free:
+            GLM4VTemplate._patched = True
             from transformers.models.glm4v import modeling_glm4v
             self._patch_create_causal_mask(modeling_glm4v)
         self.image_token = self._tokenize('<|image|>')[0]
@@ -296,12 +302,8 @@ class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
         return {'inputs_embeds': inputs_embeds}
 
 
-register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
-
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
-
-register_template(
-    GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, thinking_prefix='<think>'))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template, thinking_prefix='<think>'))
+register_template(GLM4VTemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, agent_template='glm4_5'))
 
 
 class GLM4_5Template(GLM4Template):
@@ -326,8 +328,6 @@ register_template(
         history_thinking_prefix='</think>',
         agent_template='glm4_7',
     ))
-
-register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate, agent_template='glm4_5'))
 
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
@@ -419,7 +419,7 @@ glm4z1rumination_system = (
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
 
 register_template(
-    GLM4_0414TemplateMeta(
+    GLM4TemplateMeta(
         LLMTemplateType.glm4_z1_rumination,
         template_cls=GLM4Template,
         default_system=glm4z1rumination_system,
@@ -427,7 +427,7 @@ register_template(
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
-register_template(GLM4TemplateMeta(LLMTemplateType.codegeex4, default_system=codegeex4_system))
+register_template(ChatGLM4TemplateMeta(LLMTemplateType.codegeex4, default_system=codegeex4_system))
 
 register_template(
     TemplateMeta(
@@ -558,7 +558,7 @@ class GLMEdgeVTemplate(Template):
 
 
 register_template(
-    GLM4TemplateMeta(
+    ChatGLM4TemplateMeta(
         MLLMTemplateType.glm_edge_v,
         prompt=['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'],
         chat_sep=['\\n'],

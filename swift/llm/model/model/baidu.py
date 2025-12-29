@@ -12,12 +12,20 @@ logger = get_logger()
 
 register_model(
     ModelMeta(
-        LLMModelType.ernie,
+        LLMModelType.ernie4_5,
         [
             ModelGroup([
                 Model('PaddlePaddle/ERNIE-4.5-0.3B-Base-PT', 'baidu/ERNIE-4.5-0.3B-PT'),
                 Model('PaddlePaddle/ERNIE-4.5-0.3B-PT', 'baidu/ERNIE-4.5-0.3B-PT'),
             ], TemplateType.ernie),
+        ],
+        get_model_tokenizer_with_flash_attn,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ernie4_5_moe,
+        [
             ModelGroup([
                 Model('PaddlePaddle/ERNIE-4.5-21B-A3B-Base-PT', 'baidu/ERNIE-4.5-21B-A3B-Base-PT'),
                 Model('PaddlePaddle/ERNIE-4.5-21B-A3B-PT', 'baidu/ERNIE-4.5-21B-A3B-PT'),
@@ -29,7 +37,6 @@ register_model(
             ], TemplateType.ernie_thinking),
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
     ))
 
 register_model(

@@ -102,17 +102,17 @@ register_model(
             ])
         ],
         get_model_tokenizer_chatglm,
-        template=TemplateType.glm4,
+        template=TemplateType.chatglm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.chatglm))
 
 
-def get_model_tokenizer_glm4(model_dir: str,
-                             model_info: ModelInfo,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             **kwargs):
+def get_model_tokenizer_chatglm4(model_dir: str,
+                                 model_info: ModelInfo,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
     kwargs['model_config'] = model_config
@@ -125,7 +125,7 @@ def get_model_tokenizer_glm4(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4,
+        LLMModelType.chatglm4,
         [
             ModelGroup([
                 Model('ZhipuAI/glm-4-9b-chat', 'zai-org/glm-4-9b-chat'),
@@ -136,8 +136,8 @@ register_model(
                 Model('ZhipuAI/LongWriter-glm4-9b', 'zai-org/LongWriter-glm4-9b'),
             ])
         ],
-        get_model_tokenizer_glm4,
-        template=TemplateType.glm4,
+        get_model_tokenizer_chatglm4,
+        template=TemplateType.chatglm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
         requires=['transformers>=4.42'],
@@ -145,7 +145,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4_0414,
+        LLMModelType.glm4,
         [
             ModelGroup([
                 Model('ZhipuAI/GLM-4-9B-0414', 'zai-org/GLM-4-9B-0414'),
@@ -153,28 +153,14 @@ register_model(
                 Model('ZhipuAI/GLM-4-32B-Base-0414', 'zai-org/GLM-4-32B-Base-0414'),
                 Model('ZhipuAI/GLM-Z1-9B-0414', 'zai-org/GLM-Z1-9B-0414'),
                 Model('ZhipuAI/GLM-Z1-32B-0414', 'zai-org/GLM-Z1-32B-0414'),
-            ], TemplateType.glm4_0414),
+            ], TemplateType.glm4),
             ModelGroup([
                 Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
             ], TemplateType.glm4_z1_rumination)
         ],
         get_model_tokenizer_with_flash_attn,
-        architectures=['Glm4ForCausalLM'],
         model_arch=ModelArch.chatglm,
         requires=['transformers>=4.51'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.longwriter_llama3_1,
-        [ModelGroup([
-            Model('ZhipuAI/LongWriter-llama3.1-8b', 'zai-org/LongWriter-llama3.1-8b'),
-        ])],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.longwriter_llama,
-        architectures=['LlamaForCausalLM'],
-        requires=['transformers>=4.43'],
-        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -183,7 +169,7 @@ register_model(
         [ModelGroup([
             Model('ZhipuAI/codegeex4-all-9b', 'zai-org/codegeex4-all-9b'),
         ])],
-        get_model_tokenizer_glm4,
+        get_model_tokenizer_chatglm4,
         template=TemplateType.codegeex4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
@@ -192,12 +178,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_glm4v(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    model, tokenizer = get_model_tokenizer_glm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
+def get_model_tokenizer_chatglm4v(model_dir: str,
+                                  model_info: ModelInfo,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model, tokenizer = get_model_tokenizer_chatglm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
     # fix merge-lora
     tokenizer.init_kwargs['image_size'] = 1120
     if load_model:
@@ -216,7 +202,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.glm4v,
+        MLLMModelType.chatglm4v,
         [
             ModelGroup(
                 [
@@ -231,14 +217,14 @@ register_model(
                 requires=['transformers>=4.42'],
             )
         ],
-        get_model_tokenizer_glm4v,
-        template=TemplateType.glm4v,
+        get_model_tokenizer_chatglm4v,
+        template=TemplateType.chatglm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.glm4v,
+        model_arch=ModelArch.chatglm4v,
     ))
 
 
-def get_model_tokenizer_glm4_1v(*args, **kwargs):
+def get_model_tokenizer_glm4v(*args, **kwargs):
     from transformers import Glm4vForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
@@ -249,7 +235,7 @@ def get_model_tokenizer_glm4_1v(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.glm4_1v,
+        MLLMModelType.glm4v,
         [
             ModelGroup(
                 [
@@ -272,10 +258,9 @@ register_model(
                 requires=['transformers>=5.0.0.dev'],
             ),
         ],
-        get_model_tokenizer_glm4_1v,
-        template=TemplateType.glm4_1v,
-        architectures=['Glm4vForConditionalGeneration'],
-        model_arch=ModelArch.glm4_1v,
+        get_model_tokenizer_glm4v,
+        template=TemplateType.glm4v,
+        model_arch=ModelArch.glm4v,
     ))
 
 
@@ -387,7 +372,7 @@ register_model(
             ]),
         ],
         get_model_tokenizer_with_flash_attn,
-        template=TemplateType.glm4,
+        template=TemplateType.chatglm4,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
     ))

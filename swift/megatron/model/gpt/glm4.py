@@ -114,7 +114,7 @@ register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.glm4,
         [
-            ModelType.glm4_0414,
+            ModelType.glm4,
         ],
         get_transformer_layer_spec=get_glm4_transformer_layer_spec,
         bridge_cls=Glm4Bridge,

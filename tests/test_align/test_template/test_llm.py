@@ -84,7 +84,7 @@ def test_qwen1half():
     _infer_model(pt_engine)
 
 
-def test_glm4():
+def test_chatglm4():
     pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
@@ -92,7 +92,7 @@ def test_glm4():
     assert response == response2
 
 
-def test_glm4_0414():
+def test_glm4():
     models = ['ZhipuAI/GLM-4-9B-0414', 'ZhipuAI/GLM-Z1-9B-0414', 'ZhipuAI/GLM-Z1-Rumination-32B-0414']
     for model in models:
         pt_engine = PtEngine(model)
@@ -693,7 +693,7 @@ if __name__ == '__main__':
     # test_yi()
     # test_deepseek_moe()
     # test_codegeex4()
-    # test_glm4()
+    # test_chatglm4()
     # test_telechat()
     # test_telechat2()
     # test_glm_edge()
@@ -716,7 +716,7 @@ if __name__ == '__main__':
     # test_moonlight()
     # test_ling()
     # test_gemma3()
-    # test_glm4_0414()
+    # test_glm4()
     # test_qwen3()
     # test_qwen3_guard()
     # test_mimo()

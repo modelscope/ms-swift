@@ -2,7 +2,7 @@
 from .base import BaseAgentTemplate
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .extra import ReactGRPOAgentTemplate
-from .glm4 import GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4_0414AgentTemplate, GLM4AgentTemplate
+from .glm4 import ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .mistral import MistralAgentTemplate
@@ -25,8 +25,8 @@ agent_templates = {
     'hermes': HermesAgentTemplate,
     'hunyuan_hermes': HunyuanHermesAgentTemplate,
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
-    'glm4': GLM4AgentTemplate,
-    'glm4_0414': GLM4_0414AgentTemplate,  # ref: https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414
+    'chatglm4': ChatGLM4AgentTemplate,
+    'glm4': GLM4AgentTemplate,  # ref: https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414
     'glm4_5': GLM4_5AgentTemplate,
     'glm4_7': GLM4_7AgentTemplate,
     'llama3': Llama3AgentTemplate,

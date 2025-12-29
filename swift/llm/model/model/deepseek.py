@@ -9,40 +9,6 @@ from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
 
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek, [
-            ModelGroup([
-                Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
-                Model('deepseek-ai/deepseek-llm-7b-chat', 'deepseek-ai/deepseek-llm-7b-chat'),
-                Model('deepseek-ai/deepseek-llm-67b-base', 'deepseek-ai/deepseek-llm-67b-base'),
-                Model('deepseek-ai/deepseek-llm-67b-chat', 'deepseek-ai/deepseek-llm-67b-chat'),
-            ]),
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-math-7b-base', 'deepseek-ai/deepseek-math-7b-base'),
-                    Model('deepseek-ai/deepseek-math-7b-instruct', 'deepseek-ai/deepseek-math-7b-instruct'),
-                    Model('deepseek-ai/deepseek-math-7b-rl', 'deepseek-ai/deepseek-math-7b-rl'),
-                ],
-                tags=['math'],
-            ),
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-coder-1.3b-base', 'deepseek-ai/deepseek-coder-1.3b-base'),
-                    Model('deepseek-ai/deepseek-coder-1.3b-instruct', 'deepseek-ai/deepseek-coder-1.3b-instruct'),
-                    Model('deepseek-ai/deepseek-coder-6.7b-base', 'deepseek-ai/deepseek-coder-6.7b-base'),
-                    Model('deepseek-ai/deepseek-coder-6.7b-instruct', 'deepseek-ai/deepseek-coder-6.7b-instruct'),
-                    Model('deepseek-ai/deepseek-coder-33b-base', 'deepseek-ai/deepseek-coder-33b-base'),
-                    Model('deepseek-ai/deepseek-coder-33b-instruct', 'deepseek-ai/deepseek-coder-33b-instruct'),
-                ],
-                tags=['coding'],
-            ),
-        ],
-        get_model_tokenizer_with_flash_attn,
-        template=TemplateType.deepseek,
-        architectures=['LlamaForCausalLM'],
-        model_arch=ModelArch.llama))
-
 
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      model_info: ModelInfo,
@@ -62,7 +28,7 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.deepseek_moe,
+        LLMModelType.deepseek,
         [
             ModelGroup([
                 Model('deepseek-ai/deepseek-moe-16b-chat', 'deepseek-ai/deepseek-moe-16b-chat'),
@@ -71,7 +37,6 @@ register_model(
         ],
         get_model_tokenizer_deepseek_moe,
         template=TemplateType.deepseek,
-        architectures=['DeepseekForCausalLM'],
     ))
 
 register_model(
@@ -94,7 +59,6 @@ register_model(
             ], TemplateType.deepseek_v2_5)
         ],
         get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV2ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
         requires=['transformers>=4.39.3'],
     ))
@@ -152,7 +116,6 @@ register_model(
             ], TemplateType.deepseek_v3_1),
         ],
         get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV3ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
         requires=['transformers>=4.39.3'],
     ))
@@ -314,7 +277,7 @@ register_model(
         template=TemplateType.deepseek_vl2,
         model_arch=ModelArch.deepseek_vl2,
         requires=['transformers<4.42'],
-        architectures=['DeepseekV2ForCausalLM'],
+        hf_model_type=['deepseek_v2'],
         tags=['vision'],
     ))
 

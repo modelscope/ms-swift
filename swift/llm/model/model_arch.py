@@ -36,8 +36,8 @@ class MLLMModelArch:
     qwen3_omni = 'qwen3_omni'
 
     cogvlm = 'cogvlm'
+    chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'
-    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -585,14 +585,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.glm4v,
+        MLLMModelArch.chatglm4v,
         language_model='transformer.encoder',
         vision_tower='transformer.vision',
     ))
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.glm4_1v,
+        MLLMModelArch.glm4v,
         language_model=['model.language_model', 'lm_head'],
         aligner='model.visual.merger',
         vision_tower='model.visual',

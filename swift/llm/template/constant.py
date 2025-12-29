@@ -46,8 +46,8 @@ class LLMTemplateType:
     bge_reranker = 'bge_reranker'
 
     chatglm2 = 'chatglm2'
+    chatglm4 = 'chatglm4'
     glm4 = 'glm4'
-    glm4_0414 = 'glm4_0414'
     glm4_z1_rumination = 'glm4_z1_rumination'
     glm4_5 = 'glm4_5'
     glm4_7 = 'glm4_7'
@@ -183,9 +183,9 @@ class MLLMTemplateType:
     cogvlm = 'cogvlm'
     cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
-    glm4v = 'glm4v'
-    glm4_1v = 'glm4_1v'
+    chatglm4v = 'chatglm4v'
     glm_edge_v = 'glm_edge_v'
+    glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
 
     minicpmv = 'minicpmv'

@@ -227,7 +227,7 @@ class VllmEngine(InferEngine):
                 engine_kwargs[key] = val
 
         model_info = self.model_info
-        arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
+        arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'chatglm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
             architectures = arch_mapping[self.model_meta.model_type]
             engine_kwargs['hf_overrides'] = {'architectures': architectures}

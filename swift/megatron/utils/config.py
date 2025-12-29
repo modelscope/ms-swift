@@ -112,18 +112,18 @@ def convert_hf_config(config) -> Dict[str, Any]:
         if llm_model_type in {'qwen2_moe', 'qwen3_next'}:
             res['use_shared_expert_gate'] = True
     if llm_model_type in {
-            'DeepseekForCausalLM',
-            'DeepseekV2ForCausalLM',
-            'DeepseekV3ForCausalLM',
-            'Dots1ForCausalLM',
+            'deepseek',
+            'deepseek_v2',
+            'deepseek_v3',
+            'dots1',
     } or hf_model_type == 'KimiVLForConditionalGeneration':
-        if llm_model_type != 'DeepseekForCausalLM':
+        if llm_model_type != 'deepseek':
             res['qk_layernorm'] = True
         res['moe_router_load_balancing_type'] = 'seq_aux_loss'
         res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
-        if llm_model_type == 'Dots1ForCausalLM':
+        if llm_model_type == 'dots1':
             res['moe_router_score_function'] = 'sigmoid'
-    elif llm_model_type == 'HunYuanMoEV1ForCausalLM':
+    elif llm_model_type == 'hunyuan':
         # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
         # which is incompatible with megatron-core, support is not provided here.
         res['n_shared_experts'] = n_shared_experts
@@ -132,7 +132,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             if isinstance(val, list) and val and min(val) == max(val):
                 res[key] = val[0]
         n_shared_experts = res.pop('n_shared_experts')
-    elif llm_model_type in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM', 'Glm4ForCausalLM'}:
+    elif llm_model_type in {'ernie4_5', 'ernie4_5_moe', 'glm4'}:
         res['rotary_interleaved'] = True
     elif llm_model_type == 'gpt_oss':
         res['disable_bias_linear'] = False
@@ -175,7 +175,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 for i in range(res['num_layers'])
             ]
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
-    elif hf_model_type == 'Glm4vForConditionalGeneration':
+    elif hf_model_type == 'glm4v':
         res['rotary_interleaved'] = True
     rope_scaling = res.get('rope_scaling') or {}
     if 'partial_rotary_factor' not in res and 'partial_rotary_factor' in rope_scaling:
