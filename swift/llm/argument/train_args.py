@@ -290,6 +290,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     def _init_fsdp(self):
         if not self.fsdp:
+            self.fsdp = []
             return
 
         if is_mp() and not self.use_ray:
