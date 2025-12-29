@@ -25,8 +25,8 @@ register_model(
                 Model('swift/Codestral-22B-v0.1', 'mistralai/Codestral-22B-v0.1'),
             ]),
         ],
-        TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.llama,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama,
         requires=['transformers>=4.34'],
@@ -46,8 +46,8 @@ register_model(
             ],
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
-        TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.llama,
         architectures=['MixtralForCausalLM'],
         model_arch=ModelArch.llama))
 
@@ -66,8 +66,8 @@ register_model(
             ],
                        requires=['transformers>=4.46']),
         ],
-        TemplateType.mistral_nemo,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.mistral_nemo,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
 
@@ -79,8 +79,8 @@ register_model(
                 Model('mistralai/Mistral-Small-24B-Instruct-2501', 'mistralai/Mistral-Small-24B-Instruct-2501'),
             ]),
         ],
-        TemplateType.mistral_2501,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.mistral_2501,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
 
@@ -92,8 +92,8 @@ register_model(
                 Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
             ]),
         ],
-        TemplateType.zephyr,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.zephyr,
         model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
         requires=['transformers>=4.34'],
@@ -105,8 +105,8 @@ register_model(
         [ModelGroup([
             Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
         ])],
-        TemplateType.wizardlm2_moe,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.wizardlm2_moe,
         architectures=['MixtralForCausalLM'],
         requires=['transformers>=4.36'],
     ))
@@ -117,8 +117,8 @@ register_model(
         [ModelGroup([
             Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
         ])],
-        TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.wizardlm2,
         architectures=['MistralForCausalLM'],
         requires=['transformers>=4.34'],
     ))
@@ -159,8 +159,8 @@ register_model(
             ],
                        requires=['transformers>=4.43', 'mistral-common>=1.5.5'])
         ],
-        template=TemplateType.devstral,
         get_function=get_model_tokenizer_devstral_2505,
+        template=TemplateType.devstral,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
 
@@ -173,8 +173,8 @@ register_model(
                 Model('mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503'),
             ]),
         ],
-        TemplateType.mistral_2503,
         get_model_tokenizer_mistral_2503,
+        template=TemplateType.mistral_2503,
         architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
@@ -203,8 +203,8 @@ register_model(
                 Model('mistralai/Mistral-Small-3.2-24B-Instruct-2506', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'),
             ]),
         ],
-        TemplateType.mistral_2506,
         get_model_tokenizer_mistral_2506,
+        template=TemplateType.mistral_2506,
         architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],

@@ -54,7 +54,7 @@ class LLMModelType:
     deepseek = 'deepseek'
     deepseek_moe = 'deepseek_moe'
     deepseek_v2 = 'deepseek_v2'
-    deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_v3 = 'deepseek_v3'
     deepseek_r1 = 'deepseek_r1'
     deepseek_r1_distill = 'deepseek_r1_distill'
     deepseek_v3_1 = 'deepseek_v3_1'

@@ -34,8 +34,8 @@ register_model(
                 ],
                 requires=['transformers>=4.57.1']),
         ],
-        TemplateType.minimind,
         get_model_tokenizer_minimind,
+        template=TemplateType.minimind,
         architectures=['LlamaForCausalLM'],
         model_arch=ModelArch.minimind,
     ))
