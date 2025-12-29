@@ -125,7 +125,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
                 device = visual_pos_masks.device
                 cp_mask = torch.full(visual_pos_masks.shape[:1], -1, dtype=torch.long, device=device)
                 cp_mask[visual_pos_masks[:, 0]] = torch.arange(visual_pos_masks.sum(), device=device)
-                cu_seqlens = None if packed_seq_params is None else packed_seq_params.cu_seqlens_q
+                cu_seqlens = getattr(packed_seq_params, 'cu_seqlens_q', None)
                 cp_mask = split_cp_inputs(cp_mask, cu_seqlens, 0)
                 visual_pos_masks = split_cp_inputs(visual_pos_masks, cu_seqlens, 0)
                 deepstack_visual_embeds = deepstack_visual_embeds[:, cp_mask[(cp_mask != -1)]]

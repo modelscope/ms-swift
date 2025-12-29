@@ -134,8 +134,7 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
             if args.task_type == 'seq_cls' and key == 'labels':
                 continue
             if val is not None:
-                batch[key] = split_cp_inputs(val, None if packed_seq_params is None else packed_seq_params.cu_seqlens_q,
-                                             -1)
+                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
 
     return batch
 
