@@ -54,8 +54,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._prepare_metrics()
         self._init_grpo_params()
         self._init_rollout_engine()
+        self._init_rollout_engine()
         self._prepare_rewards()
-        self._prepare_scheduler()  # TODO
+        self._prepare_scheduler()
         # Initialize trainer state for reward functions to access training progress
         # Will be updated with actual values from Megatron args during training
         self.state = MegatronTrainerState()
@@ -1017,6 +1018,16 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # train_batch_size
         # return: output_tensor, loss_func
         data = self.get_batch(data_iterator)
+        data = next(data_iterator)
+        advantages = data.pop('advantages')
+        truncated_mask = data.pop('truncated_mask')
+        seq_lengths = data.pop('seq_lengths')
+        data = self._prepare_batch(data)
+        data.update({
+            'advantages': advantages,
+            'truncated_mask': truncated_mask,
+            'seq_lengths': seq_lengths,
+        })
         data.pop('loss_scale', None)
         inputs = self._prepare_model_inputs(data)
 
