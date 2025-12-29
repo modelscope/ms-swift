@@ -592,6 +592,9 @@ register_model(
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ]),
+            ModelGroup([
+                Model('iic/QwenLong-L1.5-30B-A3B', 'Tongyi-Zhiwen/QwenLong-L1.5-30B-A3B'),
+            ]),
         ],
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
