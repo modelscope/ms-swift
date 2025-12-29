@@ -247,6 +247,9 @@ def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
         elif architecture == 'Qwen3NextForCausalLM':
             from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
             z3_leaf_modules = [Qwen3NextSparseMoeBlock]
+        elif architecture == 'OlmoeForCausalLM':
+            from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
+            z3_leaf_modules = [OlmoeSparseMoeBlock]
 
     if z3_leaf_modules:
         from deepspeed.utils import set_z3_leaf_modules

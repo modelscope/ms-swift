@@ -680,6 +680,15 @@ def test_minimind():
     assert swift_response == jinja_response
 
 
+def test_olmoe():
+    pt_engine = PtEngine('allenai/OLMoE-1B-7B-0924-Instruct')
+    # pt_engine = PtEngine('allenai/OLMoE-1B-7B-0125-Instruct')
+    swift_response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    jinja_response = _infer_model(pt_engine)
+    assert swift_response == jinja_response
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -732,4 +741,5 @@ if __name__ == '__main__':
     # test_ernie_thinking()
     # test_ring2()
     # test_ling2()
-    test_minimind()
+    # test_minimind()
+    test_olmoe()
