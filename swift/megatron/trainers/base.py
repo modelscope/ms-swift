@@ -139,16 +139,15 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Setting args.eval_iters: {args.eval_iters}')
             return res
 
-        def validate_args(args, *_args, **kwargs):
-            return origin_validate_args(args, *_args, **kwargs)
+        self._origin_validate_args = origin_validate_args
 
         training.initialize_megatron = initialize_megatron
-        initialize.validate_args = validate_args
+        initialize.validate_args = self.patched_validate_args
         try:
             yield
         finally:
             training.initialize_megatron = origin_initialize_megatron
-            initialize.validate_args = origin_validate_args
+            initialize.validate_args = self._origin_validate_args
 
     def new_cyclic_iter(self, iterable):
         training = self.unwrapped_models[0].training
@@ -1259,3 +1258,6 @@ class BaseMegatronTrainer(ABC):
             last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens
+
+    def patched_validate_args(self, args, *_args, **kwargs):
+        return self._origin_validate_args(args, *_args, **kwargs)
