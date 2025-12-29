@@ -54,7 +54,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._prepare_metrics()
         self._init_grpo_params()
         self._init_rollout_engine()
-        self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
         # Initialize trainer state for reward functions to access training progress
