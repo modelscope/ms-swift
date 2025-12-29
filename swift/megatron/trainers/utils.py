@@ -13,7 +13,6 @@ from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args, get_wandb_writer
 from packaging import version
 
@@ -87,16 +86,18 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
 
 
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], dim: int):
-    # TODO: compat bshd
     if dim < 0:
         dim = (dim + inputs.ndim) % inputs.ndim
     new_inputs = []
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
-    for i in range(cu_seqlens.shape[0] - 1):
-        slices = [slice(None)] * inputs.ndim
-        slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
-        val = inputs[tuple(slices)]
+    for i in range(1 if cu_seqlens is None else (cu_seqlens.shape[0] - 1)):
+        if cu_seqlens is None:
+            val = inputs
+        else:
+            slices = [slice(None)] * inputs.ndim
+            slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
+            val = inputs[tuple(slices)]
         view_shape = (*inputs.shape[:dim], 2 * cp_size, val.shape[dim] // (2 * cp_size), *inputs.shape[dim + 1:])
         val = val.view(view_shape)
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
