@@ -499,9 +499,6 @@ def retry_decorator(retry=3):
 def start_event_loop_in_daemon(name: str = None) -> Tuple[threading.Thread, asyncio.AbstractEventLoop, threading.Event]:
     """Create a new daemon thread that runs an asyncio event loop.
 
-    This is useful for running async reward functions or other async operations
-    in a separate thread without blocking the main training loop.
-
     Args:
         name: Name of the thread. If None, the default thread naming will be used.
 

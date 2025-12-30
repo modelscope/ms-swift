@@ -2241,8 +2241,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.reward_funcs[i] = self.accelerator.prepare_model(
                         reward_func, evaluation_mode=True, device_placement=True)
 
-        # Pre-compute which reward functions are async to avoid repeated checks during computation
-        # _async_reward_func_indices stores the index of each async reward function
         self._async_reward_func_indices = []
         for i, func in enumerate(self.reward_funcs):
             if not isinstance(func, PreTrainedModel):
