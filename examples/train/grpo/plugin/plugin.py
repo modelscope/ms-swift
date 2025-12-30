@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 import re
 import textwrap
 from collections import Counter
@@ -489,9 +490,21 @@ class AsyncGenRMReward(AsyncORM):
     """
 
     def __init__(self):
+        from openai import OpenAI
         self.api_base = os.getenv('GENRM_API_BASE', 'http://localhost:8000/v1')
-        self.model_name = os.getenv('GENRM_MODEL_NAME', 'Qwen/Qwen2.5-7B-Instruct')
-        self.temperature = float(os.getenv('ASYNC_GENRM_TEMPERATURE', '0.0'))
+        self.temperature = float(os.getenv('GENRM_TEMPERATURE', '0.3'))
+
+        # Initialize OpenAI client to get the model name (following deepeyes_plugin pattern)
+        try:
+            self.client = OpenAI(
+                api_key='EMPTY',
+                base_url=self.api_base,
+            )
+            self.model_name = self.client.models.list().data[0].id
+            logger.info(f'AsyncGenRMReward initialized with model: {self.model_name}')
+        except Exception as e:
+            raise RuntimeError('Failed to connect to the model service. Please deploy the model '
+                               "using 'swift deploy --model <model_name> --port 8000 --infer_backend vllm'.") from e
 
         # System prompt for the generative reward model
         self.system_prompt = textwrap.dedent("""
@@ -560,11 +573,13 @@ class AsyncGenRMReward(AsyncORM):
             }],
             'temperature': self.temperature,
             'max_tokens': 2048,
+            'seed': random.randint(0, 1000000),
         }
 
         try:
             async with session.post(
-                    f'{self.api_base}/chat/completions', json=payload, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                    f'{self.api_base}/chat/completions', json=payload,
+                    timeout=aiohttp.ClientTimeout(total=120)) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
                     logger.warning(f'API error {resp.status}: {error_text[:200]}')
