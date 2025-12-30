@@ -240,12 +240,33 @@ class DeepseekOCR(Template):
     image_placeholder = ['<image>\n']
 
     def init_env_args(self):
-        model_dir = self.model_info.model_dir
-        self.BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform', model_dir)
-        self.dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess', model_dir)
+        # Delay loading dynamic modules that require specific transformers versions
+        # These will be loaded lazily in _preprocess_image when actually needed
+        # This avoids triggering transformers version compatibility issues for vllm backend
+        self._BasicImageTransform = None
+        self._dynamic_preprocess = None
         self.crop_mode = get_env_args('crop_mode', bool, True)
         self.base_size = get_env_args('base_size', int, 1024)
         self.image_size = get_env_args('image_size', int, 640)
+
+    def _load_dynamic_modules(self):
+        """Lazily load dynamic modules from model repository."""
+        if self._BasicImageTransform is None:
+            model_dir = self.model_info.model_dir
+            self._BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform',
+                                                                      model_dir)
+            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess',
+                                                                     model_dir)
+
+    @property
+    def BasicImageTransform(self):
+        self._load_dynamic_modules()
+        return self._BasicImageTransform
+
+    @property
+    def dynamic_preprocess(self):
+        self._load_dynamic_modules()
+        return self._dynamic_preprocess
 
     def _preprocess_image(self, images, image_token_id):
         # Code borrowed from
