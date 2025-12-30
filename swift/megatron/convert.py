@@ -200,6 +200,10 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         mg_inputs.pop(key, None)
     mg_inputs.update({'packed_seq_params': packed_seq_params})
     mg_device = next(mg_language_model.parameters()).device
+    # router to bfloat16
+    for n, m in mg_language_model.named_modules():
+        if n.endswith('router'):
+            m.to(hf_model.dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
@@ -283,12 +287,13 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     bridge = megatron_model_meta.bridge_cls()
     bridge.load_weights(mg_model, args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
-    if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     args.save_args()
     logger.info('Saving the model...')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
+    # Place it at the end to avoid test_convert_precision affecting precision.
+    if args.test_convert_precision:
+        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
