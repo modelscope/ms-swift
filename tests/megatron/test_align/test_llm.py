@@ -143,6 +143,10 @@ def test_glm4():
     _test_model('ZhipuAI/GLM-4-9B-0414')
 
 
+def test_minimax_m2():
+    _test_model('MiniMax/MiniMax-M2.1')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -172,4 +176,5 @@ if __name__ == '__main__':
     # test_qwen3_next()
     # test_ernie_thinking()
     # test_tongyi_deepresearch()
-    test_glm4()
+    # test_glm4()
+    test_minimax_m2()

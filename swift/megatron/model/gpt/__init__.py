@@ -2,7 +2,7 @@
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
-from . import glm4, qwen3_next
+from . import glm4, minimax_m2, qwen3_next
 
 register_megatron_model(
     MegatronModelMeta(
