@@ -562,7 +562,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/gemma-3-1b-it](https://modelscope.cn/models/LLM-Research/gemma-3-1b-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it)|
 |[google/gemma-3-270m](https://modelscope.cn/models/google/gemma-3-270m)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m](https://huggingface.co/google/gemma-3-270m)|
 |[google/gemma-3-270m-it](https://modelscope.cn/models/google/gemma-3-270m-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m-it](https://huggingface.co/google/gemma-3-270m-it)|
-|[google/medgemma-27b-text-it](https://modelscope.cn/models/google/medgemma-27b-text-it)|gemma3_text|gemma3_text|4.52.0.dev0|&#x2718;|-|[google/medgemma-27b-text-it](https://huggingface.co/google/medgemma-27b-text-it)|
+|[google/medgemma-27b-text-it](https://modelscope.cn/models/google/medgemma-27b-text-it)|gemma3_text|gemma3_text|transformers>=4.52.0.dev0|&#x2718;|-|[google/medgemma-27b-text-it](https://huggingface.co/google/medgemma-27b-text-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|&#x2718;|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|&#x2718;|-|-|
 |[AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B)|skywork_o1|skywork_o1|transformers>=4.43|&#x2714;|-|[Skywork/Skywork-o1-Open-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-o1-Open-Llama-3.1-8B)|
