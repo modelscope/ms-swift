@@ -98,7 +98,7 @@ class GPTBridge:
         else:
             return 'mlp'
 
-    def get_hf_mlp(self, layer_idx):
+    def _get_hf_mlp(self, layer_idx):
         return getattr(self.hf_layers[layer_idx], self.get_hf_mlp_prefix(layer_idx))
 
     def _init_meta_hf_model(self):
@@ -643,7 +643,7 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         args = self.args
-        hf_mlp = self.get_hf_mlp(layer_idx)
+        hf_mlp = self._get_hf_mlp(layer_idx)
         if hasattr(hf_mlp, 'router'):
             hf_gate_key = 'router.weight'
         elif hasattr(hf_mlp.gate, 'wg'):
@@ -698,7 +698,7 @@ class GPTBridge:
                        ep_rank: Optional[int] = None,
                        hf_mlp=None):
         if hf_mlp is None:
-            hf_mlp = self.get_hf_mlp(layer_idx)
+            hf_mlp = self._get_hf_mlp(layer_idx)
         is_expert = ep_rank is not None
         num_local_experts = 1
         hf_grouped = False
@@ -1206,7 +1206,7 @@ class GPTBridge:
 
     def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         hf_mlp_prefix = self.get_hf_mlp_prefix(layer_idx)
-        hf_mlp = self.get_hf_mlp(layer_idx)
+        hf_mlp = self._get_hf_mlp(layer_idx)
         is_moe = self._is_moe(hf_mlp.state_dict())
         mg_mlp = None if mg_layer is None else mg_layer.mlp
         if is_moe:
