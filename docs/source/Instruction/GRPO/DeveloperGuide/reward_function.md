@@ -48,7 +48,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 ## 异步奖励函数
 
-**版本依赖**：ms-swift>=3.13
+**版本依赖**：ms-swift>=3.12.1
 
 对于涉及 I/O 操作的奖励函数（如 API 调用、数据库查询等），可以使用异步（async）奖励函数来提高性能。异步奖励函数使用 `asyncio.gather` 并行执行，可以显著加速奖励计算。
 
