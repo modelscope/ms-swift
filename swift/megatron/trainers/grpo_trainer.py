@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
+import atexit
 import base64
 import gc
 import inspect
@@ -30,7 +32,7 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
                                                nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
                                                set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
-                         remove_response)
+                         remove_response, shutdown_event_loop_in_daemon, start_event_loop_in_daemon)
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
@@ -184,6 +186,22 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
         assert self.reward_funcs, 'reward_funcs is not set'
+
+        # Pre-compute which reward functions are async to avoid repeated checks during computation
+        # _async_reward_func_indices stores the index of each async reward function
+        self._async_reward_func_indices = []
+        for i, func in enumerate(self.reward_funcs):
+            if not isinstance(func, nn.Module):
+                if asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None)):
+                    self._async_reward_func_indices.append(i)
+
+        # Initialize event loop for async reward functions if needed
+        if self._async_reward_func_indices:
+            self.async_reward_loop_thread, self.async_reward_loop, self.async_reward_loop_ready_event = (
+                start_event_loop_in_daemon(name='MegatronGRPOTrainer-AsyncRewardLoop'))
+            # Wait until the event loop is running in the daemon thread
+            self.async_reward_loop_ready_event.wait()
+            atexit.register(shutdown_event_loop_in_daemon, self.async_reward_loop_thread, self.async_reward_loop)
 
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
@@ -633,26 +651,59 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         rewards_per_func = torch.zeros((len(batch), len(self.reward_funcs)), device=device)
         completions = [inp['messages'][-1]['content'] for inp in batch]
 
+        # Common reward kwargs
         reward_kwargs = {'trainer_state': self.get_trainer_state()}
+        reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
+
+        # Use pre-computed indices for async reward functions
+        async_indices_set = set(self._async_reward_func_indices)
+
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with profiling_context(self, reward_func_name):
-                # reward model
+                # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
-                    output_reward_func = reward_model_plugin(inputs=batch, **reward_kwargs)
-                # reward function
+                    rm_kwargs = {'trainer_state': self.get_trainer_state()}
+                    output_reward_func = reward_model_plugin(inputs=batch, **rm_kwargs)
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                # Async reward function - skip here, will be executed in parallel later
+                elif i in async_indices_set:
+                    pass
+                # Synchronous reward function
                 else:
-                    # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                    reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
                     output_reward_func = reward_func(completions, **reward_kwargs)
-                output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+
+        # Execute async reward functions in parallel using asyncio.gather
+        # Process in original order to maintain correspondence with reward_func_names
+        if self._async_reward_func_indices:
+
+            async def _invoke_async_reward(index):
+                func = self.reward_funcs[index]
+                func_name = self.reward_func_names[index]
+                with profiling_context(self, func_name):
+                    output = await func(completions, **reward_kwargs)
+                    output = [r if r is not None else torch.nan for r in output]
+                    return index, output
+
+            async def _run_async_funcs():
+                # Maintain order by processing indices in sequence
+                coros = [_invoke_async_reward(idx) for idx in self._async_reward_func_indices]
+                return await asyncio.gather(*coros)
+
+            async_results = asyncio.run_coroutine_threadsafe(_run_async_funcs(), self.async_reward_loop).result()
+            for idx, output_reward_func in async_results:
+                rewards_per_func[:, idx] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
-            reward_kwargs.pop('trainer_state')
-            row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
+            row_reward_kwargs = {
+                key: value[nan_row_idx]
+                for key, value in reward_kwargs.items() if key != 'trainer_state'
+            }
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
                            'Please ensure that at least one reward function returns a valid reward.')
