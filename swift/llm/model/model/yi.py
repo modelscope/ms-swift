@@ -62,8 +62,8 @@ register_model(
                 Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
             ], ),
         ],
-        TemplateType.yi_vl,
         get_model_tokenizer_yi_vl,
+        template=TemplateType.yi_vl,
         model_arch=ModelArch.llava_llama,
         architectures=['LlavaLlamaForCausalLM'],
         requires=['transformers>=4.34'],
@@ -87,7 +87,7 @@ register_model(
                 Model('01ai/Yi-34B-Chat', '01-ai/Yi-34B-Chat'),
                 Model('01ai/Yi-34B-Chat-4bits', '01-ai/Yi-34B-Chat-4bits'),
                 Model('01ai/Yi-34B-Chat-8bits', '01-ai/Yi-34B-Chat-8bits'),
-            ]),
+            ], TemplateType.chatml),
             # yi1.5
             ModelGroup([
                 Model('01ai/Yi-1.5-6B', '01-ai/Yi-1.5-6B'),
@@ -98,7 +98,7 @@ register_model(
                 Model('01ai/Yi-1.5-34B', '01-ai/Yi-1.5-34B'),
                 Model('01ai/Yi-1.5-34B-Chat', '01-ai/Yi-1.5-34B-Chat'),
                 Model('01ai/Yi-1.5-34B-Chat-16K', '01-ai/Yi-1.5-34B-Chat-16K'),
-            ]),
+            ], TemplateType.chatml),
             # yi1.5-quant
             ModelGroup([
                 Model('AI-ModelScope/Yi-1.5-6B-Chat-GPTQ', 'modelscope/Yi-1.5-6B-Chat-GPTQ'),
@@ -107,40 +107,20 @@ register_model(
                 Model('AI-ModelScope/Yi-1.5-9B-Chat-AWQ', 'modelscope/Yi-1.5-9B-Chat-AWQ'),
                 Model('AI-ModelScope/Yi-1.5-34B-Chat-GPTQ', 'modelscope/Yi-1.5-34B-Chat-GPTQ'),
                 Model('AI-ModelScope/Yi-1.5-34B-Chat-AWQ', 'modelscope/Yi-1.5-34B-Chat-AWQ'),
-            ]),
-        ],
-        TemplateType.chatml,
-        get_model_tokenizer_yi,
-        architectures=['LlamaForCausalLM'],
-        model_arch=ModelArch.llama,
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.yi_coder, [
+            ], TemplateType.chatml),
             ModelGroup([
                 Model('01ai/Yi-Coder-1.5B', '01-ai/Yi-Coder-1.5B'),
                 Model('01ai/Yi-Coder-9B', '01-ai/Yi-Coder-9B'),
                 Model('01ai/Yi-Coder-1.5B-Chat', '01-ai/Yi-Coder-1.5B-Chat'),
                 Model('01ai/Yi-Coder-9B-Chat', '01-ai/Yi-Coder-9B-Chat'),
-            ], )
-        ],
-        TemplateType.yi_coder,
-        get_model_tokenizer_yi,
-        architectures=['LlamaForCausalLM'],
-        model_arch=ModelArch.llama,
-        tags=['coding']))
-
-register_model(
-    ModelMeta(
-        LLMModelType.sus,
-        [
+            ],
+                       TemplateType.yi_coder,
+                       tags=['coding']),
             ModelGroup([
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
-            ]),
+            ], TemplateType.sus),
         ],
-        TemplateType.sus,
         get_model_tokenizer_yi,
+        hf_model_type=['llama'],
         model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
     ))

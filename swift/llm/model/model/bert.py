@@ -27,7 +27,6 @@ register_model(
                 Model('answerdotai/ModernBERT-large', 'answerdotai/ModernBERT-large'),
             ])
         ],
-        None,
         get_model_tokenizer_modern_bert,
         requires=['transformers>=4.48'],
         tags=['bert']))
@@ -52,7 +51,6 @@ register_model(
         [ModelGroup([
             Model('iic/gte-modernbert-base', 'Alibaba-NLP/gte-modernbert-base'),
         ])],
-        None,
         get_model_tokenizer_gte_bert,
         requires=['transformers>=4.48'],
         tags=['bert', 'embedding']))
@@ -69,8 +67,8 @@ register_model(
         [ModelGroup([
             Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
         ])],
-        TemplateType.bert,
         get_model_tokenizer_gte_bert_reranker,
+        template=TemplateType.bert,
         requires=['transformers>=4.48'],
         tags=['bert', 'reranker']))
 
@@ -79,6 +77,5 @@ register_model(
         BertModelType.bert, [ModelGroup([
             Model('iic/nlp_structbert_backbone_base_std'),
         ])],
-        None,
         get_model_tokenizer_from_local,
         tags=['bert']))

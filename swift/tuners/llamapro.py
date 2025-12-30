@@ -146,7 +146,7 @@ class LLaMAPro(SwiftAdapter):
                     getattr(module, attention).layer_idx = idx
                 except AttributeError:
                     getattr(module, 'cross_attn').layer_idx = idx
-        elif model_type in ('chatglm', 'glm4'):
+        elif model_type in ('chatglm', 'chatglm4'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_number = idx
         elif model_type in ('phi2', ):

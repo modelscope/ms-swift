@@ -9,40 +9,6 @@ from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
 
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek, [
-            ModelGroup([
-                Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
-                Model('deepseek-ai/deepseek-llm-7b-chat', 'deepseek-ai/deepseek-llm-7b-chat'),
-                Model('deepseek-ai/deepseek-llm-67b-base', 'deepseek-ai/deepseek-llm-67b-base'),
-                Model('deepseek-ai/deepseek-llm-67b-chat', 'deepseek-ai/deepseek-llm-67b-chat'),
-            ]),
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-math-7b-base', 'deepseek-ai/deepseek-math-7b-base'),
-                    Model('deepseek-ai/deepseek-math-7b-instruct', 'deepseek-ai/deepseek-math-7b-instruct'),
-                    Model('deepseek-ai/deepseek-math-7b-rl', 'deepseek-ai/deepseek-math-7b-rl'),
-                ],
-                tags=['math'],
-            ),
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-coder-1.3b-base', 'deepseek-ai/deepseek-coder-1.3b-base'),
-                    Model('deepseek-ai/deepseek-coder-1.3b-instruct', 'deepseek-ai/deepseek-coder-1.3b-instruct'),
-                    Model('deepseek-ai/deepseek-coder-6.7b-base', 'deepseek-ai/deepseek-coder-6.7b-base'),
-                    Model('deepseek-ai/deepseek-coder-6.7b-instruct', 'deepseek-ai/deepseek-coder-6.7b-instruct'),
-                    Model('deepseek-ai/deepseek-coder-33b-base', 'deepseek-ai/deepseek-coder-33b-base'),
-                    Model('deepseek-ai/deepseek-coder-33b-instruct', 'deepseek-ai/deepseek-coder-33b-instruct'),
-                ],
-                tags=['coding'],
-            ),
-        ],
-        TemplateType.deepseek,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['LlamaForCausalLM'],
-        model_arch=ModelArch.llama))
-
 
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      model_info: ModelInfo,
@@ -62,16 +28,15 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.deepseek_moe,
+        LLMModelType.deepseek,
         [
             ModelGroup([
                 Model('deepseek-ai/deepseek-moe-16b-chat', 'deepseek-ai/deepseek-moe-16b-chat'),
                 Model('deepseek-ai/deepseek-moe-16b-base', 'deepseek-ai/deepseek-moe-16b-base'),
             ], ),
         ],
-        TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekForCausalLM'],
+        template=TemplateType.deepseek,
     ))
 
 register_model(
@@ -87,60 +52,70 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V2-Lite-Chat', 'deepseek-ai/DeepSeek-V2-Lite-Chat'),
                 Model('deepseek-ai/DeepSeek-V2', 'deepseek-ai/DeepSeek-V2'),
                 Model('deepseek-ai/DeepSeek-V2-Chat', 'deepseek-ai/DeepSeek-V2-Chat'),
-            ]),
+            ], TemplateType.deepseek),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
+                Model('deepseek-ai/DeepSeek-V2.5-1210', 'deepseek-ai/DeepSeek-V2.5-1210')
+            ], TemplateType.deepseek_v2_5)
         ],
-        TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV2ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
         requires=['transformers>=4.39.3'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.deepseek_v2_5,
+        LLMModelType.deepseek_v3,
         [
             ModelGroup([
-                Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
-                Model('deepseek-ai/DeepSeek-V2.5-1210', 'deepseek-ai/DeepSeek-V2.5-1210'),
                 Model('deepseek-ai/DeepSeek-V3-Base', 'deepseek-ai/DeepSeek-V3-Base'),
                 Model('deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3'),
                 Model('deepseek-ai/DeepSeek-V3-0324', 'deepseek-ai/DeepSeek-V3-0324'),
-            ]),
+            ], TemplateType.deepseek_v2_5),
             ModelGroup([
                 Model('cognitivecomputations/DeepSeek-V3-awq', 'cognitivecomputations/DeepSeek-V3-AWQ'),
                 Model('cognitivecomputations/DeepSeek-V3-0324-AWQ', 'cognitivecomputations/DeepSeek-V3-0324-AWQ')
-            ]),
+            ], TemplateType.deepseek_v2_5),
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-Prover-V2-7B', 'deepseek-ai/DeepSeek-Prover-V2-7B'),
                 Model('deepseek-ai/DeepSeek-Prover-V2-671B', 'deepseek-ai/DeepSeek-Prover-V2-671B'),
-            ]),
+            ], TemplateType.deepseek_v2_5),
             ModelGroup([
                 Model('unsloth/DeepSeek-V3-bf16', 'unsloth/DeepSeek-V3-bf16'),
                 Model('unsloth/DeepSeek-V3-0324-BF16', 'unsloth/DeepSeek-V3-0324-BF16'),
                 Model('unsloth/DeepSeek-Prover-V2-671B-BF16', 'unsloth/DeepSeek-Prover-V2-671B-BF16'),
-            ])
-        ],
-        TemplateType.deepseek_v2_5,
-        get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'],
-        model_arch=ModelArch.deepseek_v2,
-        requires=['transformers>=4.39.3'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek_v3_1,
-        [
+            ], TemplateType.deepseek_v2_5),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
+                Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
+                Model('deepseek-ai/DeepSeek-R1-0528', 'deepseek-ai/DeepSeek-R1-0528'),
+            ], TemplateType.deepseek_r1),
+            ModelGroup([
+                Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
+                Model('cognitivecomputations/DeepSeek-R1-0528-AWQ', 'cognitivecomputations/DeepSeek-R1-0528-AWQ'),
+            ], TemplateType.deepseek_r1),
+            ModelGroup([
+                Model('unsloth/DeepSeek-R1-BF16', 'unsloth/DeepSeek-R1-BF16'),
+                Model('unsloth/DeepSeek-R1-Zero-BF16', 'unsloth/DeepSeek-R1-Zero-BF16'),
+                Model('unsloth/DeepSeek-R1-0528-BF16', 'unsloth/DeepSeek-R1-0528-BF16'),
+            ], TemplateType.deepseek_r1),
+            ModelGroup([
+                Model('moonshotai/Moonlight-16B-A3B', 'moonshotai/Moonlight-16B-A3B'),
+                Model('moonshotai/Moonlight-16B-A3B-Instruct', 'moonshotai/Moonlight-16B-A3B-Instruct'),
+            ], TemplateType.moonlight),
+            ModelGroup([
+                Model('moonshotai/Kimi-K2-Base', 'moonshotai/Kimi-K2-Base'),
+                Model('moonshotai/Kimi-K2-Instruct', 'moonshotai/Kimi-K2-Instruct'),
+                Model('moonshotai/Kimi-K2-Instruct-0905', 'moonshotai/Kimi-K2-Instruct-0905'),
+                Model('moonshotai/Kimi-K2-Thinking', 'moonshotai/Kimi-K2-Thinking'),
+            ], TemplateType.kimi_k2),
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-V3.1-Base', 'deepseek-ai/DeepSeek-V3.1-Base'),
                 Model('deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3.1'),
                 Model('deepseek-ai/DeepSeek-V3.1-Terminus', 'deepseek-ai/DeepSeek-V3.1-Terminus'),
-            ]),
+            ], TemplateType.deepseek_v3_1),
         ],
-        TemplateType.deepseek_v3_1,
         get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV3ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
         requires=['transformers>=4.39.3'],
     ))
@@ -180,8 +155,8 @@ register_model(
                 Model('deepseek-ai/DeepSeek-Math-V2', 'deepseek-ai/DeepSeek-Math-V2'),
             ]),
         ],
-        TemplateType.deepseek_v3_1,
         get_model_tokenizer_deepseek_v3_2,
+        template=TemplateType.deepseek_v3_1,
         architectures=['DeepseekV32ForCausalLM'],
     ))
 
@@ -223,8 +198,8 @@ register_model(
                 Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
             ], ),
         ],
-        TemplateType.deepseek_vl,
         get_model_tokenizer_deepseek_vl,
+        template=TemplateType.deepseek_vl,
         architectures=['MultiModalityCausalLM'],
         model_arch=ModelArch.deepseek_vl,
         tags=['vision'],
@@ -250,8 +225,8 @@ register_model(
                 Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
             ]),
         ],
-        TemplateType.deepseek_janus,
         get_model_tokenizer_deepseek_janus,
+        template=TemplateType.deepseek_janus,
         model_arch=ModelArch.deepseek_janus,
         tags=['vision'],
     ))
@@ -265,8 +240,8 @@ register_model(
                 Model('deepseek-ai/Janus-Pro-7B', 'deepseek-ai/Janus-Pro-7B'),
             ]),
         ],
-        TemplateType.deepseek_janus_pro,
         get_model_tokenizer_deepseek_janus,
+        template=TemplateType.deepseek_janus_pro,
         model_arch=ModelArch.deepseek_janus,
         tags=['vision'],
     ))
@@ -298,64 +273,12 @@ register_model(
                 Model('deepseek-ai/deepseek-vl2', 'deepseek-ai/deepseek-vl2'),
             ]),
         ],
-        TemplateType.deepseek_vl2,
         get_model_tokenizer_deepseek_vl2,
+        template=TemplateType.deepseek_vl2,
         model_arch=ModelArch.deepseek_vl2,
         requires=['transformers<4.42'],
-        architectures=['DeepseekV2ForCausalLM'],
+        hf_model_type=['deepseek_v2'],
         tags=['vision'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek_r1,
-        [
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
-                Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
-                Model('deepseek-ai/DeepSeek-R1-0528', 'deepseek-ai/DeepSeek-R1-0528'),
-            ]),
-            ModelGroup([
-                Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
-                Model('cognitivecomputations/DeepSeek-R1-0528-AWQ', 'cognitivecomputations/DeepSeek-R1-0528-AWQ'),
-            ]),
-            ModelGroup([
-                Model('unsloth/DeepSeek-R1-BF16', 'unsloth/DeepSeek-R1-BF16'),
-                Model('unsloth/DeepSeek-R1-Zero-BF16', 'unsloth/DeepSeek-R1-Zero-BF16'),
-                Model('unsloth/DeepSeek-R1-0528-BF16', 'unsloth/DeepSeek-R1-0528-BF16'),
-            ]),
-        ],
-        TemplateType.deepseek_r1,
-        get_model_tokenizer_deepseek_moe,
-        architectures=['DeepseekV3ForCausalLM'],
-        model_arch=ModelArch.deepseek_v2,
-        requires=['transformers>=4.39.3'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek_r1_distill,
-        [
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-14B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B'),
-                Model('iic/QwenLong-L1-32B', 'Tongyi-Zhiwen/QwenLong-L1-32B'),
-            ],
-                       requires=['transformers>=4.37']),
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'),
-                Model('deepseek-ai/DeepSeek-R1-Distill-Llama-70B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'),
-            ]),
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B', 'deepseek-ai/DeepSeek-R1-0528-Qwen3-8B'),
-            ]),
-        ],
-        TemplateType.deepseek_r1,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM', 'Qwen3ForCausalLM'],
-        model_arch=ModelArch.llama,
     ))
 
 
@@ -379,8 +302,8 @@ register_model(
                 Model('deepseek-ai/DeepSeek-OCR', 'deepseek-ai/DeepSeek-OCR'),
             ]),
         ],
-        TemplateType.deepseek_ocr,
         get_model_tokenizer_deepseek_ocr,
+        template=TemplateType.deepseek_ocr,
         model_arch=ModelArch.deepseek_ocr,
         requires=['transformers==4.46.3', 'easydict'],
         tags=['vision'],

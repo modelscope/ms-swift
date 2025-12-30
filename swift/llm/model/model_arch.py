@@ -23,7 +23,6 @@ class LLMModelArch:
     phi3_small = 'phi3_small'
     telechat = 'telechat'
     dbrx = 'dbrx'
-    minimind = 'minimind'
 
 
 class MLLMModelArch:
@@ -36,8 +35,8 @@ class MLLMModelArch:
     qwen3_omni = 'qwen3_omni'
 
     cogvlm = 'cogvlm'
+    chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'
-    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -90,6 +89,8 @@ class MLLMModelArch:
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
+    # Multimodal models typically require specifying model_arch,
+    # while text-only models usually do not need to specify model_arch.
     pass
 
 
@@ -583,14 +584,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.glm4v,
+        MLLMModelArch.chatglm4v,
         language_model='transformer.encoder',
         vision_tower='transformer.vision',
     ))
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.glm4_1v,
+        MLLMModelArch.glm4v,
         language_model=['model.language_model', 'lm_head'],
         aligner='model.visual.merger',
         vision_tower='model.visual',
@@ -730,21 +731,6 @@ register_model_arch(
         language_model='model',
         aligner='vit.perceive',
         vision_tower='vit',
-    ))
-
-register_model_arch(
-    ModelKeys(
-        LLMModelArch.minimind,
-        module_list='model.layers',
-        mlp='model.layers.{}.mlp',
-        down_proj='model.layers.{}.mlp.down_proj',
-        attention='model.layers.{}.self_attn',
-        o_proj='model.layers.{}.self_attn.o_proj',
-        q_proj='model.layers.{}.self_attn.q_proj',
-        k_proj='model.layers.{}.self_attn.k_proj',
-        v_proj='model.layers.{}.self_attn.v_proj',
-        embedding='model.embed_tokens',
-        lm_head='lm_head',
     ))
 
 

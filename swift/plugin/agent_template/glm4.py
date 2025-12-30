@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from swift.llm.template import Prompt
 
 
-class GLM4AgentTemplate(BaseAgentTemplate):
+class ChatGLM4AgentTemplate(BaseAgentTemplate):
     is_glm4_0414 = False
 
     @staticmethod
@@ -74,7 +74,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
         return '<|assistant|>'.join(tool_calls) + '<|observation|>'
 
 
-class GLM4_0414AgentTemplate(GLM4AgentTemplate):
+class GLM4AgentTemplate(GLM4AgentTemplate):
     is_glm4_0414 = True
 
 

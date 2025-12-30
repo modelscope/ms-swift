@@ -28,8 +28,8 @@ register_model(
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
             ]),
         ],
-        TemplateType.got_ocr2,
         get_model_tokenizer_got_ocr2,
+        template=TemplateType.got_ocr2,
         model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],
         tags=['vision']))
@@ -49,8 +49,8 @@ register_model(
                 Model('stepfun-ai/GOT-OCR-2.0-hf', 'stepfun-ai/GOT-OCR-2.0-hf'),
             ]),
         ],
-        TemplateType.got_ocr2_hf,
         get_model_tokenizer_got_ocr2_hf,
+        template=TemplateType.got_ocr2_hf,
         model_arch=ModelArch.llava_hf,
         architectures=['GOTQwenForCausalLM'],
         tags=['vision']))
@@ -106,8 +106,8 @@ register_model(
         [ModelGroup([
             Model('stepfun-ai/Step-Audio-2-mini', 'stepfun-ai/Step-Audio-2-mini'),
         ])],
-        TemplateType.step_audio2_mini,
         get_model_tokenizer_step_audio2_mini,
+        template=TemplateType.step_audio2_mini,
         model_arch=ModelArch.step_audio2_mini,
         architectures=['StepAudio2ForCausalLM'],
         requires=['transformers==4.53.3', 'torchaudio', 'librosa'],
@@ -121,8 +121,8 @@ register_model(
                 Model('stepfun-ai/Step-Audio-Chat', 'stepfun-ai/Step-Audio-Chat'),
             ]),
         ],
-        TemplateType.step_audio,
         get_model_tokenizer_step_audio,
+        template=TemplateType.step_audio,
         architectures=['Step1ForCausalLM'],
         requires=['funasr', 'sox', 'conformer', 'openai-whisper', 'librosa'],
         tags=['audio']))

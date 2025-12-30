@@ -18,8 +18,8 @@ register_model(
                 Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
             ]),
         ],
-        TemplateType.codefuse,
         get_model_tokenizer_qwen,
+        template=TemplateType.codefuse,
         architectures=['QWenLMHeadModel'],
         model_arch=ModelArch.qwen,
         tags=['coding']))
@@ -30,8 +30,8 @@ register_model(
         [
             ModelGroup([Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')], ),
         ],
-        TemplateType.codefuse,
         get_model_tokenizer_chatglm,
+        template=TemplateType.codefuse,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
         tags=['coding'],
@@ -60,8 +60,8 @@ register_model(
                 tags=['coding'],
             ),
         ],
-        TemplateType.codefuse_codellama,
         get_model_tokenizer_codellama,
+        template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
+        hf_model_type=['llama'],
     ))

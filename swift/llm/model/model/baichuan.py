@@ -41,8 +41,8 @@ register_model(
                 Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
             ]),
         ],
-        TemplateType.baichuan,
         get_model_tokenizer_baichuan,
+        template=TemplateType.baichuan,
         architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
         requires=['transformers<4.34']))
@@ -75,8 +75,8 @@ register_model(
                 Model('baichuan-inc/Baichuan-M1-14B-Instruct', 'baichuan-inc/Baichuan-M1-14B-Instruct'),
             ]),
         ],
-        TemplateType.baichuan_m1,
         get_model_tokenizer_baichuan_m1,
+        template=TemplateType.baichuan_m1,
         architectures=['BaichuanM1ForCausalLM'],
         model_arch=ModelArch.baichuan,
         requires=['transformers>=4.48']))
@@ -140,8 +140,8 @@ register_model(
             ],
                        requires=['bitsandbytes<0.41.2', 'accelerate<0.26'])
         ],
-        TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
+        template=TemplateType.baichuan,
         architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
     ))

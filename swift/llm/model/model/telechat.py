@@ -35,8 +35,8 @@ register_model(
                 Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
             ]),
         ],
-        TemplateType.telechat,
         get_model_tokenizer_telechat,
+        template=TemplateType.telechat,
         model_arch=ModelArch.telechat,
         architectures=['TelechatForCausalLM', 'TeleChatForCausalLM'],
     ))
@@ -52,8 +52,8 @@ register_model(
                 Model('TeleAI/TeleChat2-35B-Nov', 'Tele-AI/TeleChat2-35B-Nov'),
             ]),
         ],
-        TemplateType.telechat2,
         get_model_tokenizer_telechat,
+        template=TemplateType.telechat2,
         model_arch=ModelArch.telechat,
         architectures=['TeleChat2ForCausalLM'],
     ))

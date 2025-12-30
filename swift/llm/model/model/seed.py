@@ -15,7 +15,7 @@ register_model(
                 Model('ByteDance-Seed/Seed-OSS-36B-Base-woSyn', 'ByteDance-Seed/Seed-OSS-36B-Base-woSyn'),
             ])
         ],
-        TemplateType.seed_oss,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.seed_oss,
         architectures=['SeedOssForCausalLM'],
         requires=['transformers>=4.56']))

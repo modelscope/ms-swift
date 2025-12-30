@@ -52,8 +52,8 @@ register_model(
         MLLMModelType.mplug_owl2, [ModelGroup([
             Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
         ])],
-        TemplateType.mplug_owl2,
         get_model_tokenizer_mplug_owl2,
+        template=TemplateType.mplug_owl2,
         model_arch=ModelArch.mplug_owl2,
         requires=['transformers<4.35', 'icecream'],
         tags=['vision']), )
@@ -63,9 +63,9 @@ register_model(
         MLLMModelType.mplug_owl2_1, [ModelGroup([
             Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
         ])],
-        TemplateType.mplug_owl2,
         partial(
             get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
+        template=TemplateType.mplug_owl2,
         model_arch=ModelArch.mplug_owl2_1,
         requires=['transformers<4.35', 'icecream'],
         tags=['vision']))
@@ -112,8 +112,8 @@ register_model(
                 Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
             ]),
         ],
-        TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
+        template=TemplateType.mplug_owl3,
         architectures=['mPLUGOwl3Model'],
         model_arch=ModelArch.mplug_owl3,
         requires=['transformers>=4.36', 'icecream', 'decord'],
@@ -126,8 +126,8 @@ register_model(
                 Model('iic/mPLUG-Owl3-7B-241101', 'mPLUG/mPLUG-Owl3-7B-241101'),
             ]),
         ],
-        TemplateType.mplug_owl3_241101,
         get_model_tokenizer_mplug_owl3,
+        template=TemplateType.mplug_owl3_241101,
         architectures=['mPLUGOwl3Model'],
         model_arch=ModelArch.mplug_owl3,
         requires=['transformers>=4.36', 'icecream'],
@@ -151,8 +151,8 @@ register_model(
                 Model('iic/DocOwl2', 'mPLUG/DocOwl2'),
             ]),
         ],
-        TemplateType.doc_owl2,
         get_model_tokenizer_doc_owl2,
+        template=TemplateType.doc_owl2,
         architectures=['mPLUGDocOwl2'],
         model_arch=ModelArch.doc_owl2,
         requires=['transformers>=4.36', 'icecream'],

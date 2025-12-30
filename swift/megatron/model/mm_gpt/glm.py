@@ -7,7 +7,7 @@ from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
-class Glm4_5vVit(HuggingFaceModule):
+class Glm4vVit(HuggingFaceModule):
     module_mapping = {'model.visual': 'visual'}
     _vision_tower = ['visual']
     _aligner = ['visual.merger']
@@ -22,9 +22,9 @@ class Glm4_5vVit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.glm4_5v, [
-            ModelType.glm4_5v,
-        ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4_5vVit))
+        MegatronModelType.glm4v_moe, [
+            ModelType.glm4v_moe,
+        ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4vVit))
 
 
 class Glm4_1vBridge(Glm4Bridge, MultimodalGPTBridge):
@@ -38,4 +38,4 @@ register_megatron_model(
         ],
         get_transformer_layer_spec=get_glm4_transformer_layer_spec,
         bridge_cls=Glm4_1vBridge,
-        visual_cls=Glm4_5vVit))
+        visual_cls=Glm4vVit))

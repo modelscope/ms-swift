@@ -90,8 +90,8 @@ register_model(
                 Model('MiniMax/MiniMax-VL-01', 'MiniMaxAI/MiniMax-VL-01'),
             ]),
         ],
-        TemplateType.minimax_vl,
         get_model_tokenizer_minimax_vl,
+        template=TemplateType.minimax_vl,
         architectures=['MiniMaxVL01ForConditionalGeneration'],
         tags=['vision']))
 
@@ -143,8 +143,8 @@ register_model(
                 Model('MiniMax/MiniMax-Text-01', 'MiniMaxAI/MiniMax-Text-01'),
             ]),
         ],
-        TemplateType.minimax,
         get_model_tokenizer_minimax_text,
+        template=TemplateType.minimax,
         architectures=['MiniMaxText01ForCausalLM']))
 
 register_model(
@@ -155,8 +155,8 @@ register_model(
                 Model('MiniMax/MiniMax-M1-80k', 'MiniMaxAI/MiniMax-M1-80k'),
             ]),
         ],
-        TemplateType.minimax_m1,
         get_model_tokenizer_minimax_text,
+        template=TemplateType.minimax_m1,
         architectures=['MiniMaxM1ForCausalLM']))
 
 register_model(
@@ -166,6 +166,6 @@ register_model(
                 Model('MiniMax/MiniMax-M2', 'MiniMaxAI/MiniMax-M2'),
             ]),
         ],
-        TemplateType.minimax_m2,
         get_model_tokenizer_with_flash_attn,
+        template=TemplateType.minimax_m2,
         architectures=['MiniMaxM2ForCausalLM']))

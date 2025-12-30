@@ -8,19 +8,10 @@ class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
-    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
-    qwq_preview = 'qwq_preview'
-    qwq = 'qwq'
     qwen3 = 'qwen3'
-    qwen3_guard = 'qwen3_guard'
-    qwen3_thinking = 'qwen3_thinking'
-    qwen3_nothinking = 'qwen3_nothinking'
-    qwen3_coder = 'qwen3_coder'
     qwen3_moe = 'qwen3_moe'
-    qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_next = 'qwen3_next'
-    qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
 
     qwen2_gte = 'qwen2_gte'
@@ -36,8 +27,6 @@ class LLMModelType:
     reflection = 'reflection'
     megrez = 'megrez'
     yi = 'yi'
-    yi_coder = 'yi_coder'
-    sus = 'sus'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
 
@@ -49,28 +38,23 @@ class LLMModelType:
 
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
+    chatglm4 = 'chatglm4'
     glm4 = 'glm4'
-    glm4_0414 = 'glm4_0414'
-    glm4_5 = 'glm4_5'
-    glm4_7 = 'glm4_7'
-    glm4_z1_rumination = 'glm4_z1_rumination'
+    glm4_moe = 'glm4_moe'
 
     glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'
     codegeex4 = 'codegeex4'
-    longwriter_llama3_1 = 'longwriter_llama3_1'
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
-    deepseek_moe = 'deepseek_moe'
     deepseek_v2 = 'deepseek_v2'
-    deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_v3 = 'deepseek_v3'
     deepseek_r1 = 'deepseek_r1'
     deepseek_r1_distill = 'deepseek_r1_distill'
-    deepseek_v3_1 = 'deepseek_v3_1'
     deepseek_v3_2 = 'deepseek_v3_2'
 
     openbuddy_llama = 'openbuddy_llama'
@@ -136,13 +120,11 @@ class LLMModelType:
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
-    hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
-    ernie = 'ernie'
+    hunyuan_v1_dense = 'hunyuan_v1_dense'
+    ernie4_5 = 'ernie4_5'
     gemma_emb = 'gemma_emb'
-    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
-    minimind = 'minimind'
 
 
 class BertModelType:
@@ -154,8 +136,7 @@ class BertModelType:
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
-    qwen2_5_prm = 'qwen2_5_prm'
-    qwen2_5_math_reward = 'qwen2_5_math_reward'
+    qwen2_prm = 'qwen2_prm'
     llama3_2_reward = 'llama3_2_reward'
     gemma_reward = 'gemma_reward'
 
@@ -166,10 +147,10 @@ class MLLMModelType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen2_5_omni = 'qwen2_5_omni'
-    qwen3_omni = 'qwen3_omni'
+    qwen3_omni_moe = 'qwen3_omni_moe'
     qwen2_audio = 'qwen2_audio'
     qwen3_vl = 'qwen3_vl'
-    qwen3_moe_vl = 'qwen3_moe_vl'
+    qwen3_vl_moe = 'qwen3_vl_moe'
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -179,9 +160,9 @@ class MLLMModelType:
     mimo_vl = 'mimo_vl'
     midashenglm = 'midashenglm'
 
+    chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'
-    glm4_1v = 'glm4_1v'
-    glm4_5v = 'glm4_5v'
+    glm4v_moe = 'glm4v_moe'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
@@ -220,7 +201,6 @@ class MLLMModelType:
     llava_onevision_hf = 'llava_onevision_hf'
     yi_vl = 'yi_vl'
     ernie_vl = 'ernie_vl'
-    ernie_vl_thinking = 'ernie_vl_thinking'
 
     llava_llama3_1_hf = 'llava_llama3_1_hf'  # DaozeZhang
     llava_llama3_hf = 'llava_llama3_hf'  # xtuner
@@ -279,7 +259,6 @@ class MLLMModelType:
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'
-    mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
 
