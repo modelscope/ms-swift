@@ -16,7 +16,6 @@ from transformers.training_args import TrainingArguments
 from swift.utils import get_logger
 
 logger = get_logger()
-logger.setLevel(logging.WARNING)
 
 
 def is_torch_npu_available() -> bool:
