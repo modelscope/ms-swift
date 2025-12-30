@@ -1145,6 +1145,20 @@ def test_hunyuan_ocr():
     assert response1 == response2
 
 
+def test_medgemma3_vision():
+    pt_engine = PtEngine('google/medgemma-4b-it')
+    images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+    system = 'You are an expert radiologist.'
+    messages = [{
+        'role': 'user',
+        'content': 'Describe this image',
+    }]
+    response = _infer_model(pt_engine, messages=messages, images=images, system=system)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images, system=system)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1226,4 +1240,5 @@ if __name__ == '__main__':
     # test_sensenova_si()
     # test_mistral_2512()
     # test_mistral_2512_thinking()
-    test_hunyuan_ocr()
+    # test_hunyuan_ocr()
+    test_medgemma3_vision()
