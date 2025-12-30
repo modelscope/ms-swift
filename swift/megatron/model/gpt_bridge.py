@@ -623,7 +623,7 @@ class GPTBridge:
         self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
         self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
 
-    def get_e_score_correction_bias_key(self):
+    def get_e_score_correction_bias_key(self, hf_mlp):
         if hasattr(hf_mlp, 'moe_statics'):
             hf_bias_key = 'moe_statics.e_score_correction_bias'
         else:
@@ -654,7 +654,7 @@ class GPTBridge:
         if args.add_bias_linear:
             self._set_state_dict(mg_mlp, 'router.bias', hf_state_dict, hf_gate_key.replace('weight', 'bias'), to_mcore)
         if args.moe_router_enable_expert_bias:
-            hf_bias_key = self.get_e_score_correction_bias_key()
+            hf_bias_key = self.get_e_score_correction_bias_key(hf_mlp)
             self._set_state_dict(mg_mlp, 'router.expert_bias', hf_state_dict, hf_bias_key, to_mcore)
 
         if args.moe_shared_expert_intermediate_size:

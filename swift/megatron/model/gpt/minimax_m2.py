@@ -65,7 +65,7 @@ class MinimaxM2Bridge(GPTBridge):
     def get_hf_mlp_prefix(self, layer_idx):
         return 'block_sparse_moe'
 
-    def get_e_score_correction_bias_key(self):
+    def get_e_score_correction_bias_key(self, hf_mlp):
         return 'e_score_correction_bias'
 
     def _set_moe_state(
@@ -77,22 +77,16 @@ class MinimaxM2Bridge(GPTBridge):
         to_mcore: bool,
     ):
         if to_mcore:
-            new_state_dict = {}
-            for k, v in hf_state_dict.items():
-                k = k.replace('.w1.', '.gate_proj.')
-                k = k.replace('.w3.', '.up_proj.')
-                k = k.replace('.w2.', '.down_proj.')
-                new_state_dict[k] = v
-            hf_state_dict = new_state_dict
+            hf_state_dict = {
+                k.replace('.w1.', '.gate_proj.').replace('.w3.', '.up_proj.').replace('.w2.', '.down_proj.'): v
+                for k, v in hf_state_dict.items()
+            }
         hf_state_dict = super()._set_moe_state(mg_mlp, hf_state_dict, hf_prefix, layer_idx, to_mcore)
         if not to_mcore:
-            new_state_dict = {}
-            for k, v in hf_state_dict.items():
-                k = k.replace('.gate_proj.', '.w1.')
-                k = k.replace('.up_proj.', '.w3.')
-                k = k.replace('.down_proj.', '.w2.')
-                new_state_dict[k] = v
-            hf_state_dict = new_state_dict
+            hf_state_dict = {
+                k.replace('.gate_proj.', '.w1.').replace('.up_proj.', '.w3.').replace('.down_proj.', '.w2.'): v
+                for k, v in hf_state_dict.items()
+            }
         return hf_state_dict
 
 
