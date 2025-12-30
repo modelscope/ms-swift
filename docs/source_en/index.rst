@@ -43,6 +43,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/Multimodal-Model.md
    Megatron-SWIFT/Mcore-Bridge.md
    Megatron-SWIFT/GRPO.md
+   Megatron-SWIFT/GKD.md
    Megatron-SWIFT/Ascend.md
 
 
