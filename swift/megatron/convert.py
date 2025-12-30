@@ -15,6 +15,7 @@ from megatron.training import get_args
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
+from transformers.utils import strtobool
 
 from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
 from swift.utils import get_logger, get_n_params_grads, is_master
@@ -287,10 +288,12 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     bridge = megatron_model_meta.bridge_cls()
     bridge.load_weights(mg_model, args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
-    args.save_args()
-    logger.info('Saving the model...')
-    mg_save_checkpoint(1, [mg_model], None, None, 0)
-    logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
+    _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
+    if not _test_convert_precision:
+        args.save_args()
+        logger.info('Saving the model...')
+        mg_save_checkpoint(1, [mg_model], None, None, 0)
+        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
     # Place it at the end to avoid test_convert_precision affecting precision.
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
