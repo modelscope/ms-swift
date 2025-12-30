@@ -55,6 +55,10 @@ class MinimaxM2SelfAttention(SelfAttention):
 
     def get_query_key_value_tensors(self, *args, **kwargs):
         query, key, value = super().get_query_key_value_tensors(*args, **kwargs)
+        query_shape = query.shape
+        key_shape = key.shape
+        query = self.q_norm(query.reshape(*query_shape[:-2], -1)).view(query_shape)
+        key = self.k_norm(key.reshape(*key_shape[:-2], -1)).view(key_shape)
         return query, key, value
 
 
