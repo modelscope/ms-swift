@@ -81,6 +81,8 @@ swift 支持同时使用同步和异步奖励函数。训练器会自动检测�
 - 同步奖励函数按顺序执行
 - 异步奖励函数使用 `asyncio.gather` 并行执行
 
+[plugin](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)文件中提供了一个调用`swift deploy`服务的生成式奖励模型的例子(async_genrm)
+
 ## 内置奖励函数
 swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
 
