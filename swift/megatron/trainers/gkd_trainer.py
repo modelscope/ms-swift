@@ -175,24 +175,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for key in moe_related_keys:
             if key not in teacher_megatron_config and hasattr(megatron_args, key):
                 setattr(megatron_args, key, None)
-
         if teacher_is_moe:
             MegatronArguments._set_moe_default(megatron_args)
             # Ensure moe_grouped_gemm is True for MoE models to use GroupedMLP,
             # which is required by gpt_bridge weight loading logic.
             if megatron_args.moe_grouped_gemm is None:
                 megatron_args.moe_grouped_gemm = True
-
-            # Restore original EP settings if they were saved during _adjust_ep_for_dense_student.
-            # This allows MoE teacher to use EP > 1 even when student is Dense.
-            if self.student_is_moe:
-                megatron_args.expert_model_parallel_size = self.student_ep_size
-                megatron_args.expert_tensor_parallel_size = self.student_etp_size
-        else:
-            # Dense teacher cannot use expert parallelism.
-            # Reset EP to 1 to avoid "num_moe_experts must be non None to use expert-parallel" error.
-            megatron_args.expert_model_parallel_size = 1
-            megatron_args.expert_tensor_parallel_size = 1
         try:
             # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
             # but with teacher's model architecture (hidden_size, num_layers, etc.)
