@@ -348,7 +348,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
-                    output_reward_func = reward_model_plugin(inputs=reward_inputs, **{'trainer_state': self.state})
+                    output_reward_func = reward_model_plugin(inputs=reward_inputs, **reward_kwargs)
                     output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                     rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
                 # Async reward function - skip here, will be executed in parallel later

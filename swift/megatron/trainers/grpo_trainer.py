@@ -663,8 +663,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             with profiling_context(self, reward_func_name):
                 # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
-                    rm_kwargs = {'trainer_state': self.get_trainer_state()}
-                    output_reward_func = reward_model_plugin(inputs=batch, **rm_kwargs)
+                    output_reward_func = reward_model_plugin(inputs=batch, **reward_kwargs)
                     output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                     rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
                 # Async reward function - skip here, will be executed in parallel later
