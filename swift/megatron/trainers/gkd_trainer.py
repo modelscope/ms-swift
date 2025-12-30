@@ -183,11 +183,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if megatron_args.moe_grouped_gemm is None:
                 megatron_args.moe_grouped_gemm = True
 
-            # Restore original EP settings if they were saved during _adjust_ep_for_dense_student.
+            # Restore original EP settings if student is Dense.
             # This allows MoE teacher to use EP > 1 even when student is Dense.
-            if self.student_is_moe:
-                megatron_args.expert_model_parallel_size = self.student_ep_size
-                megatron_args.expert_tensor_parallel_size = self.student_etp_size
+            if not self.student_is_moe:
+                megatron_args.expert_model_parallel_size = self._original_ep_size
+                megatron_args.expert_tensor_parallel_size = self._original_etp_size
         else:
             # Dense teacher cannot use expert parallelism.
             # Reset EP to 1 to avoid "num_moe_experts must be non None to use expert-parallel" error.
