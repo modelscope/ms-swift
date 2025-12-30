@@ -195,6 +195,7 @@ class MuonClip(Optimizer):
         newton_schulz_steps: int = 5,
         qk_clip_tau: float = 10000.0,
         qk_clip_enabled: bool = True,
+        rms_scale_factor: float = 0.2,
     ):
         defaults = dict(
             lr=lr,
@@ -204,6 +205,7 @@ class MuonClip(Optimizer):
             newton_schulz_steps=newton_schulz_steps,
             qk_clip_tau=qk_clip_tau,
             qk_clip_enabled=qk_clip_enabled,
+            rms_scale_factor=rms_scale_factor,
         )
         super().__init__(params, defaults)
         _MaxLogitsTracker.enable_all()
@@ -279,7 +281,8 @@ class MuonClip(Optimizer):
                 if apply_muon and p.ndim >= 2:
                     orth = self.newton_schulz(buf, steps=ns_steps)
                     n, m = p.shape[0], p.shape[1]
-                    rms_scale = math.sqrt(max(n, m)) * 0.2
+                    rms_scale_factor = float(group.get('rms_scale_factor', 0.2))
+                    rms_scale = math.sqrt(max(n, m)) * rms_scale_factor
                     update = orth * rms_scale
                 else:
                     update = buf

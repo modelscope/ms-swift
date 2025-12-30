@@ -141,6 +141,7 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
     newton_schulz_steps = optim_args.get('newton_schulz_steps', 5)
     qk_clip_tau = optim_args.get('qk_clip_tau', 100.0)
     qk_clip_enabled = optim_args.get('qk_clip_enabled', True)
+    rms_scale_factor = optim_args.get('rms_scale_factor', 0.2)
 
     # collect trainable params and group them
     muon_named = []
@@ -168,50 +169,45 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
 
     rest_params = [p for _, p in rest_named]
 
-    # build param groups (behavior unchanged)
+    # build param groups
+    base_group_config = {
+        'lr': lr,
+        'momentum': momentum,
+        'weight_decay': weight_decay,
+        'nesterov': nesterov,
+        'newton_schulz_steps': newton_schulz_steps,
+        'qk_clip_tau': qk_clip_tau,
+        'qk_clip_enabled': qk_clip_enabled,
+        'rms_scale_factor': rms_scale_factor,
+    }
     param_groups = []
 
     if qk_muon_params:
-        param_groups.append({
+        group = base_group_config.copy()
+        group.update({
             'params': qk_muon_params,
-            'lr': lr,
-            'momentum': momentum,
-            'weight_decay': weight_decay,
-            'nesterov': nesterov,
-            'newton_schulz_steps': newton_schulz_steps,
-            'qk_clip_tau': qk_clip_tau,
-            'qk_clip_enabled': qk_clip_enabled,
             'apply_muon': True,
             'is_qk': True,
         })
+        param_groups.append(group)
 
     if other_muon_params:
-        param_groups.append({
+        group = base_group_config.copy()
+        group.update({
             'params': other_muon_params,
-            'lr': lr,
-            'momentum': momentum,
-            'weight_decay': weight_decay,
-            'nesterov': nesterov,
-            'newton_schulz_steps': newton_schulz_steps,
-            'qk_clip_tau': qk_clip_tau,
-            'qk_clip_enabled': qk_clip_enabled,
             'apply_muon': True,
             'is_qk': False,
         })
+        param_groups.append(group)
 
     if rest_params:
-        param_groups.append({
+        group = base_group_config.copy()
+        group.update({
             'params': rest_params,
-            'lr': lr,
-            'momentum': momentum,
-            'weight_decay': weight_decay,
-            'nesterov': nesterov,
-            'newton_schulz_steps': newton_schulz_steps,
-            'qk_clip_tau': qk_clip_tau,
-            'qk_clip_enabled': qk_clip_enabled,
             'apply_muon': False,
             'is_qk': False,
         })
+        param_groups.append(group)
 
     # safety fallback
     if not param_groups:
@@ -239,6 +235,7 @@ def create_muon_clip_optimizer(args: 'TrainingArguments', model, dataset):
         newton_schulz_steps=newton_schulz_steps,
         qk_clip_tau=qk_clip_tau,
         qk_clip_enabled=qk_clip_enabled,
+        rms_scale_factor=rms_scale_factor,
     )
 
     return optimizer, None
