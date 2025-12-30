@@ -124,18 +124,6 @@ register_model(
     ))
 
 
-def get_model_tokenizer_mistral_2503(model_dir: str,
-                                     model_info: ModelInfo,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
-    from transformers import Mistral3ForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, processor
-
-
 def get_model_tokenizer_devstral_2505(model_dir: str,
                                       model_info: ModelInfo,
                                       model_kwargs: Dict[str, Any],
@@ -164,20 +152,48 @@ register_model(
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
 
+
+def get_model_tokenizer_mistral3(model_dir: str,
+                                     model_info: ModelInfo,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    from transformers import Mistral3ForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    return model, processor
+
 register_model(
     ModelMeta(
-        MLLMModelType.mistral_2503,
+        MLLMModelType.mistral3,
         [
             ModelGroup([
                 Model('mistralai/Mistral-Small-3.1-24B-Base-2503', 'mistralai/Mistral-Small-3.1-24B-Base-2503'),
                 Model('mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503'),
-            ]),
+            ], requires=['transformers>=4.49']),
+            ModelGroup([
+                Model('mistralai/Ministral-3-3B-Base-2512', 'mistralai/Ministral-3-3B-Base-2512'),
+                Model('mistralai/Ministral-3-3B-Instruct-2512', 'mistralai/Ministral-3-3B-Instruct-2512'),
+                Model('mistralai/Ministral-3-3B-Instruct-2512-BF16', 'mistralai/Ministral-3-3B-Instruct-2512-BF16'),
+                Model('mistralai/Ministral-3-8B-Base-2512', 'mistralai/Ministral-3-8B-Base-2512'),
+                Model('mistralai/Ministral-3-8B-Instruct-2512', 'mistralai/Ministral-3-8B-Instruct-2512'),
+                Model('mistralai/Ministral-3-8B-Instruct-2512-BF16', 'mistralai/Ministral-3-8B-Instruct-2512-BF16'),
+                Model('mistralai/Ministral-3-14B-Base-2512', 'mistralai/Ministral-3-14B-Base-2512'),
+                Model('mistralai/Ministral-3-14B-Instruct-2512', 'mistralai/Ministral-3-14B-Instruct-2512'),
+                Model('mistralai/Ministral-3-14B-Instruct-2512-BF16', 'mistralai/Ministral-3-14B-Instruct-2512-BF16'),
+            ], TemplateType.mistral_2512, requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6']),
+            ModelGroup([
+                Model('mistralai/Ministral-3-3B-Reasoning-2512', 'mistralai/Ministral-3-3B-Reasoning-2512'),
+                Model('mistralai/Ministral-3-8B-Reasoning-2512', 'mistralai/Ministral-3-8B-Reasoning-2512'),
+                Model('mistralai/Ministral-3-14B-Reasoning-2512', 'mistralai/Ministral-3-14B-Reasoning-2512'),
+            ], TemplateType.mistral_2512_thinking, requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6']),
         ],
-        get_model_tokenizer_mistral_2503,
+        get_model_tokenizer_mistral3,
         template=TemplateType.mistral_2503,
-        architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
-        requires=['transformers>=4.49'],
+        tags=['vision'],
+        ignore_patterns=[],
     ))
 
 
@@ -205,50 +221,7 @@ register_model(
         ],
         get_model_tokenizer_mistral_2506,
         template=TemplateType.mistral_2506,
-        architectures=['Mistral3ForConditionalGeneration'],
+        hf_model_type=['mistral3'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
-    ))
-
-
-def get_model_tokenizer_mistral_2512(model_dir: str,
-                                     model_info: ModelInfo,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
-    from transformers import Mistral3ForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
-    kwargs['tokenizer'] = processor.tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, processor
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mistral_2512,
-        [
-            ModelGroup([
-                Model('mistralai/Ministral-3-3B-Base-2512', 'mistralai/Ministral-3-3B-Base-2512'),
-                Model('mistralai/Ministral-3-3B-Instruct-2512', 'mistralai/Ministral-3-3B-Instruct-2512'),
-                Model('mistralai/Ministral-3-3B-Instruct-2512-BF16', 'mistralai/Ministral-3-3B-Instruct-2512-BF16'),
-                Model('mistralai/Ministral-3-8B-Base-2512', 'mistralai/Ministral-3-8B-Base-2512'),
-                Model('mistralai/Ministral-3-8B-Instruct-2512', 'mistralai/Ministral-3-8B-Instruct-2512'),
-                Model('mistralai/Ministral-3-8B-Instruct-2512-BF16', 'mistralai/Ministral-3-8B-Instruct-2512-BF16'),
-                Model('mistralai/Ministral-3-14B-Base-2512', 'mistralai/Ministral-3-14B-Base-2512'),
-                Model('mistralai/Ministral-3-14B-Instruct-2512', 'mistralai/Ministral-3-14B-Instruct-2512'),
-                Model('mistralai/Ministral-3-14B-Instruct-2512-BF16', 'mistralai/Ministral-3-14B-Instruct-2512-BF16'),
-            ], TemplateType.mistral_2512),
-            ModelGroup([
-                Model('mistralai/Ministral-3-3B-Reasoning-2512', 'mistralai/Ministral-3-3B-Reasoning-2512'),
-                Model('mistralai/Ministral-3-8B-Reasoning-2512', 'mistralai/Ministral-3-8B-Reasoning-2512'),
-                Model('mistralai/Ministral-3-14B-Reasoning-2512', 'mistralai/Ministral-3-14B-Reasoning-2512'),
-            ], TemplateType.mistral_2512_thinking),
-        ],
-        get_model_tokenizer_mistral_2512,
-        architectures=['Mistral3ForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf,
-        requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6'],
-        tags=['vision'],
-        ignore_patterns=[],
     ))
