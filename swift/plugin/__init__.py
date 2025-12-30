@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .agent_template import agent_templates
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
-    from .orm import orms, ORM
+    from .orm import orms, ORM, AsyncORM
     from .multi_turn import multi_turns, MultiTurnScheduler
     from .rm_plugin import rm_plugins
     from .env import envs, Env
@@ -29,7 +29,7 @@ else:
         'agent_template': ['agent_templates'],
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
-        'orm': ['orms', 'ORM'],
+        'orm': ['orms', 'ORM', 'AsyncORM'],
         'multi_turn': ['multi_turns', 'MultiTurnScheduler'],
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],

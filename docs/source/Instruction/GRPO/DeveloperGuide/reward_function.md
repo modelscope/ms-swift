@@ -46,6 +46,43 @@ orms['dummy']= DummyLengthRewardFunction
 
 执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)
 
+## 异步奖励函数
+
+**版本依赖**：ms-swift>=3.12.1
+
+对于涉及 I/O 操作的奖励函数（如 API 调用、数据库查询等），可以使用异步（async）奖励函数来提高性能。异步奖励函数使用 `asyncio.gather` 并行执行，可以显著加速奖励计算。
+
+```python
+from swift.plugin import AsyncORM, orms
+import asyncio
+
+class AsyncAPIReward(AsyncORM):
+    async def __call__(self, completions, **kwargs):
+        import aiohttp
+
+        async def score_single(session, text):
+            async with session.post(
+                'https://api.example.com/score',
+                json={'text': text}
+            ) as resp:
+                result = await resp.json()
+                return result['score']
+
+        async with aiohttp.ClientSession() as session:
+            # 使用 asyncio.gather 并行发送所有请求
+            tasks = [score_single(session, c) for c in completions]
+            rewards = await asyncio.gather(*tasks)
+            return list(rewards)
+
+orms['async_api'] = AsyncAPIReward
+```
+
+swift 支持同时使用同步和异步奖励函数。训练器会自动检测奖励函数的类型：
+- 同步奖励函数按顺序执行
+- 异步奖励函数使用 `asyncio.gather` 并行执行
+
+[plugin](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)文件中提供了一个调用`swift deploy`服务的生成式奖励模型的例子(async_genrm)
+
 ## 内置奖励函数
 swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
 
