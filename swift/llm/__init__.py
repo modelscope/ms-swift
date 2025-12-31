@@ -19,10 +19,10 @@ if TYPE_CHECKING:
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
                            load_file, draw_bbox, RolloutInferRequest)
-    from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
+    from .model import (register_model, MODEL_MAPPING, ModelType, get_model, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
-                        Model, get_model_tokenizer_with_flash_attn, get_model_tokenizer_multimodal, load_by_unsloth,
+                        Model, ModelLoader, load_by_unsloth,
                         git_clone_github, get_matched_model_meta, get_llm_model)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
@@ -57,10 +57,10 @@ else:
             'load_file', 'draw_bbox', 'RolloutInferRequest'
         ],
         'model': [
-            'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
+            'MODEL_MAPPING', 'ModelType', 'get_model', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
             'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name', 'register_model',
-            'ModelGroup', 'Model', 'get_model_tokenizer_with_flash_attn', 'get_model_tokenizer_multimodal',
+            'ModelGroup', 'Model', 'ModelLoader',
             'load_by_unsloth', 'git_clone_github', 'get_matched_model_meta', 'get_llm_model'
         ],
         'dataset': [
