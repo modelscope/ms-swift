@@ -9,8 +9,19 @@ from swift.llm import TemplateType
 from swift.utils import get_device
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..register import ModelLoader, register_model
+from ..utils import git_clone_github, safe_snapshot_download
+
+
+class Emu3GenLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs):
+        model = super().get_model(model_dir, config, model_kwargs)
+        model.config.image_area = int(os.environ.get('image_area', model.config.image_area))
+        model.config.max_position_embeddings = int(
+            os.environ.get('max_position_embeddings', model.config.max_position_embeddings))
+        model.generation_config.do_sample = True
 
 
 def get_model_tokenizer_emu3_gen(model_dir: str,
@@ -25,15 +36,9 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     from transformers import AutoModel, AutoImageProcessor
     image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to(get_device())
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
     model_info.max_model_len = model_info.max_model_len + 40960
-    if model:
-        model.config.image_area = int(os.environ.get('image_area', model.config.image_area))
-        model.config.max_position_embeddings = int(
-            os.environ.get('max_position_embeddings', model.config.max_position_embeddings))
-        processor.image_area = model.config.image_area
-        model.generation_config.do_sample = True
+    processor.image_area = model.config.image_area
     return model, processor
 
 
@@ -45,7 +50,7 @@ register_model(
                 Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
             ]),
         ],
-        get_model_tokenizer_emu3_gen,
+        Emu3GenLoader,
         template=TemplateType.emu3_gen,
         architectures=['Emu3ForCausalLM'],
         model_arch=ModelArch.emu3_chat,

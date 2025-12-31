@@ -5,7 +5,7 @@ from typing import Any, Dict, Type
 import torch
 import transformers
 from packaging import version
-from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoConfig, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -13,10 +13,10 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
 from ..patcher import patch_get_input_embeddings, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
+from ..register import ModelLoader, register_model
+from ..utils import AttnImpl, safe_snapshot_download
 
 logger = get_logger()
 
@@ -42,13 +42,28 @@ def _patch_tokenizer(tokenizer):
     tokenizer_cls._pad = _pad
 
 
+class ChatGLMLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        if model_kwargs.get('quantization_config') is not None:
+            model_kwargs['quantization_config'].llm_int8_skip_modules = ['output_layer']
+        model = super().get_model(model_dir, config, model_kwargs)
+        from torch.nn import CrossEntropyLoss
+        __old_forward = CrossEntropyLoss.forward
+
+        def cross_entropy_forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+            target = target.to(device=inputs.device)
+            return __old_forward(self, inputs, target)
+
+        CrossEntropyLoss.forward = cross_entropy_forward
+        return model
+
+
 def get_model_tokenizer_chatglm(model_dir: str,
                                 model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
-    if model_kwargs.get('quantization_config') is not None:
-        model_kwargs['quantization_config'].llm_int8_skip_modules = ['output_layer']
     # fix transformers>=4.34 bug
     if version.parse(transformers.__version__) >= version.parse('4.34'):
         tokenizer_config = get_tokenizer_config(model_dir)
@@ -59,16 +74,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     _patch_tokenizer(tokenizer)
-    if model is not None:
-        from torch.nn import CrossEntropyLoss
-        __old_forward = CrossEntropyLoss.forward
-
-        def cross_entropy_forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-            target = target.to(device=inputs.device)
-            return __old_forward(self, inputs, target)
-
-        CrossEntropyLoss.forward = cross_entropy_forward
-
     return model, tokenizer
 
 
@@ -86,7 +91,7 @@ register_model(
                 tags=['coding'],
             ),
         ],
-        get_model_tokenizer_chatglm,
+        ChatGLMLoader,
         template=TemplateType.chatglm2,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm))
@@ -101,7 +106,7 @@ register_model(
                 Model('ZhipuAI/chatglm3-6b-128k', 'zai-org/chatglm3-6b-128k'),
             ])
         ],
-        get_model_tokenizer_chatglm,
+        ChatGLMLoader,
         template=TemplateType.chatglm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
@@ -113,9 +118,7 @@ def get_model_tokenizer_chatglm4(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    kwargs['model_config'] = model_config
+
     model, tokenizer = get_model_tokenizer_chatglm(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
         for k in tokenizer.special_tokens.keys():
@@ -136,7 +139,7 @@ register_model(
                 Model('ZhipuAI/LongWriter-glm4-9b', 'zai-org/LongWriter-glm4-9b'),
             ])
         ],
-        get_model_tokenizer_chatglm4,
+        ChatGLMLoader,
         template=TemplateType.chatglm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
@@ -158,7 +161,6 @@ register_model(
                 Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
             ], TemplateType.glm4_z1_rumination)
         ],
-        get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.chatglm,
         requires=['transformers>=4.51'],
     ))
@@ -169,7 +171,7 @@ register_model(
         [ModelGroup([
             Model('ZhipuAI/codegeex4-all-9b', 'zai-org/codegeex4-all-9b'),
         ])],
-        get_model_tokenizer_chatglm4,
+        ChatGLMLoader,
         template=TemplateType.codegeex4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
@@ -178,15 +180,10 @@ register_model(
     ))
 
 
-def get_model_tokenizer_chatglm4v(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_chatglm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    # fix merge-lora
-    tokenizer.init_kwargs['image_size'] = 1120
-    if load_model:
+class ChatGLM4vLoader(ChatGLMLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
         # fix device_map 4
         n_gpu = get_device_count()
         local_world_size = get_dist_setting()[3]
@@ -197,6 +194,17 @@ def get_model_tokenizer_chatglm4v(model_dir: str,
             device = next(model.transformer.vision.linear_proj.parameters()).device
             model.transformer.vision.boi.data = model.transformer.vision.boi.to(device)
             model.transformer.vision.eoi.data = model.transformer.vision.eoi.to(device)
+        return model
+
+
+def get_model_tokenizer_chatglm4v(model_dir: str,
+                                  model_info: ModelInfo,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model, tokenizer = get_model_tokenizer_chatglm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    # fix merge-lora
+    tokenizer.init_kwargs['image_size'] = 1120
     return model, tokenizer
 
 
@@ -217,20 +225,21 @@ register_model(
                 requires=['transformers>=4.42'],
             )
         ],
-        get_model_tokenizer_chatglm4v,
+        ChatGLM4vLoader,
         template=TemplateType.chatglm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm4v,
     ))
 
 
-def get_model_tokenizer_glm4v(*args, **kwargs):
-    from transformers import Glm4vForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None and hasattr(model, 'visual'):
-        patch_get_input_embeddings(model.visual, 'patch_embed')
-    return model, processor
+class GLM4vLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Glm4vForConditionalGeneration
+        self.automodel_class = self.automodel_class or Glm4vForConditionalGeneration
+        model = self.get_model(model_dir, config, model_kwargs)
+        if hasattr(model, 'visual'):
+            patch_get_input_embeddings(model.visual, 'patch_embed')
 
 
 register_model(
@@ -258,10 +267,19 @@ register_model(
                 requires=['transformers>=5.0.0.dev'],
             ),
         ],
-        get_model_tokenizer_glm4v,
+        GLM4vLoader,
         template=TemplateType.glm4v,
         model_arch=ModelArch.glm4v,
     ))
+
+
+class CogVLMLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
+                       'to avoid this, please uninstall apex.')
+        logger.info('Please ignore the unimported warning.')
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 def get_model_tokenizer_cogvlm(model_dir: str,
@@ -271,12 +289,6 @@ def get_model_tokenizer_cogvlm(model_dir: str,
                                **kwargs):
     tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False, check_local=True)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
-    if load_model:
-        logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
-                       'to avoid this, please uninstall apex.')
-        logger.info('Please ignore the unimported warning.')
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     return model, tokenizer
 
 
@@ -287,7 +299,7 @@ register_model(
                 Model('ZhipuAI/cogvlm-chat', 'zai-org/cogvlm-chat-hf'),
             ]),
         ],
-        get_model_tokenizer_cogvlm,
+        CogVLMLoader,
         template=TemplateType.cogvlm,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
@@ -300,7 +312,7 @@ register_model(
                 Model('ZhipuAI/cogagent-chat', 'zai-org/cogagent-chat-hf'),
             ]),
         ],
-        get_model_tokenizer_cogvlm,
+        CogVLMLoader,
         template=TemplateType.cogagent_chat,
         architectures=['CogAgentForCausalLM'],
         requires=['transformers<4.42', 'timm'],
@@ -311,16 +323,17 @@ register_model(
         MLLMModelType.cogagent_vqa, [ModelGroup([
             Model('ZhipuAI/cogagent-vqa', 'zai-org/cogagent-vqa-hf'),
         ])],
-        get_model_tokenizer_cogvlm,
+        CogVLMLoader,
         template=TemplateType.cogagent_vqa,
         architectures=['CogAgentForCausalLM'],
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
 
 
-def get_model_tokenizer_cogvlm2(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    if model is not None:
+class CogVLM2Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
         # fix device map 4
         for layer in model.model.vision.transformer.layers:
             patch_output_to_input_device(layer.mlp)
@@ -329,7 +342,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
         device = next(model.model.vision.linear_proj.parameters()).device
         model.model.vision.boi.data = model.model.vision.boi.to(device)
         model.model.vision.eoi.data = model.model.vision.eoi.to(device)
-    return model, tokenizer
+        return model
 
 
 register_model(
@@ -340,7 +353,7 @@ register_model(
                 Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'zai-org/cogvlm2-llama3-chinese-chat-19B'),
             ]),
         ],
-        get_model_tokenizer_cogvlm2,
+        CogVLM2Loader,
         template=TemplateType.cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
@@ -354,7 +367,7 @@ register_model(
                 Model('ZhipuAI/cogvlm2-video-llama3-chat', 'zai-org/cogvlm2-video-llama3-chat'),
             ]),
         ],
-        get_model_tokenizer_cogvlm2,
+        CogVLM2Loader,
         template=TemplateType.cogvlm2_video,
         architectures=['CogVLMVideoForCausalLM'],
         requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
@@ -371,7 +384,6 @@ register_model(
                 Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.chatglm4,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
@@ -381,7 +393,6 @@ register_model(
 def get_model_tokenizer_glm_edge_v(model_dir: str, *args, **kwargs):
     from transformers import AutoImageProcessor
     processor = AutoImageProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     processor.tokenizer = tokenizer
     return model, processor
 
@@ -395,7 +406,6 @@ register_model(
                 Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
-        get_model_tokenizer_glm_edge_v,
         template=TemplateType.glm_edge_v,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
@@ -424,18 +434,18 @@ register_model(
                 Model('ZhipuAI/GLM-4.7-FP8', 'zai-org/GLM-4.7-FP8'),
             ], TemplateType.glm4_7),
         ],
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.54'],
     ))
 
 
-def get_model_tokenizer_glm4v_moe(*args, **kwargs):
-    from transformers import Glm4vMoeForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vMoeForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None:
+class Glm4vMoeLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Glm4vMoeForConditionalGeneration
+        self.automodel_class = self.automodel_class or Glm4vMoeForConditionalGeneration
+        model = super().get_model(model_dir, config, model_kwargs)
         patch_get_input_embeddings(model.visual, 'patch_embed')
-    return model, processor
+        return model
 
 
 register_model(
@@ -452,8 +462,8 @@ register_model(
             ],
                        requires=['transformers>=5.0.0.dev']),
         ],
-        get_model_tokenizer_glm4v_moe,
+        Glm4vMoeLoader,
         template=TemplateType.glm4_5v,
-        model_arch=ModelArch.glm4_1v,
+        model_arch=ModelArch.glm4v,
         requires=['transformers>=4.56'],
     ))

@@ -61,7 +61,7 @@ def apply_liger(model_type: str):
         elif model_type in (ModelType.chatglm4, ModelType.glm4):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4
             apply_liger_kernel_to_glm4()
-        elif model_type in (ModelType.glm4v, ModelType.glm4_1v):
+        elif model_type in (ModelType.chatglm4v, ModelType.glm4v):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4v
             apply_liger_kernel_to_glm4v()
         elif model_type in (ModelType.glm4v_moe):

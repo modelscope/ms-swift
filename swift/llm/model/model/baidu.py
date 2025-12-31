@@ -1,12 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 logger = get_logger()
 
@@ -19,7 +20,6 @@ register_model(
                 Model('PaddlePaddle/ERNIE-4.5-0.3B-PT', 'baidu/ERNIE-4.5-0.3B-PT'),
             ], TemplateType.ernie),
         ],
-        get_model_tokenizer_with_flash_attn,
     ))
 
 register_model(
@@ -36,7 +36,6 @@ register_model(
                 Model('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking', 'baidu/ERNIE-4.5-21B-A3B-Thinking'),
             ], TemplateType.ernie_thinking),
         ],
-        get_model_tokenizer_with_flash_attn,
     ))
 
 register_model(
@@ -47,16 +46,22 @@ register_model(
                 Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
             ]),
         ],
-        get_model_tokenizer_multimodal,
         template=TemplateType.paddle_ocr,
         model_arch=ModelArch.keye_vl,
         architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
 
 
+class ErnieVLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        MOEAllGatherLayerV2 = get_class_from_dynamic_module('modeling_ernie4_5_vl.MOEAllGatherLayerV2', model_dir)
+        self.leaf_modules = MOEAllGatherLayerV2
+        return super().get_model(model_dir, config, model_kwargs)
+
+
 def get_model_tokenizer_ernie_vl(model_dir, *args, **kwargs):
-    MOEAllGatherLayerV2 = get_class_from_dynamic_module('modeling_ernie4_5_vl.MOEAllGatherLayerV2', model_dir)
-    kwargs['leaf_modules'] = MOEAllGatherLayerV2
+    # TODO: remove
     model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     if model is not None:
         model.add_image_preprocess(processor)
@@ -77,7 +82,7 @@ register_model(
                 Model('PaddlePaddle/ERNIE-4.5-VL-28B-A3B-Thinking', 'baidu/ERNIE-4.5-VL-28B-A3B-Thinking'),
             ], TemplateType.ernie_vl_thinking),
         ],
-        get_model_tokenizer_ernie_vl,
+        ErnieVLLoader,
         model_arch=ModelArch.ernie_vl,
         architectures=['Ernie4_5_VLMoeForConditionalGeneration'],
         requires=['transformers>=4.52', 'moviepy'],

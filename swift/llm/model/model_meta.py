@@ -6,7 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
 
 import torch
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
@@ -60,11 +60,12 @@ class ModelMeta:
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
-    loader: BaseModelLoader
+    loader: Optional[Type[BaseModelLoader]] = None
 
     template: Optional[str] = None
     model_arch: Optional[str] = None
     hf_model_type: List[str] = field(default_factory=list)
+    architectures: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
@@ -82,9 +83,12 @@ class ModelMeta:
 
     def __post_init__(self):
         from .constant import MLLMModelType, RMModelType, RerankerModelType
+        from .register import ModelLoader
         if self.template is None:
             self.template = 'dummy'
         assert not isinstance(self.loader, str)  # check ms-swift4.0
+        if self.loader is None:
+            self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
         if len(self.hf_model_type) == 0:

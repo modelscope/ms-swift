@@ -8,7 +8,7 @@ import torch
 import transformers
 from packaging import version
 from PIL import Image
-from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
+from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
@@ -17,13 +17,40 @@ from swift.llm import TemplateType, to_device
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
 from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
 from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import AttnImpl, ModelInfo, use_submodel_func
+from ..register import ModelLoader, RewardModelLoader, register_model
+from ..utils import AttnImpl, use_submodel_func
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
+
+
+class QwenLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model_info = self.model_info
+        if model_info.torch_dtype is not None:
+            k_true = dtype_mapping[model_info.torch_dtype]
+            for k in dtype_mapping.values():
+                setattr(config, k, k == k_true)
+
+        quantization_config = model_kwargs.get('quantization_config')
+        if not isinstance(quantization_config, BitsAndBytesConfig):
+            # not bnb quant
+            config.torch_dtype = None
+        model = self.get_model(model_dir, config, model_kwargs)
+        try:
+            # fix mp+ddp bug
+            model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
+            logger.info('registered_causal_mask to cuda')
+        except AttributeError:
+            pass
+        return model
+
+    def _update_attn_impl(self, config):
+        use_flash_attn = AttnImpl.to_use_flash_attn(self.attn_impl, 'auto')
+        config.use_flash_attn = use_flash_attn
 
 
 def get_model_tokenizer_qwen(model_dir: str,
@@ -32,33 +59,13 @@ def get_model_tokenizer_qwen(model_dir: str,
                              load_model: bool = True,
                              model_config=None,
                              **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if model_info.torch_dtype is not None:
-        k_true = dtype_mapping[model_info.torch_dtype]
-        for k in dtype_mapping.values():
-            setattr(model_config, k, k == k_true)
 
-    quantization_config = model_kwargs.get('quantization_config')
-    if not isinstance(quantization_config, BitsAndBytesConfig):
-        # not bnb quant
-        model_config.torch_dtype = None
-    use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
-    model_config.use_flash_attn = use_flash_attn
-    kwargs['model_config'] = model_config
     tokenizer = kwargs.get('tokenizer')
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     if tokenizer.eos_token_id is None:
         tokenizer.eos_token_id = tokenizer.eod_id
     kwargs['tokenizer'] = tokenizer
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    try:
-        # fix mp+ddp bug
-        model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
-        logger.info('registered_causal_mask to cuda')
-    except AttributeError:
-        pass
     return model, tokenizer
 
 
@@ -97,7 +104,7 @@ register_model(
             ],
                        tags=['financial']),
         ],
-        get_model_tokenizer_qwen,
+        QwenLoader,
         template=TemplateType.qwen,
         model_arch=ModelArch.qwen))
 
@@ -108,7 +115,7 @@ register_model(
             Model('iic/ModelScope-Agent-7B'),
             Model('iic/ModelScope-Agent-14B'),
         ])],
-        get_model_tokenizer_qwen,
+        QwenLoader,
         template=TemplateType.modelscope_agent,
         hf_model_type=['qwen'],
         model_arch=ModelArch.qwen))
@@ -132,6 +139,14 @@ def fix_qwen_inplace_bug(model) -> None:
         patch_output_clone(first_drop)
 
 
+class QwenAudioLoader(QwenLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
+        fix_qwen_inplace_bug(model)
+        return model
+
+
 def get_model_tokenizer_qwen_audio(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -147,9 +162,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
         tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_qwen(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model is not None:
-        fix_qwen_inplace_bug(model)
-
     return model, tokenizer
 
 
@@ -161,7 +173,7 @@ register_model(
                 Model('Qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
             ])
         ],
-        get_model_tokenizer_qwen_audio,
+        QwenAudioLoader,
         template=TemplateType.qwen_audio,
         model_arch=ModelArch.qwen_audio,
         hf_model_type=['qwen'],
@@ -185,22 +197,44 @@ def _qwen_vl_visual_block_forward(
     return x
 
 
+class QwenVLLoader(QwenLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        if (model_kwargs.get('quantization_config') is not None
+                and isinstance(model_kwargs['quantization_config'], BitsAndBytesConfig)):
+            # https://github.com/pytorch/pytorch/issues/58969
+            model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head', 'attn_pool.attn']
+            _TransformerBlock = get_class_from_dynamic_module('visual.TransformerBlock', model_dir)
+
+            def _get_cast_dtype(self) -> torch.dtype:
+                return self.resblocks[0].ln_1.weight.dtype
+
+            _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
+            _TransformerBlock.get_cast_dtype = _get_cast_dtype
+        # fix device_map is 4
+        n_gpu = get_device_count()
+        local_world_size = get_dist_setting()[3]
+        if n_gpu // local_world_size >= 4:
+            visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
+            visual_block_cls.__old_forward = visual_block_cls.forward
+            visual_block_cls.forward = _qwen_vl_visual_block_forward
+        model = super().get_model(model_dir, config, model_kwargs)
+        device_type = next(model.parameters()).device.type
+        fix_qwen_inplace_bug(model)
+        # fix device_map is 4
+        if n_gpu // local_world_size >= 4:
+            model.transformer.visual.proj.data = model.transformer.visual.proj.to(
+                model.transformer.visual.ln_post.bias.device)
+        # fix images cuda:1 bug
+        patch_fixed_device(model.transformer.visual, f'{device_type}:0')
+        return model
+
+
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
-    if (model_kwargs.get('quantization_config') is not None
-            and isinstance(model_kwargs['quantization_config'], BitsAndBytesConfig)):
-        # https://github.com/pytorch/pytorch/issues/58969
-        model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head', 'attn_pool.attn']
-        _TransformerBlock = get_class_from_dynamic_module('visual.TransformerBlock', model_dir)
-
-        def _get_cast_dtype(self) -> torch.dtype:
-            return self.resblocks[0].ln_1.weight.dtype
-
-        _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
-        _TransformerBlock.get_cast_dtype = _get_cast_dtype
 
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
@@ -210,25 +244,8 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     if not hasattr(tokenizer_cls, '_old_decode'):
         tokenizer_cls._old_decode = tokenizer_cls._decode
         tokenizer_cls._decode = _qwen_vl_audio_decode
-    # fix device_map is 4
-    n_gpu = get_device_count()
-    local_world_size = get_dist_setting()[3]
-    if n_gpu // local_world_size >= 4:
-        visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
-        visual_block_cls.__old_forward = visual_block_cls.forward
-        visual_block_cls.forward = _qwen_vl_visual_block_forward
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model is not None:
-        device_type = next(model.parameters()).device.type
-        fix_qwen_inplace_bug(model)
-        # fix device_map is 4
-        if n_gpu // local_world_size >= 4:
-            model.transformer.visual.proj.data = model.transformer.visual.proj.to(
-                model.transformer.visual.ln_post.bias.device)
-        # fix images cuda:1 bug
-        patch_fixed_device(model.transformer.visual, f'{device_type}:0')
     return model, tokenizer
 
 
@@ -241,7 +258,7 @@ register_model(
                 Model('Qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
             ])
         ],
-        get_model_tokenizer_qwen_vl,
+        QwenVLLoader,
         template=TemplateType.qwen_vl,
         model_arch=ModelArch.qwen_vl,
         hf_model_type=['qwen'],
@@ -476,7 +493,6 @@ register_model(
                 Model('iic/QwenLong-L1-32B', 'Tongyi-Zhiwen/QwenLong-L1-32B'),
             ], TemplateType.deepseek_r1),
         ],
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.37'],
         model_arch=ModelArch.llama))
 
@@ -496,7 +512,6 @@ register_model(
                 Model('Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen,
         requires=['transformers>=4.40'],
     ))
@@ -555,7 +570,6 @@ register_model(
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
             ], TemplateType.qwen3_nothinking),
         ],
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.51'],
         model_arch=ModelArch.llama))
 
@@ -610,7 +624,6 @@ register_model(
                 ],
                 TemplateType.qwen3_thinking),
         ],
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.51'],
     ))
 
@@ -627,7 +640,6 @@ register_model(
                 Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
             ], TemplateType.qwen3_thinking)
         ],
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.57'],
     ))
 
@@ -712,14 +724,19 @@ def compat_qwen_vl_utils(image_patch_size: int):
             os.environ[target_var] = str(int(value) // image_factor**2)
 
 
-def get_model_tokenizer_qwen2_vl(*args, **kwargs):
-    from transformers import Qwen2VLForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None:
+class Qwen2VLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2VLForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen2VLForConditionalGeneration
+        model = super().get_model(model_dir, config, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
+        return model
 
+
+def get_model_tokenizer_qwen2_vl(*args, **kwargs):
+    # TODO: remove
     from qwen_vl_utils import vision_process
     import qwen_vl_utils
     check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
@@ -780,16 +797,18 @@ register_model(
                 Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
             ], TemplateType.qvq),
         ],
-        get_model_tokenizer_qwen2_vl,
+        Qwen2VLLoader,
         model_arch=ModelArch.qwen2_vl,
         requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen2_5_vl(*args, **kwargs):
-    from transformers import Qwen2_5_VLForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5_VLForConditionalGeneration
-    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+class Qwen2_5VLLoader(Qwen2VLLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2_5_VLForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen2_5_VLForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -812,7 +831,7 @@ register_model(
                 Model('XiaomiMiMo/MiMo-VL-7B-RL', 'XiaomiMiMo/MiMo-VL-7B-RL'),
             ], TemplateType.mimo_vl)
         ],
-        get_model_tokenizer_qwen2_5_vl,
+        Qwen2_5VLLoader,
         model_arch=ModelArch.qwen2_vl,
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
@@ -1015,11 +1034,18 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     _patch_deepstack_process(model.language_model)
 
 
+class Qwen3VLLoader(Qwen2VLLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3VLForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen3VLForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
+
+
 def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
-    from transformers import Qwen3VLForConditionalGeneration
+    # TODO: remove
     require_version('qwen_vl_utils>=0.0.14')
     compat_qwen_vl_utils(image_patch_size=16)
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
     if model is not None:
@@ -1049,20 +1075,26 @@ register_model(
                 Model('Qwen/Qwen3-VL-32B-Thinking-FP8', 'Qwen/Qwen3-VL-32B-Thinking-FP8'),
             ], TemplateType.qwen3_vl),
         ],
-        get_model_tokenizer_qwen3_vl,
+        Qwen3VLLoader,
         model_arch=ModelArch.qwen3_vl,
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
+class Qwen3VLMoeLoader(Qwen2VLLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3VLMoeForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen3VLMoeForConditionalGeneration
+        patch_Qwen3VLMoeTextExperts_dtype()
+        return super().get_model(model_dir, config, model_kwargs)
+
+
 def get_model_tokenizer_qwen3_vl_moe(model_dir, *args, **kwargs):
-    from transformers import Qwen3VLMoeForConditionalGeneration
     require_version('qwen_vl_utils>=0.0.14')
     compat_qwen_vl_utils(image_patch_size=16)
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3VLMoeForConditionalGeneration
     kwargs['_check_qwen_vl_utils'] = False
     model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
-    patch_Qwen3VLMoeTextExperts_dtype()
     if model is not None:
         _compat_qwen3_vl_mixed_data(model.model, processor, True)
     return model, processor
@@ -1082,32 +1114,42 @@ register_model(
                 Model('Qwen/Qwen3-VL-235B-A22B-Thinking-FP8', 'Qwen/Qwen3-VL-235B-A22B-Thinking-FP8'),
             ], TemplateType.qwen3_vl),
         ],
-        get_model_tokenizer_qwen3_vl_moe,
+        Qwen3VLMoeLoader,
         model_arch=ModelArch.qwen3_vl,
         hf_model_type=['qwen3_vl_moe'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
-    from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
-    from qwen_omni_utils import vision_process
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniForConditionalGeneration
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
-    if enable_audio_output is not None:
-        kwargs['model_config'].enable_audio_output = enable_audio_output
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    if model:
+class Qwen2_5OmniLoader(ModelLoader):
+
+    def get_config(self, model_dir):
+        from transformers import Qwen2_5OmniConfig
+        self.autoconfig_class = Qwen2_5OmniConfig
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2_5OmniForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen2_5OmniForConditionalGeneration
+        enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+        if enable_audio_output is not None:
+            config.enable_audio_output = enable_audio_output
+        model = self.get_model(model_dir, config, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+        return model
+
+
+def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
+    # Qwen2_5OmniProcessor
+    from qwen_omni_utils import vision_process
+    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
     return model, processor
 
 
@@ -1120,7 +1162,7 @@ register_model(
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ], TemplateType.qwen2_5_omni),
         ],
-        get_model_tokenizer_qwen2_5_omni,
+        Qwen2_5OmniLoader,
         model_arch=ModelArch.qwen2_5_omni,
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
@@ -1275,28 +1317,38 @@ def _compat_qwen3_omni_mixed_data(model, processor):
     _patch_deepstack_process(model.model)
 
 
-def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
-    from transformers import Qwen3OmniMoeForConditionalGeneration, Qwen3OmniMoeProcessor, Qwen3OmniMoeConfig
-    from qwen_omni_utils import vision_process
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3OmniMoeForConditionalGeneration
-    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    kwargs['model_config'] = Qwen3OmniMoeConfig.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['model_config'].thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
-    if enable_audio_output is not None:
-        kwargs['model_config'].enable_audio_output = enable_audio_output
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    if model:
-        _compat_qwen3_omni_mixed_data(model.thinker, processor)
+class Qwen3OmniLoader(ModelLoader):
+
+    def get_config(self, model_dir: str):
+        from transformers import Qwen3OmniMoeConfig
+        self.autoconfig_class = Qwen3OmniMoeConfig
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3OmniMoeForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen3OmniMoeForConditionalGeneration
+        enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+        if enable_audio_output is not None:
+            config.enable_audio_output = enable_audio_output
+        model = super().get_model(model_dir, config, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
         patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
+        return model
+
+
+def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
+    # , Qwen3OmniMoeProcessor, Qwen3OmniMoeConfig
+    from qwen_omni_utils import vision_process
+    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'].thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
+    _compat_qwen3_omni_mixed_data(model.thinker, processor)
     return model, processor
 
 
@@ -1310,19 +1362,20 @@ register_model(
                 Model('Qwen/Qwen3-Omni-30B-A3B-Captioner', 'Qwen/Qwen3-Omni-30B-A3B-Captioner'),
             ], TemplateType.qwen3_omni)
         ],
-        get_model_tokenizer_qwen3_omni,
+        Qwen3OmniLoader,
         model_arch=ModelArch.qwen3_omni,
         requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
         tags=['vision', 'video', 'audio'],
     ))
 
 
-def get_model_tokenizer_midashenglm(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None:
+class MidashengLMLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
         model.audio_encoder.float()
         patch_output_clone(model.decoder.model.embed_tokens)
-    return model, tokenizer
+        return model
 
 
 register_model(
@@ -1331,17 +1384,18 @@ register_model(
         [ModelGroup([
             Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
         ], TemplateType.midashenglm)],
-        get_model_tokenizer_midashenglm,
+        MidashengLMLoader,
         model_arch=ModelArch.midashenglm,
         requires=['transformers>=4.52', 'soundfile'],
         tags=['audio'],
     ))
 
 
-def get_model_tokenizer_qwen2_audio(*args, **kwargs):
-    from transformers import Qwen2AudioForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2AudioForConditionalGeneration
-    return get_model_tokenizer_multimodal(*args, **kwargs)
+class Qwen2AudioLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2AudioForConditionalGeneration
+        self.automodel_class = self.automodel_class or Qwen2AudioForConditionalGeneration
 
 
 register_model(
@@ -1353,17 +1407,18 @@ register_model(
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
             ], TemplateType.qwen2_audio),
         ],
-        get_model_tokenizer_qwen2_audio,
+        Qwen2AudioLoader,
         model_arch=ModelArch.qwen2_audio,
         requires=['transformers>=4.45,<4.49', 'librosa'],
         tags=['audio'],
     ))
 
 
-def get_model_tokenizer_ovis(*args, **kwargs):
-    kwargs['attn_impl_keys'] = ['llm_attn_implementation']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    if model is not None:
+class OvisLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        self.attn_impl_keys = ['llm_attn_implementation']
+        model = super().get_model(model_dir, config, model_kwargs)
         model.visual_tokenizer.to(model.dtype)
         model.vte.to(model.dtype)
 
@@ -1378,22 +1433,22 @@ def get_model_tokenizer_ovis(*args, **kwargs):
                 patch_get_input_embeddings(model.visual_tokenizer, 'backbone.vision_model.embeddings')
             elif hasattr(backbone, 'preprocessor'):
                 patch_get_input_embeddings(model.visual_tokenizer, 'backbone.preprocessor.patchifier')
-    try:
-        # fix device_map
-        from transformers.cache_utils import HybridCache
+        try:
+            # fix device_map
+            from transformers.cache_utils import HybridCache
 
-        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
-                   **kwargs) -> Tuple[torch.Tensor]:
-            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
-            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
-            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+            def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                       **kwargs) -> Tuple[torch.Tensor]:
+                self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+                self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+                return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
 
-        if not hasattr(HybridCache, '_update_origin'):
-            HybridCache._update_origin = HybridCache.update
-            HybridCache.update = update
-    except ImportError:
-        pass
-    return model, tokenizer
+            if not hasattr(HybridCache, '_update_origin'):
+                HybridCache._update_origin = HybridCache.update
+                HybridCache.update = update
+        except ImportError:
+            pass
+        return model
 
 
 register_model(
@@ -1411,7 +1466,7 @@ register_model(
                 Model('AIDC-AI/Ovis1.6-Llama3.2-3B', 'AIDC-AI/Ovis1.6-Llama3.2-3B'),
             ], TemplateType.ovis1_6_llama3),
         ],
-        get_model_tokenizer_ovis,
+        OvisLoader,
         model_arch=ModelArch.ovis,
         hf_model_type=['ovis'],
         tags=['vision'],
@@ -1430,7 +1485,7 @@ register_model(
                 Model('AIDC-AI/Ovis2-34B', 'AIDC-AI/Ovis2-34B'),
             ]),
         ],
-        get_model_tokenizer_ovis,
+        OvisLoader,
         template=TemplateType.ovis2,
         model_arch=ModelArch.ovis,
         hf_model_type=['ovis'],
@@ -1439,9 +1494,10 @@ register_model(
     ))
 
 
-def get_model_tokenizer_ovis2_5(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    if model is not None:
+class Ovis2_5Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
         model.visual_tokenizer.to(model.dtype)
         model.vte.to(model.dtype)
 
@@ -1450,8 +1506,7 @@ def get_model_tokenizer_ovis2_5(*args, **kwargs):
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
         patch_get_input_embeddings(model.visual_tokenizer.vit, 'vision_model.embeddings.patch_embedding')
-
-    return model, tokenizer
+        return model
 
 
 register_model(
@@ -1463,7 +1518,7 @@ register_model(
                 Model('AIDC-AI/Ovis2.5-9B', 'AIDC-AI/Ovis2.5-9B'),
             ]),
         ],
-        get_model_tokenizer_ovis2_5,
+        Ovis2_5Loader,
         template=TemplateType.ovis2_5,
         model_arch=ModelArch.ovis2_5,
         hf_model_type=['ovis2_5'],
@@ -1482,7 +1537,7 @@ register_model(
                 Model('Qwen/Qwen2.5-Math-RM-72B', 'Qwen/Qwen2.5-Math-RM-72B'),
             ], TemplateType.qwen2_5_math),
         ],
-        get_model_tokenizer_reward_model,
+        RewardModelLoader,
         architectures=['Qwen2ForRewardModel'],
         requires=['transformers>=4.37'],
     ))
@@ -1497,7 +1552,7 @@ register_model(
                 Model('Qwen/Qwen2.5-Math-PRM-72B', 'Qwen/Qwen2.5-Math-PRM-72B'),
             ]),
         ],
-        get_model_tokenizer_reward_model,
+        RewardModelLoader,
         template=TemplateType.qwen2_5_math_prm,
         task_type='prm',
         architectures=['Qwen2ForProcessRewardModel'],
@@ -1513,7 +1568,6 @@ register_model(
                 Model('Qwen/Qwen3-Embedding-8B', 'Qwen/Qwen3-Embedding-8B'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen3_emb,
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         hf_model_type=['qwen3']))
@@ -1527,7 +1581,6 @@ register_model(
                 Model('Qwen/Qwen3-Reranker-8B', 'Qwen/Qwen3-Reranker-8B'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen3_reranker,
         hf_model_type=['qwen3'],
         task_type='reranker'))

@@ -17,7 +17,7 @@ from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
 from .constant import ModelType
-from .model_meta import MODEL_MAPPING, ModelInfo, ModelMeta, get_model_info_meta
+from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
                       patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_mp_ddp,
                       patch_tp_plan)
@@ -184,7 +184,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     return model, tokenizer
 
 
-class ModelLoader:
+class ModelLoader(BaseModelLoader):
 
     def __init__(
         self,
@@ -208,6 +208,7 @@ class ModelLoader:
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
         self.automodel_class = automodel_class
+        self.autoconfig_class = None
         self.return_dummy_model = return_dummy_model
         self.model_kwargs = model_kwargs
 
@@ -227,7 +228,8 @@ class ModelLoader:
         logger.info(f'model_kwargs: {model_kwargs}')
 
     def get_config(self, model_dir: str):
-        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        autoconfig_class = self.autoconfig_class or AutoConfig
+        config = autoconfig_class.from_pretrained(model_dir, trust_remote_code=True)
         # fix prediction_step (internvl2, ovis, ...)
         if not hasattr(config, 'keys_to_ignore_at_inference'):
             config.keys_to_ignore_at_inference = []
@@ -255,20 +257,21 @@ class ModelLoader:
         self._update_attn_impl(config)
         return config
 
-    def get_model(self, model_dir: str, config) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
         model_info = self.model_info
         model_meta = self.model_meta
-        model_kwargs = self.model_kwargs.copy()
+        automodel_class = self.automodel_class
         if model_info.task_type in {'seq_cls', 'reranker'
                                     } and self.automodel_class is None and not self.return_dummy_model:
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
                         model_dir, config=config, trust_remote_code=True, **self.model_kwargs)
+                    automodel_class = AutoModelForSequenceClassification
                 except ValueError:
                     model = None
 
-        automodel_class = self.automodel_class or AutoModelForCausalLM
+        automodel_class = automodel_class or AutoModelForCausalLM
         context_kwargs = {
             'model_info': model_info,
             'model_meta': model_meta,
@@ -294,13 +297,13 @@ class ModelLoader:
             with context():
                 model = automodel_class.from_pretrained(
                     model_dir, config=config, trust_remote_code=True, **model_kwargs)
+        self._postprocess_model(model_dir, model, automodel_class)
         return model
 
-    def _post_process_model(self, model_dir, model):
+    def _postprocess_model(self, model_dir, model, automodel_class):
         model_info = self.model_info
         model_meta = self.model_meta
         config = model.config
-        automodel_class = self.automodel_class or AutoModelForCausalLM
         # fix not save modeling_xxx.py (transformers 4.45)
         # https://github.com/huggingface/transformers/issues/24737
         has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
@@ -390,8 +393,7 @@ class ModelLoader:
         model_dir = self.model_info.model_dir
         with patch_get_dynamic_module(), patch_tp_plan(True), patch_offload_context:
             config = self.get_config(model_dir)
-            model = self.get_model(model_dir, config)
-        self._post_process_model(model_dir, model)
+            model = self.get_model(model_dir, config, self.model_kwargs.copy())
         return model
 
 
@@ -445,10 +447,10 @@ def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
 
 class RewardModelLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
         if 'AutoModel' in (getattr(config, 'auto_map', None) or {}):
-            self.automodel_class = AutoModel
-        return super().get_model(model_dir, config)
+            self.automodel_class = self.automodel_class or AutoModel
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 def get_model(

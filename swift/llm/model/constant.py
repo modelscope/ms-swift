@@ -123,6 +123,7 @@ class LLMModelType:
     hunyuan = 'hunyuan'
     hunyuan_v1_dense = 'hunyuan_v1_dense'
     ernie4_5 = 'ernie4_5'
+    ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'
     longchat = 'longchat'
 
@@ -136,7 +137,7 @@ class BertModelType:
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
-    qwen2_prm = 'qwen2_prm'
+    qwen2_5_prm = 'qwen2_5_prm'
     llama3_2_reward = 'llama3_2_reward'
     gemma_reward = 'gemma_reward'
 

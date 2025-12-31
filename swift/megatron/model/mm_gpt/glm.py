@@ -33,8 +33,8 @@ class Glm4_1vBridge(Glm4Bridge, MultimodalGPTBridge):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.glm4_1v, [
-            ModelType.glm4_1v,
+        MegatronModelType.glm4v, [
+            ModelType.glm4v,
         ],
         get_transformer_layer_spec=get_glm4_transformer_layer_spec,
         bridge_cls=Glm4_1vBridge,

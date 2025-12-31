@@ -2,21 +2,22 @@
 from types import MethodType
 
 import torch.nn.functional as F
-from transformers import AutoConfig, AutoModel, AutoModelForSequenceClassification
+from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import BertModelType, RerankerModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 logger = get_logger()
 
 
-def get_model_tokenizer_modern_bert(model_dir, *args, **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config.reference_compile = False
-    kwargs['model_config'] = model_config
-    return get_model_tokenizer_from_local(model_dir, *args, **kwargs)
+class ModernBertLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        config.reference_compile = False
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -27,22 +28,23 @@ register_model(
                 Model('answerdotai/ModernBERT-large', 'answerdotai/ModernBERT-large'),
             ])
         ],
-        get_model_tokenizer_modern_bert,
+        ModernBertLoader,
         requires=['transformers>=4.48'],
         tags=['bert']))
 
 
-def get_model_tokenizer_gte_bert(*args, **kwargs):
-    kwargs['automodel_class'] = AutoModel
-    model, tokenizer = get_model_tokenizer_from_local(*args, **kwargs)
-    if model is not None:
+class GTEBertLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        self.automodel_class = self.automodel_class or AutoModel
+        model = super().get_model(model_dir, config, model_kwargs)
 
         def _normalizer_hook(module, input, output):
             output.last_hidden_state = F.normalize(output.last_hidden_state[:, 0], p=2, dim=1)
             return output
 
         model.register_forward_hook(_normalizer_hook)
-    return model, tokenizer
+        return model
 
 
 register_model(
@@ -51,14 +53,16 @@ register_model(
         [ModelGroup([
             Model('iic/gte-modernbert-base', 'Alibaba-NLP/gte-modernbert-base'),
         ])],
-        get_model_tokenizer_gte_bert,
+        GTEBertLoader,
         requires=['transformers>=4.48'],
         tags=['bert', 'embedding']))
 
 
-def get_model_tokenizer_gte_bert_reranker(*args, **kwargs):
-    kwargs['automodel_class'] = AutoModelForSequenceClassification
-    return get_model_tokenizer_from_local(*args, **kwargs)
+class GTEBertReranker(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        self.automodel_class = self.automodel_class or AutoModelForSequenceClassification
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -67,15 +71,12 @@ register_model(
         [ModelGroup([
             Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
         ])],
-        get_model_tokenizer_gte_bert_reranker,
+        GTEBertReranker,
         template=TemplateType.bert,
         requires=['transformers>=4.48'],
         tags=['bert', 'reranker']))
 
 register_model(
-    ModelMeta(
-        BertModelType.bert, [ModelGroup([
-            Model('iic/nlp_structbert_backbone_base_std'),
-        ])],
-        get_model_tokenizer_from_local,
-        tags=['bert']))
+    ModelMeta(BertModelType.bert, [ModelGroup([
+        Model('iic/nlp_structbert_backbone_base_std'),
+    ])], tags=['bert']))

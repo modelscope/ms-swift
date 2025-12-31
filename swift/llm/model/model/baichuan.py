@@ -4,32 +4,29 @@ from typing import Any, Dict
 
 import torch.nn.functional as F
 from torch import Tensor
-from transformers import AutoConfig
+from transformers import AutoConfig, PreTrainedModel
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..register import ModelLoader, register_model
 
 logger = get_logger()
 
 
-def get_model_tokenizer_baichuan(model_dir: str,
-                                 model_info: ModelInfo,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    # baichuan-13b does not implement the `get_input_embeddings` function
-    # fix gradient_checkpointing bug
-    try:
-        if model is not None:
+class BaichuanLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
+        # baichuan-13b does not implement the `get_input_embeddings` function
+        # fix gradient_checkpointing bug
+        try:
             model.get_input_embeddings()
-    except NotImplementedError:
-        model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
-    return model, tokenizer
+        except NotImplementedError:
+            model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
+        return model
 
 
 register_model(
@@ -41,31 +38,27 @@ register_model(
                 Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
             ]),
         ],
-        get_model_tokenizer_baichuan,
+        BaichuanLoader,
         template=TemplateType.baichuan,
         architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
         requires=['transformers<4.34']))
 
 
-def get_model_tokenizer_baichuan_m1(model_dir: str,
-                                    model_info: ModelInfo,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
-    from transformers.dynamic_module_utils import get_class_from_dynamic_module
-    rotary_embedding = get_class_from_dynamic_module('modeling_baichuan.RotaryEmbedding', model_dir)
-    _old_forward = rotary_embedding.forward
+class BaichuanM1Loader(BaichuanLoader):
 
-    def _new_forward(self, q, k, seqlen_offset=None, cu_seqlens=None, max_seqlen=None):
-        q = q.to(k.dtype)
-        res = _old_forward(self, q, k, seqlen_offset, cu_seqlens, max_seqlen)
-        return res
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers.dynamic_module_utils import get_class_from_dynamic_module
+        rotary_embedding = get_class_from_dynamic_module('modeling_baichuan.RotaryEmbedding', model_dir)
+        _old_forward = rotary_embedding.forward
 
-    rotary_embedding.forward = _new_forward
+        def _new_forward(self, q, k, seqlen_offset=None, cu_seqlens=None, max_seqlen=None):
+            q = q.to(k.dtype)
+            res = _old_forward(self, q, k, seqlen_offset, cu_seqlens, max_seqlen)
+            return res
 
-    model, tokenizer = get_model_tokenizer_baichuan(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, tokenizer
+        rotary_embedding.forward = _new_forward
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -75,7 +68,7 @@ register_model(
                 Model('baichuan-inc/Baichuan-M1-14B-Instruct', 'baichuan-inc/Baichuan-M1-14B-Instruct'),
             ]),
         ],
-        get_model_tokenizer_baichuan_m1,
+        BaichuanM1Loader,
         template=TemplateType.baichuan_m1,
         architectures=['BaichuanM1ForCausalLM'],
         model_arch=ModelArch.baichuan,
@@ -95,25 +88,18 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     return F.linear(hidden_states, norm_weight)
 
 
-def get_model_tokenizer_baichuan2(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if not hasattr(model_config, 'z_loss_weight'):
-        model_config.z_loss_weight = 0
-    # patch: baichuan2_13b configuration_baichuan.py bug
-    if hasattr(model_config, 'gradient_checkpointing'):
-        gradient_checkpointing = model_config.gradient_checkpointing
-        if isinstance(gradient_checkpointing, (tuple, list)):
-            model_config.gradient_checkpointing = gradient_checkpointing[0]
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
-    model_ori = model
-    if model is not None:
+class Baichuan2Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        if not hasattr(config, 'z_loss_weight'):
+            config.z_loss_weight = 0
+        # patch: baichuan2_13b configuration_baichuan.py bug
+        if hasattr(config, 'gradient_checkpointing'):
+            gradient_checkpointing = config.gradient_checkpointing
+            if isinstance(gradient_checkpointing, (tuple, list)):
+                config.gradient_checkpointing = gradient_checkpointing[0]
+        model = super().get_model(model_dir, config, model_kwargs)
+        model_ori = model
         if not hasattr(model, 'lm_head'):  # fix awq
             model = model.model
         new_forward = MethodType(patch_baichuan2_lm_head_forward, model.lm_head)
@@ -121,7 +107,7 @@ def get_model_tokenizer_baichuan2(model_dir: str,
             model.lm_head._old_forward = new_forward
         else:
             model.lm_head.forward = new_forward
-    return model_ori, tokenizer
+        return model_ori
 
 
 register_model(
@@ -140,7 +126,7 @@ register_model(
             ],
                        requires=['bitsandbytes<0.41.2', 'accelerate<0.26'])
         ],
-        get_model_tokenizer_baichuan2,
+        Baichuan2Loader,
         template=TemplateType.baichuan,
         architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,

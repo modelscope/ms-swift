@@ -6,10 +6,10 @@ from transformers import AutoTokenizer
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..register import ModelLoader, register_model
 from .glm import get_model_tokenizer_chatglm
-from .qwen import get_model_tokenizer_qwen
+from .qwen import QwenLoader
 
 register_model(
     ModelMeta(
@@ -18,7 +18,7 @@ register_model(
                 Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
             ]),
         ],
-        get_model_tokenizer_qwen,
+        QwenLoader,
         template=TemplateType.codefuse,
         architectures=['QWenLMHeadModel'],
         model_arch=ModelArch.qwen,
