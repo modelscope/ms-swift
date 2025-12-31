@@ -202,10 +202,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
             if self.multi_turn_scheduler:
                 raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
-            if self.log_entropy:
-                raise ValueError('log_entropy is not supported for Megatron GRPO right now')
-            if self.top_entropy_quantile < 1:
-                raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 

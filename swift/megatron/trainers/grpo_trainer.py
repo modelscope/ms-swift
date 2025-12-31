@@ -1079,6 +1079,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         max_seq_len = data['completion_mask'].shape[1]
         micro_batch_size = self.micro_batch_size
 
+        # Check if this is the PP last stage (only last stage has labels and computes loss)
+        is_pp_last_stage = mpu.is_pipeline_last_stage()
+
         if self.compute_entropy:
             # Forward without labels to get logits, then compute logps and entropy
             inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
@@ -1086,7 +1089,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 output_tensor = model(**inputs_for_logits)
 
             # Compute per_token_logps and per_token_entropy from logits on PP last stage
-            if output_tensor is not None:
+            if is_pp_last_stage and output_tensor is not None:
                 # output_tensor is logits [batch/1, seq, partition_vocab_size]
                 per_token_logps_raw, per_token_entropy_raw = compute_logps_and_entropy_from_logits(
                     output_tensor, labels, compute_entropy=True)
@@ -1116,7 +1119,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 output_tensor = model(**inputs)
 
             # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
-            if output_tensor is not None:
+            if is_pp_last_stage and output_tensor is not None:
                 per_token_logps_raw = self.get_logps(
                     output_tensor,
                     labels,

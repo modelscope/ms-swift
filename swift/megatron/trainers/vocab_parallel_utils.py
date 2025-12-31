@@ -54,18 +54,18 @@ def vocab_parallel_log_softmax(logits: torch.Tensor) -> torch.Tensor:
     return log_softmax
 
 
-def vocab_parallel_entropy(logits: torch.Tensor, chunk_size: int = 512) -> torch.Tensor:
-    """Compute entropy across vocab-parallel sharded logits.
+def vocab_parallel_entropy(log_probs: torch.Tensor, chunk_size: int = 512) -> torch.Tensor:
+    """Compute entropy from pre-computed vocab-parallel sharded log probabilities.
 
     When using Tensor Parallelism, vocab is sharded across TP ranks.
     This function correctly computes entropy by:
-    1. Computing log_softmax with global normalization (all_reduce for max and sum_exp)
-    2. Computing entropy = -sum(exp(log_p) * log_p) with all_reduce
+    1. Computing partial entropy = -sum(exp(log_p) * log_p) on each rank's partition
+    2. All-reducing the partial entropies to get the global sum.
 
     Entropy is computed in chunks to reduce memory usage.
 
     Args:
-        logits: Logits tensor [..., partition_vocab_size] (sharded across TP)
+        log_probs: Pre-computed log probabilities tensor [..., partition_vocab_size]
         chunk_size: Number of tokens to process per chunk (default: 512)
 
     Returns:
@@ -75,41 +75,24 @@ def vocab_parallel_entropy(logits: torch.Tensor, chunk_size: int = 512) -> torch
     tp_size = mpu.get_tensor_model_parallel_world_size()
 
     # Flatten all but the last dimension for chunked processing
-    original_shape = logits.shape[:-1]
-    vocab_size = logits.shape[-1]
-    logits_flat = logits.view(-1, vocab_size)  # [total_tokens, partition_vocab_size]
-    total_tokens = logits_flat.shape[0]
+    original_shape = log_probs.shape[:-1]
+    vocab_size = log_probs.shape[-1]
+    log_probs_flat = log_probs.view(-1, vocab_size)  # [total_tokens, partition_vocab_size]
+    total_tokens = log_probs_flat.shape[0]
 
     entropies_list = []
     for start_idx in range(0, total_tokens, chunk_size):
         end_idx = min(start_idx + chunk_size, total_tokens)
-        logits_chunk = logits_flat[start_idx:end_idx]  # [chunk_size, partition_vocab_size]
+        log_probs_chunk = log_probs_flat[start_idx:end_idx]  # [chunk_size, partition_vocab_size]
 
+        # Compute partial entropy on this rank's vocab partition
+        # entropy = -sum(p * log_p) = -sum(exp(log_p) * log_p)
+        probs = torch.exp(log_probs_chunk)
+        partial_entropy = -(probs * log_probs_chunk).sum(dim=-1)  # [chunk_size]
+
+        # All-reduce to get global entropy if using TP
         if tp_size > 1:
-            # Step 1: Find global max for numerical stability
-            logits_max = logits_chunk.max(dim=-1, keepdim=True)[0]
-            torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=tp_group)
-
-            # Step 2: Compute exp(logits - max) and sum across all TP ranks
-            exp_logits = torch.exp(logits_chunk - logits_max)
-            sum_exp = exp_logits.sum(dim=-1, keepdim=True)
-            torch.distributed.all_reduce(sum_exp, op=torch.distributed.ReduceOp.SUM, group=tp_group)
-
-            # Step 3: Compute log_softmax = logits - max - log(sum_exp)
-            log_probs = logits_chunk - logits_max - torch.log(sum_exp)
-
-            # Step 4: Compute partial entropy on this rank's vocab partition
-            # entropy = -sum(p * log_p) = -sum(exp(log_p) * log_p)
-            probs = torch.exp(log_probs)
-            partial_entropy = -(probs * log_probs).sum(dim=-1)  # [chunk_size]
-
-            # Step 5: All-reduce to get global entropy
             torch.distributed.all_reduce(partial_entropy, op=torch.distributed.ReduceOp.SUM, group=tp_group)
-        else:
-            # Non-TP case: standard entropy computation
-            log_probs = torch.nn.functional.log_softmax(logits_chunk, dim=-1)
-            probs = torch.exp(log_probs)
-            partial_entropy = -(probs * log_probs).sum(dim=-1)
 
         entropies_list.append(partial_entropy)
 
@@ -189,6 +172,7 @@ def vocab_parallel_gather_logps(
     else:
         local_labels = labels
         in_range_mask = torch.ones_like(labels, dtype=torch.bool)
+        local_labels = local_labels.clamp(min=0)
 
     # Gather log probs for target tokens
     gathered_logps = torch.gather(log_probs, dim=-1, index=local_labels.unsqueeze(-1)).squeeze(-1)
@@ -240,9 +224,9 @@ def compute_logps_and_entropy_from_logits(
     # Gather logps for target tokens
     per_token_logps = vocab_parallel_gather_logps(logits, labels, log_probs=log_probs)
 
-    # Compute entropy if requested
+    # Compute entropy if requested (reuse log_probs to avoid redundant computation)
     per_token_entropy = None
     if compute_entropy:
-        per_token_entropy = vocab_parallel_entropy(logits, chunk_size=entropy_chunk_size)
+        per_token_entropy = vocab_parallel_entropy(log_probs, chunk_size=entropy_chunk_size)
 
     return per_token_logps, per_token_entropy
