@@ -3,6 +3,7 @@ class LLMMegatronModelType:
     gpt = 'gpt'
     qwen3_next = 'qwen3_next'
     glm4 = 'glm4'
+    minimax_m2 = 'minimax_m2'
 
 
 class MLLMMegatronModelType:

@@ -157,6 +157,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
             for i in range(num_layers)
         ]
+    elif llm_model_type == 'minimax_m2':
+        res['add_qkv_bias'] = False
     elif llm_model_type == 'llama4':
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:

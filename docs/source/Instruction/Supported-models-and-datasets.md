@@ -546,7 +546,8 @@
 |[MiniMax/MiniMax-Text-01](https://modelscope.cn/models/MiniMax/MiniMax-Text-01)|minimax|minimax|-|&#x2718;|-|[MiniMaxAI/MiniMax-Text-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01)|
 |[MiniMax/MiniMax-M1-40k](https://modelscope.cn/models/MiniMax/MiniMax-M1-40k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-40k](https://huggingface.co/MiniMaxAI/MiniMax-M1-40k)|
 |[MiniMax/MiniMax-M1-80k](https://modelscope.cn/models/MiniMax/MiniMax-M1-80k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-80k](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)|
-|[MiniMax/MiniMax-M2](https://modelscope.cn/models/MiniMax/MiniMax-M2)|minimax_m2|minimax_m2|-|&#x2718;|-|[MiniMaxAI/MiniMax-M2](https://huggingface.co/MiniMaxAI/MiniMax-M2)|
+|[MiniMax/MiniMax-M2](https://modelscope.cn/models/MiniMax/MiniMax-M2)|minimax_m2|minimax_m2|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2](https://huggingface.co/MiniMaxAI/MiniMax-M2)|
+|[MiniMax/MiniMax-M2.1](https://modelscope.cn/models/MiniMax/MiniMax-M2.1)|minimax_m2|minimax_m2|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2.1](https://huggingface.co/MiniMaxAI/MiniMax-M2.1)|
 |[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b-it](https://huggingface.co/google/gemma-2b-it)|
 |[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b](https://huggingface.co/google/gemma-2b)|
 |[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-7b](https://huggingface.co/google/gemma-7b)|
@@ -561,6 +562,7 @@
 |[LLM-Research/gemma-3-1b-it](https://modelscope.cn/models/LLM-Research/gemma-3-1b-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it)|
 |[google/gemma-3-270m](https://modelscope.cn/models/google/gemma-3-270m)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m](https://huggingface.co/google/gemma-3-270m)|
 |[google/gemma-3-270m-it](https://modelscope.cn/models/google/gemma-3-270m-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m-it](https://huggingface.co/google/gemma-3-270m-it)|
+|[google/medgemma-27b-text-it](https://modelscope.cn/models/google/medgemma-27b-text-it)|gemma3_text|gemma3_text|transformers>=4.52.0.dev0|&#x2718;|-|[google/medgemma-27b-text-it](https://huggingface.co/google/medgemma-27b-text-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|&#x2718;|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|&#x2718;|-|-|
 |[AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B)|skywork_o1|skywork_o1|transformers>=4.43|&#x2714;|-|[Skywork/Skywork-o1-Open-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-o1-Open-Llama-3.1-8B)|
@@ -1042,6 +1044,9 @@
 |[google/gemma-3n-E4B](https://modelscope.cn/models/google/gemma-3n-E4B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)|
 |[google/gemma-3n-E2B-it](https://modelscope.cn/models/google/gemma-3n-E2B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)|
 |[google/gemma-3n-E4B-it](https://modelscope.cn/models/google/gemma-3n-E4B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B-it](https://huggingface.co/google/gemma-3n-E4B-it)|
+|[google/medgemma-4b-pt](https://modelscope.cn/models/google/medgemma-4b-pt)|gemma3_vision|gemma3_vision|transformers>=4.54.0.dev0|&#x2718;|-|[google/medgemma-4b-pt](https://huggingface.co/google/medgemma-4b-pt)|
+|[google/medgemma-4b-it](https://modelscope.cn/models/google/medgemma-4b-it)|gemma3_vision|gemma3_vision|transformers>=4.54.0.dev0|&#x2718;|-|[google/medgemma-4b-it](https://huggingface.co/google/medgemma-4b-it)|
+|[google/medgemma-27b-it](https://modelscope.cn/models/google/medgemma-27b-it)|gemma3_vision|gemma3_vision|transformers>=4.54.0.dev0|&#x2718;|-|[google/medgemma-27b-it](https://huggingface.co/google/medgemma-27b-it)|
 |[mistralai/Mistral-Small-3.1-24B-Base-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Base-2503)|mistral_2503|mistral_2503|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.1-24B-Base-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Base-2503)|
 |[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|mistral_2503|mistral_2503|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|
 |[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://modelscope.cn/models/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|mistral_2506|mistral_2506|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|
