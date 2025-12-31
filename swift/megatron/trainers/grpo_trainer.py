@@ -38,6 +38,7 @@ from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
+from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 if is_wandb_available():
     import wandb
@@ -102,7 +103,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
 
-        # Entropy mask settings, TODO
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
@@ -932,7 +932,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return rollout_batch, rewards_per_func
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO: entropy
         seq_lengths = batch['seq_lengths']
         batch_size = batch['num_samples']
         max_seq_len = batch['completion_mask'].shape[1]
@@ -960,15 +959,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         old_per_token_logps_raw = self.model_forward(
             self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
         if self.template.padding_free:
-            # In padding_free mode, logps are in rmpad format [1, total_tokens]
-            # Pad to batch format [batch_size, max_seq_len]
             old_per_token_logps, _ = pad_logps_back_to_batch(
                 logps_rmpad=old_per_token_logps_raw,
                 logits_to_keep=max_seq_len,
                 batch_size=batch_size,
                 seq_lengths=seq_lengths)
         else:
-            # In non-padding_free mode, logps are already in batch format [batch_size, seq_len]
             old_per_token_logps = old_per_token_logps_raw
         batch['old_per_token_logps'] = old_per_token_logps
 
@@ -1064,8 +1060,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     @profiling_decorator
     def forward_step(self, data_iterator, model):
-        # train_batch_size
-        # return: output_tensor, loss_func
+        args = get_args()
         data = next(data_iterator)
         advantages = data.pop('advantages')
         truncated_mask = data.pop('truncated_mask')
@@ -1079,8 +1074,68 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         inputs = self._prepare_model_inputs(data)
 
-        with self.stimer:
-            output_tensor = model(**inputs)
+        labels = data['labels']
+        packed_seq_params = data.get('packed_seq_params')
+        max_seq_len = data['completion_mask'].shape[1]
+        micro_batch_size = self.micro_batch_size
+
+        if self.compute_entropy:
+            # Forward without labels to get logits, then compute logps and entropy
+            inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
+            with self.stimer:
+                output_tensor = model(**inputs_for_logits)
+
+            # Compute per_token_logps and per_token_entropy from logits on PP last stage
+            if output_tensor is not None:
+                # output_tensor is logits [batch/1, seq, partition_vocab_size]
+                per_token_logps_raw, per_token_entropy_raw = compute_logps_and_entropy_from_logits(
+                    output_tensor, labels, compute_entropy=True)
+
+                if args.padding_free:
+                    # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]
+                    per_token_logps, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_logps_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths)
+                    per_token_entropy, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_entropy_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths,
+                        pad_value=float('nan'))
+                else:
+                    per_token_logps = per_token_logps_raw
+                    per_token_entropy = per_token_entropy_raw
+
+                data['per_token_logps'] = per_token_logps
+                data['per_token_entropy'] = per_token_entropy
+        else:
+            # Standard forward with labels, returns per-token loss (more efficient)
+            with self.stimer:
+                output_tensor = model(**inputs)
+
+            # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
+            if output_tensor is not None:
+                per_token_logps_raw = self.get_logps(
+                    output_tensor,
+                    labels,
+                    packed_seq_params,
+                    packed_seq_params.num_samples if args.padding_free else micro_batch_size,
+                    per_token=True)
+
+                if args.padding_free:
+                    per_token_logps, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_logps_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths)
+                else:
+                    per_token_logps = per_token_logps_raw
+
+                data['per_token_logps'] = per_token_logps
+                data['per_token_entropy'] = None
+
         return output_tensor, partial(self.loss_func, data=data)
 
     @profiling_decorator
@@ -1088,33 +1143,22 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = get_args()
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
-        labels = data['labels']
         completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
         packed_seq_params = data.get('packed_seq_params')
         truncated_mask = data['truncated_mask']  # [batch_size]
         seq_lengths = data['seq_lengths']  # [batch_size]
-        max_seq_len = completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
 
+        # Get pre-computed per_token_logps and per_token_entropy from forward_step
+        # These are already in batch format [batch_size, max_seq_len]
+        per_token_logps = data.get('per_token_logps')
+        per_token_entropy = data.get('per_token_entropy')
+
         if args.padding_free:
-            # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
             lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                      + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
-
-            # get_logps with per_token=True returns rmpad format [1, total_tokens]
-            # Pad to batch format [batch_size, max_seq_len]
-            per_token_logps_rmpad = self.get_logps(
-                output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
-            per_token_logps, _ = pad_logps_back_to_batch(
-                logps_rmpad=per_token_logps_rmpad,
-                logits_to_keep=max_seq_len,
-                batch_size=micro_batch_size,
-                seq_lengths=seq_lengths)
         else:
-            # In non-padding_free mode, get_logps with per_token=True returns [batch_size, seq_len]
-            # No need to pad, already in batch format
             lengths = seq_lengths
-            per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, micro_batch_size, per_token=True)
 
         # Get pre-padded ref/old/rollout logps from data
         ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
@@ -1211,6 +1255,40 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.beta != 0.0 and per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
+        # Compute and apply entropy mask if enabled
+        # entropy_mask zeros out gradients for low-entropy (confident) tokens
+        entropy_mask = None
+        entropy_metrics = {}
+        if self.compute_entropy and per_token_entropy is not None:
+            # Fill padded tokens with NaN for correct quantile computation
+            entropies = per_token_entropy.masked_fill(completion_mask == 0, float('nan'))
+
+            if self.log_entropy:
+                # Log entropy statistics
+                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                global_entropies_mean = gather(
+                    per_completion_entropies_mean, group=mpu.get_data_parallel_group(with_context_parallel=True))
+                entropy_metrics = {
+                    'entropy_mean':
+                    global_entropies_mean.nanmean(),
+                    'entropy_max':
+                    global_entropies_mean[~torch.isnan(global_entropies_mean)].max() if
+                    (~torch.isnan(global_entropies_mean)).any() else torch.tensor(float('nan')),
+                    'entropy_min':
+                    global_entropies_mean[~torch.isnan(global_entropies_mean)].min() if
+                    (~torch.isnan(global_entropies_mean)).any() else torch.tensor(float('nan')),
+                }
+
+            # Compute entropy threshold and mask for top_entropy_quantile
+            if self.top_entropy_quantile < 1.0:
+                # Compute threshold across all completion tokens in the batch
+                entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
+                entropy_metrics['entropy_threshold'] = entropy_threshold
+                # Only keep tokens with entropy >= threshold (high uncertainty tokens)
+                entropy_mask = entropies >= entropy_threshold
+                # Apply entropy mask to per_token_loss
+                per_token_loss = per_token_loss * entropy_mask
+
         # Apply off-policy sequence masking if enabled
         # Mask out sequences where delta > threshold AND advantage < 0
         if self.off_policy_sequence_mask_delta is not None:
@@ -1248,6 +1326,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'completions/max_length': total_lengths.float().max(),
             'completions/min_length': total_lengths.float().min(),
         }
+
+        # Add entropy metrics to custom_metrics
+        if entropy_metrics:
+            for key, value in entropy_metrics.items():
+                if isinstance(value, torch.Tensor):
+                    custom_metrics[f'entropy/{key}'] = value.clone().detach()
+                else:
+                    custom_metrics[f'entropy/{key}'] = torch.tensor(value, device=loss.device)
 
         if self.beta != 0.0 and per_token_kl is not None:
             kl_value = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
@@ -1349,6 +1435,17 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return loss, reporting_metric
 
     def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
+        """Forward pass through model to compute logps.
+
+        Args:
+            model: The model to forward
+            data_iterator: Iterator providing batch data
+            no_grad: Whether to use torch.no_grad() context
+            per_token: Whether to return per-token logps
+
+        Returns:
+            data dict containing 'logps'
+        """
         # used to calculate model forward (logps) in GRPO
         with self.stimer(bdata=True):
             data = self.get_batch(data_iterator)
@@ -1356,8 +1453,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         input_ids = data.get('input_ids')
         labels = data.get('labels')
         context = torch.no_grad() if no_grad else nullcontext()
+
         with context:
             output_tensor = forward_step_helper(model, data)
+
         # packed_seq_params only exists in padding_free mode
         packed_seq_params = data.get('packed_seq_params')
         if packed_seq_params is not None:
