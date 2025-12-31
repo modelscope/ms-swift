@@ -1271,15 +1271,16 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_entropies_mean = gather(
                     per_completion_entropies_mean, group=mpu.get_data_parallel_group(with_context_parallel=True))
+                valid_mask = ~torch.isnan(global_entropies_mean)
                 entropy_metrics = {
                     'entropy_mean':
                     global_entropies_mean.nanmean(),
                     'entropy_max':
-                    global_entropies_mean[~torch.isnan(global_entropies_mean)].max() if
-                    (~torch.isnan(global_entropies_mean)).any() else torch.tensor(float('nan')),
+                    global_entropies_mean[valid_mask].max() if valid_mask.any() else torch.tensor(
+                        float('nan'), device=global_entropies_mean.device),
                     'entropy_min':
-                    global_entropies_mean[~torch.isnan(global_entropies_mean)].min() if
-                    (~torch.isnan(global_entropies_mean)).any() else torch.tensor(float('nan')),
+                    global_entropies_mean[valid_mask].min() if valid_mask.any() else torch.tensor(
+                        float('nan'), device=global_entropies_mean.device),
                 }
 
             # Compute entropy threshold and mask for top_entropy_quantile
