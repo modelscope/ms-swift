@@ -1460,6 +1460,8 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
+                if args.mtp_num_layers:
+                    self.hf_model.config.num_nextn_predict_layers = args.mtp_num_layers
                 self.hf_model.config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
                     if getattr(self.hf_model.config, 'quantization_config', None) is None:
