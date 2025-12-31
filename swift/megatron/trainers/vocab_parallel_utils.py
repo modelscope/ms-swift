@@ -125,8 +125,9 @@ def vocab_parallel_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch
     target_probs = torch.exp(target_log_probs)
     partial_kl = (target_probs * (target_log_probs - input_log_probs)).sum(dim=-1)
 
-    # All-reduce to get global KL
-    torch.distributed.all_reduce(partial_kl, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+    if mpu.get_tensor_model_parallel_world_size() > 1:
+        tp_group = mpu.get_tensor_model_parallel_group()
+        torch.distributed.all_reduce(partial_kl, op=torch.distributed.ReduceOp.SUM, group=tp_group)
 
     return partial_kl
 

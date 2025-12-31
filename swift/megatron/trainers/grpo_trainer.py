@@ -1094,6 +1094,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 per_token_logps_raw, per_token_entropy_raw = compute_logps_and_entropy_from_logits(
                     output_tensor, labels, compute_entropy=True)
 
+                # In CP mode, all_gather and reconstruct full sequence
+                if args.context_parallel_size > 1:
+                    num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
+                    per_token_logps_raw = self._postprocess_packed_tensor_cp(per_token_logps_raw, packed_seq_params,
+                                                                             num_samples)
+                    per_token_entropy_raw = self._postprocess_packed_tensor_cp(per_token_entropy_raw, packed_seq_params,
+                                                                               num_samples)
+
                 if args.padding_free:
                     # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]
                     per_token_logps, _ = pad_logps_back_to_batch(
@@ -1376,9 +1384,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 high_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
 
             # Store local values for mean (will be averaged by _all_reduce_metric)
-            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip)
-            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip)
-            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio)
+            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip.item())
+            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip.item())
+            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio.item())
             # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
             custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
             custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
