@@ -129,7 +129,6 @@ def _set_property(model, key):
     setattr(model.__class__, key, property(_value))
 
 
-
 def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
     # Use the default values of temperature/top_p/top_k in generation_config.
     if generation_config.temperature == 0:
@@ -295,6 +294,13 @@ class ModelLoader:
             with context():
                 model = automodel_class.from_pretrained(
                     model_dir, config=config, trust_remote_code=True, **model_kwargs)
+        return model
+
+    def _post_process_model(self, model_dir, model):
+        model_info = self.model_info
+        model_meta = self.model_meta
+        config = model.config
+        automodel_class = self.automodel_class or AutoModelForCausalLM
         # fix not save modeling_xxx.py (transformers 4.45)
         # https://github.com/huggingface/transformers/issues/24737
         has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
@@ -308,14 +314,17 @@ class ModelLoader:
         if self.init_strategy is not None:
             InitModelStrategy.init_parameters(model, self.init_strategy)
 
-        model_info.config = config if model is None else model.config
+        model_info.config = config
         # fix seq classification task
         if self.leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
         if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
             self._compat_transformers5(model, model_meta)
-        return model
+        model.model_info = self.model_info
+        model.model_meta = self.model_meta
+        model.model_dir = model_dir
+        self._init_generation_config(model, model_dir)
 
     def _compat_transformers5(self, model, model_meta):
         if model_meta.is_multimodal:
@@ -382,12 +391,8 @@ class ModelLoader:
         with patch_get_dynamic_module(), patch_tp_plan(True), patch_offload_context:
             config = self.get_config(model_dir)
             model = self.get_model(model_dir, config)
-        model.model_info = self.model_info
-        model.model_meta = self.model_meta
-        model.model_dir = model_dir
-        self._init_generation_config(model, model_dir)
+        self._post_process_model(model_dir, model)
         return model
-
 
 
 def get_model_tokenizer_sentence_transformers(model_dir: str,
@@ -437,11 +442,14 @@ def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, processor
 
+
 class RewardModelLoader(ModelLoader):
+
     def get_model(self, model_dir: str, config) -> PreTrainedModel:
         if 'AutoModel' in (getattr(config, 'auto_map', None) or {}):
             self.automodel_class = AutoModel
         return super().get_model(model_dir, config)
+
 
 def get_model(
     model_id_or_path: str,
