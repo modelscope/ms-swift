@@ -11,11 +11,14 @@ from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
 from transformers import PretrainedConfig
-from transformers.utils import strtobool
+from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
+                                is_torch_npu_available, strtobool)
 
 from swift.hub import get_hub
 from swift.llm import to_device
-from swift.utils import deep_getattr, get_logger, is_local_master, safe_ddp_context, subprocess_run
+from swift.utils import (deep_getattr, get_dist_setting, get_logger, is_local_master, is_mp, safe_ddp_context,
+                         subprocess_run)
 
 logger = get_logger()
 
@@ -49,28 +52,6 @@ class AttnImpl:
             HfConfigFactory.set_config_attr(config, key, attn_impl, include_vit=True, ensure_set=False)
         for key in AttnImpl.use_flash_attn_keys:
             HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
-
-
-@dataclass
-class ModelInfo:
-    model_type: str
-    model_dir: str
-    torch_dtype: torch.dtype
-    max_model_len: int
-    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
-    quant_bits: int
-
-    # extra
-    rope_scaling: Optional[Dict[str, Any]] = None
-    is_moe_model: bool = False
-    is_multimodal: bool = False
-    config: Optional[PretrainedConfig] = None
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
-    num_labels: Optional[int] = None
-
-    def __post_init__(self):
-        from .register import get_model_name
-        self.model_name = get_model_name(self.model_dir)
 
 
 class HfConfigFactory:
@@ -541,6 +522,43 @@ class InitModelStrategy:
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
                 init_func(param)
+
+
+def get_default_device_map():
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+        return None
+    local_rank = get_dist_setting()[1]
+    if local_rank == -1:
+        local_rank = 0
+    if is_torch_npu_available():
+        return 'auto' if is_mp() else f'npu:{local_rank}'
+    elif is_torch_mps_available():
+        return f'mps:{local_rank}'
+    elif is_torch_cuda_available():
+        return 'auto' if is_mp() else f'cuda:{local_rank}'
+    else:
+        return 'cpu'
+
+
+def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
+    # torch_dtype: torch_dtype in config.json
+    if torch_dtype is not None:
+        return torch_dtype
+
+    try:
+        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
+                                                              and torch.npu.is_bf16_supported())
+    except:  # noqa
+        is_bf16_available = False
+
+    if is_torch_cuda_available() or is_torch_npu_available():
+        if is_bf16_available:
+            return torch.bfloat16
+        else:
+            return torch.float16
+    else:
+        # cpu
+        return torch.float32
 
 
 def _patch_conv3d():
