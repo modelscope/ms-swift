@@ -217,48 +217,6 @@ def _patch_awq_compat(model_info):
         pass
 
 
-def deepspeed_set_z3_leaf_modules(model, z3_leaf_modules):
-    if not is_deepspeed_zero3_enabled():
-        return
-    try:
-        hf_model_type = model.config.model_type
-    except Exception:
-        return
-    if z3_leaf_modules is None:
-        if hf_model_type == 'qwen3_vl_moe':
-            from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
-            z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
-        elif hf_model_type == 'qwen3_omni_moe':
-            from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerTextSparseMoeBlock
-            z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
-        elif hf_model_type == 'qwen2_moe':
-            from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
-            z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
-        elif hf_model_type == 'qwen3_moe':
-            from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
-            z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
-        elif hf_model_type == 'glm4_moe':
-            from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
-            z3_leaf_modules = [Glm4MoeMoE]
-        elif hf_model_type == 'glm4v_moe':
-            from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
-            z3_leaf_modules = [Glm4vMoeTextMoE]
-        elif hf_model_type == 'gpt_oss':
-            from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
-            z3_leaf_modules = [GptOssMLP]
-        elif hf_model_type == 'llama4':
-            from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
-            z3_leaf_modules = [Llama4TextMoe]
-        elif hf_model_type == 'qwen3_next':
-            from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
-            z3_leaf_modules = [Qwen3NextSparseMoeBlock]
-
-    if z3_leaf_modules:
-        from deepspeed.utils import set_z3_leaf_modules
-        set_z3_leaf_modules(model, z3_leaf_modules)
-        logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
-
-
 def _set_property(model, key):
     if not hasattr(model, 'model'):
         return
@@ -276,137 +234,6 @@ def _compat_transformers5(model, model_meta):
     if model_meta.is_multimodal:
         for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
             _set_property(model, key)
-
-
-def get_model_tokenizer_from_local(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   *,
-                                   tokenizer=None,
-                                   model_config=None,
-                                   automodel_class=None,
-                                   **kwargs):
-    """Load the model and tokenizer from the local model_dir."""
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    # fix prediction_step (internvl2, ovis, ...)
-    if not hasattr(model_config, 'keys_to_ignore_at_inference'):
-        model_config.keys_to_ignore_at_inference = []
-    if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
-        model_config.keys_to_ignore_at_inference.append('past_key_values')
-
-    torch_dtype = model_info.torch_dtype
-    HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
-    HfConfigFactory.compat_zero3(model_config)
-    leaf_modules = kwargs.get('leaf_modules')
-    rope_scaling = kwargs.get('rope_scaling')
-    max_model_len = kwargs.get('max_model_len')
-    return_dummy_model = kwargs.get('return_dummy_model')
-    model_meta = kwargs.get('model_meta')
-    if rope_scaling:
-        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
-    if max_model_len:
-        HfConfigFactory.set_max_model_len(model_config, max_model_len)
-
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-
-    num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels and model_info.task_type in ['seq_cls', 'reranker']:
-        model_info.num_labels = num_labels
-        model_config.num_labels = num_labels
-
-    if model_info.task_type == 'seq_cls':
-        problem_type = kwargs.get('problem_type')
-        if problem_type is None:
-            if model_info.num_labels == 1 or model_meta.is_reward:
-                problem_type = 'regression'
-            else:
-                problem_type = 'single_label_classification'
-        model_config.problem_type = problem_type
-
-    if model_info.quant_method == 'fp8':
-        torch_dtype = 'auto'
-    if version.parse(transformers.__version__) >= version.parse('4.56'):
-        model_kwargs['dtype'] = torch_dtype
-    else:
-        model_kwargs['torch_dtype'] = torch_dtype
-    model = None
-    if load_model:
-        _patch_awq_compat(model_info)
-        logger.info(f'model_kwargs: {model_kwargs}')
-        if model_info.task_type in {'seq_cls', 'reranker'} and automodel_class is None and not return_dummy_model:
-            with patch_automodel_for_sequence_classification(model_config=model_config, patch_from_pretrained=False):
-                try:
-                    model = AutoModelForSequenceClassification.from_pretrained(
-                        model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
-                except ValueError:
-                    model = None
-
-        automodel_class = automodel_class or AutoModelForCausalLM
-        model_meta = kwargs['model_meta']
-        context_kwargs = {
-            'model_info': model_info,
-            'model_meta': model_meta,
-            'automodel_class': automodel_class,
-            'return_dummy_model': return_dummy_model,
-        }
-        if model is None:
-            if return_dummy_model:
-                context = partial(patch_automodel, **context_kwargs)
-            elif model_info.task_type == 'seq_cls' and not model_meta.is_reward:
-                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            elif model_info.task_type == 'seq_cls' and model_meta.is_reward and model_config.num_labels > 1:
-                logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '
-                               'ignore_mismatched_sizes will be set to True')
-                model_kwargs['ignore_mismatched_sizes'] = True
-                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            elif model_info.task_type == 'reranker' and not model_meta.is_reranker:
-                # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
-                logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
-                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            else:
-                context = partial(patch_automodel, **context_kwargs)
-            with context():
-                model = automodel_class.from_pretrained(
-                    model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
-
-        # fix not save modeling_xxx.py (transformers 4.45)
-        # https://github.com/huggingface/transformers/issues/24737
-        has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
-        if has_remote_code and model._auto_class is None:
-            model._auto_class = automodel_class.__name__
-
-        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
-            from swift.llm.model.patcher import patch_output_normalizer
-            patch_output_normalizer(model, model_meta=model_meta)
-
-        init_strategy = kwargs.get('init_strategy')
-        if init_strategy is not None:
-            InitModelStrategy.init_parameters(model, init_strategy)
-
-    model_info.config = model_config if model is None else model.config
-
-    pad_token = tokenizer.pad_token_id
-    if pad_token is None:
-        pad_token = tokenizer.eos_token_id
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = pad_token
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = pad_token
-    assert tokenizer.eos_token_id is not None
-    assert tokenizer.pad_token_id is not None
-
-    if model is not None:
-        # fix seq classification task
-        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
-        if leaf_modules is not None or model_info.is_moe_model:
-            # deepspeed zero3
-            deepspeed_set_z3_leaf_modules(model, leaf_modules)
-    if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-        _compat_transformers5(model, model_meta)
-    return model, tokenizer
 
 
 def get_model_tokenizer_sentence_transformers(model_dir: str,
@@ -456,8 +283,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     model_config = kwargs.get('model_config')
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'), kwargs.get('attn_impl_keys'))
-    kwargs['model_config'] = model_config
     return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
@@ -713,31 +538,259 @@ def get_model_info_meta(
     return model_info, model_meta
 
 
-def get_model_tokenizer(
-        model_id_or_path: str,
-        torch_dtype: Optional[torch.dtype] = None,
-        device_map: Union[str, Dict[str, Any], None] = None,
+def get_model_tokenizer_from_local(model_dir: str,
+                                   model_info: ModelInfo,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   *,
+                                   tokenizer=None,
+                                   model_config=None,
+                                   automodel_class=None,
+                                   **kwargs):
+    """Load the model and tokenizer from the local model_dir."""
+
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+
+    pad_token = tokenizer.pad_token_id
+    if pad_token is None:
+        pad_token = tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = pad_token
+    assert tokenizer.eos_token_id is not None
+    assert tokenizer.pad_token_id is not None
+    HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
+
+    return model, tokenizer
+
+
+class ModelLoader:
+
+    def __init__(
+        self,
+        model_info: ModelInfo,
+        model_meta: ModelMeta,
         *,
-        load_model: bool = True,
-        # hub
-        use_hf: Optional[bool] = None,
-        hub_token: Optional[str] = None,
-        revision: Optional[str] = None,
-        download_model: Optional[bool] = None,
         # model kwargs
-        model_type: Optional[str] = None,
-        quantization_config=None,
-        max_memory: Union[str, Dict[str, Any]] = None,
         attn_impl: Optional[str] = None,
-        new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,
         automodel_class=None,
-        task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
-        num_labels: Optional[int] = None,
         return_dummy_model: bool = False,
         model_kwargs: Optional[Dict[str, Any]] = None,
-        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+        **kwargs,
+    ):
+
+        self.model_info = model_info
+        self.model_meta = model_meta
+        self.attn_impl = attn_impl
+        self.attn_impl_keys = None
+        self.rope_scaling = rope_scaling
+        self.max_model_len = max_model_len
+        self.automodel_class = automodel_class
+        self.return_dummy_model = return_dummy_model
+        self.model_kwargs = model_kwargs
+
+        self.problem_type = kwargs.get('problem_type')
+        self.patch_offload = kwargs.pop('patch_offload', False)
+        self.init_strategy = kwargs.get('init_strategy')
+        self.leaf_modules = None
+        if model_info.quant_method == 'fp8':
+            torch_dtype = 'auto'
+        else:
+            torch_dtype = model_info.torch_dtype
+        if version.parse(transformers.__version__) >= version.parse('4.56'):
+            model_kwargs['dtype'] = torch_dtype
+        else:
+            model_kwargs['torch_dtype'] = torch_dtype
+        _patch_awq_compat(model_info)
+        logger.info(f'model_kwargs: {model_kwargs}')
+
+    def get_config(self, model_dir: str):
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        # fix prediction_step (internvl2, ovis, ...)
+        if not hasattr(config, 'keys_to_ignore_at_inference'):
+            config.keys_to_ignore_at_inference = []
+        if 'past_key_values' not in config.keys_to_ignore_at_inference:
+            config.keys_to_ignore_at_inference.append('past_key_values')
+        torch_dtype = self.model_info.torch_dtype
+        HfConfigFactory.set_config_attr(config, 'torch_dtype', torch_dtype, include_vit=True)
+        HfConfigFactory.compat_zero3(config)
+
+        if self.rope_scaling:
+            HfConfigFactory.set_config_attr(config, 'rope_scaling', self.rope_scaling)
+        if self.max_model_len:
+            HfConfigFactory.set_max_model_len(config, self.max_model_len)
+        num_labels = self.model_info.num_labels or getattr(config, 'num_labels', None)
+        if num_labels and self.model_info.task_type in ['seq_cls', 'reranker']:
+            self.model_info.num_labels = num_labels
+            config.num_labels = num_labels
+        if self.model_info.task_type == 'seq_cls':
+            if self.problem_type is None:
+                if self.model_info.num_labels == 1 or self.model_meta.is_reward:
+                    problem_type = 'regression'
+                else:
+                    problem_type = 'single_label_classification'
+            config.problem_type = problem_type
+        self._update_attn_impl(config)
+        return config
+
+    def get_model(self, model_dir: str, config) -> PreTrainedModel:
+        model_info = self.model_info
+        model_meta = self.model_meta
+        model_kwargs = self.model_kwargs.copy()
+        if model_info.task_type in {'seq_cls', 'reranker'
+                                    } and self.automodel_class is None and not self.return_dummy_model:
+            with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        model_dir, config=config, trust_remote_code=True, **self.model_kwargs)
+                except ValueError:
+                    model = None
+
+        automodel_class = self.automodel_class or AutoModelForCausalLM
+        context_kwargs = {
+            'model_info': model_info,
+            'model_meta': model_meta,
+            'automodel_class': automodel_class,
+            'return_dummy_model': self.return_dummy_model,
+        }
+        if model is None:
+            if self.return_dummy_model:
+                context = partial(patch_automodel, **context_kwargs)
+            elif model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
+            elif model_info.task_type == 'seq_cls' and model_meta.is_reward and config.num_labels > 1:
+                logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '
+                               'ignore_mismatched_sizes will be set to True')
+                model_kwargs['ignore_mismatched_sizes'] = True
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
+            elif model_info.task_type == 'reranker' and not model_meta.is_reranker:
+                # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
+                logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
+            else:
+                context = partial(patch_automodel, **context_kwargs)
+            with context():
+                model = automodel_class.from_pretrained(
+                    model_dir, config=config, trust_remote_code=True, **model_kwargs)
+
+            # fix not save modeling_xxx.py (transformers 4.45)
+            # https://github.com/huggingface/transformers/issues/24737
+            has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
+            if has_remote_code and model._auto_class is None:
+                model._auto_class = automodel_class.__name__
+
+            if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+                from swift.llm.model.patcher import patch_output_normalizer
+                patch_output_normalizer(model, model_meta=model_meta)
+
+            if self.init_strategy is not None:
+                InitModelStrategy.init_parameters(model, self.init_strategy)
+
+        model_info.config = config if model is None else model.config
+        if model is not None:
+            # fix seq classification task
+            if self.leaf_modules is not None or model_info.is_moe_model:
+                # deepspeed zero3
+                self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
+        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+            _compat_transformers5(model, model_meta)
+        return model
+
+    def _update_attn_impl(self, config):
+        AttnImpl.update_attn_impl(config, self.attn_impl, self.attn_impl_keys)
+
+    def _deepspeed_set_z3_leaf_modules(self, model, z3_leaf_modules):
+        if not is_deepspeed_zero3_enabled():
+            return
+        try:
+            hf_model_type = model.config.model_type
+        except Exception:
+            return
+        if z3_leaf_modules is None:
+            if hf_model_type == 'qwen3_vl_moe':
+                from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextSparseMoeBlock
+                z3_leaf_modules = [Qwen3VLMoeTextSparseMoeBlock]
+            elif hf_model_type == 'qwen3_omni_moe':
+                from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import \
+                    Qwen3OmniMoeThinkerTextSparseMoeBlock
+                z3_leaf_modules = [Qwen3OmniMoeThinkerTextSparseMoeBlock]
+            elif hf_model_type == 'qwen2_moe':
+                from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
+                z3_leaf_modules = [Qwen2MoeSparseMoeBlock]
+            elif hf_model_type == 'qwen3_moe':
+                from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
+                z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+            elif hf_model_type == 'glm4_moe':
+                from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
+                z3_leaf_modules = [Glm4MoeMoE]
+            elif hf_model_type == 'glm4v_moe':
+                from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
+                z3_leaf_modules = [Glm4vMoeTextMoE]
+            elif hf_model_type == 'gpt_oss':
+                from transformers.models.gpt_oss.modeling_gpt_oss import GptOssMLP
+                z3_leaf_modules = [GptOssMLP]
+            elif hf_model_type == 'llama4':
+                from transformers.models.llama4.modeling_llama4 import Llama4TextMoe
+                z3_leaf_modules = [Llama4TextMoe]
+            elif hf_model_type == 'qwen3_next':
+                from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
+                z3_leaf_modules = [Qwen3NextSparseMoeBlock]
+
+        if z3_leaf_modules:
+            from deepspeed.utils import set_z3_leaf_modules
+            set_z3_leaf_modules(model, z3_leaf_modules)
+            logger.info(f'Setting z3_leaf_modules: {z3_leaf_modules}')
+
+    def _init_generation_config(self, model, model_dir):
+        # generation_config
+        generation_config_path = os.path.join(model_dir, 'generation_config.json')
+        if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
+            model.generation_config = GenerationConfig.from_pretrained(model_dir)
+        # fix llama2 warning
+        if getattr(model, 'generation_config', None):
+            fix_do_sample_warning(model.generation_config)
+
+    def load(self) -> PreTrainedModel:
+        patch_offload_context = patch_attach_align_device_hook_on_blocks() if self.patch_offload else nullcontext()
+        model_dir = self.model_info.model_dir
+        with patch_get_dynamic_module(), patch_tp_plan(True), patch_offload_context:
+            config = self.get_config(model_dir)
+            model = self.get_model(model_dir, config)
+        model.model_info = self.model_info
+        model.model_meta = self.model_meta
+        model.model_dir = model_dir
+        self._init_generation_config(model, model_dir)
+        return model
+
+
+def get_model(
+    model_id_or_path: str,
+    torch_dtype: Optional[torch.dtype] = None,
+    device_map: Union[str, Dict[str, Any], None] = None,
+    *,
+    # hub
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    revision: Optional[str] = None,
+    download_model: Optional[bool] = None,
+    # model kwargs
+    model_type: Optional[str] = None,
+    quantization_config=None,
+    max_memory: Union[str, Dict[str, Any]] = None,
+    attn_impl: Optional[str] = None,
+    rope_scaling: Optional[Dict[str, Any]] = None,
+    max_model_len: Optional[int] = None,
+    automodel_class=None,
+    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    num_labels: Optional[int] = None,
+    return_dummy_model: bool = False,
+    model_kwargs: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> PreTrainedModel:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
@@ -750,13 +803,11 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-    if load_model:
-        patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
-        download_model = load_model and not return_dummy_model
-
+        download_model = not return_dummy_model
+    patch_mp_ddp()
     model_info, model_meta = get_model_info_meta(
         model_id_or_path,
         torch_dtype,
@@ -768,7 +819,6 @@ def get_model_tokenizer(
         quantization_config=quantization_config,
         task_type=task_type,
         num_labels=num_labels)
-
     if device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
@@ -776,18 +826,24 @@ def get_model_tokenizer(
         model_kwargs['quantization_config'] = quantization_config
     if max_memory:
         model_kwargs['max_memory'] = max_memory
-    model_dir = model_info.model_dir
-    get_function = model_meta.get_function
-    kwargs['automodel_class'] = automodel_class
-    kwargs['attn_impl'] = attn_impl
-    kwargs['rope_scaling'] = rope_scaling
-    kwargs['model_meta'] = model_meta
-    kwargs['max_model_len'] = max_model_len
-    kwargs['return_dummy_model'] = return_dummy_model
-    patch_offload = kwargs.pop('patch_offload', False)
-    patch_offload_context = patch_attach_align_device_hook_on_blocks() if patch_offload else nullcontext()
-    with patch_get_dynamic_module(), patch_tp_plan(load_model), patch_offload_context:
-        model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    loader = ModelLoader(
+        model_info,
+        model_meta,
+        attn_impl=attn_impl,
+        rope_scaling=rope_scaling,
+        max_model_len=max_model_len,
+        automodel_class=automodel_class,
+        return_dummy_model=return_dummy_model,
+        model_kwargs=model_kwargs,
+        **kwargs)
+    return loader.load()
+
+
+def get_model_tokenizer(
+        load_model: bool = True,
+        # hub
+        new_special_tokens: Optional[List[str]] = None,
+        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
         tokenizer = processor.tokenizer
@@ -811,16 +867,4 @@ def get_model_tokenizer(
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
-    if model is not None:
-        model.model_info = model_info
-        model.model_meta = model_meta
-        model.model_dir = model_dir
-
-        # generation_config
-        generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
-            model.generation_config = GenerationConfig.from_pretrained(model_dir)
-        # fix llama2 warning
-        if getattr(model, 'generation_config', None):
-            fix_do_sample_warning(model.generation_config)
     return model, processor
