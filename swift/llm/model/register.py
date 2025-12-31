@@ -129,76 +129,6 @@ def _set_property(model, key):
     setattr(model.__class__, key, property(_value))
 
 
-def _compat_transformers5(model, model_meta):
-    if model_meta.is_multimodal:
-        for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
-            _set_property(model, key)
-
-
-def get_model_tokenizer_sentence_transformers(model_dir: str,
-                                              model_info: ModelInfo,
-                                              model_kwargs: Dict[str, Any],
-                                              load_model: bool = True,
-                                              *,
-                                              tokenizer=None,
-                                              model_config=None,
-                                              automodel_class=None,
-                                              **kwargs):
-    from sentence_transformers import SentenceTransformer
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info.config = model_config
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    if load_model:
-        model = SentenceTransformer(
-            model_dir, trust_remote_code=True, model_kwargs={
-                'torch_dtype': torch_dtype,
-            })
-        model.config = model_config
-
-        def enable_input_require_grads(self):
-
-            def make_inputs_require_grads(module, input, output):
-                output.requires_grad_(True)
-
-            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
-
-        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
-        tokenizer = model.tokenizer
-    else:
-        model = None
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    return model, tokenizer
-
-
-def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        model_info: ModelInfo,
-                                        model_kwargs: Dict[str, Any],
-                                        load_model: bool = True,
-                                        **kwargs):
-    model_config = kwargs.get('model_config')
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-
-def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    return model, processor
-
-
-def get_model_tokenizer_reward_model(model_dir, *args, **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if 'AutoModel' in (getattr(model_config, 'auto_map', None) or {}):
-        kwargs['automodel_class'] = AutoModel
-    return get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-
 
 def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
     # Use the default values of temperature/top_p/top_k in generation_config.
@@ -365,29 +295,32 @@ class ModelLoader:
             with context():
                 model = automodel_class.from_pretrained(
                     model_dir, config=config, trust_remote_code=True, **model_kwargs)
+        # fix not save modeling_xxx.py (transformers 4.45)
+        # https://github.com/huggingface/transformers/issues/24737
+        has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
+        if has_remote_code and model._auto_class is None:
+            model._auto_class = automodel_class.__name__
 
-            # fix not save modeling_xxx.py (transformers 4.45)
-            # https://github.com/huggingface/transformers/issues/24737
-            has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
-            if has_remote_code and model._auto_class is None:
-                model._auto_class = automodel_class.__name__
+        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+            from swift.llm.model.patcher import patch_output_normalizer
+            patch_output_normalizer(model, model_meta=model_meta)
 
-            if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
-                from swift.llm.model.patcher import patch_output_normalizer
-                patch_output_normalizer(model, model_meta=model_meta)
-
-            if self.init_strategy is not None:
-                InitModelStrategy.init_parameters(model, self.init_strategy)
+        if self.init_strategy is not None:
+            InitModelStrategy.init_parameters(model, self.init_strategy)
 
         model_info.config = config if model is None else model.config
-        if model is not None:
-            # fix seq classification task
-            if self.leaf_modules is not None or model_info.is_moe_model:
-                # deepspeed zero3
-                self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
+        # fix seq classification task
+        if self.leaf_modules is not None or model_info.is_moe_model:
+            # deepspeed zero3
+            self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
         if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-            _compat_transformers5(model, model_meta)
+            self._compat_transformers5(model, model_meta)
         return model
+
+    def _compat_transformers5(self, model, model_meta):
+        if model_meta.is_multimodal:
+            for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
+                _set_property(model, key)
 
     def _update_attn_impl(self, config):
         AttnImpl.update_attn_impl(config, self.attn_impl, self.attn_impl_keys)
@@ -456,6 +389,60 @@ class ModelLoader:
         return model
 
 
+
+def get_model_tokenizer_sentence_transformers(model_dir: str,
+                                              model_info: ModelInfo,
+                                              model_kwargs: Dict[str, Any],
+                                              load_model: bool = True,
+                                              *,
+                                              tokenizer=None,
+                                              model_config=None,
+                                              automodel_class=None,
+                                              **kwargs):
+    from sentence_transformers import SentenceTransformer
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if load_model:
+        model = SentenceTransformer(
+            model_dir, trust_remote_code=True, model_kwargs={
+                'torch_dtype': torch_dtype,
+            })
+        model.config = model_config
+
+        def enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                output.requires_grad_(True)
+
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        tokenizer = model.tokenizer
+    else:
+        model = None
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    return model, tokenizer
+
+
+def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
+    # TODO: remove
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    return model, processor
+
+class RewardModelLoader(ModelLoader):
+    def get_model(self, model_dir: str, config) -> PreTrainedModel:
+        if 'AutoModel' in (getattr(config, 'auto_map', None) or {}):
+            self.automodel_class = AutoModel
+        return super().get_model(model_dir, config)
+
 def get_model(
     model_id_or_path: str,
     torch_dtype: Optional[torch.dtype] = None,
@@ -492,6 +479,7 @@ def get_model(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
+    # TODO: docstring
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
@@ -533,7 +521,7 @@ def get_model_tokenizer(
         # hub
         new_special_tokens: Optional[List[str]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
-
+    # TODO: remove
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
         tokenizer = processor.tokenizer
         patch_getattr(processor.__class__, 'tokenizer')
