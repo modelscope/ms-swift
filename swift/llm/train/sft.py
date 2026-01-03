@@ -51,6 +51,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='default')
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
+        # Apply tiled MLP before model instantiation
+        if getattr(args, 'use_tiled_mlp', False):
+            from swift.plugin.tiled_mlp import apply_tiled_mlp
+            apply_tiled_mlp(args.model_type, num_shards=getattr(args, 'tiled_mlp_num_shards', None))
         self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
@@ -266,6 +270,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     @RayHelper.function(group='default')
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
+        from swift.plugin import ActivationCpuOffloadCallBack
         args = self.args
         callbacks = []
         if args.lisa_activated_layers > 0:
@@ -276,6 +281,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 model=self.model)
             lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
             callbacks.append(lisa_callback)
+        # Check activation_cpu_offload from fsdp_config
+        fsdp_config = getattr(self.args, 'fsdp_config', {})
+        if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
+            callbacks.append(ActivationCpuOffloadCallBack())
 
         if args.is_adapter and args.train_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))
