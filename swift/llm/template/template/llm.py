@@ -424,3 +424,9 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
     ))
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.iquestcoder,
+        default_system='You are LoopCoder, a helpful assistant developed by IQuest.',
+    ))

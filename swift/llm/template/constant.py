@@ -112,6 +112,7 @@ class LLMTemplateType:
 
     bert = 'bert'
     minimind = 'minimind'
+    iquestcoder = 'iquestcoder'
 
 
 class RMTemplateType:
