@@ -5,6 +5,21 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 import torch
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
+try:
+    from transformers import BaseImageProcessor
+    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
+except ImportError:
+    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
+
+if 'TOKENIZERS_PARALLELISM' not in os.environ:
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+logger = get_logger()
+
+Tool = Dict[str, Union[str, Dict]]
+History = List[Union[Tuple[str, str], List[str]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]], List[int], None]]
+Messages = List[Message]
 Prompt = List[Union[str, List[int], List[str]]]
 Word = Union[str, List[int]]
 Context = Word
@@ -164,3 +179,96 @@ def get_last_user_round(messages):
         if messages[i]['role'] == 'user':
             return i
     return -1
+
+
+def history_to_messages(history: History,
+                        system: Optional[str] = None,
+                        roles: Optional[List[List[str]]] = None) -> 'Messages':
+    """
+    history: [['query1', 'response1'], ['query2', 'response2']]
+        or [['query1', 'response1'], ['query2', None]]
+    """
+    messages = []
+    if not roles:
+        roles = [['user', 'assistant']] * len(history)
+    else:
+        assert len(roles) == len(history), f'len(roles): {len(roles)}, len(history): {len(history)}'
+    if system is not None:
+        messages.append({'role': 'system', 'content': system})
+
+    for role, h in zip(roles, history):
+        assert isinstance(h, (list, tuple))
+        if h[0] is not None:
+            messages.append({'role': role[0], 'content': h[0]})
+        if h[1] is not None:
+            messages.append({'role': role[1], 'content': h[1]})
+    return messages
+
+
+def messages_to_history(messages: 'Messages') -> Dict[str, Any]:
+    system = None
+    messages = messages.copy()
+    if messages[0]['role'] == 'system':
+        system = messages[0]['content']
+        messages = messages[1::]
+    if len(messages) % 2 == 1:
+        messages.append({'role': 'assistant', 'content': None})
+    history = []
+    history_roles = []
+    for user_message, assistant_message in zip(messages[::2], messages[1::2]):
+        assert user_message['role'] in {'tool', 'user'}, f'user_message {user_message}'
+        assert assistant_message['role'] == 'assistant', f'assistant_message: {assistant_message}'
+        history.append([user_message['content'], assistant_message['content']])
+        history_roles.append([user_message['role'], assistant_message['role']])
+    query, response = history.pop() if history else (None, None)
+    query_role = history_roles.pop()[0] if history_roles else None
+    return {
+        'history': history,
+        'history_roles': history_roles,
+        'query': query,
+        'query_role': query_role,
+        'response': response,
+        'system': system,
+    }
+
+
+def get_packed_seq_params(position_ids: torch.Tensor):
+    assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+    position_ids_f = position_ids.flatten()
+    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
+
+    cu_seqlens = torch.cat([
+        indices_q[position_ids_f == 0],
+        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
+    ])
+
+    max_length = cu_seqlens.diff().max()  # position_ids_f.max() + 1
+    return {
+        'cu_seq_lens_q': cu_seqlens,
+        'cu_seq_lens_k': cu_seqlens,
+        'max_length_q': max_length,
+        'max_length_k': max_length,
+    }
+
+
+def update_generation_config_eos_token(generation_config, template):
+    if generation_config is None:
+        return
+    stop_words = template.template_meta.stop_words
+    eos_token_id = generation_config.eos_token_id
+    if eos_token_id is None:
+        eos_token_id = []
+    elif isinstance(eos_token_id, int):
+        eos_token_id = [eos_token_id]
+    modified = False
+    for stop_word in stop_words:
+        if stop_word is None:
+            continue
+        if isinstance(stop_word, str):
+            stop_word = template._tokenize(stop_word)
+        if isinstance(stop_word, (list, tuple)) and len(stop_word) == 1 and stop_word[0] not in eos_token_id:
+            eos_token_id.append(stop_word[0])
+            modified = True
+    if modified:
+        generation_config.eos_token_id = eos_token_id
+

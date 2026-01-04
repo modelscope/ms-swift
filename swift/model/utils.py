@@ -386,3 +386,56 @@ def _patch_conv3d():
 
 if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
     _patch_conv3d()
+
+
+
+
+def save_checkpoint(model: Optional[PreTrainedModel],
+                    processor: 'Processor',
+                    output_dir: str,
+                    *,
+                    safe_serialization: bool = True,
+                    max_shard_size: Union[int, str] = '5GB',
+                    model_dirs: List[str] = None,
+                    additional_saved_files: Optional[List[str]] = None) -> None:
+    if model is not None:
+        if model.__class__.__name__ != 'SentenceTransformer':
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        else:
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization)
+            # copy sentencetransformers files
+            from swift.utils import copy_files_by_pattern
+            copy_files_by_pattern(model.model_dir, output_dir, '*.py')
+            copy_files_by_pattern(model.model_dir, output_dir, '*.json')
+    processor.save_pretrained(output_dir)
+
+    if model_dirs is None:
+        model_dirs = []
+    else:
+        model_dirs = model_dirs.copy()
+    if model and model.model_dir and model.model_dir not in model_dirs:
+        model_dirs.append(model.model_dir)
+    for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
+        tgt_path = os.path.join(output_dir, src_file)
+        if os.path.exists(tgt_path) and src_file == 'args.json':
+            continue
+        for model_dir in model_dirs:
+            src_path: str = os.path.join(model_dir, src_file)
+            if os.path.isfile(src_path):
+                shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
+                break
+
+def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
+    model_dirs = (adapters_dir or []).copy()
+    if model_dir:
+        model_dirs.append(model_dir)
+    # The adapter takes higher priority.
+    ckpt_dir = None
+    for model_dir in model_dirs:
+        if os.path.exists(os.path.join(model_dir, 'args.json')):
+            ckpt_dir = model_dir
+            break
+    return ckpt_dir

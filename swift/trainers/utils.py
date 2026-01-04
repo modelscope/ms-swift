@@ -107,3 +107,111 @@ def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs
             target_probs = torch.exp(-loss)
         loss *= target_probs
     return loss
+
+
+def _kwargs_to_args(func, args, kwargs) -> Optional[List[Any]]:
+    parameters = inspect.signature(func).parameters
+    args = list(args)
+    parameters = list(parameters.items())[len(args):]
+    for key, param in parameters:
+        if key in kwargs:
+            args.append(kwargs[key])
+        elif param.default != param.empty:
+            args.append(param.default)
+        else:
+            return
+    return args
+
+
+def _add_gradient_checkpointing(module_list):
+
+    requires_grad = None
+
+    def _new_forward(self, *args, **kwargs):
+        nonlocal requires_grad
+        if requires_grad is None:
+            requires_grad = any(p.requires_grad for p in self.parameters())
+
+        new_args = _kwargs_to_args(self.__old_forward, args, kwargs)
+        if new_args is not None and self.gradient_checkpointing and self.training:
+            if new_args and isinstance(new_args[0], torch.Tensor) and requires_grad and not new_args[0].requires_grad:
+                new_args[0].requires_grad_(True)
+            layer_ret = self._gradient_checkpointing_func(self.__old_forward, *new_args)
+            logger.info_once('Successfully using dynamic gradient checkpointing.')
+        else:
+            layer_ret = self.__old_forward(*args, **kwargs)
+        return layer_ret
+
+    for module in module_list:
+        module.gradient_checkpointing = False
+        if hasattr(module, '_old_forward'):  # device_map
+            __old_forward = module._old_forward
+            module._old_forward = MethodType(_new_forward, module)
+        else:
+            __old_forward = module.forward
+            module.forward = MethodType(_new_forward, module)
+        module.__old_forward = __old_forward
+
+
+
+def find_module_list(model) -> Optional[nn.ModuleList]:
+    module_lists = []
+    for m in model.modules():
+        if hasattr(m, 'gradient_checkpointing') or m.__class__.__name__ == 'CheckpointWrapper':
+            return
+        if (isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10
+                and 'mlp' not in m[0].__class__.__name__.lower()):  # fix moe
+            module_lists.append(m)
+    if module_lists:
+        return max(module_lists, key=lambda x: len(x))
+
+
+def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
+    from .model import ModelMeta
+    if isinstance(model, PeftModel):
+        model = model.model
+    model_meta: ModelMeta = getattr(model, 'model_meta', None)
+    if model_meta is not None and model_meta.is_multimodal and model_meta.model_arch:
+        tower_names = model_meta.model_arch.language_model.copy()
+        if including_vit:
+            tower_names += model_meta.model_arch.vision_tower
+    else:
+        tower_names = [None]
+
+    model.supports_gradient_checkpointing = True
+    for tower_name in tower_names:
+        if tower_name is None:
+            model_tower = model
+        else:
+            model_tower = deep_getattr(model, tower_name)
+        model_tower.supports_gradient_checkpointing = True
+        module_list = find_module_list(model_tower)
+        if module_list is None:
+            continue
+        _add_gradient_checkpointing(module_list)
+        logger.info(f'Automatically add gradient_checkpointing to {model_tower.__class__}.')
+
+
+@contextmanager
+def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointing_kwargs: Optional[Dict] = None):
+    """
+    Temporarily disable gradient checkpointing, restoring the previous state afterward.
+
+    When gradient checkpointing is enabled with use_reentrant=True (default), calling the model inside a
+    torch.no_grad() block triggers a harmless PyTorch warning ("None of the inputs have requires_grad=True").
+    Temporarily disable checkpointing to avoid this warning during inference.
+
+    Args:
+        model (`PreTrainedModel`):
+            Model for which to temporarily disable gradient checkpointing.
+        gradient_checkpointing_kwargs (`dict` or `None`, *optional*):
+            Additional kwargs for gradient checkpointing enabling.
+    """
+    was_enabled = getattr(model, 'is_gradient_checkpointing', False)
+    if was_enabled:
+        model.gradient_checkpointing_disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
