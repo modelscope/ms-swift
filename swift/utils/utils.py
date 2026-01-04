@@ -510,6 +510,8 @@ def get_previous_version_from_path(current_path: str) -> Optional[str]:
 
     prev_name = names[idx - 1]
     return str(parent / prev_name)
+
+
 def retry_decorator(retry=3):
 
     def _retry(func):
