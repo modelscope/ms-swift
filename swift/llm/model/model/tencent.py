@@ -5,7 +5,7 @@ from transformers import PreTrainedModel
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
 
 

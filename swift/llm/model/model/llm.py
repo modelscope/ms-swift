@@ -37,7 +37,7 @@ register_model(
 
 
 def get_model_tokenizer_polylm(model_dir: str,
-                               model_info: ModelInfo,
+                               model_info,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
@@ -62,7 +62,7 @@ register_model(
 
 
 def get_model_tokenizer_yuan(model_dir: str,
-                             model_info: ModelInfo,
+                             model_info,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
@@ -382,7 +382,7 @@ register_model(
                 Model('IQuestLab/IQuest-Coder-V1-40B-Instruct', 'IQuestLab/IQuest-Coder-V1-40B-Instruct'),
             ])
         ],
-        TemplateType.iquestcoder,
+        template=TemplateType.iquestcoder,
         requires=['transformers==4.52.4'],
         architectures=['IQuestCoderForCausalLM'],
     ))

@@ -29,7 +29,7 @@ register_model(
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
             ]),
         ],
-        GotOcr2Loader,
+        GotOCR2Loader,
         template=TemplateType.got_ocr2,
         model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],

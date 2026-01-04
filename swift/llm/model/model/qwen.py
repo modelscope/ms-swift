@@ -17,7 +17,7 @@ from swift.llm import TemplateType, to_device
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled
 from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
 from ..register import ModelLoader, RewardModelLoader, register_model
 from ..utils import AttnImpl, use_submodel_func
@@ -53,7 +53,7 @@ class QwenLoader(ModelLoader):
 
 
 def get_model_tokenizer_qwen(model_dir: str,
-                             model_info: ModelInfo,
+                             model_info,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              model_config=None,
@@ -147,7 +147,7 @@ class QwenAudioLoader(QwenLoader):
 
 
 def get_model_tokenizer_qwen_audio(model_dir: str,
-                                   model_info: ModelInfo,
+                                   model_info,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -230,7 +230,7 @@ class QwenVLLoader(QwenLoader):
 
 
 def get_model_tokenizer_qwen_vl(model_dir: str,
-                                model_info: ModelInfo,
+                                model_info,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):

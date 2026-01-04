@@ -6,9 +6,9 @@ from transformers import AutoTokenizer
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from .glm import ChatGLMLoader, get_model_tokenizer_chatglm
+from .glm import ChatGLMLoader
 from .qwen import QwenLoader
 
 register_model(
@@ -40,7 +40,7 @@ register_model(
 
 
 def get_model_tokenizer_codellama(model_dir: str,
-                                  model_info: ModelInfo,
+                                  model_info,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):

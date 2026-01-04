@@ -498,7 +498,7 @@ class Xcomposer2Loader(ModelLoader):
 
 
 def get_model_tokenizer_xcomposer2(model_dir: str,
-                                   model_info: ModelInfo,
+                                   model_info,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):

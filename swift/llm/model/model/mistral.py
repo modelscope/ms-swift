@@ -118,7 +118,7 @@ register_model(
 
 
 def get_model_tokenizer_devstral_2505(model_dir: str,
-                                      model_info: ModelInfo,
+                                      model_info,
                                       model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
                                       **kwargs):
@@ -192,7 +192,7 @@ register_model(
 
 
 def get_model_tokenizer_mistral_2506(model_dir: str,
-                                     model_info: ModelInfo,
+                                     model_info,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):

@@ -9,7 +9,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm import TemplateType
 from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_ignore_check_imports
 from ..register import ModelLoader, register_model
 
@@ -67,7 +67,7 @@ class MiniMaxVLLoader(ModelLoader):
 
 
 def get_model_tokenizer_minimax_vl(model_dir: str,
-                                   model_info: ModelInfo,
+                                   model_info,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):

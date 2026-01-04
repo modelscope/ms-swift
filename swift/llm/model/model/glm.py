@@ -13,10 +13,10 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_get_input_embeddings, patch_output_to_input_device
 from ..register import ModelLoader, register_model
-from ..utils import AttnImpl, safe_snapshot_download
+from ..utils import safe_snapshot_download
 
 logger = get_logger()
 
@@ -60,7 +60,7 @@ class ChatGLMLoader(ModelLoader):
 
 
 def get_model_tokenizer_chatglm(model_dir: str,
-                                model_info: ModelInfo,
+                                model_info,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
@@ -114,7 +114,7 @@ register_model(
 
 
 def get_model_tokenizer_chatglm4(model_dir: str,
-                                 model_info: ModelInfo,
+                                 model_info,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -198,7 +198,7 @@ class ChatGLM4vLoader(ChatGLMLoader):
 
 
 def get_model_tokenizer_chatglm4v(model_dir: str,
-                                  model_info: ModelInfo,
+                                  model_info,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
@@ -283,7 +283,7 @@ class CogVLMLoader(ModelLoader):
 
 
 def get_model_tokenizer_cogvlm(model_dir: str,
-                               model_info: ModelInfo,
+                               model_info,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):

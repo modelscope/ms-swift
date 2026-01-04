@@ -9,7 +9,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
 from ..utils import git_clone_github, safe_snapshot_download
 
@@ -25,7 +25,7 @@ class Emu3GenLoader(ModelLoader):
 
 
 def get_model_tokenizer_emu3_gen(model_dir: str,
-                                 model_info: ModelInfo,
+                                 model_info,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -59,12 +59,11 @@ register_model(
 
 
 def get_model_tokenizer_emu3_chat(model_dir: str,
-                                  model_info: ModelInfo,
+                                  model_info,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
     # download and load vision tokenizer
     from transformers import AutoImageProcessor
     vq_model = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)

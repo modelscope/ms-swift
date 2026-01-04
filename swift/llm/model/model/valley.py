@@ -60,7 +60,7 @@ class ValleyLoader(ModelLoader):
 
 
 def get_model_tokenizer_valley(model_dir: str,
-                               model_info: ModelInfo,
+                               model_info,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):

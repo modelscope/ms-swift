@@ -308,7 +308,7 @@ class DeepseekOCR(ModelLoader):
 
 
 def get_model_tokenizer_deepseek_ocr(model_dir: str,
-                                     model_info: 'ModelInfo',
+                                     model_info,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):

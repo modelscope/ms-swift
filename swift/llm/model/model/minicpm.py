@@ -66,7 +66,7 @@ class MiniCPMVLoader(ModelLoader):
 
 
 def get_model_tokenizer_minicpmv(model_dir: str,
-                                 model_info: ModelInfo,
+                                 model_info,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -105,7 +105,7 @@ class MiniCPMV2Loader(MiniCPMVLoader):
 
 
 def get_model_tokenizer_minicpmv_2_x(model_dir: str,
-                                     model_info: ModelInfo,
+                                     model_info,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):

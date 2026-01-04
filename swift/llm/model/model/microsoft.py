@@ -24,7 +24,7 @@ class Phi3VisionLoader(ModelLoader):
 
 
 def get_model_tokenizer_phi3_vision(model_dir: str,
-                                    model_info: ModelInfo,
+                                    model_info,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
@@ -103,7 +103,7 @@ class FlorenceLoader(ModelLoader):
 
 
 def get_model_tokenizer_florence(model_dir: str,
-                                 model_info: ModelInfo,
+                                 model_info,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):

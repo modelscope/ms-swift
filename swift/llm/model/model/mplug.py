@@ -42,7 +42,7 @@ class MplugOwl2Loader(ModelLoader):
 
 
 def get_model_tokenizer_mplug_owl2(model_dir: str,
-                                   model_info: ModelInfo,
+                                   model_info,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -111,7 +111,7 @@ class MplugOwl3Loader(ModelLoader):
 
 
 def get_model_tokenizer_mplug_owl3(model_dir: str,
-                                   model_info: ModelInfo,
+                                   model_info,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -151,7 +151,7 @@ register_model(
 
 
 def get_model_tokenizer_doc_owl2(model_dir: str,
-                                 model_info: ModelInfo,
+                                 model_info,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
