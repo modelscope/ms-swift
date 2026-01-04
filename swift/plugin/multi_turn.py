@@ -233,14 +233,18 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         total_rollout_logprobs = []
         while True:
             messages = current_request.messages
-            if current_turn == 1 or not messages[-1]['content']:
-                # If it's the first turn or the last message content is empty(dummy), remove the response
+            if current_turn == 1:
+                # If it's the first turn, remove the response
                 remove_response(messages)
 
             # Get model response
             response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
                 current_request, request_config, **kwargs)
             response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
+
+            if current_turn > 1 and not messages[-1]['content']:
+                # If it's not the first turn and the last message content is dummy, remove the response
+                remove_response(messages)
 
             # Update conversation history
             completion = response_choice.message.content

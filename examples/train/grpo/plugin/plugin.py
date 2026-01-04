@@ -1196,7 +1196,7 @@ class ToolCallScheduler(MultiTurnScheduler):
         # append tool result to the completion
         infer_request.messages[-1]['content'] += (tool_results[0])
 
-        tokenizer = self.infer_engine.default_template.tokenizer
+        tokenizer = self.tokenizer
         result_tokens = tokenizer.encode(tool_results[0], add_special_tokens=False)
         token_ids.extend(result_tokens)
         loss_mask.extend([0] * len(result_tokens))
