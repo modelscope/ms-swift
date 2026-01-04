@@ -2,13 +2,11 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field, fields
-from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import megatron.core
 import torch
-from megatron.core import parallel_state
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -21,11 +19,11 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'rm'] = None
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
-    beta: float = 0.1
+    beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
@@ -39,6 +37,18 @@ class RLHFMegatronArgumentsMixin:
 
     # rm
     center_rewards_coefficient: Optional[float] = None
+
+    # gkd
+    teacher_model: Optional[str] = field(default=None)
+    teacher_model_type: Optional[str] = field(default=None)
+    teacher_model_revision: Optional[str] = field(default=None)
+    lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
+    seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
+    offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
+    sft_alpha: float = 0.0  # Weight for SFT loss in GKD (0 = pure JSD, >0 = JSD + sft_alpha * SFT)
+
+    # grpo/gkd
+    temperature: float = 0.9  # Temperature for sampling and loss computation
 
     # grpo
     generation_batch_size: Optional[int] = None
@@ -60,6 +70,7 @@ class RLHFMegatronArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
+
     use_vllm: bool = True
     vllm_mode: Optional[Literal['server', 'colocate']] = None
 
@@ -125,6 +136,11 @@ class RLHFMegatronArgumentsMixin:
     # Falls back to old_per_token_logps if rollout_per_token_logps is not available
     off_policy_sequence_mask_delta: Optional[float] = None
 
+    # entropy
+    log_entropy: bool = False
+    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
+    top_entropy_quantile: float = 1.0
+
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
     # reward model
@@ -145,11 +161,6 @@ class RLHFMegatronArgumentsMixin:
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
 
-    # entropy
-    log_entropy: bool = False
-    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
-    top_entropy_quantile: float = 1.0
-
     num_iterations: int = 1
 
     # dataset
@@ -166,6 +177,9 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type is None:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
+        default_beta = {'gkd': 0.5, 'grpo': 0.04}
+        if self.beta is None:
+            self.beta = default_beta.get(self.rlhf_type, 0.1)
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
@@ -188,10 +202,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
             if self.multi_turn_scheduler:
                 raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
-            if self.log_entropy:
-                raise ValueError('log_entropy is not supported for Megatron GRPO right now')
-            if self.top_entropy_quantile < 1:
-                raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
@@ -329,7 +339,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 10
+    dataloader_prefetch_factor: int = 2
+    group_by_length: bool = False
 
     architectures: Optional[str] = None
     llm_architectures: Optional[str] = None
@@ -344,6 +355,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
+
+    report_to: Optional[Literal['wandb', 'swanlab']] = None
 
     # visual
     vit_gradient_checkpointing: bool = True
@@ -574,7 +587,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_level: Optional[str] = None
-    wandb_project: Optional[str] = None
+    wandb_project: str = 'megatron-swift'
     wandb_exp_name: Optional[str] = None
     wandb_save_dir: Optional[str] = None
 
@@ -642,6 +655,13 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.no_bias_dropout_fusion is None:
             self.no_bias_dropout_fusion = False
         # moe
+        MegatronArguments._set_moe_default(self)
+        # log
+        if self.wandb_exp_name is None:
+            self.wandb_exp_name = self.save
+
+    @staticmethod
+    def _set_moe_default(self):
         if self.use_shared_expert_gate is None:
             self.use_shared_expert_gate = False
         if self.moe_router_score_function is None:
@@ -655,7 +675,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.moe_router_enable_expert_bias is None:
             self.moe_router_enable_expert_bias = False
         if self.moe_layer_freq is None:
-            self.moe_layer_freq = '1'
+            self.moe_layer_freq = 1
         if self.mrope_interleaved is None:
             self.mrope_interleaved = False
 
@@ -675,17 +695,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
-
-    @staticmethod
-    def _patch_megatron_timeout(distributed_timeout_minutes: int):
-        create_group_origin = parallel_state.create_group
-
-        def create_group(ranks=None, timeout=None, *args, **kwargs):
-            if timeout is None:
-                timeout = timedelta(minutes=distributed_timeout_minutes)
-            return create_group_origin(ranks, timeout, *args, **kwargs)
-
-        parallel_state.create_group = create_group
 
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
@@ -707,7 +716,6 @@ class MegatronArguments(ExtraMegatronArguments):
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
-        self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
@@ -720,6 +728,12 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
+        if not self.no_gradient_accumulation_fusion:
+            try:
+                import apex
+            except ImportError:
+                logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
+                self.no_gradient_accumulation_fusion = True
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:

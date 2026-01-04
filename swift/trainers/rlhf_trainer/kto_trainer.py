@@ -8,6 +8,7 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
+from swift.llm import disable_gradient_checkpointing
 from swift.utils import get_logger
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -123,7 +124,7 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         KL_logps = None
         if self.calculate_KL:
             KL_model_kwargs, labels = self._get_model_kwargs(batch, 'KL_completion_')
-            with torch.no_grad():
+            with torch.no_grad(), disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
                 KL_logits = model(**KL_model_kwargs).logits
             KL_logps, _ = self.get_batch_logps(KL_model_kwargs, KL_logits, labels)
         return KL_logps

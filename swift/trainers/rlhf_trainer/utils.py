@@ -772,9 +772,48 @@ def get_gather_if_zero3_context(trainer, is_zero3: Optional[bool] = None):
     return gather_if_zero3
 
 
+def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
+    """Prepare a model with FSDP wrapping
+
+    This function wraps a model with the appropriate FSDP mechanism based on
+    the accelerator configuration. It's designed for auxiliary models like
+    ref_model, teacher_model, or reward_model that need to be FSDP-wrapped
+    to prevent mixing DTensor (main model) with regular Tensor (auxiliary model).
+
+    Args:
+        model: The model to wrap with FSDP.
+        accelerator: The accelerator instance from trainer.
+        evaluation_mode: Whether to set the model to evaluation mode. Defaults to True.
+            When True, the model is frozen BEFORE FSDP wrapping to avoid float32 upcast,
+            which saves significant memory for evaluation-only models.
+
+    Returns:
+        The FSDP-wrapped model.
+    """
+    if evaluation_mode:
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad_(False)
+
+    if getattr(accelerator, 'is_fsdp2', False):
+        # FSDP2 uses fully_shard API with DTensor
+        from accelerate.utils.fsdp_utils import fsdp2_prepare_model
+        model = fsdp2_prepare_model(accelerator, model)
+    else:
+        # FSDP1 uses FullyShardedDataParallel wrapper
+        from trl.models.utils import prepare_fsdp as trl_prepare_fsdp
+        model = trl_prepare_fsdp(model, accelerator)
+
+    return model
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
-    from vllm.lora.models import LoRAModel
+    try:
+        from vllm.lora.models import LoRAModel
+    except ImportError:
+        # vllm >= 0.13 https://github.com/vllm-project/vllm/pull/30253
+        from vllm.lora.lora_model import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
 
     try:
@@ -819,37 +858,42 @@ def patch_vllm_load_adapter():
             # to ensure correct loading of lora weights.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
-            if isinstance(lora_request, TensorLoRARequest):  # this is the patch
+
+            lora_request_kwargs = {
+                'peft_helper': peft_helper,
+                'lora_model_id': lora_request.lora_int_id,
+                'device': 'cpu',
+                'dtype': self.lora_config.lora_dtype,
+                'weights_mapper': hf_to_vllm_mapper,
+            }
+            if hasattr(self, 'embedding_padding_modules'):
+                lora_request_kwargs['embedding_modules'] = self.embedding_modules
+                lora_request_kwargs['embedding_padding_modules'] = self.embedding_padding_modules
+            else:
+                lora_request_kwargs['model_vocab_size'] = self.vocab_size
+            if hasattr(self.lora_config, 'lora_extra_vocab_size'):
+                # lora_extra_vocab_size is removed in vllm >= 0.12
+                # https://github.com/vllm-project/vllm/issues/23474
+                lora_request_kwargs['target_embedding_padding'] = (
+                    self.vocab_size + self.lora_config.lora_extra_vocab_size)
+
+            if isinstance(lora_request, TensorLoRARequest):
                 lora = self._lora_model_cls.from_lora_tensors(
-                    lora_model_id=lora_request.lora_int_id,
                     tensors=lora_tensors,
-                    peft_helper=peft_helper,
-                    device='cpu',
-                    dtype=self.lora_config.lora_dtype,
-                    embeddings=None,
-                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
-                    embedding_modules=self.embedding_modules,
-                    embedding_padding_modules=self.embedding_padding_modules,
-                    weights_mapper=hf_to_vllm_mapper,
+                    **lora_request_kwargs,
                 )
             else:
                 lora = self._lora_model_cls.from_local_checkpoint(
                     lora_path,
                     expected_lora_modules,
-                    peft_helper=peft_helper,
-                    lora_model_id=lora_request.lora_int_id,
-                    device='cpu',
-                    dtype=self.lora_config.lora_dtype,
-                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
-                    embedding_modules=self.embedding_modules,
-                    embedding_padding_modules=self.embedding_padding_modules,
-                    weights_mapper=hf_to_vllm_mapper,
+                    **lora_request_kwargs,
                 )
         except Exception as e:
             raise e
-        if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
-            raise ValueError(f'LoRA added vocab size {lora.extra_vocab_size} is greater than '
-                             f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
+        if hasattr(self.lora_config, 'lora_extra_vocab_size'):
+            if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
+                raise ValueError(f'LoRA added vocab size {lora.extra_vocab_size} is greater than '
+                                 f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
         return lora
 
     def patched_get_lora_tokenizer(self: TokenizerGroup, lora_request: LoRARequest):

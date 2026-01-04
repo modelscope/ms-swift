@@ -145,9 +145,10 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.
-- wandb_project: The name of the wandb project. Defaults to '', which means ignoring wandb.
-- wandb_exp_name: The name of the wandb experiment. Defaults to ''.
-- wandb_save_dir: The local path to save wandb results. Defaults to ''.
+- report_to: (ms-swift>=3.12) The logging backend to enable. Defaults to None. Options are 'wandb' and 'swanlab'. (TensorBoard will always be started). Login can be done using the `WANDB_API_KEY` or `SWANLAB_API_KEY` environment variables.
+- wandb_project: The wandb/swanlab project name, depending on `report_to`. Defaults to 'megatron-swift'.
+- wandb_exp_name: The wandb/swanlab experiment name. Defaults to the value of `--save`.
+- wandb_save_dir: The path to save wandb/swanlab results locally. Default is None, which means it will be stored in `f'{args.save}/wandb'` or `f'{args.save}/swanlab'`.
 
 **Evaluation Parameters**:
 
@@ -318,7 +319,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - Note: The "learning rate" printed in the logs is the learning rate of the LLM.
 - aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to `None`. This parameter only takes effect when `vit_gradient_checkpointing` is enabled.
-- 🔥packing: Packs data samples of varying lengths into samples of uniform length, achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other (except for Qwen3-Next, which contains linear-attention). This parameter defaults to `False`. All training tasks in Megatron-SWIFT support this parameter. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
+- 🔥packing: Use the `padding_free` method to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other (except for Qwen3-Next, which contains linear-attention). This parameter defaults to `False`. All training tasks in Megatron-SWIFT support this parameter. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - streaming: Stream data loading and processing, default is False. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)
@@ -339,14 +340,15 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - In "ms-swift>3.12", val_dataset will no longer be shuffled.
 - dataloader_pin_memory: Default is True. Using this parameter requires "ms-swift>=3.12".
 - dataloader_persistent_workers: Default is True. Using this parameter requires "ms-swift>=3.12".
-- dataloader_prefetch_factor: Default is 10. Using this parameter requires "ms-swift>=3.12".
+- dataloader_prefetch_factor: Default is 2. Using this parameter requires "ms-swift>=3.12".
+- 🔥group_by_length: (ms-swift>=3.12) Whether to group samples with approximately the same length together in the training dataset (with a random factor) to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
 
 
 ## RLHF Parameters
 
 In addition to inheriting the training parameters, the following parameters are also supported:
 
-- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', and 'rm' are available.
+- 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', 'rm', and 'gkd' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
 
@@ -428,6 +430,22 @@ In addition to inheriting the training parameters, the following parameters are 
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking threshold from [DeepSeek-V3.2 paper](https://arxiv.org/abs/2512.02556). When set, computes `mean(old_policy_logps - policy_logps)` for each sequence. If this value exceeds the threshold AND the sequence has negative advantage, the sequence is masked out from loss computation. For details, refer to the [documentation](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking).
 
 Built-in reward function parameters refer to the [documentation](../Instruction/Command-line-parameters.md#reward-function-parameters).
+
+### GKD Parameters
+
+- teacher_model: Path or model ID of the teacher model. Required.
+- teacher_model_type: Teacher model type. Default is None, auto-detected.
+- teacher_model_revision: Teacher model version. Default is None.
+- beta: JSD divergence interpolation coefficient. 0.0 means Forward KL, 0.5 means symmetric JSD, 1.0 means Reverse KL. Default is 0.5.
+- lmbda: On-Policy learning probability. 0.0 means pure Off-Policy, 1.0 means pure On-Policy. Default is 0.5.
+- seq_kd: Whether to use teacher-generated responses (Sequential KD), not yet supported. Default is False.
+- temperature: Temperature for sampling and loss computation. Default is 0.9.
+- offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
+- sft_alpha: Mixing coefficient for SFT loss, `loss = jsd_loss + sft_alpha * sft_loss`. Takes effect when using dataset responses (Off-Policy). Default is 0.
+- max_completion_length: Maximum tokens for generation. Default is 512.
+- vllm_mode: Same as GRPO parameter, used for On-Policy generation. Colocate mode deploys vLLM within the program.
+  - Note: On-Policy generation requires vLLM (`--use_vllm true --vllm_mode colocate/server`).
+  - When `lmbda > 0` but vLLM is not enabled, it will automatically fall back to Off-Policy mode.
 
 ## Export Parameters
 

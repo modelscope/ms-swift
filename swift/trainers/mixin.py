@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import json
@@ -46,7 +46,8 @@ from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, g
 from swift.tuners import SwiftModel
 from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
                          ms_logger_context, seed_worker)
-from ..llm.model.patcher import get_lm_head_model, revert_padding_free, transformers_seq_cls_forward
+from ..llm.model.patcher import (gather_sequence_parallel_outputs, get_lm_head_model, revert_padding_free,
+                                 transformers_seq_cls_forward)
 from .arguments import TrainingArguments
 from .utils import (can_return_loss, find_labels, get_function, get_resume_dir, is_instance_of_ms_model,
                     replace_index_file)
@@ -285,7 +286,7 @@ class SwiftMixin:
         supported_names = ('SentenceTransformer', )
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
-        save_safetensors = self.args.save_safetensors
+        save_safetensors = getattr(self.args, 'save_safetensors', True)
         use_flash_ckpt = self.args.use_flash_ckpt
 
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
@@ -741,56 +742,101 @@ class SwiftMixin:
                 return {'last_hidden_state': input['sentence_embedding']}
 
             model.forward = MethodType(forward_sentence_transformer, model)
-        elif self.template.padding_free:
-            if self.args.task_type == 'embedding':
-                llm_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+        else:
+            task_type = getattr(self.args, 'task_type', None)
+            sp_enabled = self.template.sequence_parallel_size > 1
+            pf_enabled = bool(self.template.padding_free)
 
-                def revert_padding_free_hook(module, args, input, output):
-                    return revert_padding_free(output, input, padding_side)
+            def _register_llm_hooks_in_order(llm_model: nn.Module, hooks: List[Callable]):
+                # hooks are provided in desired execution order.
+                # We use prepend=True and register in reverse to preserve the order.
+                for hook in reversed(hooks):
+                    llm_model.register_forward_hook(hook, with_kwargs=True, prepend=True)
 
-                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
-            elif self.args.task_type == 'seq_cls':
-                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
-                lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+            def _get_hook_target_model(task_type_: str) -> nn.Module:
+                # For embedding, we hook on the LM-head model because embedding outputs are typically
+                # produced from `output.logits` by `patch_output_normalizer` (registered on LM-head model).
+                if task_type_ == 'embedding':
+                    return get_lm_head_model(self.model, model_meta=self.model.model_meta)
+                return get_llm_model(self.model, model_meta=self.model.model_meta)
 
-                @wraps(model.forward.__func__)
-                def seq_cls_forward(model, *args, **kwargs):
+            # --- seq_cls / reranker / generative_reranker unified pipeline ---
+            if task_type in {'seq_cls', 'reranker', 'generative_reranker', 'embedding'}:
+                llm_model = _get_hook_target_model(task_type)
 
-                    def inner_forward(*args, **kwargs):
-                        output = llm_model.forward(*args, **kwargs)
-                        return revert_padding_free(output, kwargs, padding_side)
+                hooks: List[Callable] = []
 
-                    return transformers_seq_cls_forward(
-                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
+                if sp_enabled:
 
-                model.forward = MethodType(seq_cls_forward, model)
-            elif self.args.task_type == 'reranker':
-                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
-                lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+                    def sp_gather_hook(module, args, input, output):
+                        return gather_sequence_parallel_outputs(output, input)
 
-                @wraps(model.forward.__func__)
-                def reranker_forward(model, *args, **kwargs):
+                    hooks.append(sp_gather_hook)
 
-                    def inner_forward(*args, **kwargs):
-                        output = llm_model.forward(*args, **kwargs)
-                        return revert_padding_free(output, kwargs, padding_side)
+                if pf_enabled:
+                    if sp_enabled:
 
-                    padding_free_fn = getattr(model, 'padding_free_fn', None)
-                    if callable(padding_free_fn):
-                        output = inner_forward(*args, **kwargs)
-                        return padding_free_fn(output, kwargs, padding_side)
+                        def revert_padding_free_hook(module, args, input, output):
+                            # Use full packed position ids cached by sequence_parallel.prepare_inputs
+                            from swift.trainers.sequence_parallel import sequence_parallel
+                            position_ids = sequence_parallel.real_position_ids
+                            tmp_input = {'position_ids': position_ids}
+                            return revert_padding_free(output, tmp_input, padding_side)
+                    else:
 
-                    return transformers_seq_cls_forward(
-                        lm_head_model, *args, origin_forward=inner_forward, padding_side=padding_side, **kwargs)
+                        def revert_padding_free_hook(module, args, input, output):
+                            return revert_padding_free(output, input, padding_side)
 
-                model.forward = MethodType(reranker_forward, model)
-            elif self.args.task_type == 'generative_reranker':
-                llm_model = get_llm_model(self.model, model_meta=self.model.model_meta)
+                    hooks.append(revert_padding_free_hook)
 
-                def revert_padding_free_hook(module, args, input, output):
-                    return revert_padding_free(output, input, padding_side)
+                if hooks:
+                    _register_llm_hooks_in_order(llm_model, hooks)
 
-                llm_model.register_forward_hook(revert_padding_free_hook, with_kwargs=True, prepend=True)
+                # wrappers for seq_cls / reranker (pooling/head must see gathered/reverted outputs)
+                if task_type in {'seq_cls', 'reranker'} and (sp_enabled or pf_enabled):
+                    lm_head_model = get_lm_head_model(self.model, model_meta=self.model.model_meta)
+
+                    if task_type == 'seq_cls':
+
+                        @wraps(model.forward.__func__)
+                        def seq_cls_forward(model, *args, **kwargs):
+                            sp_kwargs = dict(kwargs)
+
+                            def inner_forward(*args, **_kwargs):
+                                return llm_model(*args, **_kwargs)
+
+                            return transformers_seq_cls_forward(
+                                lm_head_model,
+                                *args,
+                                origin_forward=inner_forward,
+                                padding_side=padding_side,
+                                **sp_kwargs,
+                            )
+
+                        model.forward = MethodType(seq_cls_forward, model)
+                    else:
+
+                        @wraps(model.forward.__func__)
+                        def reranker_forward(model, *args, **kwargs):
+                            sp_kwargs = dict(kwargs)
+
+                            def inner_forward(*args, **_kwargs):
+                                return llm_model(*args, **_kwargs)
+
+                            padding_free_fn = getattr(model, 'padding_free_fn', None)
+                            if callable(padding_free_fn):
+                                output = inner_forward(*args, **sp_kwargs)
+                                return padding_free_fn(output, sp_kwargs, padding_side)
+
+                            return transformers_seq_cls_forward(
+                                lm_head_model,
+                                *args,
+                                origin_forward=inner_forward,
+                                padding_side=padding_side,
+                                **sp_kwargs,
+                            )
+
+                        model.forward = MethodType(reranker_forward, model)
 
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
@@ -1207,7 +1253,7 @@ class DataLoaderMixin:
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = self.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = partial(
-                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=sequence_parallel.dp_rank)
 
             return DataLoaderShard(dataset, device=self.accelerator.device, **dataloader_params)
         else:
@@ -1256,6 +1302,9 @@ class DataLoaderMixin:
             }
 
             if hasattr(train_dataset, '__len__'):
+                if args.group_by_length:
+                    batch_sampler_params['group_by_length'] = args.group_by_length
+                    batch_sampler_params['lengths'] = train_dataset['length']
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader_params['worker_init_fn'] = partial(
@@ -1273,6 +1322,15 @@ class DataLoaderMixin:
                 dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device, skip_batches=skip_batches)
         return dataloader
 
+    @contextmanager
+    def _disable_group_by_length(self):
+        group_by_length = getattr(self.args, 'group_by_length', False)
+        self.args.group_by_length = False
+        try:
+            yield
+        finally:
+            self.args.group_by_length = group_by_length
+
     def get_eval_dataloader(self, eval_dataset=None):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
@@ -1281,5 +1339,6 @@ class DataLoaderMixin:
             eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
             dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size)
         if dataloader is None:
-            return super().get_eval_dataloader(eval_dataset=eval_dataset)
+            with self._disable_group_by_length():
+                return super().get_eval_dataloader(eval_dataset=eval_dataset)
         return dataloader

@@ -27,6 +27,24 @@ logger = get_logger()
 class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
     args: TrainingArguments
 
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
+        # For tasks whose `labels` are per-sample (e.g. seq_cls/reranker/embedding), we must NOT let
+        # SP code treat them as token labels. We detect that case by `labels.dim() == 1` and temporarily
+        # remove labels during `prepare_inputs`.
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            labels = inputs.get('labels', None)
+            pop_labels = isinstance(labels, torch.Tensor) and labels.dim() == 1
+            if pop_labels:
+                labels = inputs.pop('labels', None)
+            try:
+                sequence_parallel.prepare_inputs(inputs)
+            finally:
+                if pop_labels and labels is not None:
+                    inputs['labels'] = labels
+        return inputs
+
     @contextmanager
     def _patch_loss_function(self):
         model = self.model
@@ -67,7 +85,12 @@ class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
 
 def gather_for_unpadded_tensors(input_data, use_gather_object=False):
     from accelerate.utils import gather_object
-    input_data = gather_object(input_data)
+    from swift.trainers.sequence_parallel import sequence_parallel
+
+    if getattr(sequence_parallel, 'dp_group', None) is not None:
+        input_data = sequence_parallel._gather_object_dp(input_data)
+    else:
+        input_data = gather_object(input_data)
     output = []
     for _data in input_data:
         if len(_data.shape) == 0:

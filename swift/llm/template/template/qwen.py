@@ -23,7 +23,7 @@ from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
 @dataclass
@@ -52,15 +52,16 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
+    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
 
 
-class Qwen3Template(ThinkingTemplate):
-    no_think_prefix = '<think>\n\n</think>\n\n'
+@dataclass
+class Qwen3MixedTemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = None
+    non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
+register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'
@@ -80,18 +81,14 @@ QWEN3_GUARD_TEMPLATE = (
     "categories, separated by commas. If the content is safe, use 'Categories: None'."
     '<|im_end|>\n<|im_start|>assistant\n')
 
-register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwen3_guard,
-        default_system=None,
-        template_cls=Qwen3Template,
-        prompt=[QWEN3_GUARD_TEMPLATE],
-        response_prefix='<think>\n\n</think>\n\n'))
+register_template(Qwen3MixedTemplateMeta(
+    LLMTemplateType.qwen3_guard,
+    prompt=[QWEN3_GUARD_TEMPLATE],
+))
 
 register_template(
     QwenTemplateMeta(
-        LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
-        template_cls=ThinkingTemplate))
+        LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
@@ -131,11 +128,8 @@ qwen3_reranker_system = (
     'Note that the answer can only be \"yes\" or \"no\".')
 
 register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwen3_reranker,
-        default_system=qwen3_reranker_system,
-        response_prefix='<think>\n\n</think>\n\n',
-        template_cls=Qwen3RerankerTemplate))
+    Qwen3MixedTemplateMeta(
+        LLMTemplateType.qwen3_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3RerankerTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
@@ -416,13 +410,11 @@ class Qwen2VLTemplate(Template):
         return res
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        position_ids = []
         for r in row:
-            r = r.copy()
-            r['input_ids'] = torch.tensor(r['input_ids'])[None]
-            position_ids.append(self._get_position_ids(r))
+            r_copy = r.copy()
+            r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
+            r['position_ids'] = self._get_position_ids(r_copy)
         packed = super().packing_row(row)
-        packed['position_ids'] = torch.concat(position_ids, dim=-1)
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
@@ -537,7 +529,9 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         return inputs
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
@@ -792,6 +786,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths,
             video_second_per_grid,
         )
+        if torch.is_floating_point(position_ids):
+            position_ids = position_ids.to(torch.int64)
         return self._concat_text_position_ids(position_ids)
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -823,7 +819,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
-class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
+class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
     version = 'omni_v3'
     norm_bbox = 'norm1000'
     placeholder_tokens = ['<|image_pad|>', '<|audio_pad|>', '<|video_pad|>']
@@ -832,7 +828,9 @@ class Qwen3OmniTemplate(Qwen2_5OmniTemplate, ThinkingTemplate):
         return inputs
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
 class Ovis1_6Template(Template):
@@ -942,7 +940,7 @@ register_template(QwenTemplateMeta(
 ))
 
 
-class Ovis2_5Template(ThinkingTemplate):
+class Ovis2_5Template(Template):
     use_model = True
     skip_prompt = False
     support_padding_free = True
@@ -1046,11 +1044,13 @@ class Ovis2_5Template(ThinkingTemplate):
         return res
 
 
-register_template(QwenTemplateMeta(
-    MLLMTemplateType.ovis2_5,
-    template_cls=Ovis2_5Template,
-    default_system=None,
-))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.ovis2_5,
+        template_cls=Ovis2_5Template,
+        default_system=None,
+        is_thinking=True,
+    ))
 
 
 @dataclass

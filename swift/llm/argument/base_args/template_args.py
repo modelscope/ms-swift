@@ -54,34 +54,65 @@ class TemplateArguments:
             is typically used for pre-training. Defaults to True.
             Note: Defaults to False for `swift pt`, which uses the generation template. This parameter is compatible
             with multimodal models.
+        padding_side (Literal['left', 'right', None]): The side to pad on when `batch_size >= 2` during training.
+            Options are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always
+            on the left.
+            Note: Defaults to 'left' for PPO and GKD.
         padding_free (bool): If True, flattens the data within a batch to avoid padding, reducing memory usage and
             speeding up training. Sequences within the batch remain causally isolated. Defaults to False. Supported for
             CPT/SFT/DPO/GRPO/KTO/GKD.
             Note: This requires `--attn_impl flash_attn` and `transformers>=4.44`. Compared to packing, padding_free
             has no preprocessing overhead, but packing offers faster training speeds and more stable memory usage.
-        padding_side (Literal['left', 'right', None]): The side to pad on when `batch_size >= 2` during training.
-            Options are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always
-            on the left.
-            Note: Defaults to 'left' for PPO and GKD.
-        loss_scale (str): Specifies the weight for loss calculation on tokens. Defaults to 'default'.
-            - 'default': Calculates loss on all assistant responses (including history), but excludes system prompts,
-            user inputs, multimodal tokens, and `tool_response` content.
-            - 'last_round': Only calculates loss on the final round's response. (Default for RLHF).
-            - 'all': Calculates loss on all tokens. (Default for `swift pt`).
-            - 'ignore_empty_think': Same as 'default', but ignores loss for empty `<think>` blocks.
-            - 'last_round_with_ignore_empty_think': Same as 'last_round', but ignores empty `<think>` blocks.
-            - Agent-specific scales (e.g., 'react', 'hermes', 'qwen'): Based on 'default', but with a loss weight of 2
-            for `tool_call` parts.
-            - For more options, see
-            [`loss_scale.py`](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py).
+        loss_scale (str): Loss weight configuration for training tokens. Default is `'default'`.
+            loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies:
+            'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
+            For available options, refer to
+            [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py).
+            ms-swift>=3.12 supports mixing basic strategies with other strategies,
+            for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
+            If no basic strategy is specified, it defaults to 'default',
+            for example: 'hermes' is equivalent to 'default+hermes'.
+            - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss
+            (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are
+            not included in loss calculation**). (**Default value for SFT**)
+            - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round
+            means all content after the last "user", previously it only included the last "assistant".
+            (**Default value for RLHF**)
+            - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
+            - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'`
+            (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+            - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
         sequence_parallel_size (int): The size of sequence parallelism. Defaults to 1. Currently supported for CPT,
             SFT, DPO, and GRPO.
-        response_prefix (Optional[str]): A prefix string for the response, e.g., '<think>\\n' for Qwen-32B. This
-            parameter only affects inference. Defaults to None, which is auto-set based on the model.
         template_backend (Literal['swift', 'jinja']): The backend to use for templating. Options are 'swift' or
             'jinja'. Defaults to 'swift'. If 'jinja' is used, it will leverage `transformers.apply_chat_template`.
             Note: The 'jinja' backend is only supported for inference, not for training, as it cannot determine the
             token range for loss calculation.
+        response_prefix (Optional[str]): A prefix string for the response, e.g., '<think>\\n' for Qwen-32B. This
+            parameter only affects inference. Defaults to None, which is auto-set based on the model.
+        enable_thinking (Optional[bool]): (ms-swift>=3.12) This parameter takes effect during inference,
+            indicating whether to enable thinking mode. Default is None, the default value is determined by the
+            template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates).
+            If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking
+            model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix.
+            If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`.
+            Note: The priority of this parameter is lower than the response_prefix parameter.
+            - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled,
+            we will remove historical thinking content during both inference and training (the thinking content
+            of the last round is retained, i.e., the content after the last user message).
+            If the basic strategy of loss_scale during training is not last_round, for example 'default',
+            then historical thinking content will not be removed.
+        add_non_thinking_prefix (bool): This parameter only takes effect during training, indicating whether to
+            add a non-thinking prefix to data samples whose assistant part does not start with the thinking
+            marker `'<think>'` (typically hybrid thinking models contain a non-thinking prefix).
+            This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True.
+            For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is
+            `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`.
+            Note: During training, if the basic strategy of loss_scale is last_round, this modification is only
+            applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to
+            every round of data. If set to False, no non-thinking prefix is added to data samples.
+
+
     """
     template: Optional[str] = field(
         default=None, metadata={'help': f'template choices: {list(TEMPLATE_MAPPING.keys())}'})
@@ -93,14 +124,17 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     use_chat_template: Optional[bool] = None
+    padding_side: Literal['left', 'right', None] = None
     # train
     padding_free: bool = False
-    padding_side: Literal['left', 'right', None] = None
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
-    response_prefix: Optional[str] = None
     template_backend: Literal['swift', 'jinja'] = 'swift'
+    # thinking
+    response_prefix: Optional[str] = None
+    enable_thinking: Optional[bool] = None
+    add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
         if self.template is None and getattr(self, 'model_meta', None):
@@ -142,12 +176,15 @@ class TemplateArguments:
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
             'remove_unused_columns': remove_unused_columns,
+            'padding_side': self.padding_side,
             # train
             'padding_free': self.padding_free,
-            'padding_side': self.padding_side,
             'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
             # infer/deploy
-            'response_prefix': self.response_prefix,
             'template_backend': self.template_backend,
+            # thinking
+            'response_prefix': self.response_prefix,
+            'enable_thinking': self.enable_thinking,
+            'add_non_thinking_prefix': self.add_non_thinking_prefix,
         }

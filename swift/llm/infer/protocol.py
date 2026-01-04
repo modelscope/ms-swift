@@ -65,6 +65,8 @@ class RequestConfig:
     length_penalty: float = 1.
     # Return token_ids additionally (non-stream)
     return_details: bool = False
+    # vLLM structured outputs (guided decoding)
+    structured_outputs_regex: Optional[str] = None
 
     def __post_init__(self):
         if self.stop is None:
@@ -111,7 +113,7 @@ class MultiModalRequestMixin:
     images: List[str] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
-    objects: Dict[str, List[Any]] = field(default_factory=dict)
+    objects: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:

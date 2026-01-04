@@ -6,13 +6,13 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .callback import extra_callbacks
     from .loss import loss_mapping, get_loss_func
-    from .loss_scale import loss_scale_map
+    from .loss_scale import loss_scale_map, get_loss_scale
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu, metric_mapping
     from .optimizer import optimizers_map
     from .agent_template import agent_templates
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
-    from .orm import orms, ORM
+    from .orm import orms, ORM, AsyncORM
     from .multi_turn import multi_turns, MultiTurnScheduler
     from .rm_plugin import rm_plugins
     from .env import envs, Env
@@ -23,14 +23,14 @@ else:
     _import_structure = {
         'callback': ['extra_callbacks'],
         'loss': ['loss_mapping', 'get_loss_func'],
-        'loss_scale': ['loss_scale_map'],
+        'loss_scale': ['loss_scale_map', 'get_loss_scale'],
         'metric':
         ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu', 'metric_mapping'],
         'optimizer': ['optimizers_map'],
         'agent_template': ['agent_templates'],
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
-        'orm': ['orms', 'ORM'],
+        'orm': ['orms', 'ORM', 'AsyncORM'],
         'multi_turn': ['multi_turns', 'MultiTurnScheduler'],
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],

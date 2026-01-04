@@ -5,7 +5,8 @@ from swift.llm.train.kto import prepare_kto_dataset
 from swift.trainers.rlhf_trainer.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, is_last_rank
 from ..argument import MegatronRLHFArguments
-from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer, MegatronKTOTrainer, MegatronRewardTrainer
+from ..trainers import (MegatronDPOTrainer, MegatronGKDTrainer, MegatronGRPOTrainer, MegatronKTOTrainer,
+                        MegatronRewardTrainer)
 from .sft import MegatronSft
 
 logger = get_logger()
@@ -19,6 +20,7 @@ class MegatronRLHF(MegatronSft):
         args = self.args
         trainer_mapping = {
             'dpo': MegatronDPOTrainer,
+            'gkd': MegatronGKDTrainer,
             'grpo': MegatronGRPOTrainer,
             'kto': MegatronKTOTrainer,
             'rm': MegatronRewardTrainer
@@ -27,17 +29,17 @@ class MegatronRLHF(MegatronSft):
         if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
         kwargs = {}
-        if args.rlhf_type == 'grpo':
+        if args.rlhf_type in ('grpo', 'gkd'):
             kwargs['vllm_client'] = self._prepare_vllm_client()
         return trainer_cls(args, self.template, **kwargs)
 
     def _prepare_template(self) -> None:
         super()._prepare_template()
-        model_mapping = {'grpo': 'train', 'kto': 'kto'}
+        model_mapping = {'grpo': 'train', 'gkd': 'train', 'kto': 'kto'}
         self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
 
     def _get_data_collator(self):
-        if self.args.rlhf_type == 'grpo':
+        if self.args.rlhf_type in ('grpo', 'gkd'):
             return identity_data_collator
         return super()._get_data_collator()
 
@@ -49,8 +51,13 @@ class MegatronRLHF(MegatronSft):
         return train_dataset, val_dataset
 
     def _prepare_vllm_client(self):
-        if self.args.rlhf_type != 'grpo' or (self.args.vllm_mode != 'server'):
-            return
+        # Only prepare vLLM client for server mode
+        if self.args.rlhf_type not in ('grpo', 'gkd') or self.args.vllm_mode != 'server':
+            return None
+        # GKD may not use vLLM (off-policy mode)
+        if not getattr(self.args, 'use_vllm', False):
+            return None
+
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         vllm_client = None
         if is_last_rank():

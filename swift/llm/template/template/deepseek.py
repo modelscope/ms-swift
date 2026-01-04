@@ -16,7 +16,6 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, findall
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -241,12 +240,33 @@ class DeepseekOCR(Template):
     image_placeholder = ['<image>\n']
 
     def init_env_args(self):
-        model_dir = self.model_info.model_dir
-        self.BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform', model_dir)
-        self.dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess', model_dir)
+        # Delay loading dynamic modules that require specific transformers versions
+        # These will be loaded lazily in _preprocess_image when actually needed
+        # This avoids triggering transformers version compatibility issues for vllm backend
+        self._BasicImageTransform = None
+        self._dynamic_preprocess = None
         self.crop_mode = get_env_args('crop_mode', bool, True)
         self.base_size = get_env_args('base_size', int, 1024)
         self.image_size = get_env_args('image_size', int, 640)
+
+    def _load_dynamic_modules(self):
+        """Lazily load dynamic modules from model repository."""
+        if self._BasicImageTransform is None:
+            model_dir = self.model_info.model_dir
+            self._BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform',
+                                                                      model_dir)
+            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess',
+                                                                     model_dir)
+
+    @property
+    def BasicImageTransform(self):
+        self._load_dynamic_modules()
+        return self._BasicImageTransform
+
+    @property
+    def dynamic_preprocess(self):
+        self._load_dynamic_modules()
+        return self._dynamic_preprocess
 
     def _preprocess_image(self, images, image_token_id):
         # Code borrowed from
@@ -404,23 +424,16 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
+register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True, thinking_prefix='<think>\n'))
 
-class DeepseekV3_1Template(ThinkingTemplate):
-    no_think_prefix = '</think>'
-    history_think_prefix = '</think>'
-    add_no_think_prefix_after_tool = False
-
-
-register_template(
-    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
-
-# enable thinking: response_prefix='<think>'
 register_template(
     DeepseekV2_5TemplateMeta(
         LLMTemplateType.deepseek_v3_1,
-        template_cls=DeepseekV3_1Template,
-        response_prefix='</think>',
-        agent_template='deepseek_v3_1'))
+        agent_template='deepseek_v3_1',
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):

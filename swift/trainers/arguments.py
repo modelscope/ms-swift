@@ -46,7 +46,8 @@ class TrainArgumentsMixin:
         lr_scheduler_kwargs (Optional[Union[dict, str]]): Additional keyword arguments for the learning rate scheduler,
             passed as a JSON string or a dictionary. Defaults to None.
         report_to (List[str]): The list of integrations to report results to (e.g., 'tensorboard', 'wandb'). Defaults
-            to ['tensorboard'].
+            to ['tensorboard']. If you specify `--report_to wandb`, you can set the project name through `WANDB_PROJECT`
+            and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
         dataloader_num_workers (Optional[int]): The number of subprocesses to use for data loading. Defaults to None.
         dataloader_persistent_workers (bool): If True, the data loader workers will not be shut down after a dataset
             has been consumed once. Defaults to False.
@@ -180,6 +181,8 @@ class TrainArgumentsMixin:
             logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = json_parse_to_dict(self.lr_scheduler_kwargs)
+        if 'wandb' in self.report_to:
+            os.environ.setdefault('WANDB_PROJECT', 'ms-swift')
         if self.vit_gradient_checkpointing is None:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
@@ -192,7 +195,7 @@ class TrainArgumentsMixin:
                 self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if self.dataloader_prefetch_factor is None and self.dataloader_num_workers > 0:
-            self.dataloader_prefetch_factor = 10
+            self.dataloader_prefetch_factor = 2
         if self.eval_use_evalscope:
             try:
                 import evalscope
@@ -406,6 +409,10 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
             Defaults to False.
         wandb_log_unique_prompts (Optional[bool]): Whether to log unique prompts to Weights & Biases for analysis
             during training. Defaults to None.
+        structured_outputs_regex (Optional[str]): A regular expression pattern for structured outputs (guided
+            decoding). When set, the model's generation is constrained to match the specified regex pattern. This is
+            useful for tasks requiring structured outputs like reasoning chains. Defaults to None (disabled).
+            Only effective when using vLLM backend (`use_vllm=True`).
     """
     # generation args
     top_k: int = 50
@@ -430,6 +437,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     vllm_server_group_port: Optional[List[int]] = None
     enable_flattened_weight_sync: bool = True
     async_generate: bool = False
+    # # structured outputs (guided decoding), only effective for vllm backend
+    structured_outputs_regex: Optional[str] = None
 
     sleep_level: int = 0
     move_model_batches: Optional[int] = None

@@ -89,6 +89,7 @@ The format of multimodal data should follow the specifications in [Multimodal Da
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
 Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images` (requires ms-swift>=3.8), which offers greater flexibility (e.g., for multimodal or agent scenarios). If you use "rejected_messages", then in multimodal scenarios you must also provide "rejected_images", "rejected_audios", "rejected_videos", etc.; in Agent scenarios you must also provide "rejected_tools", etc. An example of the multimodal data format is as follows:
+- If using `rejected_response`, the default values for 'rejected_images/rejected_audios/rejected_videos/rejected_tools' are 'images/audios/videos/tools'; if using `rejected_messages`, they need to be passed in additionally.
 
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a puppy."}], "rejected_images": ["kitten.png"]}
@@ -100,8 +101,16 @@ The above format is equivalent to:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": "This is a puppy."}
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_images": ["puppy.png"]}
+# Example 1 can also be written as: (ms-swift>=3.12)
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": [{"role": "assistant", "content": "This is a puppy."}]}
 ```
 
+For ms-swift>=3.12, you can organize the Agent dataset in the following format:
+
+```jsonl
+# It will find the position of the last user in `messages`, and replace the subsequent content with `rejected_response` to form `rejected_messages`
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}], "rejected_response": [{"role": "assistant", "content": "I don't know."}]}
+```
 #### KTO
 
 ```jsonl
@@ -338,7 +347,7 @@ The following parameters are supported:
 
 - ms_dataset_id: The dataset_id for ModelScope, default is None.
 - hf_dataset_id: The dataset_id for HuggingFace, default is None.
-- dataset_path: The local path to the dataset (an absolute path is recommended), default is None.
+- dataset_path: Local path to the dataset file/folder (absolute path recommended). Default is None.
 - dataset_name: The alias of the dataset, which can be specified via `--dataset <dataset_name>`. This is very convenient when the dataset_path is long. The default value is None.
 - subsets: A list of subdataset names or a list of `SubsetDataset` objects, default is `['default']`. (The concepts of subdatasets and splits only exist for dataset_id or dataset_dir (open source datasets cloned via git)).
 - split: Defaults to `['train']`.

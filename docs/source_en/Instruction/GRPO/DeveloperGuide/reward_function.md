@@ -2,8 +2,6 @@
 ## Custom Reward Function
 The reward function takes as arguments (via kwargs) the model-generated completions, other columns from the dataset, and the training state, and calculates a reward score. The [trainer state](https://huggingface.co/docs/transformers/main/main_classes/callback#transformers.TrainerState) includes information such as the current training step.
 
-> If you are using the Megatron backend, use self._step to get the current training step.
-
 Note: The columns related to model input (such as query and response) are converted to the messages key. The original assistant response in the dataset will be discarded, so please use extra columns if you wish to retain it.
 The relevant column names for processing can be found in the [document](../../../Customization/Custom-dataset.md#Query-Response)
 
@@ -46,6 +44,43 @@ Retrieve it from kwargs:
 You can add the reward function in [plugin program](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py), register it using the parameter `--external_plugins examples/train/grpo/plugin/plugin.py`, and specify it via the `reward_funcs` parameter.
 
 For execution scripts, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
+
+## Async Reward Functions
+
+**Version requirement**: ms-swift>=3.12.1
+
+For reward functions involving I/O operations (such as API calls, database queries, etc.), you can use asynchronous (async) reward functions to improve performance. Async reward functions are executed in parallel using `asyncio.gather`, which can significantly speed up reward computation.
+
+```python
+from swift.plugin import AsyncORM, orms
+import asyncio
+
+class AsyncAPIReward(AsyncORM):
+    async def __call__(self, completions, **kwargs):
+        import aiohttp
+
+        async def score_single(session, text):
+            async with session.post(
+                'https://api.example.com/score',
+                json={'text': text}
+            ) as resp:
+                result = await resp.json()
+                return result['score']
+
+        async with aiohttp.ClientSession() as session:
+            # Use asyncio.gather to send all requests in parallel
+            tasks = [score_single(session, c) for c in completions]
+            rewards = await asyncio.gather(*tasks)
+            return list(rewards)
+
+orms['async_api'] = AsyncAPIReward
+```
+
+Swift supports using both synchronous and asynchronous reward functions simultaneously. The trainer automatically detects the type of reward function:
+- Synchronous reward functions are executed sequentially
+- Asynchronous reward functions are executed in parallel using `asyncio.gather`
+
+The [plugin](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) file provides an example of a generative reward model (async_genrm) that calls the `swift deploy` service.
 
 ## Built-in Reward Functions
 Swift includes five rule-based reward functions (code can be found in swift/plugin/orm.py).

@@ -11,7 +11,6 @@ from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
-from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -25,18 +24,16 @@ class GLM4Template(Template):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
         for i, res_context in enumerate(res_context_list):
             # The last round or is tool_call.
-            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
-                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+            if isinstance(res_context,
+                          str) and (res_context.endswith('<|assistant|>\n')
+                                    or res_context.endswith('<think></think>\n')) and (
+                                        i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
                 res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
     def decode(self, *args, **kwargs):
         response = super().decode(*args, **kwargs)
         return response.lstrip('\n')
-
-
-class GLM4_0414Template(ThinkingTemplate, GLM4Template):
-    pass
 
 
 register_template(
@@ -69,6 +66,9 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
 @dataclass
 class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
     agent_template: str = 'glm4_5'
+    is_thinking: bool = True
+    non_thinking_prefix: str = '<think></think>\n'
+    history_thinking_prefix: str = '<think></think>\n'
 
 
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
@@ -114,7 +114,56 @@ class GLM4VTemplate(Template):
         return res
 
 
-class GLM4_1VTemplate(Template):
+class GLM4vPackingTemplateMixin:
+    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+    use_model = True
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        for r in row:
+            r_copy = r.copy()
+            r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
+            r['position_ids'] = self._get_position_ids(r_copy)
+        packed = super().packing_row(row)
+        return packed
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        base_model = self.get_base_model(self._get_model())
+        attention_mask = inputs.get('attention_mask_2d')
+        if attention_mask is None:
+            attention_mask = inputs.get('attention_mask')
+        position_ids, _ = base_model.model.get_rope_index(
+            inputs['input_ids'],
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask=attention_mask)
+        return self._concat_text_position_ids(position_ids)
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if not self.padding_free and self.is_training:
+            res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            # https://github.com/huggingface/transformers/pull/40194
+            if text_position_ids.shape[0] == 1:
+                res.update(get_packed_seq_params(text_position_ids))
+        return res
+
+    def _patch_create_causal_mask(self, modeling_module):
+        create_causal_mask = modeling_module.create_causal_mask
+
+        def new_create_causal_mask(*args, **kwargs):
+            position_ids = kwargs.get('position_ids')
+            if position_ids is not None and position_ids.dim() == 3:
+                kwargs['position_ids'] = None
+            return create_causal_mask(*args, **kwargs)
+
+        modeling_module.create_causal_mask = new_create_causal_mask
+
+
+class GLM4_1VTemplate(GLM4vPackingTemplateMixin, Template):
     begin_of_image_token = 151339
     end_of_image_token = 151340
     begin_of_video_token = 151341
@@ -125,6 +174,10 @@ class GLM4_1VTemplate(Template):
         if processor is None:
             return
         super().init_processor(processor)
+        if not getattr(GLM4_1VTemplate, '_patched', False) and self.padding_free:
+            GLM4_1VTemplate._patched = True
+            from transformers.models.glm4v import modeling_glm4v
+            self._patch_create_causal_mask(modeling_glm4v)
         self.image_token = self._tokenize('<|image|>')[0]
         self.video_token = self._tokenize('<|video|>')[0]
 
@@ -231,7 +284,6 @@ class GLM4_1VTemplate(Template):
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-        encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -248,12 +300,11 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+register_template(
+    GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4Template, thinking_prefix='<think>'))
 
 
-class GLM4_5Template(ThinkingTemplate):
-    no_think_prefix = '<think></think>\n'
-    history_think_prefix = '<think></think>\n'
+class GLM4_5Template(GLM4Template):
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         for message in inputs.messages:
@@ -265,13 +316,22 @@ class GLM4_5Template(ThinkingTemplate):
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
-register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
+register_template(
+    GLM4_5TemplateMeta(
+        LLMTemplateType.glm4_7,
+        template_cls=GLM4_5Template,
+        prompt=['<|user|>{{QUERY}}<|assistant|>'],
+        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>',
+        agent_template='glm4_7',
+    ))
+
+register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate, agent_template='glm4_5'))
 
 
-class GLM4_5VTemplate(GLM4_5Template):
-    placeholder_tokens = ['<|image|>']
-    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
-    use_model = True
+class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
+    placeholder_tokens = ['<|image|>', '<|video|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -306,28 +366,6 @@ class GLM4_5VTemplate(GLM4_5Template):
         encoded['input_ids'] = input_ids
         return encoded
 
-    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
-        position_ids = []
-        for r in row:
-            r = r.copy()
-            r['input_ids'] = torch.tensor(r['input_ids'])[None]
-            position_ids.append(self._get_position_ids(r))
-        packed = super().packing_row(row)
-        packed['position_ids'] = torch.concat(position_ids, dim=-1)
-        return packed
-
-    def _get_position_ids(self, inputs: Dict[str, Any]):
-        base_model = self.get_base_model(self._get_model())
-        attention_mask = inputs.get('attention_mask_2d')
-        if attention_mask is None:
-            attention_mask = inputs.get('attention_mask')
-        position_ids, _ = base_model.model.get_rope_index(
-            inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
-            attention_mask=attention_mask)
-        return self._concat_text_position_ids(position_ids)
-
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
@@ -337,21 +375,15 @@ class GLM4_5VTemplate(GLM4_5Template):
         inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
-        if not self.padding_free and self.is_training:
-            res['position_ids'] = self._get_position_ids(res)
-        if 'position_ids' in res:
-            position_ids = res['position_ids']
-            res['position_ids'] = position_ids[1:]
-            res['text_position_ids'] = text_position_ids = position_ids[0]
-            # https://github.com/huggingface/transformers/pull/40194
-            if text_position_ids.shape[0] == 1:
-                res.update(get_packed_seq_params(text_position_ids))
-        return res
+    def init_processor(self, processor) -> None:
+        super().init_processor(processor)
+        if not getattr(GLM4_5VTemplate, '_patched', False) and self.padding_free:
+            GLM4_5VTemplate._patched = True
+            from transformers.models.glm4v_moe import modeling_glm4v_moe
+            self._patch_create_causal_mask(modeling_glm4v_moe)
 
 
-register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
@@ -366,9 +398,9 @@ glm4z1rumination_system = (
     '    * 访问并仔细阅读相关页面，识别新的关键概念/名词\n\n'
     '<重要配置>\n'
     '- 采用语言\n'
-    '    * 搜索关键词：英语\n'
-    '    * 思考：英语\n\n'
-    '<可调用的工具列表>\n\n'
+    '    * 搜索关键词：英文\n'
+    '    * 思考：英文\n\n'
+    '<可调用的工具列表>\n'
     '[{"name": "search", "description": "Execute a search query and return search results. '
     'Use this function when you need to find information about a specific topic.", '
     '"parameters": {"type": "object", "properties": {"query": {"type": "string", '
@@ -388,7 +420,10 @@ glm4z1rumination_system = (
 
 register_template(
     GLM4_0414TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
+        LLMTemplateType.glm4_z1_rumination,
+        template_cls=GLM4Template,
+        default_system=glm4z1rumination_system,
+        is_thinking=True))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
