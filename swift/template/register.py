@@ -15,21 +15,18 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
     TEMPLATE_MAPPING[template_type] = template_meta
 
 
-def get_template_info_type(model_id_or_path: str,
-                            template_type=None,
-                            # hub
-                            use_hf: Optional[bool] = None,
-                            hub_token: Optional[str] = None,
-                            revision: Optional[str] = None,
-                            ):
+def get_template_info_type(
+    model_id_or_path: str,
+    template_type=None,
+    # hub
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    revision: Optional[str] = None,
+):
     from swift.llm import get_matched_model_meta, safe_snapshot_download
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
-        model_id_or_path,
-        revision=revision,
-        download_model=False,
-        use_hf=use_hf,
-        hub_token=hub_token)
+        model_id_or_path, revision=revision, download_model=False, use_hf=use_hf, hub_token=hub_token)
     template_type = template_type or getattr(model_meta, 'template', None)
     return model_dir, template_type
 
@@ -63,7 +60,8 @@ def get_template(
     hub_token: Optional[str] = None,
     revision: Optional[str] = None,
 ) -> 'Template':
-    model_dir, template_type = get_template_info_type(model_id_or_path, use_hf=use_hf, hub_token=hub_token, revision=revision)
+    model_dir, template_type = get_template_info_type(
+        model_id_or_path, use_hf=use_hf, hub_token=hub_token, revision=revision)
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
