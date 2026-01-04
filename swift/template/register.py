@@ -1,0 +1,93 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+
+from typing import Dict, Literal, Optional
+
+from .base import Template
+from .template_meta import TemplateMeta
+
+TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
+
+
+def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) -> None:
+    template_type = template_meta.template_type
+    if not exist_ok and template_type in TEMPLATE_MAPPING:
+        raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
+    TEMPLATE_MAPPING[template_type] = template_meta
+
+
+def get_template_info_type(
+    model_id_or_path: str,
+    template_type=None,
+    # hub
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    revision: Optional[str] = None,
+):
+    from swift.llm import get_matched_model_meta, safe_snapshot_download
+    model_meta = get_matched_model_meta(model_id_or_path)
+    model_dir = safe_snapshot_download(
+        model_id_or_path, revision=revision, download_model=False, use_hf=use_hf, hub_token=hub_token)
+    template_type = template_type or getattr(model_meta, 'template', None)
+    return model_dir, template_type
+
+
+def get_template(
+    model_id_or_path: str,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    *,
+    truncation_strategy: Literal['raise', 'left', 'right', 'split'] = 'raise',
+    max_pixels: Optional[int] = None,  # h * w
+    agent_template: Optional[str] = None,
+    norm_bbox: Literal['norm1000', 'none', None] = None,
+    use_chat_template: bool = True,
+    remove_unused_columns: bool = True,
+    padding_side: Literal['left', 'right'] = 'right',
+    # train
+    padding_free: bool = False,
+    loss_scale: str = 'default',
+    sequence_parallel_size: int = 1,
+    # infer/deploy
+    template_backend: Literal['swift', 'jinja'] = 'swift',
+    # thinking
+    response_prefix: Optional[str] = None,
+    enable_thinking: Optional[bool] = None,
+    add_non_thinking_prefix: bool = True,
+    # model
+    model=None,  # Some templates need to pass in the model.
+    # hub
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    revision: Optional[str] = None,
+) -> 'Template':
+    model_dir, template_type = get_template_info_type(
+        model_id_or_path, use_hf=use_hf, hub_token=hub_token, revision=revision)
+    template_meta = TEMPLATE_MAPPING[template_type]
+    template_cls = template_meta.template_cls
+    return template_cls(
+        model_dir,
+        template_meta,
+        default_system,
+        max_length,
+        truncation_strategy=truncation_strategy,
+        max_pixels=max_pixels,
+        agent_template=agent_template,
+        norm_bbox=norm_bbox,
+        use_chat_template=use_chat_template,
+        remove_unused_columns=remove_unused_columns,
+        padding_side=padding_side,
+        # train
+        padding_free=padding_free,
+        loss_scale=loss_scale,
+        sequence_parallel_size=sequence_parallel_size,
+        # infer/deploy
+        template_backend=template_backend,
+        # thinking
+        response_prefix=response_prefix,
+        enable_thinking=enable_thinking,
+        add_non_thinking_prefix=add_non_thinking_prefix,
+    )
+
+
+def get_template_meta(template_type: str) -> TemplateMeta:
+    return TEMPLATE_MAPPING[template_type]

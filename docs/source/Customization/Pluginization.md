@@ -36,7 +36,7 @@ def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) 
     # Write your own loss calculating here
     return loss
 
-loss_mapping['custom_loss'] = custom_loss_func
+loss_map['custom_loss'] = custom_loss_func
 ```
 需要注意的是，loss和trainer训练的任务是强相关的，目前的loss定制针对pt和sft任务，如果是人类对齐任务（例如DPO、PPO等）或分类任务（seq_cls）任务在插件中是无法定制的。
 

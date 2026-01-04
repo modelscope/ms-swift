@@ -41,7 +41,7 @@ class TestTemplate(unittest.TestCase):
             self.assertTrue(stop in content)
 
     @unittest.skip('swift2.0')
-    def test_glm4(self):
+    def test_chatglm4(self):
         if version.parse(transformers.__version__) >= version.parse('4.45'):
             return
 

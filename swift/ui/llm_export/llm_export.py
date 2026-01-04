@@ -14,7 +14,7 @@ import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import ExportArguments
+from swift.pipelines import ExportArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
 from swift.ui.llm_export.model import Model

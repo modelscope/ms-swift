@@ -79,9 +79,9 @@ register_model(
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],
-        'my_qwen2_5_omni',
         # 用来获取model和processor的函数。
-        get_model_tokenizer_qwen2_5_omni,
+        get_function=get_model_tokenizer_qwen2_5_omni,
+        template='my_qwen2_5_omni',
         is_multimodal=True,  # 是否是多模态模型
         model_arch='my_qwen2_5_omni',  # 通常只为多模态模型设置
         # 用于model_type的自动匹配

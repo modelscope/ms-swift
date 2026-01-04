@@ -16,8 +16,8 @@ class MLLMMegatronModelType:
 
     internvl3 = 'internvl3'
     internvl_hf = 'internvl_hf'
-    glm4_1v = 'glm4_1v'
-    glm4_5v = 'glm4_5v'
+    glm4v = 'glm4v'
+    glm4v_moe = 'glm4v_moe'
     kimi_vl = 'kimi_vl'
     llama4 = 'llama4'
 

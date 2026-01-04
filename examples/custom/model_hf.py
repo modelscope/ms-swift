@@ -42,8 +42,8 @@ register_model(
         model_groups=[
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
-        template='custom',
         get_function=get_function,
+        template='custom',
         ignore_patterns=['nemo'],
         is_multimodal=False,
     ))

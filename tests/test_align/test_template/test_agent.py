@@ -241,8 +241,8 @@ def test_toolbench():
     _infer(engine)
 
 
-def test_glm4():
-    agent_template = agent_templates['glm4']()
+def test_chatglm4():
+    agent_template = agent_templates['chatglm4']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 846
     engine = PtEngine('ZhipuAI/glm-4-9b-chat')
@@ -251,8 +251,8 @@ def test_glm4():
     _infer(engine, agent_tools=glm4_tools, tool_messages=glm4_tool_messasges, query=glm4_query)
 
 
-def test_glm4_0414():
-    agent_template = agent_templates['glm4_0414']()
+def test_glm4():
+    agent_template = agent_templates['glm4']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 769
     engine = PtEngine('ZhipuAI/GLM-4-9B-0414')
@@ -542,8 +542,8 @@ if __name__ == '__main__':
     # test_qwen_zh_parallel()
     # test_hermes()
     # test_toolbench()
+    # test_chatglm4()
     # test_glm4()
-    # test_glm4_0414()
     # test_llama3()
     # test_llama4()
     # test_hunyuan()
