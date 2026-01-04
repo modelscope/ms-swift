@@ -154,7 +154,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
+class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """Arguments pertaining to the training process.
 
     TrainArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
@@ -396,3 +396,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self.training_args.output_dir = self.output_dir
         self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir
+
+
+@dataclass
+class PtArguments(SftArguments):
+    pass

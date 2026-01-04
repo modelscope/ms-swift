@@ -202,7 +202,8 @@ def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> tor
     return preds
 
 
-# Add your own metric calculation method here, use --metric xxx to train
+# Add your own metric calculation method here, use `--metric xxx` to train
+# The metric here will only be called during validation
 metric_mapping = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),

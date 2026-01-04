@@ -40,7 +40,7 @@ class _GenerationConfig(GenerationConfig):
         return f'GenerationConfig({gen_kwargs})'
 
 
-class PtEngine(InferEngine):
+class TransformersEngine(InferEngine):
 
     def __init__(
             self,

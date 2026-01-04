@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from transformers import AutoModel, AutoModelForSequenceClassification
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_device
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch

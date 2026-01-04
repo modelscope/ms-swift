@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .grpo_vllm_engine import GRPOVllmEngine
     from .lmdeploy_engine import LmdeployEngine
     from .sglang_engine import SglangEngine
-    from .pt_engine import PtEngine
+    from .transformers_engine import TransformersEngine
     from .infer_client import InferClient
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
@@ -19,7 +19,7 @@ else:
         'grpo_vllm_engine': ['GRPOVllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
         'sglang_engine': ['SglangEngine'],
-        'pt_engine': ['PtEngine'],
+        'transformers_engine': ['TransformersEngine'],
         'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
