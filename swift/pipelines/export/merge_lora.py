@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 
-from .arguments import ExportArguments
 from swift.models import prepare_model_template, save_checkpoint
 from swift.tuners import Swift
-from swift.utils import get_logger, HfConfigFactory
+from swift.utils import HfConfigFactory, get_logger
+from .arguments import ExportArguments
 
 logger = get_logger()
 

@@ -1,8 +1,6 @@
 from transformers import PreTrainedTokenizerBase
 
 
-
-
 class ProcessorMixin:
 
     @property
@@ -18,4 +16,3 @@ class ProcessorMixin:
             self.processor = value
         elif self.tokenizer is not value:
             raise AttributeError('Please use `self.processor` for assignment.')
-

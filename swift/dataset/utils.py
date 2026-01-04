@@ -1,23 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import math
-import multiprocessing as mp
-from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+import inspect
+import os
+import tempfile
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
-from torch.utils.data import Dataset, IterableDataset
-from tqdm import tqdm
+from modelscope.hub.utils.utils import get_cache_dir
+from torch.utils.data import Dataset
 
-from swift.utils import get_logger, is_dist, is_master, split_list
-from ..template import MaxLengthError
+from swift.template import Template
+from swift.utils import get_logger
 from .preprocessor import RowPreprocessor
 
 logger = get_logger()
-
-if TYPE_CHECKING:
-    from swift.llm import Template
 
 
 def sample_dataset(
@@ -135,7 +131,6 @@ class AddLengthPreprocessor(EncodePreprocessor):
         encoded = super().preprocess(row)
         row['length'] = encoded['length']
         return row
-
 
 
 TEMP_DIR_POOL = {}

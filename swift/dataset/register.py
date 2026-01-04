@@ -1,76 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 
 from swift.utils import get_logger, use_hf_hub
-from .preprocessor import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
+from .dataset_meta import DATASET_MAPPING, DatasetMeta, SubsetDataset
+from .preprocessor import AutoPreprocessor, MessagesPreprocessor
 
-PreprocessFunc = Callable[..., DATASET_TYPE]
-LoadFunction = Callable[..., DATASET_TYPE]
 logger = get_logger()
-
-
-@dataclass
-class SubsetDataset:
-    # `Name` is used for matching subsets of the dataset, and `subset` refers to the subset_name on the hub.
-    name: Optional[str] = None
-    # If set to None, then subset is set to subset_name.
-    subset: str = 'default'
-
-    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
-    split: Optional[List[str]] = None
-    preprocess_func: Optional[PreprocessFunc] = None
-
-    # If the dataset specifies "all," weak subsets will be skipped.
-    is_weak_subset: bool = False
-
-    def __post_init__(self):
-        if self.name is None:
-            self.name = self.subset
-
-    def set_default(self, dataset_meta: 'DatasetMeta') -> 'SubsetDataset':
-        subset_dataset = deepcopy(self)
-        for k in ['split', 'preprocess_func']:
-            v = getattr(subset_dataset, k)
-            if v is None:
-                setattr(subset_dataset, k, deepcopy(getattr(dataset_meta, k)))
-        return subset_dataset
-
-
-@dataclass
-class DatasetMeta:
-    ms_dataset_id: Optional[str] = None
-    hf_dataset_id: Optional[str] = None
-    dataset_path: Optional[str] = None  # or dataset_dir
-    dataset_name: Optional[str] = None
-    ms_revision: Optional[str] = None
-    hf_revision: Optional[str] = None
-
-    subsets: List[Union[SubsetDataset, str]] = field(default_factory=lambda: ['default'])
-    # Applicable to all subsets.
-    split: List[str] = field(default_factory=lambda: ['train'])
-    # First perform column mapping, then proceed with the preprocess_func.
-    preprocess_func: PreprocessFunc = field(default_factory=lambda: AutoPreprocessor())
-    load_function: Optional[LoadFunction] = None
-
-    tags: List[str] = field(default_factory=list)
-    help: Optional[str] = None
-    huge_dataset: bool = False
-
-    def __post_init__(self):
-        from .loader import DatasetLoader
-        if self.load_function is None:
-            self.load_function = DatasetLoader.load
-        for i, subset in enumerate(self.subsets):
-            if isinstance(subset, str):
-                self.subsets[i] = SubsetDataset(subset=subset)
-
-
-DATASET_MAPPING: Dict[Tuple[str, str, str], DatasetMeta] = {}
 
 
 def get_dataset_list():

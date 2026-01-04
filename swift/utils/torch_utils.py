@@ -3,27 +3,21 @@ import gc
 import hashlib
 import os
 import pickle
-import re
 import time
 import uuid
-from bisect import bisect_right
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from datetime import timedelta
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Mapping, Optional, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
-from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master
 from .logger import get_logger
-from .utils import deep_getattr
 
 logger = get_logger()
 
@@ -37,7 +31,6 @@ def _find_local_mac() -> str:
 def time_synchronize() -> float:
     torch.cuda.synchronize()
     return time.perf_counter()  # second
-
 
 
 _DISABLE_USE_BARRIER = False
@@ -153,8 +146,6 @@ def gc_collect() -> None:
     empty_cache()
 
 
-
-
 def get_last_valid_indices(attention_mask: torch.Tensor) -> torch.Tensor:
     """
     Get the last valid (non-padding) token position indices for each sample.
@@ -239,7 +230,6 @@ def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
     dist.init_process_group(backend=backend, timeout=timeout)
 
 
-
 def check_shared_disk(error, cache_dir: Optional[str] = None):
     nnodes = get_node_setting()[1]
     if nnodes <= 1:
@@ -265,7 +255,6 @@ def check_shared_disk(error, cache_dir: Optional[str] = None):
             os.remove(tmp_path)
     if not all(shared_state):
         raise error
-
 
 
 def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:

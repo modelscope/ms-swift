@@ -13,7 +13,6 @@ from .utils import get_last_user_round
 logger = get_logger()
 
 
-
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant

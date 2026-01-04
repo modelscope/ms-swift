@@ -580,5 +580,3 @@ class UpdateWeightsRequest(BaseModel):
     name: str
     dtype: str
     shape: list[int]
-
-

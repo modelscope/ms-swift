@@ -1,5 +1,5 @@
 from .agent import AgentFlanLossScale, AlphaUmiLossScale, HermesLossScale, QwenLossScale, REACTLossScale
-from .base import LossScale, ALL_BASE_STRATEGY
+from .base import ALL_BASE_STRATEGY, LossScale
 from .other import IgnoreEmptyThinkLossScale
 
 # Add your loss scale here, use --loss_scale xxx to train

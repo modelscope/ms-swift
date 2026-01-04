@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import json
 import numpy as np
 
-from ...template import split_str_parts_by
+from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset

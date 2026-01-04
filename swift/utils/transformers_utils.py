@@ -1,32 +1,23 @@
-
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import gc
-import hashlib
-import os
-import pickle
 import re
-import time
-import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from datasets.utils.filelock import FileLock
-from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
-from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master
+from .env import get_dist_setting
 from .logger import get_logger
+from .torch_utils import get_device_count
 from .utils import deep_getattr
 
 logger = get_logger()
+
 
 def get_n_params_grads(model) -> Tuple[List[int], List[int]]:
     n_params, n_grads = [], []
@@ -69,7 +60,6 @@ def find_sub_module(module: torch.nn.Module, module_name: str) -> List[torch.nn.
         if name.endswith(module_name):
             _modules.append(sub_module)
     return _modules
-
 
 
 def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
@@ -267,7 +257,6 @@ def get_position_ids_from_cu_seqlens(cu_seqlens: torch.LongTensor):
     return position_ids.unsqueeze(0)
 
 
-
 def seed_worker(worker_id: int, num_workers: int, rank: int):
     """
     Helper function to set worker seed during Dataloader initialization.
@@ -275,7 +264,6 @@ def seed_worker(worker_id: int, num_workers: int, rank: int):
     init_seed = torch.initial_seed() % 2**32
     worker_seed = num_workers * rank + init_seed
     set_seed(worker_seed)
-
 
 
 @contextmanager

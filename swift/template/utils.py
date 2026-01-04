@@ -271,4 +271,3 @@ def update_generation_config_eos_token(generation_config, template):
             modified = True
     if modified:
         generation_config.eos_token_id = eos_token_id
-

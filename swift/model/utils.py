@@ -53,6 +53,7 @@ class AttnImpl:
         for key in AttnImpl.use_flash_attn_keys:
             HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
 
+
 def safe_snapshot_download(model_id_or_path: str,
                            revision: Optional[str] = None,
                            download_model: bool = True,
@@ -388,8 +389,6 @@ if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
     _patch_conv3d()
 
 
-
-
 def save_checkpoint(model: Optional[PreTrainedModel],
                     processor: 'Processor',
                     output_dir: str,
@@ -427,6 +426,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             elif os.path.isdir(src_path):
                 shutil.copytree(src_path, tgt_path)
                 break
+
 
 def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
     model_dirs = (adapters_dir or []).copy()

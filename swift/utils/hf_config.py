@@ -1,13 +1,12 @@
-
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-
 from transformers import PretrainedConfig
 
 from .utils import deep_getattr
+
 
 class HfConfigFactory:
     llm_keys = ['language_config', 'llm_config', 'text_config']

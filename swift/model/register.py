@@ -15,15 +15,14 @@ from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
+from swift.utils import HfConfigFactory, get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
                       patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_mp_ddp,
                       patch_tp_plan)
-from .utils import AttnImpl, HfConfigFactory, InitModelStrategy, get_default_device_map
+from .utils import AttnImpl, InitModelStrategy, get_default_device_map
 
-GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
 
 
@@ -139,7 +138,7 @@ def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
         generation_config.top_k = 50
 
 
-def get_all_models() -> List[str]:
+def get_model_list() -> List[str]:
     use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     models = []
     for model_type in ModelType.get_model_name_list():

@@ -2,19 +2,17 @@
 import math
 import multiprocessing as mp
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Optional
 
-import numpy as np
 import torch.distributed as dist
-from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
+from swift.template import MaxLengthError
 from swift.utils import get_logger, is_dist, is_master, split_list
-from ..template import MaxLengthError
-from .preprocessor import RowPreprocessor
 
 logger = get_logger()
+
 
 def calculate_matched_group(template, sequences, packing_length: int, is_finished: bool = True):
     if len(sequences) == 0:

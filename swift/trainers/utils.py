@@ -153,7 +153,6 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-
 def find_module_list(model) -> Optional[nn.ModuleList]:
     module_lists = []
     for m in model.modules():
