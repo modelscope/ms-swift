@@ -41,6 +41,7 @@ from transformers.trainer_utils import IntervalStrategy
 from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
 from swift.llm.utils import update_generation_config_eos_token
+from swift.optimizers import optimizers_map
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
 from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
@@ -962,13 +963,11 @@ class SwiftMixin:
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:
-            from swift.plugin import optimizers_map
             optimizer_callback = optimizers_map[self.args.optimizer]
-            self.optimizer, self.lr_scheduler = optimizer_callback(self.args, self.model, self.train_dataset)
+            self.optimizer = optimizer_callback(self.args, self.model, self.train_dataset)
             if self.optimizer is None:
                 self.create_optimizer()
-            if self.lr_scheduler is None:
-                self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 

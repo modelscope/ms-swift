@@ -10,7 +10,7 @@ from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
 
 from swift.model import get_llm_model
-from swift.utils import get_cu_seqlens_from_position_ids, get_device, get_dist_setting, HfConfigFactory
+from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting
 from .utils import GatherLoss
 
 

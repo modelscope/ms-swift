@@ -8,9 +8,9 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.plugin import loss_mapping
+from swift.loss import loss_mapping
+from swift.optimizers.galore import GaLoreConfig
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
-from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
 
@@ -260,7 +260,6 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
-    galore_config: Optional[GaLoreConfig] = None
     task_type: Optional[str] = None
     problem_type: Optional[str] = None
 

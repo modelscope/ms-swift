@@ -1,14 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import importlib
+import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
 from torch.optim import Optimizer
-from transformers import Trainer, TrainingArguments, get_scheduler
+from transformers import Trainer, get_scheduler
 
-from swift.utils import get_logger
+from swift.utils import get_dist_setting, get_logger
+
+if TYPE_CHECKING:
+    from swift.trainers import TrainingArguments
 
 try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -77,8 +81,8 @@ class GaloreSchedulerWrapper(LRScheduler):
         self._last_lr = lr_scheduler.get_last_lr()
 
 
-def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, config: GaLoreConfig, max_steps,
-                                   **defaults):
+def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments', config: GaLoreConfig, max_steps,
+                                    **defaults):
     galore_params = []
     for module_name, module in model.named_modules():
         if not isinstance(module, (nn.Linear, nn.Embedding)) or \
@@ -167,7 +171,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, co
         return optim, scheduler
 
 
-def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, Any]:
+def get_optimizer(args: 'TrainingArguments', config: GaLoreConfig) -> Tuple[Any, Any]:
     # parse args.optim_args
     optim_args = {}
     if args.optim_args:
@@ -212,3 +216,25 @@ def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, A
     else:
         raise ValueError(f'Galore not supported for optimizer type: {args.optim}')
     return optimizer_cls, optimizer_kwargs
+
+
+def _calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
+    if args.max_steps and args.max_steps > 0:
+        max_steps = args.max_steps
+    else:
+        len_dataset = len(dataset)
+        _, _, world_size, _ = get_dist_setting()
+        total_train_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
+        num_update_steps_per_epoch = len_dataset // total_train_batch_size
+        num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
+        max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
+    return max_steps
+
+
+def create_galore_optimizer(args: 'TrainingArguments', model, dataset):
+    training_steps = _calculate_max_steps(args, dataset)
+    optimizer, lr_scheduler = _create_optimizer_and_scheduler(
+        model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
+    # trainer cannot serialize galore_config
+    args.galore_config = None
+    return optimizer, lr_scheduler

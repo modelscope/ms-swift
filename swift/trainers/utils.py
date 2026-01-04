@@ -2,19 +2,19 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
 import os
+from contextlib import contextmanager
 from types import FunctionType, MethodType
-from typing import List, Union, Optional, Any, Dict
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from contextlib import contextmanager
 from peft import PeftModel
 from torch import nn
 from torch.nn import CrossEntropyLoss, Module
 from transformers import PreTrainedModel
-from swift.model import ModelMeta
 
-from swift.utils import get_logger, deep_getattr
+from swift.model import ModelMeta
+from swift.utils import deep_getattr, get_logger
 
 logger = get_logger()
 
