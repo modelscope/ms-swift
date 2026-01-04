@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import AutoProcessor, AutoTokenizer
+from transformers import AutoProcessor, AutoTokenizer, PreTrainedModel
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, safe_snapshot_download
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
+from ..utils import safe_snapshot_download
 
 register_model(
     ModelMeta(
@@ -25,7 +25,6 @@ register_model(
                 Model('swift/Codestral-22B-v0.1', 'mistralai/Codestral-22B-v0.1'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.llama,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama,
@@ -46,7 +45,6 @@ register_model(
             ],
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.llama,
         architectures=['MixtralForCausalLM'],
         model_arch=ModelArch.llama))
@@ -66,7 +64,6 @@ register_model(
             ],
                        requires=['transformers>=4.46']),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.mistral_nemo,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
@@ -79,7 +76,6 @@ register_model(
                 Model('mistralai/Mistral-Small-24B-Instruct-2501', 'mistralai/Mistral-Small-24B-Instruct-2501'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.mistral_2501,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
@@ -92,7 +88,6 @@ register_model(
                 Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.zephyr,
         model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
@@ -105,7 +100,6 @@ register_model(
         [ModelGroup([
             Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
         ])],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.wizardlm2_moe,
         architectures=['MixtralForCausalLM'],
         requires=['transformers>=4.36'],
@@ -117,7 +111,6 @@ register_model(
         [ModelGroup([
             Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
         ])],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.wizardlm2,
         architectures=['MistralForCausalLM'],
         requires=['transformers>=4.34'],
@@ -147,22 +140,17 @@ register_model(
             ],
                        requires=['transformers>=4.43', 'mistral-common>=1.5.5'])
         ],
-        get_function=get_model_tokenizer_devstral_2505,
         template=TemplateType.devstral,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
 
 
-def get_model_tokenizer_mistral3(model_dir: str,
-                                 model_info: ModelInfo,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    from transformers import Mistral3ForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class Mistral3Loader(ModelLoader):
 
-    return model, processor
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Mistral3ForConditionalGeneration
+        self.automodel_class = self.automodel_class or Mistral3ForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -195,7 +183,7 @@ register_model(
                        TemplateType.mistral_2512_thinking,
                        requires=['transformers>=5.0.0.dev0', 'mistral-common>=1.8.6']),
         ],
-        get_model_tokenizer_mistral3,
+        Mistral3Loader,
         template=TemplateType.mistral_2503,
         model_arch=ModelArch.llava_hf,
         tags=['vision'],
@@ -225,7 +213,7 @@ register_model(
                 Model('mistralai/Mistral-Small-3.2-24B-Instruct-2506', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'),
             ]),
         ],
-        get_model_tokenizer_mistral_2506,
+        Mistral3Loader,
         template=TemplateType.mistral_2506,
         hf_model_type=['mistral3'],
         model_arch=ModelArch.llava_hf,

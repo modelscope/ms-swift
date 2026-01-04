@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from transformers import GenerationConfig
+from transformers import GenerationConfig, PreTrainedModel
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 
 def get_model_tokenizer_telechat(*args, **kwargs):
@@ -35,7 +36,6 @@ register_model(
                 Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
             ]),
         ],
-        get_model_tokenizer_telechat,
         template=TemplateType.telechat,
         model_arch=ModelArch.telechat,
         architectures=['TelechatForCausalLM', 'TeleChatForCausalLM'],
@@ -52,7 +52,6 @@ register_model(
                 Model('TeleAI/TeleChat2-35B-Nov', 'Tele-AI/TeleChat2-35B-Nov'),
             ]),
         ],
-        get_model_tokenizer_telechat,
         template=TemplateType.telechat2,
         model_arch=ModelArch.telechat,
         architectures=['TeleChat2ForCausalLM'],

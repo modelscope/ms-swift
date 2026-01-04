@@ -5,12 +5,12 @@ from typing import Any, Dict
 from swift.llm import TemplateType
 from ..constant import LLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 
 def get_skywork_model_tokenizer(model_dir: str,
-                                model_info: ModelInfo,
+                                model_info,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
@@ -31,7 +31,6 @@ register_model(
                 Model('skywork/Skywork-13B-chat'),
             ]),
         ],
-        get_skywork_model_tokenizer,
         template=TemplateType.skywork,
         architectures=['SkyworkForCausalLM'],
         model_arch=ModelArch.llama,
@@ -50,7 +49,6 @@ register_model(
                 Model('AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft', 'Ray2333/GRM-llama3.2-3B-rewardmodel-ft'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.llama3_2,
         requires=['transformers>=4.43'],
         architectures=['LlamaForSequenceClassification'],
@@ -66,7 +64,6 @@ register_model(
                 Model('AI-ModelScope/Skywork-Reward-Gemma-2-27B-v0.2', 'Skywork/Skywork-Reward-Gemma-2-27B-v0.2'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.gemma,
         requires=['transformers>=4.42'],
         architectures=['Gemma2ForSequenceClassification'],

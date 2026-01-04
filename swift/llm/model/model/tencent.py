@@ -1,22 +1,21 @@
 from typing import Any, Dict
 
+from transformers import PreTrainedModel
+
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, register_model
-from ..utils import ModelInfo
+from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..register import ModelLoader, register_model
 
 
-def get_model_tokenizer_hunyuan_vl(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    from transformers import HunYuanVLForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or HunYuanVLForConditionalGeneration
-    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, processor
+class HunyuanVLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import HunYuanVLForConditionalGeneration
+        self.automodel_class = self.automodel_class or HunYuanVLForConditionalGeneration
+        self.attn_impl = self.attn_impl or 'eager'
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -27,7 +26,7 @@ register_model(
                 Model('Tencent-Hunyuan/HunyuanOCR', 'tencent/HunyuanOCR'),
             ]),
         ],
-        get_model_tokenizer_hunyuan_vl,
+        HunyuanVLLoader,
         template=TemplateType.hunyuan_ocr,
         architectures=['HunYuanVLForConditionalGeneration'],
         model_arch=ModelArch.hunyuan_vl,

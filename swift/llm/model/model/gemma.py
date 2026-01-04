@@ -1,24 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
+from transformers import PreTrainedModel
+
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_sentence_transformers, get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo
+from ..register import ModelLoader, SentenceTransformers, register_model
 
 
-def get_model_tokenizer_paligemma_vision(model_dir: str,
-                                         model_info: ModelInfo,
-                                         model_kwargs: Dict[str, Any],
-                                         load_model: bool = True,
-                                         **kwargs):
-    from transformers import PaliGemmaForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or PaliGemmaForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, processor
+class PaligemmaVisionLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import PaliGemmaForConditionalGeneration
+        self.automodel_class = self.automodel_class or PaliGemmaForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -50,7 +48,7 @@ register_model(
                 Model('AI-ModelScope/paligemma2-10b-ft-docci-448', 'google/paligemma2-10b-ft-docci-448'),
             ]),
         ],
-        get_model_tokenizer_paligemma_vision,
+        PaligemmaVisionLoader,
         template=TemplateType.paligemma,
         architectures=['PaliGemmaForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
@@ -69,7 +67,6 @@ register_model(
                 Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
             ], ),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.gemma,
         architectures=['GemmaForCausalLM'],
         model_arch=ModelArch.llama,
@@ -89,7 +86,6 @@ register_model(
                 Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
             ], ),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.gemma,
         architectures=['Gemma2ForCausalLM'],
         model_arch=ModelArch.llama,
@@ -97,16 +93,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_gemma3_text(model_dir: str,
-                                    model_info: ModelInfo,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
-    # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
-    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class Gemma3TextLoader(ModelLoader):
 
-    return model, tokenizer
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
+        self.attn_impl = self.attn_impl or 'eager'
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -121,7 +113,7 @@ register_model(
                 Model('google/medgemma-27b-text-it', 'google/medgemma-27b-text-it'),
             ], ),
         ],
-        get_model_tokenizer_gemma3_text,
+        Gemma3TextLoader,
         template=TemplateType.gemma3_text,
         architectures=['Gemma3ForCausalLM'],
         model_arch=ModelArch.llama,
@@ -129,23 +121,14 @@ register_model(
     ))
 
 
-def get_model_tokenizer_gemma3_vision(model_dir: str,
-                                      model_info: ModelInfo,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      **kwargs):
-    try:
+class Gemma3VisionLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
         from transformers import Gemma3ForConditionalGeneration
-    except ImportError:
-        raise ImportError('Please install Gemma3ForConditionalGeneration by running '
-                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3`')
-
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
-    # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
-    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, processor
+        self.automodel_class = self.automodel_class or Gemma3ForConditionalGeneration
+        # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
+        self.attn_impl = self.attn_impl or 'eager'
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -164,7 +147,7 @@ register_model(
                 Model('google/medgemma-27b-it', 'google/medgemma-27b-it'),
             ], ),
         ],
-        get_model_tokenizer_gemma3_vision,
+        Gemma3VisionLoader,
         template=TemplateType.gemma3_vision,
         architectures=['Gemma3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
@@ -172,20 +155,15 @@ register_model(
     ))
 
 
-def get_model_tokenizer_gemma3n(model_dir: str,
-                                model_info: ModelInfo,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    from transformers import Gemma3nForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3nForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class Gemma3nLoader(ModelLoader):
 
-    if load_model and model is not None:
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Gemma3nForConditionalGeneration
+        self.automodel_class = self.automodel_class or Gemma3nForConditionalGeneration
+        model = super().get_model(model_dir, config, model_kwargs)
         patch_output_to_input_device(model.model.embed_vision)
         patch_output_to_input_device(model.model.embed_audio)
-
-    return model, processor
+        return model
 
 
 register_model(
@@ -199,7 +177,7 @@ register_model(
                 Model('google/gemma-3n-E4B-it', 'google/gemma-3n-E4B-it'),
             ], ),
         ],
-        get_model_tokenizer_gemma3n,
+        Gemma3nLoader,
         template=TemplateType.gemma3n,
         architectures=['Gemma3nForConditionalGeneration'],
         model_arch=ModelArch.gemma3n,
@@ -214,6 +192,6 @@ register_model(
                 Model('google/embeddinggemma-300m', 'google/embeddinggemma-300m'),
             ], ),
         ],
-        get_model_tokenizer_sentence_transformers,
+        SentenceTransformers,
         architectures=['Gemma3TextModel'],
     ))

@@ -3,26 +3,23 @@ import os
 import sys
 from typing import Any, Dict
 
-from transformers import AutoConfig
+from transformers import AutoConfig, PreTrainedModel
 
 from swift.llm import TemplateType
 from swift.utils import get_device
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, git_clone_github
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
+from ..utils import git_clone_github
 
 
-def get_model_tokenizer_llama(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config.pretraining_tp = 1
-    kwargs['model_config'] = model_config
-    return get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class LlamaLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        if getattr(config, 'pretraining_tp', 1) > 1:
+            config.pretraining_tp = 1
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -238,15 +235,17 @@ register_model(
                        TemplateType.reflection,
                        requires=['transformers>=4.43']),
         ],
-        get_model_tokenizer_llama,
+        LlamaLoader,
         model_arch=ModelArch.llama,
     ))
 
 
-def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
-    from transformers import MllamaForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or MllamaForConditionalGeneration
-    return get_model_tokenizer_multimodal(*args, **kwargs)
+class Llama3_2VisionLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import MllamaForConditionalGeneration
+        self.automodel_class = self.automodel_class or MllamaForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -260,7 +259,7 @@ register_model(
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
             ])
         ],
-        get_model_tokenizer_llama3_2_vision,
+        Llama3_2VisionLoader,
         template=TemplateType.llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
@@ -269,10 +268,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_llama4(*args, **kwargs):
-    from transformers import Llama4ForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Llama4ForConditionalGeneration
-    return get_model_tokenizer_multimodal(*args, **kwargs)
+class Llama4Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import Llama4ForConditionalGeneration
+        self.automodel_class = self.automodel_class or Llama4ForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -289,7 +290,7 @@ register_model(
                       'meta-llama/Llama-4-Maverick-17B-128E-Instruct'),
             ])
         ],
-        get_model_tokenizer_llama4,
+        Llama4Loader,
         template=TemplateType.llama4,
         requires=['transformers>=4.51'],
         model_arch=ModelArch.llama4,
@@ -297,36 +298,31 @@ register_model(
     ))
 
 
-def get_model_tokenizer_omnli(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    local_repo_path = kwargs.get('local_repo_path')
-    if not local_repo_path:
-        local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
-    sys.path.append(local_repo_path)
-    from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
-    import whisper
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
-    if not os.path.exists(model_config.speech_encoder):
-        whisper.load_model('large-v3', download_root=model_dir)
-    kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
-    kwargs['model_config'] = model_config
-    for key in ['forward', 'generate']:
-        try:
-            delattr(OmniSpeech2SLlamaForCausalLM, key)
-            delattr(OmniSpeechLlamaForCausalLM, key)
-        except AttributeError:
-            pass
-    # not support device_map='auto'
-    device_map = model_kwargs['device_map']
-    model_kwargs['device_map'] = None
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model:
+class Llama3OmniLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        local_repo_path = self.local_repo_path
+        if not local_repo_path:
+            local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
+        sys.path.append(self.local_repo_path)
+        from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
+        import whisper
+        config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
+        if not os.path.exists(config.speech_encoder):
+            whisper.load_model('large-v3', download_root=model_dir)
+        self.automodel_class = self.automodel_class or OmniSpeech2SLlamaForCausalLM
+        for key in ['forward', 'generate']:
+            try:
+                delattr(OmniSpeech2SLlamaForCausalLM, key)
+                delattr(OmniSpeechLlamaForCausalLM, key)
+            except AttributeError:
+                pass
+        # not support device_map='auto'
+        device_map = model_kwargs['device_map']
+        model_kwargs['device_map'] = None
+        model = super().get_model(model_dir, config, model_kwargs)
         model.to(get_device() if device_map == 'auto' else device_map)
-    return model, tokenizer
+        return model
 
 
 register_model(
@@ -335,7 +331,7 @@ register_model(
         [ModelGroup([
             Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
         ], )],
-        get_model_tokenizer_omnli,
+        Llama3OmniLoader,
         template=TemplateType.llama3_1_omni,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,

@@ -1,16 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict
 
 import torch.nn.functional as F
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
 
 logger = get_logger()

@@ -3,27 +3,28 @@ from types import MethodType
 from typing import Any, Dict, Optional
 
 import torch
+from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone, patch_output_normalizer
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, use_submodel_func
-from .qwen import patch_qwen_vl_utils
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..patcher import patch_output_clone
+from ..register import ModelLoader, register_model
+from ..utils import use_submodel_func
+from .qwen import Qwen2VLLoader, patch_qwen_vl_utils
 
 logger = get_logger()
 
 
-def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
-    from transformers import AutoModelForVision2Seq
-    kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModelForVision2Seq
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    return model, processor
+class Idefics3Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForVision2Seq
+        self.automodel_class = self.automodel_class or AutoModelForVision2Seq
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -34,7 +35,7 @@ register_model(
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
             ]),
         ],
-        get_model_tokenizer_idefics,
+        Idefics3Loader,
         template=TemplateType.idefics3,
         model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
@@ -43,11 +44,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
-    from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    return model, processor
+class PixtralLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from transformers import LlavaForConditionalGeneration
+        self.automodel_class = self.automodel_class or LlavaForConditionalGeneration
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -58,7 +60,7 @@ register_model(
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
             ]),
         ],
-        get_model_tokenizer_pixtral,
+        PixtralLoader,
         template=TemplateType.pixtral,
         model_arch=ModelArch.llava_hf,
         architectures=['LlavaForConditionalGeneration'],
@@ -67,26 +69,23 @@ register_model(
     ))
 
 
-def get_model_tokenizer_molmoe(model_dir: str,
-                               model_info: ModelInfo,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class MolMoeLoader(ModelLoader):
 
-    # fix bug for molmoe-1b
-    def to_dict(self, *args, **kwargs):
-        res = self._to_dict(*args, **kwargs)
-        res['vision_backbone'] = self.vision_backbone.__dict__
-        res.pop('to_dict')
-        res.pop('_to_dict')
-        return res
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
 
-    if model is not None:
+        # fix bug for molmoe-1b
+        def to_dict(self, *args, **kwargs):
+            res = self._to_dict(*args, **kwargs)
+            res['vision_backbone'] = self.vision_backbone.__dict__
+            res.pop('to_dict')
+            res.pop('_to_dict')
+            return res
+
         model.config._to_dict = model.config.to_dict
         model.config.to_dict = MethodType(to_dict, model.config)
         patch_output_clone(model.model.transformer.wte)
-    return model, processor
+        return model
 
 
 register_model(
@@ -97,7 +96,7 @@ register_model(
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
             ]),
         ],
-        get_model_tokenizer_molmoe,
+        MolMoeLoader,
         template=TemplateType.molmo,
         model_arch=ModelArch.molmo,
         torch_dtype=torch.float32,
@@ -107,17 +106,14 @@ register_model(
     ))
 
 
-def get_model_tokenizer_molmo(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
-    model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model is not None:
+class MolmoLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
+        model_cls._no_split_modules = ['MolmoSequentialBlock']
+        model = super().get_model(model_dir, config, model_kwargs)
         patch_output_clone(model.model.transformer.wte)
-    return model, processor
+        return model
 
 
 register_model(
@@ -130,7 +126,7 @@ register_model(
                 Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
             ]),
         ],
-        get_model_tokenizer_molmo,
+        MolmoLoader,
         template=TemplateType.molmo,
         model_arch=ModelArch.molmo,
         architectures=['MolmoForCausalLM'],
@@ -139,17 +135,22 @@ register_model(
     ))
 
 
-def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
-    model_cls = get_class_from_dynamic_module('modeling_megrezo.MegrezO', model_dir)
-    model_cls._no_split_modules = ['ResidualAttentionBlock', 'LlamaDecoderLayer']
-    model_cls = get_class_from_dynamic_module('modeling_megrezo.SiglipVisionTransformer', model_dir)
-    model_cls._no_split_modules = ['SiglipEncoderLayer']
-    model, processor = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    processor = model._get_or_init_processor()
-    patch_output_clone(model.llm.model.embed_tokens)
-    use_submodel_func(model, 'llm')
-    return model, processor
+class MegrezOmniLoader(ModelLoader):
 
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model_cls = get_class_from_dynamic_module('modeling_megrezo.MegrezO', model_dir)
+        model_cls._no_split_modules = ['ResidualAttentionBlock', 'LlamaDecoderLayer']
+        model_cls = get_class_from_dynamic_module('modeling_megrezo.SiglipVisionTransformer', model_dir)
+        model_cls._no_split_modules = ['SiglipEncoderLayer']
+        model = super().get_model(model_dir, config, model_kwargs)
+        patch_output_clone(model.llm.model.embed_tokens)
+        use_submodel_func(model, 'llm')
+        return model
+
+
+# def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
+#     processor = model._get_or_init_processor()
+#     return model, processor
 
 register_model(
     ModelMeta(
@@ -159,7 +160,7 @@ register_model(
                 Model('InfiniAI/Megrez-3B-Omni', 'Infinigence/Megrez-3B-Omni'),
             ]),
         ],
-        get_model_tokenizer_megrez_omni,
+        MegrezOmniLoader,
         template=TemplateType.megrez_omni,
         model_arch=ModelArch.megrez_omni,
         architectures=['MegrezO'],
@@ -174,86 +175,89 @@ register_model(
                 Model('iic/gme-Qwen2-VL-7B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-7B-Instruct'),
             ]),
         ],
-        get_model_tokenizer_qwen2_vl,
+        Qwen2VLLoader,
         template=TemplateType.qwen2_gme,
         model_arch=ModelArch.qwen2_vl,
         hf_model_type=['qwen2_vl'],
         tags=['vision']))
 
 
-def get_model_tokenizer_jina_reranker_m0(model_dir: str, *args, **kwargs):
-    # Use AutoModel to respect the model repo's dynamic class mapping
-    # and load the custom Jina reranker head via trust_remote_code.
-    from transformers import AutoModel
-    from transformers.modeling_outputs import SequenceClassifierOutputWithPast
-    kwargs['automodel_class'] = kwargs.get('automodel_class') or AutoModel
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    # Patch forward to return a sequence-classification-style output with `.logits`
-    # Use the model's own head (already present in jina-reranker-m0), just wrap outputs.
-    if model is not None and not hasattr(model, '_forward_origin'):
-        model._forward_origin = model.forward
-        model.logit_bias = 2.65
+class JinaRerankerM0Loader(ModelLoader):
 
-        def forward(self,
-                    input_ids=None,
-                    attention_mask=None,
-                    position_ids=None,
-                    inputs_embeds=None,
-                    pixel_values=None,
-                    image_grid_thw=None,
-                    video_grid_thw=None,
-                    output_attentions=None,
-                    output_hidden_states=None,
-                    return_dict=None,
-                    **kwargs):
-            # Remove labels to avoid upstream asserts in ranking models
-            kwargs.pop('labels', None)
-            if return_dict is None:
-                return_dict = True
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        # Use AutoModel to respect the model repo's dynamic class mapping
+        # and load the custom Jina reranker head via trust_remote_code.
+        from transformers import AutoModel
+        from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+        self.automodel_class = self.automodel_class or AutoModel
+        model = super().get_model(model_dir, config, model_kwargs)
+        # Patch forward to return a sequence-classification-style output with `.logits`
+        # Use the model's own head (already present in jina-reranker-m0), just wrap outputs.
 
-            out = self._forward_origin(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                inputs_embeds=inputs_embeds,
-                pixel_values=pixel_values,
-                image_grid_thw=image_grid_thw,
-                video_grid_thw=video_grid_thw,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-                **kwargs)
+        if not hasattr(model, '_forward_origin'):
+            model._forward_origin = model.forward
+            model.logit_bias = 2.65
 
-            logits = out.unsqueeze(-1) - self.logit_bias
+            def forward(self,
+                        input_ids=None,
+                        attention_mask=None,
+                        position_ids=None,
+                        inputs_embeds=None,
+                        pixel_values=None,
+                        image_grid_thw=None,
+                        video_grid_thw=None,
+                        output_attentions=None,
+                        output_hidden_states=None,
+                        return_dict=None,
+                        **kwargs):
+                # Remove labels to avoid upstream asserts in ranking models
+                kwargs.pop('labels', None)
+                if return_dict is None:
+                    return_dict = True
 
-            if not return_dict:
-                return (logits, )
+                out = self._forward_origin(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    inputs_embeds=inputs_embeds,
+                    pixel_values=pixel_values,
+                    image_grid_thw=image_grid_thw,
+                    video_grid_thw=video_grid_thw,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    **kwargs)
 
-            return SequenceClassifierOutputWithPast(logits=logits)
+                logits = out.unsqueeze(-1) - self.logit_bias
 
-        model.forward = MethodType(forward, model)
+                if not return_dict:
+                    return (logits, )
 
-        def padding_free_fn(self, output, kwargs, padding_side):
-            return_dict = kwargs.get('return_dict', None)
+                return SequenceClassifierOutputWithPast(logits=logits)
 
-            output.logits = output['last_hidden_state'][:, -1]
-            logits = self.score(output.logits)
-            logits = logits - self.logit_bias
+            model.forward = MethodType(forward, model)
 
-            if not return_dict:
-                return (logits, )
+            def padding_free_fn(self, output, kwargs, padding_side):
+                return_dict = kwargs.get('return_dict', None)
 
-            return SequenceClassifierOutputWithPast(logits=logits)
+                output.logits = output['last_hidden_state'][:, -1]
+                logits = self.score(output.logits)
+                logits = logits - self.logit_bias
 
-        model.padding_free_fn = MethodType(padding_free_fn, model)
-    return model, processor
+                if not return_dict:
+                    return (logits, )
+
+                return SequenceClassifierOutputWithPast(logits=logits)
+
+            model.padding_free_fn = MethodType(padding_free_fn, model)
+            return model
 
 
 register_model(
     ModelMeta(
         RerankerModelType.jina_reranker_m0,
         [ModelGroup([Model('JinaAI/jina-reranker-m0', 'JinaAI/jina-reranker-m0')])],
-        get_model_tokenizer_jina_reranker_m0,
+        JinaRerankerM0Loader,
         template=TemplateType.jina_reranker_m0,
         model_arch=ModelArch.qwen2_vl,
         architectures=['JinaRerankerM0ForConditionalGeneration'],
@@ -278,7 +282,6 @@ register_model(
                 Model('Kwai-Keye/Keye-VL-8B-Preview', 'Kwai-Keye/Keye-VL-8B-Preview'),
             ]),
         ],
-        get_model_tokenizer_keye_vl,
         template=TemplateType.keye_vl,
         model_arch=ModelArch.keye_vl,
         architectures=['KeyeVLForConditionalGeneration'],
@@ -294,7 +297,6 @@ register_model(
                 Model('Kwai-Keye/Keye-VL-1_5-8B', 'Kwai-Keye/Keye-VL-1_5-8B'),
             ]),
         ],
-        get_model_tokenizer_keye_vl,
         template=TemplateType.keye_vl_1_5,
         model_arch=ModelArch.keye_vl,
         architectures=['KeyeVL1_5ForConditionalGeneration'],
@@ -303,11 +305,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_dots_ocr(model_dir, *args, **kwargs):
-    model_cls = get_class_from_dynamic_module('modeling_dots_vision.DotsVisionTransformer', model_dir)
-    model_cls._no_split_modules = ['DotsVisionBlock']
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    return model, processor
+class DotsOCRLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model_cls = get_class_from_dynamic_module('modeling_dots_vision.DotsVisionTransformer', model_dir)
+        model_cls._no_split_modules = ['DotsVisionBlock']
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -316,7 +319,7 @@ register_model(
         [ModelGroup([
             Model('rednote-hilab/dots.ocr', 'rednote-hilab/dots.ocr'),
         ])],
-        get_model_tokenizer_dots_ocr,
+        DotsOCRLoader,
         template=TemplateType.dots_ocr,
         model_arch=ModelArch.dots_ocr,
         architectures=['DotsOCRForCausalLM'],
@@ -324,11 +327,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_sail2_vl(model_dir, *args, **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    if model is not None:
+class Sail2VLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
         use_submodel_func(model, 'language_model')
-    return model, processor
+        return model
 
 
 register_model(
@@ -341,7 +345,7 @@ register_model(
                 Model('BytedanceDouyinContent/SAIL-VL2-8B-Thinking', 'BytedanceDouyinContent/SAIL-VL2-8B-Thinking'),
             ])
         ],
-        get_model_tokenizer_sail2_vl,
+        Sail2VLLoader,
         template=TemplateType.sail_vl2,
         model_arch=ModelArch.internvl,
         architectures=['SAILVLModel'],

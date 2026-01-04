@@ -257,9 +257,8 @@ class MLLMModelType:
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
-    mistral_2503 = 'mistral_2503'
-    mistral_2506 = 'mistral_2506'
-    mistral_2512 = 'mistral_2512'
+    mistral3 = 'mistral3'
+    mistral_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
 

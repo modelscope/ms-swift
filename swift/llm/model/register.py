@@ -215,15 +215,16 @@ class ModelLoader(BaseModelLoader):
         self.problem_type = kwargs.get('problem_type')
         self.patch_offload = kwargs.pop('patch_offload', False)
         self.init_strategy = kwargs.get('init_strategy')
+        self.local_repo_path = kwargs.get('local_repo_path')
         self.leaf_modules = None
         if model_info.quant_method == 'fp8':
-            torch_dtype = 'auto'
+            self.torch_dtype = 'auto'
         else:
-            torch_dtype = model_info.torch_dtype
+            self.torch_dtype = model_info.torch_dtype
         if version.parse(transformers.__version__) >= version.parse('4.56'):
-            model_kwargs['dtype'] = torch_dtype
+            model_kwargs['dtype'] = self.torch_dtype
         else:
-            model_kwargs['torch_dtype'] = torch_dtype
+            model_kwargs['torch_dtype'] = self.torch_dtype
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
 
@@ -397,29 +398,15 @@ class ModelLoader(BaseModelLoader):
         return model
 
 
-def get_model_tokenizer_sentence_transformers(model_dir: str,
-                                              model_info: ModelInfo,
-                                              model_kwargs: Dict[str, Any],
-                                              load_model: bool = True,
-                                              *,
-                                              tokenizer=None,
-                                              model_config=None,
-                                              automodel_class=None,
-                                              **kwargs):
-    from sentence_transformers import SentenceTransformer
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info.config = model_config
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    if load_model:
+class SentenceTransformers(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        from sentence_transformers import SentenceTransformer
         model = SentenceTransformer(
             model_dir, trust_remote_code=True, model_kwargs={
-                'torch_dtype': torch_dtype,
+                'torch_dtype': self.torch_dtype,
             })
-        model.config = model_config
+        model.config = config
 
         def enable_input_require_grads(self):
 
@@ -429,6 +416,26 @@ def get_model_tokenizer_sentence_transformers(model_dir: str,
             self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        return model
+
+
+def get_model_tokenizer_sentence_transformers(model_dir: str,
+                                              model_info: ModelInfo,
+                                              model_kwargs: Dict[str, Any],
+                                              load_model: bool = True,
+                                              *,
+                                              tokenizer=None,
+                                              model_config=None,
+                                              automodel_class=None,
+                                              **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if load_model:
         tokenizer = model.tokenizer
     else:
         model = None

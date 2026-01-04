@@ -2,7 +2,8 @@
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import register_model
 
 logger = get_logger()
 
@@ -15,7 +16,6 @@ register_model(
                 Model('ByteDance-Seed/Seed-OSS-36B-Base-woSyn', 'ByteDance-Seed/Seed-OSS-36B-Base-woSyn'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.seed_oss,
         architectures=['SeedOssForCausalLM'],
         requires=['transformers>=4.56']))

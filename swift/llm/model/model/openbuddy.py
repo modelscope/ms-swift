@@ -3,7 +3,8 @@ from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 logger = get_logger()
 
@@ -37,7 +38,6 @@ register_model(
                 TemplateType.openbuddy2,
                 requires=['transformers>=4.45']),
         ],
-        get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         hf_model_type=['llama'],
     ))
@@ -53,7 +53,6 @@ register_model(
                 Model('OpenBuddy/openbuddy-zephyr-7b-v14.1', 'OpenBuddy/openbuddy-zephyr-7b-v14.1'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.openbuddy,
         model_arch=ModelArch.llama,
         requires=['transformers>=4.34'],
@@ -68,7 +67,6 @@ register_model(
                 Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
             ], ),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.openbuddy,
         architectures=['MixtralForCausalLM'],
         requires=['transformers>=4.36'],

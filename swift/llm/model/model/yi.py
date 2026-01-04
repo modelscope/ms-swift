@@ -3,21 +3,46 @@ import os
 import sys
 from typing import Any, Dict
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedModel
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, git_clone_github
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
+from ..utils import git_clone_github
 
 logger = get_logger()
 
 
 def get_model_tokenizer_yi(model_dir, *args, **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
+
+
+class YiVLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        local_repo_path = self.local_repo_path
+        if not local_repo_path:
+            local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
+        sys.path.append(os.path.join(local_repo_path, 'VL'))
+        from llava.model import LlavaLlamaForCausalLM, LlavaConfig
+        from llava.model.constants import key_info
+
+        model_config = LlavaConfig.from_pretrained(model_dir)
+        mm_vision_tower = model_config.mm_vision_tower
+        model_config.mm_vision_tower = os.path.join(model_dir, *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
+        model_config.attention_dropout = 0.
+        key_info['model_path'] = model_dir
+        self.automodel_class = self.automodel_class or LlavaLlamaForCausalLM
+        model = super().get_model(model_dir, config, model_kwargs)
+        vision_tower = model.get_vision_tower()
+        vision_tower.load_model()
+        vision_tower.to(device=model.device, dtype=model_config.torch_dtype)
+        if not hasattr(model.config, 'max_sequence_length'):
+            model.config.max_sequence_length = 2048
+        return model
 
 
 def get_model_tokenizer_yi_vl(model_dir: str,
@@ -25,32 +50,10 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    local_repo_path = kwargs.get('local_repo_path')
-    if not local_repo_path:
-        local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
-    sys.path.append(os.path.join(local_repo_path, 'VL'))
-    from llava.model import LlavaLlamaForCausalLM, LlavaConfig
-    from llava.model.constants import key_info
-
-    model_config = LlavaConfig.from_pretrained(model_dir)
-    mm_vision_tower = model_config.mm_vision_tower
-    model_config.mm_vision_tower = os.path.join(model_dir, *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
-    model_config.attention_dropout = 0.
-    key_info['model_path'] = model_dir
-    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaLlamaForCausalLM
-    model, tokenizer = get_model_tokenizer_yi(
-        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
-    if model is not None:
-        logger.info('Please ignore the above warning.')
-        logger.info('Loading the parameters of vision_tower...')
-        model.resize_token_embeddings(len(tokenizer))
-        vision_tower = model.get_vision_tower()
-        vision_tower.load_model()
-        vision_tower.to(device=model.device, dtype=model_config.torch_dtype)
-        if not hasattr(model.config, 'max_sequence_length'):
-            model.config.max_sequence_length = 2048
-        tokenizer.image_processor = vision_tower.image_processor
-    return model, tokenizer
+    logger.info('Please ignore the above warning.')
+    logger.info('Loading the parameters of vision_tower...')
+    model.resize_token_embeddings(len(tokenizer))
+    tokenizer.image_processor = vision_tower.image_processor
 
 
 register_model(
@@ -62,7 +65,7 @@ register_model(
                 Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
             ], ),
         ],
-        get_model_tokenizer_yi_vl,
+        YiVLLoader,
         template=TemplateType.yi_vl,
         model_arch=ModelArch.llava_llama,
         architectures=['LlavaLlamaForCausalLM'],
@@ -120,7 +123,6 @@ register_model(
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
             ], TemplateType.sus),
         ],
-        get_model_tokenizer_yi,
         hf_model_type=['llama'],
         model_arch=ModelArch.llama,
     ))

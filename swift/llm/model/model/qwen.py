@@ -29,9 +29,8 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 class QwenLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model_info = self.model_info
-        if model_info.torch_dtype is not None:
-            k_true = dtype_mapping[model_info.torch_dtype]
+        if self.torch_dtype is not None:
+            k_true = dtype_mapping[self.torch_dtype]
             for k in dtype_mapping.values():
                 setattr(config, k, k == k_true)
 

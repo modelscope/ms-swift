@@ -8,7 +8,7 @@ from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelInfo, ModelMeta
 from ..register import ModelLoader, register_model
-from .glm import get_model_tokenizer_chatglm
+from .glm import ChatGLMLoader, get_model_tokenizer_chatglm
 from .qwen import QwenLoader
 
 register_model(
@@ -30,7 +30,7 @@ register_model(
         [
             ModelGroup([Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')], ),
         ],
-        get_model_tokenizer_chatglm,
+        ChatGLMLoader,
         template=TemplateType.codefuse,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
@@ -60,7 +60,6 @@ register_model(
                 tags=['coding'],
             ),
         ],
-        get_model_tokenizer_codellama,
         template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
         hf_model_type=['llama'],

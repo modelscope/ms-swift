@@ -1,23 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
+from transformers import PreTrainedModel
+
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
-from ..utils import ModelInfo
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, register_model
 
 logger = get_logger()
 
 
-def get_model_tokenizer_mamba(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    logger.info('[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
-                'be really slow!')
-    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+class MambaLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        logger.info(
+            '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
+            'be really slow!')
+        return super().get_model(model_dir, config, model_kwargs)
 
 
 register_model(
@@ -33,7 +34,7 @@ register_model(
                 Model('AI-ModelScope/mamba-2.8b-hf', 'state-spaces/mamba-2.8b-hf'),
             ])
         ],
-        get_model_tokenizer_mamba,
+        MambaLoader,
         template=TemplateType.default,
         architectures=['MambaForCausalLM'],
         model_arch=None,

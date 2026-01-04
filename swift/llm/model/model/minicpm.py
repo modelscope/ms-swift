@@ -3,17 +3,18 @@ from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
-from transformers import AutoConfig
+from transformers import AutoConfig, PreTrainedModel
 from transformers.utils import strtobool
 
 from swift.llm import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
+from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_device_map, patch_fixed_device, patch_output_clone
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, use_submodel_func
-from .deepseek import get_model_tokenizer_deepseek_moe
+from ..register import ModelLoader, register_model
+from ..utils import use_submodel_func
+from .deepseek import DeepseekLoader
 
 register_model(
     ModelMeta(
@@ -23,7 +24,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
             ]),
         ],
-        get_model_tokenizer_deepseek_moe,
+        DeepseekLoader,
         template=TemplateType.minicpm,
         architectures=['MiniCPMForCausalLM'],
         model_arch=ModelArch.llama,
@@ -53,20 +54,25 @@ def _patch_minicpmv_device_map(model) -> None:
         patch_fixed_device(model.resampler, device)
 
 
+class MiniCPMVLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, model_kwargs)
+        model.resampler.to(self.torch_dtype)  # fix float32
+        _patch_minicpmv_device_map(model)
+        func_list = ['generate', 'get_input_embeddings', 'forward']
+        use_submodel_func(model, 'llm', func_list)
+        return model
+
+
 def get_model_tokenizer_minicpmv(model_dir: str,
                                  model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if load_model:
-        model.resampler.to(model_info.torch_dtype)  # fix float32
-        _patch_minicpmv_device_map(model)
-        func_list = ['generate', 'get_input_embeddings', 'forward']
-        use_submodel_func(model, 'llm', func_list)
-        if hasattr(model, 'get_slice_image_placeholder'):
-            tokenizer.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, tokenizer)
-            tokenizer.transform = MethodType(model.transform, tokenizer)
+    if hasattr(model, 'get_slice_image_placeholder'):
+        tokenizer.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, tokenizer)
+        tokenizer.transform = MethodType(model.transform, tokenizer)
     return model, tokenizer
 
 
@@ -79,13 +85,23 @@ register_model(
                 Model('OpenBMB/MiniCPM-V-2', 'openbmb/MiniCPM-V-2'),
             ], ),
         ],
-        get_model_tokenizer_minicpmv,
+        MiniCPMVLoader,
         template=TemplateType.minicpmv,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers<4.42'],
         tags=['vision'],
     ))
+
+
+class MiniCPMV2Loader(MiniCPMVLoader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        with patch_device_map():
+            model = super().get_model(model_dir, config, model_kwargs)
+        embedding = model.get_input_embeddings()
+        patch_output_clone(embedding)
+        return model
 
 
 def get_model_tokenizer_minicpmv_2_x(model_dir: str,
@@ -95,19 +111,6 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
                                      **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    version = kwargs.get('version')
-    if version == 'o2.6':
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        model_config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
-        model_config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
-        kwargs['model_config'] = model_config
-    with patch_device_map():
-        model, tokenizer = get_model_tokenizer_minicpmv(
-            model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
-    if load_model:
-        embedding = model.get_input_embeddings()
-        patch_output_clone(embedding)
-
     return model, processor
 
 
@@ -119,7 +122,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-Llama3-V-2_5', 'openbmb/MiniCPM-Llama3-V-2_5'),
             ], ),
         ],
-        get_model_tokenizer_minicpmv_2_x,
+        MiniCPMV2Loader,
         template=TemplateType.minicpmv2_5,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
@@ -135,13 +138,22 @@ register_model(
                 Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
             ], ),
         ],
-        get_model_tokenizer_minicpmv_2_x,
+        MiniCPMV2Loader,
         template=TemplateType.minicpmv2_6,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers>=4.36', 'decord'],
         tags=['vision', 'video'],
     ))
+
+
+class MiniCPMO2Loader(MiniCPMV2Loader):
+
+    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+        config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
+        config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
+        return super().get_model(model_dir, config, model_kwargs)
+
 
 register_model(
     ModelMeta(
@@ -151,7 +163,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-o-2_6', 'openbmb/MiniCPM-o-2_6'),
             ]),
         ],
-        partial(get_model_tokenizer_minicpmv_2_x, version='o2.6'),
+        MiniCPMO2Loader,
         template=TemplateType.minicpmo2_6,
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
@@ -167,7 +179,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-V-4', 'openbmb/MiniCPM-V-4'),
             ], ),
         ],
-        get_model_tokenizer_minicpmv_2_x,
+        MiniCPMV2Loader,
         template=TemplateType.minicpmv4,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
@@ -183,7 +195,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-V-4_5', 'openbmb/MiniCPM-V-4_5'),
             ], ),
         ],
-        get_model_tokenizer_minicpmv_2_x,
+        MiniCPMV2Loader,
         template=TemplateType.minicpmv4_5,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
@@ -201,7 +213,6 @@ register_model(
                 Model('OpenBMB/MiniCPM-1B-sft-bf16', 'openbmb/MiniCPM-1B-sft-bf16'),
             ], ),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.minicpm,
         architectures=['MiniCPMForCausalLM'],
         model_arch=ModelArch.llama,
@@ -220,7 +231,6 @@ register_model(
                 Model('OpenBMB/MiniCPM4-8B', 'openbmb/MiniCPM4-8B'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.chatml,
         architectures=['MiniCPMForCausalLM'],
         model_arch=ModelArch.llama,
@@ -235,7 +245,6 @@ register_model(
                 Model('OpenBMB/MiniCPM3-4B', 'openbmb/MiniCPM3-4B'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.chatml,
         architectures=['MiniCPM3ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,

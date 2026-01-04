@@ -7,9 +7,9 @@ from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_sentence_transformers,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, safe_snapshot_download
+from ..model_meta import Model, ModelGroup, ModelMeta
+from ..register import ModelLoader, SentenceTransformers, register_model
+from ..utils import safe_snapshot_download
 
 logger = get_logger()
 
@@ -29,7 +29,6 @@ register_model(
                 Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
             ]),
         ],
-        get_model_tokenizer_grok,
         template=TemplateType.default,
         architectures=['Grok1ModelForCausalLM'],
         model_arch=ModelArch.llama
@@ -57,7 +56,6 @@ register_model(
                     Model('damo/nlp_polylm_13b_text_generation', 'DAMO-NLP-MT/polylm-13b'),
                 ], ),
         ],
-        get_model_tokenizer_polylm,
         template=TemplateType.default,
         architectures=['GPT2LMHeadModel'],
         model_arch=ModelArch.qwen))
@@ -95,7 +93,6 @@ register_model(
                 Model('IEITYuan/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
             ]),
         ],
-        get_model_tokenizer_yuan,
         template=TemplateType.yuan,
         model_arch=ModelArch.llama,
         architectures=['YuanForCausalLM'],
@@ -110,7 +107,6 @@ register_model(
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.orion,
         model_arch=ModelArch.llama,
         architectures=['OrionForCausalLM'],
@@ -124,7 +120,6 @@ register_model(
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.dbrx,
         model_arch=ModelArch.dbrx,
         architectures=['DbrxForCausalLM'],
@@ -141,7 +136,6 @@ register_model(
                 Model('vivo-ai/BlueLM-7B-Base', 'vivo-ai/BlueLM-7B-Base'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.bluelm,
         model_arch=ModelArch.llama,
         architectures=['BlueLMForCausalLM'],
@@ -155,7 +149,6 @@ register_model(
                 Model('damo/nlp_seqgpt-560m', 'DAMO-NLP/SeqGPT-560M'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.default,
         model_arch=None,
         architectures=['BloomForCausalLM'],
@@ -176,7 +169,6 @@ register_model(
                 Model('xverse/XVERSE-13B-256K', 'xverse/XVERSE-13B-256K', ms_revision='v1.0.0'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.xverse,
         model_arch=ModelArch.llama,
         architectures=['XverseForCausalLM'],
@@ -190,7 +182,6 @@ register_model(
                 Model('xverse/XVERSE-MoE-A4.2B', 'xverse/XVERSE-MoE-A4.2B'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.xverse,
         model_arch=ModelArch.llama,
         architectures=['XverseForCausalLM'],
@@ -205,7 +196,6 @@ register_model(
                 Model('AI-ModelScope/c4ai-command-r-plus', 'CohereForAI/c4ai-command-r-plus'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.c4ai,
         model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
@@ -220,7 +210,6 @@ register_model(
                 Model('AI-ModelScope/aya-expanse-32b', 'CohereForAI/aya-expanse-32b'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.aya,
         model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
@@ -237,7 +226,6 @@ register_model(
                 Model('inclusionAI/Ling-plus-base', 'inclusionAI/Ling-plus-base'),
             ]),
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.ling,
         architectures=['BailingMoeForCausalLM'],
     ))
@@ -250,7 +238,7 @@ register_model(
                 Model('iic/gte_Qwen2-7B-instruct', 'Alibaba-NLP/gte-Qwen2-7B-instruct'),
             ]),
         ],
-        get_model_tokenizer_sentence_transformers,
+        SentenceTransformers,
         hf_model_type=['qwen2']))
 
 register_model(
@@ -263,7 +251,6 @@ register_model(
                 Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.qwen,
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
@@ -274,7 +261,6 @@ register_model(
         LLMModelType.mimo_rl, [ModelGroup([
             Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
         ])],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.mimo_rl,
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
@@ -289,7 +275,6 @@ register_model(
                 Model('rednote-hilab/dots.llm1.inst', 'rednote-hilab/dots.llm1.inst'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.dots1,
         requires=['transformers>=4.53'],
     ))
@@ -300,7 +285,6 @@ register_model(
         [ModelGroup([
             Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
         ])],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.hunyuan_moe,
     ))
 
@@ -335,7 +319,6 @@ register_model(
                 Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-7B-Instruct-GPTQ-Int4'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.hunyuan,
         requires=['transformers>=4.55.0.dev0'],
     ))
@@ -348,7 +331,6 @@ register_model(
                 Model('openai-mirror/gpt-oss-120b', 'openai/gpt-oss-120b'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.gpt_oss,
         ignore_patterns=['metal/', 'original/'],
         requires=['transformers>=4.55']))
@@ -362,7 +344,6 @@ register_model(
                 Model('meituan-longcat/LongCat-Flash-Chat-FP8', 'meituan-longcat/LongCat-Flash-Chat-FP8'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.longchat,
         architectures=['LongcatFlashForCausalLM'],
         requires=['transformers>=4.54,<4.56'],
@@ -377,7 +358,6 @@ register_model(
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
             ])
         ],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.ling2,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
@@ -388,7 +368,6 @@ register_model(
         [ModelGroup([
             Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
         ])],
-        get_model_tokenizer_with_flash_attn,
         template=TemplateType.ring2,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
