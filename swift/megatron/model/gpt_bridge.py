@@ -1392,7 +1392,9 @@ class GPTBridge:
         if not to_mcore and not self.args.hf_model_type.startswith('qwen3_next'):
             self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
                                  to_mcore)
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
+            if self.args.untie_embeddings_and_output_weights:
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight',
+                                     to_mcore)
         hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
         hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore))
         if to_mcore:
@@ -1458,6 +1460,8 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
+                if args.mtp_num_layers:
+                    self.hf_model.config.num_nextn_predict_layers = args.mtp_num_layers
                 self.hf_model.config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
                     if getattr(self.hf_model.config, 'quantization_config', None) is None:
