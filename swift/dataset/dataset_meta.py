@@ -56,7 +56,7 @@ class BaseDatasetLoader(ABC):
     @abstractmethod
     def load(
         self,
-        dataset_syntax: Optional[DatasetSyntax] = None,
+        dataset_syntax: Optional['DatasetSyntax'] = None,
         dataset_meta: Optional['DatasetMeta'] = None,
         *,
         use_hf: Optional[bool] = None,

@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -11,7 +10,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Word, findall
+from ..utils import Context, findall
 from ..vision_utils import load_batch
 from .qwen import QwenTemplateMeta
 

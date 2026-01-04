@@ -2,7 +2,6 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..base import Template
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt

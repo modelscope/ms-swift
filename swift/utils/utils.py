@@ -425,57 +425,6 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
     return value
 
 
-def remove_response(messages) -> Optional[str]:
-    """
-    Removes and returns the content of the last message if its role is 'assistant'.
-
-    Args:
-        messages (List[Dict]):
-            A list of message dictionaries, each typically containing a 'role' and 'content' key.
-
-    Returns:
-        Optional[str]:
-            The content of the removed 'assistant' message if present;
-            otherwise, returns None. The original messages list is modified in place.
-    """
-    last_role = messages[-1]['role'] if messages else None
-    if last_role == 'assistant':
-        return messages.pop()['content']
-
-
-@contextmanager
-def disable_deepspeed_zero3():
-    import transformers.integrations.deepspeed as ds_module
-    orig_weak_ref = ds_module._hf_deepspeed_config_weak_ref
-    ds_module._hf_deepspeed_config_weak_ref = None
-    try:
-        yield
-    finally:
-        ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref
-
-
-def get_modules_to_not_convert(model):
-    if not hasattr(model, 'model_meta') or not hasattr(model, 'model_info'):
-        return
-    model_arch = model.model_meta.model_arch
-    prefix_list = []
-    suffix_list = []
-    if model.model_info.is_moe_model:
-        suffix_list += ['mlp.gate', 'mlp.shared_expert_gate']
-    if model_arch is not None:
-        for key in ['vision_tower', 'aligner']:
-            value = getattr(model_arch, key, None)
-            if value:
-                prefix_list += value
-    suffix_list.append('lm_head')
-    res = []
-    for n, m in model.named_modules():
-        if 'linear' in m.__class__.__name__.lower() and (any(n.endswith(suffix) for suffix in suffix_list)
-                                                         or any(n.startswith(prefix) for prefix in prefix_list)):
-            res.append(n)
-    return res if res else None
-
-
 def retry_decorator(retry=3):
 
     def _retry(func):
@@ -534,3 +483,21 @@ def shutdown_event_loop_in_daemon(thread: threading.Thread = None, loop: asyncio
         return
     loop.call_soon_threadsafe(loop.stop)
     thread.join(timeout=5)
+
+
+def remove_response(messages) -> Optional[str]:
+    """
+    Removes and returns the content of the last message if its role is 'assistant'.
+
+    Args:
+        messages (List[Dict]):
+            A list of message dictionaries, each typically containing a 'role' and 'content' key.
+
+    Returns:
+        Optional[str]:
+            The content of the removed 'assistant' message if present;
+            otherwise, returns None. The original messages list is modified in place.
+    """
+    last_role = messages[-1]['role'] if messages else None
+    if last_role == 'assistant':
+        return messages.pop()['content']

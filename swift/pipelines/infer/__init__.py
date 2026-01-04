@@ -7,10 +7,7 @@ if TYPE_CHECKING:
     from .infer import infer_main, SwiftInfer
     from .rollout import rollout_main
     from .deploy import deploy_main, SwiftDeploy, run_deploy
-    from .protocol import RequestConfig, Function
     from .utils import prepare_model_template, get_cached_dataset
-    from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, SglangEngine, PtEngine, InferClient,
-                               prepare_generation_config, AdapterRequest, BaseInferEngine)
 else:
     _import_structure = {
         'rollout': ['rollout_main'],
@@ -18,10 +15,6 @@ else:
         'deploy': ['deploy_main', 'SwiftDeploy', 'run_deploy'],
         'protocol': ['RequestConfig', 'Function'],
         'utils': ['prepare_model_template', 'get_cached_dataset'],
-        'infer_engine': [
-            'InferEngine', 'VllmEngine', 'LmdeployEngine', 'SglangEngine', 'PtEngine', 'InferClient',
-            'prepare_generation_config', 'AdapterRequest', 'BaseInferEngine'
-        ],
     }
 
     import sys

@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import torch
 from PIL import Image

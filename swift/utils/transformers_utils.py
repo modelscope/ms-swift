@@ -290,3 +290,36 @@ def unwrap_model_for_generation(
                 add_hooks(model)
     else:
         yield unwrapped_model
+
+
+@contextmanager
+def disable_deepspeed_zero3():
+    import transformers.integrations.deepspeed as ds_module
+    orig_weak_ref = ds_module._hf_deepspeed_config_weak_ref
+    ds_module._hf_deepspeed_config_weak_ref = None
+    try:
+        yield
+    finally:
+        ds_module._hf_deepspeed_config_weak_ref = orig_weak_ref
+
+
+def get_modules_to_not_convert(model):
+    if not hasattr(model, 'model_meta') or not hasattr(model, 'model_info'):
+        return
+    model_arch = model.model_meta.model_arch
+    prefix_list = []
+    suffix_list = []
+    if model.model_info.is_moe_model:
+        suffix_list += ['mlp.gate', 'mlp.shared_expert_gate']
+    if model_arch is not None:
+        for key in ['vision_tower', 'aligner']:
+            value = getattr(model_arch, key, None)
+            if value:
+                prefix_list += value
+    suffix_list.append('lm_head')
+    res = []
+    for n, m in model.named_modules():
+        if 'linear' in m.__class__.__name__.lower() and (any(n.endswith(suffix) for suffix in suffix_list)
+                                                         or any(n.startswith(prefix) for prefix in prefix_list)):
+            res.append(n)
+    return res if res else None

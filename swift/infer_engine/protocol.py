@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
 from swift.template import Messages, Tool
+from swift.utils import remove_response
 
 
 @dataclass
@@ -75,9 +76,7 @@ class InferRequest:
 
     @staticmethod
     def remove_response(messages) -> Optional[str]:
-        last_role = messages[-1]['role'] if messages else None
-        if last_role == 'assistant':
-            return messages.pop()['content']
+        return remove_response(messages)
 
     @staticmethod
     def _to_printable(obj, key: Optional[str] = None):

@@ -6,8 +6,7 @@ from typing import Any, Dict, List, Literal
 import numpy as np
 import torch
 
-from swift.llm import to_device
-from swift.utils import is_deepspeed_enabled
+from swift.utils import is_deepspeed_enabled, to_device
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template

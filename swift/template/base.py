@@ -23,16 +23,15 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.llm import to_device
-from swift.utils import get_env_args, get_logger, retry_decorator
-from ..utils import Processor, ProcessorMixin
-from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
+from swift.utils import ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
     from .template_meta import TemplateMeta
+    from swift.infer_engine import InferRequest
 
 
 class MaxLengthError(ValueError):
@@ -91,9 +90,8 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
-        from swift.plugin.loss_scale.loss_scale import LossScale
-        from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates, get_loss_scale
+        from swift.loss_scale import LossScale, get_loss_scale
+        from swift.agent_template import get_agent_template
         self._processor_inited = False
         self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -117,7 +115,7 @@ class Template(ProcessorMixin):
             else:
                 response_prefix = ''
         self.response_prefix = response_prefix
-        self.template_meta: TemplateMeta = template_meta
+        self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
@@ -133,7 +131,7 @@ class Template(ProcessorMixin):
         self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
-        self.agent_template = agent_templates[agent_template]()
+        self.agent_template = get_agent_template[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -497,7 +495,7 @@ class Template(ProcessorMixin):
     @torch.inference_mode()
     @retry_decorator(3)
     def encode(self,
-               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
+               inputs: Union[TemplateInputs, Dict[str, Any], 'InferRequest'],
                return_template_inputs: bool = False,
                return_length: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
@@ -505,6 +503,7 @@ class Template(ProcessorMixin):
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
+        from swift.infer_engine import InferRequest
         assert self._processor_inited, ('Please initialize the processor before calling the template.encode method: '
                                         'template.init_processor(processor).')
         if isinstance(inputs, InferRequest):
@@ -512,7 +511,7 @@ class Template(ProcessorMixin):
 
         if isinstance(inputs, dict):
             if self.task_type == 'causal_lm' and not self.is_training:
-                InferRequest.remove_response(inputs['messages'])
+                remove_response(inputs['messages'])
             inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)

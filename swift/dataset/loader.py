@@ -11,8 +11,8 @@ from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.hub import get_hub
 from swift.utils import get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .dataset_meta import DATASET_TYPE, BaseDatasetLoader, DatasetSyntax
-from .datasets.llm import SelfCognitionPreprocessor
+from .dataset_meta import DATASET_TYPE, BaseDatasetLoader
+from .dataset_syntax import DatasetSyntax
 from .preprocessor import RowPreprocessor
 from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset
 
@@ -182,6 +182,7 @@ def init_self_cognition_preprocessor(
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
 ) -> None:
+    from .datasets.llm import SelfCognitionPreprocessor
     if dataset_meta is None or model_name is None and model_author is None:
         return
     kwargs = {}

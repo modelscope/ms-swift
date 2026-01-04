@@ -4,12 +4,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 import torch
 
-from swift.llm import get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, Word, findall
+from ..utils import Context, Prompt, Word, findall, get_packed_seq_params
 from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
 
 

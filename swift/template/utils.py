@@ -1,9 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers import FeatureExtractionMixin, PreTrainedTokenizerBase
+from transformers import ProcessorMixin as HfProcessorMixin
+from transformers import StoppingCriteria
+
+from swift.utils import get_logger
 
 try:
     from transformers import BaseImageProcessor
