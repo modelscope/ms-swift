@@ -96,7 +96,7 @@ class QuantEngine(ProcessorMixin):
         samples = []
         i = 0
         prog_bar = tqdm(total=n_samples, dynamic_ncols=True)
-        is_multimodal = self.model.model_meta.is_multimodal
+        is_multimodal = self.model.model_info.is_multimodal
         for data in dataset:
             try:
                 inputs = template.encode(data)

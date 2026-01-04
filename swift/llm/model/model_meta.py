@@ -13,7 +13,7 @@ from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from transformers.utils.versions import require_version
 
 from swift.utils import get_logger
-from .utils import HfConfigFactory, safe_snapshot_download
+from .utils import HfConfigFactory, safe_snapshot_download, get_default_torch_dtype
 
 logger = get_logger()
 
@@ -70,7 +70,6 @@ class ModelMeta:
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
 
-    is_multimodal: bool = False
     is_reward: bool = False
     is_reranker: bool = False
     task_type: Optional[str] = None
@@ -94,8 +93,6 @@ class ModelMeta:
         if len(self.hf_model_type) == 0:
             self.hf_model_type.append(self.model_type)
 
-        if self.model_type in MLLMModelType.__dict__:
-            self.is_multimodal = True
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
         if self.model_type in RerankerModelType.__dict__:

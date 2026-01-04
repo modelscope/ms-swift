@@ -74,7 +74,7 @@ class ChatGLM4AgentTemplate(BaseAgentTemplate):
         return '<|assistant|>'.join(tool_calls) + '<|observation|>'
 
 
-class GLM4AgentTemplate(GLM4AgentTemplate):
+class GLM4AgentTemplate(ChatGLM4AgentTemplate):
     is_glm4_0414 = True
 
 

@@ -262,6 +262,7 @@ class ModelLoader(BaseModelLoader):
         model_info = self.model_info
         model_meta = self.model_meta
         automodel_class = self.automodel_class
+        model = None
         if model_info.task_type in {'seq_cls', 'reranker'
                                     } and self.automodel_class is None and not self.return_dummy_model:
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
@@ -270,7 +271,7 @@ class ModelLoader(BaseModelLoader):
                         model_dir, config=config, trust_remote_code=True, **self.model_kwargs)
                     automodel_class = AutoModelForSequenceClassification
                 except ValueError:
-                    model = None
+                    pass
 
         automodel_class = automodel_class or AutoModelForCausalLM
         context_kwargs = {
@@ -301,7 +302,7 @@ class ModelLoader(BaseModelLoader):
         self._postprocess_model(model_dir, model, automodel_class)
         return model
 
-    def _postprocess_model(self, model_dir, model, automodel_class):
+    def _postprocess_model(self, model_dir, model, automodel_class=None):
         model_info = self.model_info
         model_meta = self.model_meta
         config = model.config
@@ -416,6 +417,7 @@ class SentenceTransformers(ModelLoader):
             self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        self._postprocess_model(model_dir, model, None)
         return model
 
 

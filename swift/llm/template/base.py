@@ -59,7 +59,7 @@ class Template(ProcessorMixin):
 
     def __init__(
         self,
-        processor: Optional[Processor],
+        model_dir: str,
         template_meta: 'TemplateMeta',
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
@@ -144,9 +144,7 @@ class Template(ProcessorMixin):
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
-
-        if processor is not None:
-            self.init_processor(processor)
+        self.processor = self.get_processor()
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -154,7 +152,10 @@ class Template(ProcessorMixin):
         else:
             self.root_image_dir = None
 
-    def init_processor(self, processor: Processor) -> None:
+    def _postprocess_processor(self, processor):
+        pass
+
+    def get_processor(self) -> None:
         if processor is None or self._processor_inited:
             return
         self._processor_inited = True
@@ -646,7 +647,7 @@ class Template(ProcessorMixin):
         origin_mode = self.mode
         if self.mode in {'train', 'rlhf', 'kto'}:
             self.set_mode('pt')
-        is_multimodal = self.model_meta.is_multimodal
+        is_multimodal = self.model_info.is_multimodal
         if is_multimodal:
             models = self.remove_post_encode_hook()
         try:

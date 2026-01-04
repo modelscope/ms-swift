@@ -105,7 +105,7 @@ class LmdeployEngine(InferEngine):
         logger.info(f'backend_config: {backend_config}')
 
         pipeline_kwargs = {}
-        is_multimodal = self.model_meta.is_multimodal
+        is_multimodal = self.model_info.is_multimodal
         if is_multimodal:
             require_version(
                 'lmdeploy<0.9', 'LmdeployEngine will no longer maintain inference for '
