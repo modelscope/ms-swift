@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
+    from swift.plugin.deepspeed_elastic import DeepspeedElasticCallBack
 
 else:
     _import_structure = {
@@ -34,6 +35,7 @@ else:
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],
+        'deepspeed_elastic': ['DeepspeedElasticCallBack'],
     }
 
     import sys

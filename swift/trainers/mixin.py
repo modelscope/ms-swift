@@ -16,6 +16,7 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
+import json
 import numpy as np
 import safetensors
 import torch
@@ -48,7 +49,8 @@ from swift.utils import (get_current_device, get_last_valid_indices, get_logger,
 from ..llm.model.patcher import (gather_sequence_parallel_outputs, get_lm_head_model, revert_padding_free,
                                  transformers_seq_cls_forward)
 from .arguments import TrainingArguments
-from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from .utils import (can_return_loss, find_labels, get_function, get_resume_dir, is_instance_of_ms_model,
+                    replace_index_file)
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -477,13 +479,52 @@ class SwiftMixin:
             step = int(f.read())
         return step
 
-    def wait_latest_checkpoint(self, timeout=FLASH_CKPT_WAIT_TIMEOUT):
+    def get_resume_checkpoint(self):
+        """
+        Get the path of the last complete checkpoint. Some latter directories
+        may not have the complete checkpoint because the asynchronous
+        persistence may not finish. The step in the `dlrover_latest.txt` is
+        the last step of complete checkpoint. We can get the path by the step.
+        """
+        resume_dir = get_resume_dir(self.args.output_dir)
+        if resume_dir is None:
+            return None
+        tracer_file = os.path.join(resume_dir, 'dlrover_latest.txt')
+        if not os.path.exists(tracer_file):
+            step = 0
+            if step == 0:
+                return None
+        with open(tracer_file, 'r') as f:
+            step = int(f.read())
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{step}'
+
+        ckpt_dir = os.path.join(resume_dir, checkpoint_folder)
+        with open(os.path.join(ckpt_dir, TRAINER_STATE_NAME), 'r', encoding='utf-8') as f:
+            train_state = json.load(f)
+        if train_state is not None and train_state.get('max_steps') == step:
+            return None
+        return ckpt_dir
+
+    def get_resume_checkpoint_until_find_ucp(self):
+        resume_dir = get_resume_dir(self.args.output_dir)
+        tracer_file = os.path.join(resume_dir, 'ucp.txt')
+        if not os.path.exists(tracer_file):
+            step = 0
+            if step == 0:
+                return None
+        with open(tracer_file, 'r') as f:
+            step = int(f.read())
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{step}'
+        ckpt_dir = os.path.join(resume_dir, checkpoint_folder)
+        return ckpt_dir
+
+    def wait_latest_checkpoint(self, timeout=FLASH_CKPT_WAIT_TIMEOUT, max_steps=None):
         """
         Wait for the latest checkpoint.
         Args:
             timeout (second): The timeout to wait.
         """
-        self.flash_checkpointer.async_save_engine.wait_latest_checkpoint(timeout)
+        self.flash_checkpointer.async_save_engine.wait_latest_checkpoint(timeout, max_steps)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -606,9 +647,16 @@ class SwiftMixin:
                 rng_states,
                 os.path.join(output_dir, f'rng_state_{self.args.process_index}.pth'),
             )
+        if self.args.save_safetensors:
+            torch.save({'safe_serialization': True}, 'safe_serialization')
+            replace_index_file(output_dir)
 
         torch.save = torch_native_save
-        success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
+        if (self.state.global_step == self.state.max_steps):
+            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step, True)
+        else:
+            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
+
         if not success:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
                         'because the latest checkpoint is not finished.')
