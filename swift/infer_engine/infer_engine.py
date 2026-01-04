@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 import asyncio
 import concurrent.futures
 import os
@@ -9,14 +8,13 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 from tqdm import tqdm
 
-from swift.llm import InferRequest, ProcessorMixin, get_template
-from swift.llm.template import Template
-from swift.llm.utils import get_ckpt_dir
-from swift.plugin import Metric
-from swift.utils import get_logger
-from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
-                        RequestConfig, UsageInfo)
+from swift.model import get_ckpt_dir
+from swift.plugins import Metric
+from swift.template import Template, get_template
+from swift.utils import ProcessorMixin, get_logger
 from .base import BaseInferEngine
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
+                       InferRequest, RequestConfig, UsageInfo)
 
 logger = get_logger()
 

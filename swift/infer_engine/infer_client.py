@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -9,10 +8,10 @@ import json
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
-from swift.plugin import Metric
-from ..protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest,
-                        ModelList, RequestConfig)
+from swift.plugins import Metric
 from .infer_engine import InferEngine
+from .protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest,
+                       ModelList, RequestConfig)
 
 
 class InferClient(InferEngine):

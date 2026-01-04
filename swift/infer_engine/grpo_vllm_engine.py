@@ -6,10 +6,12 @@ import torch
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 
-from swift.llm import InferRequest, Template, VllmEngine
-from swift.plugin import Metric
-from ..protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig, RolloutOutput
+from swift.plugins import Metric
+from swift.template import Template
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, InferRequest, RequestConfig,
+                       RolloutOutput)
 from .utils import AdapterRequest
+from .vllm_engine import VllmEngine
 
 try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'

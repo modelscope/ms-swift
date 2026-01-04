@@ -11,13 +11,13 @@ from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
 
-from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
-from swift.plugin import Metric
+from swift.plugins import Metric
+from swift.template import Template, TemplateMeta
 from swift.utils import get_logger
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
-                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                       EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
 from .utils import InferStreamer
 
 logger = get_logger()

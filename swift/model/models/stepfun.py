@@ -5,12 +5,12 @@ from functools import wraps
 from transformers import AutoModel, PreTrainedModel
 
 from swift.template import TemplateType
+from swift.utils import git_clone_github, safe_snapshot_download
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_clone
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github, safe_snapshot_download
 
 
 class GotOCR2Loader(ModelLoader):

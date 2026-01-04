@@ -8,12 +8,12 @@ from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
-from swift.utils import get_logger
+from swift.utils import get_logger, git_clone_github
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github, use_submodel_func
+from ..utils import use_submodel_func
 from .qwen import QwenLoader
 
 logger = get_logger()

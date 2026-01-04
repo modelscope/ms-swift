@@ -5,12 +5,13 @@ from typing import Any, Dict
 from transformers import AutoModel, PreTrainedModel
 
 from swift.template import TemplateType
+from swift.utils import git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github, use_submodel_func
+from ..utils import use_submodel_func
 
 
 class DeepseekLoader(ModelLoader):

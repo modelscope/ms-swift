@@ -5,12 +5,13 @@ from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
+from swift.utils import safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import ModelLoader, RewardModelLoader, register_model
-from ..utils import safe_snapshot_download, use_submodel_func
+from ..utils import use_submodel_func
 from .qwen import Qwen2AudioLoader
 
 register_model(

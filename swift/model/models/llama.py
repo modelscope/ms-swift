@@ -5,12 +5,11 @@ import sys
 from transformers import PreTrainedModel
 
 from swift.template import TemplateType
-from swift.utils import get_device
+from swift.utils import get_device, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github
 
 
 class LlamaLoader(ModelLoader):

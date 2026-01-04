@@ -4,11 +4,11 @@ from typing import Any, Dict
 from transformers import AutoProcessor, AutoTokenizer, PreTrainedModel
 
 from swift.template import TemplateType
+from swift.utils import safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from ..utils import safe_snapshot_download
 
 register_model(
     ModelMeta(

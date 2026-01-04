@@ -18,13 +18,14 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, safe_snapshot_download, to_device
-from swift.plugin import Metric
+from swift.model import get_model_tokenizer, safe_snapshot_download
+from swift.plugins import Metric
+from swift.template import Template, TemplateMeta
 from swift.tuners import Swift
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
-                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                       EmbeddingResponseData, InferRequest, RequestConfig, random_uuid, to_device)
 from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 

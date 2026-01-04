@@ -6,12 +6,11 @@ from typing import Any, Dict
 from transformers import AutoTokenizer, PreTrainedModel
 
 from swift.template import TemplateType
-from swift.utils import get_logger
+from swift.utils import get_logger, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github
 
 logger = get_logger()
 

@@ -13,8 +13,8 @@ from datasets import concatenate_datasets, interleave_datasets
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
 
-from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .preprocessor import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
+from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context
+from .preprocessor import DATASET_TYPE, AutoPreprocessor
 from .utils import sample_dataset
 
 PreprocessFunc = Callable[..., DATASET_TYPE]

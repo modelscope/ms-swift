@@ -3,10 +3,9 @@ import os
 from contextlib import nullcontext
 from typing import List, Optional, Union
 
-from swift.llm import safe_snapshot_download
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import get_logger, get_model_parameter_info
+from swift.utils import get_logger, get_model_parameter_info, safe_snapshot_download
 from swift.utils.utils import disable_deepspeed_zero3
 from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory

@@ -12,8 +12,8 @@ import torch
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from transformers.utils.versions import require_version
 
-from swift.utils import HfConfigFactory, get_logger
-from .utils import get_default_torch_dtype, safe_snapshot_download
+from swift.utils import HfConfigFactory, get_logger, safe_snapshot_download
+from .utils import get_default_torch_dtype
 
 logger = get_logger()
 

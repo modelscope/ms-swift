@@ -6,12 +6,11 @@ from typing import Any, Dict
 from transformers import AutoModel, AutoModelForSequenceClassification
 
 from swift.template import TemplateType
-from swift.utils import get_device
+from swift.utils import get_device, git_clone_github, safe_snapshot_download
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from ..utils import git_clone_github, safe_snapshot_download
 
 
 class Emu3GenLoader(ModelLoader):
