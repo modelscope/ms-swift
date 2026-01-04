@@ -5,11 +5,9 @@ from typing import TYPE_CHECKING, Dict, List
 
 import torch
 
-from swift.llm import PtEngine, RequestConfig, Template, to_device
-from swift.utils import get_logger
-
-if TYPE_CHECKING:
-    from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.infer_engine import ChatCompletionResponse, RequestConfig, TransformersEngine
+from swift.template import Template
+from swift.utils import get_logger, to_device
 
 logger = get_logger()
 
@@ -52,7 +50,7 @@ class GenRMPlugin(DefaultRMPlugin):
 
         super().__init__(model, template)
         # initilize PTEngine to infer
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.engine = TransformersEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig()  # customise your request config here
         self.system = textwrap.dedent("""
             Based on the dialogue history, analyze in detail whether the model's response is accurate, complete, and relevant.

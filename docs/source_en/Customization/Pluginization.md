@@ -41,7 +41,7 @@ def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) 
     # Write your own loss calculation here
     return loss
 
-loss_mapping['custom_loss'] = custom_loss_func
+loss_map['custom_loss'] = custom_loss_func
 ```
 
 It is important to note that the loss function is strongly related to the training task. Currently, loss customization supports PT and SFT tasks. For human alignment tasks (e.g., DPO, PPO) or classification tasks (seq_cls), loss customization through plugins is not supported.

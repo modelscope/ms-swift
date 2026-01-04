@@ -8,7 +8,7 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.loss import loss_mapping
+from swift.loss import loss_map
 from swift.optimizers.galore import GaLoreConfig
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 
@@ -129,7 +129,7 @@ class TrainArgumentsMixin:
     resume_only_model: bool = False
 
     optimizer: Optional[str] = None
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_mapping.keys())}'})
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_map.keys())}'})
     metric: Optional[str] = None
 
     # train-eval loop args

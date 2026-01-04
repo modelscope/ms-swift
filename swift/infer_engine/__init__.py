@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
     from .utils import prepare_generation_config, AdapterRequest, patch_vllm_memory_leak
-    from .protocol import InferRequest, RequestConfig, Function
+    from .protocol import InferRequest, RequestConfig, Function, ChatCompletionResponse
 else:
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
@@ -25,7 +25,7 @@ else:
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
         'utils': ['prepare_generation_config', 'AdapterRequest', 'patch_vllm_memory_leak'],
-        'protocol': ['InferRequest', 'RequestConfig', 'Function'],
+        'protocol': ['InferRequest', 'RequestConfig', 'Function', 'ChatCompletionResponse'],
     }
 
     import sys

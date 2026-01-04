@@ -1,12 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-from swift.plugin.orm import MathAccuracy
-
-if TYPE_CHECKING:
-    from swift.llm.template import RolloutInferRequest
-    from swift.llm.utils import Messages
+from swift.infer_engine.protocol import RolloutInferRequest
+from swift.template import Messages
+from .orm import MathAccuracy
 
 
 class Env(ABC):
@@ -17,7 +15,7 @@ class Env(ABC):
         self.env_config = env_config
 
     @abstractmethod
-    async def reset(self, config: 'RolloutInferRequest') -> Tuple[str, Dict[str, Any], str]:
+    async def reset(self, config: RolloutInferRequest) -> Tuple[str, Dict[str, Any], str]:
         """Reset environment to initial state.
 
         Args:
@@ -32,7 +30,7 @@ class Env(ABC):
         pass
 
     @abstractmethod
-    async def step(self, action: 'Messages') -> Tuple[str, float, bool, Dict[str, Any]]:
+    async def step(self, action: Messages) -> Tuple[str, float, bool, Dict[str, Any]]:
         """Execute one step in the environment.
 
         Args:
@@ -86,7 +84,7 @@ class SimpleMathEnv(Env):
         self.acc_func = MathAccuracy()
         self.solution = ''
 
-    async def reset(self, config: 'RolloutInferRequest') -> Tuple[str, Dict[str, Any], str]:
+    async def reset(self, config: RolloutInferRequest) -> Tuple[str, Dict[str, Any], str]:
         obs = config.data_dict['problem']
         info = {}
         self.solution = config.data_dict['solution']
@@ -98,7 +96,7 @@ class SimpleMathEnv(Env):
         """
         return obs, info, system_prompt
 
-    async def step(self, action: 'Messages') -> Tuple[str, float, bool, Dict[str, Any]]:
+    async def step(self, action: Messages) -> Tuple[str, float, bool, Dict[str, Any]]:
         next_obs = self.tips_prompt
 
         reward = 0.0

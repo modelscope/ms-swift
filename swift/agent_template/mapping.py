@@ -37,7 +37,3 @@ agent_template_map = {
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate
 }
-
-
-def get_agent_template(agent_template: str):
-    return agent_template_map[agent_template]

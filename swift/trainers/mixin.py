@@ -963,8 +963,8 @@ class SwiftMixin:
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:
-            optimizer_callback = optimizers_map[self.args.optimizer]
-            self.optimizer = optimizer_callback(self.args, self.model, self.train_dataset)
+            create_optimizer_func = optimizers_map[self.args.optimizer]
+            self.optimizer = create_optimizer_func(self.args, self.model, self.train_dataset)
             if self.optimizer is None:
                 self.create_optimizer()
             self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)

@@ -16,6 +16,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.metrics import calculate_infonce_metrics, calculate_paired_metrics, calculate_reranker_metrics
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -119,7 +120,6 @@ class EmbeddingTrainer(Trainer):
         return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from swift.plugins.loss import calculate_paired_metrics, calculate_infonce_metrics
         args = self.args
         if args.loss_type == 'infonce':
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
@@ -183,7 +183,6 @@ class RerankerTrainer(Trainer):
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         import numpy as np
-        from swift.plugin.loss import calculate_reranker_metrics
         input_ids = eval_prediction.inputs
         logits = eval_prediction.predictions
         labels = eval_prediction.label_ids

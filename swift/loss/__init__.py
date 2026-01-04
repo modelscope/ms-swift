@@ -1,1 +1,1 @@
-from .loss import loss_mapping
+from .mapping import loss_map

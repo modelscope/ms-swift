@@ -1,11 +1,10 @@
 import os
 import re
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import Dict, List, Union
 
 import json
 
-if TYPE_CHECKING:
-    from swift.llm import InferRequest
+from swift.infer_engine import InferRequest
 
 
 class ORM:

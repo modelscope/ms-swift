@@ -5,7 +5,6 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .callback import extra_callbacks
-    from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu, metric_mapping
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM, AsyncORM
@@ -17,8 +16,6 @@ if TYPE_CHECKING:
 else:
     _import_structure = {
         'callback': ['extra_callbacks'],
-        'metric':
-        ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu', 'metric_mapping'],
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM', 'AsyncORM'],

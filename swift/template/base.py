@@ -91,7 +91,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         from swift.loss_scale import LossScale, get_loss_scale
-        from swift.agent_template import get_agent_template
+        from swift.agent_template import agent_template_map
         self._processor_inited = False
         self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -131,7 +131,7 @@ class Template(ProcessorMixin):
         self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
-        self.agent_template = get_agent_template[agent_template]()
+        self.agent_template = agent_template_map[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False

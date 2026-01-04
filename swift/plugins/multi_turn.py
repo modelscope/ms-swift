@@ -1,26 +1,20 @@
 import asyncio
 from abc import ABC
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-from swift.plugin import ContextManager, Env, context_managers, envs
+from swift.infer_engine import GRPOVllmEngine
+from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
+                                         RolloutInferRequest, RolloutOutput)
+from swift.template import Messages
 from swift.utils import remove_response
-
-if TYPE_CHECKING:
-    from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
-                                          RolloutOutput)
-    from swift.llm.template import RolloutInferRequest
-    from swift.llm.infer.infer_engine import GRPOVllmEngine
-    from swift.llm.utils import Messages
+from .context_manager import ContextManager, context_managers
+from .env import Env, envs
 
 
 class RolloutScheduler(ABC):
     # Single Turn Rollout Scheduler
-    def __init__(self,
-                 infer_engine: Optional['GRPOVllmEngine'] = None,
-                 max_turns: Optional[int] = None,
-                 *args,
-                 **kwargs):
+    def __init__(self, infer_engine: Optional[GRPOVllmEngine] = None, max_turns: Optional[int] = None, *args, **kwargs):
         self.infer_engine = infer_engine
         # Tokenizer can be passed explicitly (e.g., in colocate mode where infer_engine may be None)
         self._tokenizer = kwargs.get('tokenizer', None)
@@ -79,7 +73,6 @@ class RolloutScheduler(ABC):
 
         async def _infer_async_single(infer_request: Union['RolloutInferRequest', Dict[str, Any]],
                                       request_config: 'RequestConfig', **kwargs):
-            from swift.llm.template import RolloutInferRequest
             if isinstance(infer_request, Dict):
                 infer_request = RolloutInferRequest(**infer_request)
 
@@ -101,7 +94,6 @@ class RolloutScheduler(ABC):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import RolloutOutput
         response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(infer_request, request_config,
                                                                                  **kwargs)
         response_token_ids = response.choices[0].token_ids
@@ -224,7 +216,6 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     # Must return RolloutOutput or List[RolloutOutput]
                     ...
         """
-        from swift.llm.infer.protocol import RolloutOutput
         current_request = infer_request
         current_turn = 1
         rollout_infos = {}
@@ -461,8 +452,6 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         Returns:
             List[RolloutOutput]: A list of RolloutOutput objects, one for each reasoning round.
         """
-        from swift.llm.infer.protocol import RolloutOutput
-
         current_request = infer_request
         current_turn = 1
         rollout_outputs = []
@@ -532,7 +521,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         template = self.infer_engine.default_template
         return template.template_meta.is_thinking
 
-    def _build_messages(self, original_messages: 'Messages') -> 'Messages':
+    def _build_messages(self, original_messages: Messages) -> Messages:
         """
         Build history for a specific round, keeping only the think content from the last round.
 
@@ -683,7 +672,7 @@ class MathTipsScheduler(MultiTurnScheduler):
 
 class GYMScheduler(RolloutScheduler):
 
-    def __init__(self, infer_engine: 'GRPOVllmEngine', max_turns: Optional[int] = None, **kwargs):
+    def __init__(self, infer_engine: GRPOVllmEngine, max_turns: Optional[int] = None, **kwargs):
         super().__init__(infer_engine, max_turns, **kwargs)
         self.gym_env_name = kwargs.get('gym_env', None)
         self.context_manager_name = kwargs.get('context_manager', None)
@@ -724,7 +713,6 @@ class GYMScheduler(RolloutScheduler):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import RolloutOutput
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager
@@ -746,7 +734,7 @@ class GYMScheduler(RolloutScheduler):
             observation, info, system_message = await env.reset(infer_request)
 
             # Build initial messages
-            messages: 'Messages' = []
+            messages: Messages = []
             if system_message:
                 messages.append({'role': 'system', 'content': system_message})
             messages.append({'role': 'user', 'content': observation})
