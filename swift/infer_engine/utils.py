@@ -12,14 +12,13 @@ from queue import Queue
 from typing import List, Optional, Union
 
 import torch
-import torch.distributed as dist
 from packaging import version
 from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
-from swift.llm.model.register import fix_do_sample_warning
-from swift.utils import get_current_device, get_device, get_device_count, get_node_setting, set_device
-from ..protocol import RequestConfig
+from swift.model.register import fix_do_sample_warning
+from swift.utils import get_device
+from .protocol import RequestConfig
 
 
 @dataclass

@@ -18,14 +18,15 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.model import get_model_tokenizer, safe_snapshot_download
+from swift.model import get_model_tokenizer
 from swift.plugins import Metric
 from swift.template import Template, TemplateMeta
 from swift.tuners import Swift
+from swift.utils import safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
-                       EmbeddingResponseData, InferRequest, RequestConfig, random_uuid, to_device)
+                       EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
 from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 
@@ -202,7 +203,7 @@ class TransformersEngine(InferEngine):
         res = []
         for i in range(seq_len):
             res.append(logits_streamer.queue.get())
-        new_batched_logprobs = PtEngine.preprocess_logits(res, generate_ids[:, -seq_len:], top_logprobs)
+        new_batched_logprobs = TransformersEngine.preprocess_logits(res, generate_ids[:, -seq_len:], top_logprobs)
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 

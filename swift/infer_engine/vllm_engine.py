@@ -13,14 +13,14 @@ from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
-from swift.plugin import Metric
+from swift.plugins import Metric
+from swift.template import Template, TemplateMeta
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
-                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                       EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
 from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
 
 logger = get_logger()

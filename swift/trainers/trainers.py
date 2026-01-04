@@ -3,7 +3,7 @@
 import inspect
 import os
 from contextlib import contextmanager, nullcontext
-from functools import partial, wraps
+from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -119,7 +119,7 @@ class EmbeddingTrainer(Trainer):
         return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from swift.plugin.loss import calculate_paired_metrics, calculate_infonce_metrics
+        from swift.plugins.loss import calculate_paired_metrics, calculate_infonce_metrics
         args = self.args
         if args.loss_type == 'infonce':
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)

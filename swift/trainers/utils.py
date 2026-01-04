@@ -3,14 +3,18 @@
 import inspect
 import os
 from types import FunctionType, MethodType
-from typing import List, Union
+from typing import List, Union, Optional, Any, Dict
 
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
 from peft import PeftModel
+from torch import nn
 from torch.nn import CrossEntropyLoss, Module
+from transformers import PreTrainedModel
+from swift.model import ModelMeta
 
-from swift.utils import get_logger
+from swift.utils import get_logger, deep_getattr
 
 logger = get_logger()
 
@@ -166,7 +170,6 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
 
 
 def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
-    from .model import ModelMeta
     if isinstance(model, PeftModel):
         model = model.model
     model_meta: ModelMeta = getattr(model, 'model_meta', None)

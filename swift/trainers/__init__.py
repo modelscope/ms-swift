@@ -16,13 +16,14 @@ except ImportError:
 if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, RLHFArgumentsMixin, VllmArguments,
                             GRPOArgumentsMixin, RolloutTrainerArgumentsMixin)
-    from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
+    from .rlhf_trainers import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
                                RewardTrainer, GRPOTrainer, GKDTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GKDConfig
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer, RerankerTrainer
     from .mixin import SwiftMixin
     from .utils import per_token_loss_func
+    from .data_loader import DataLoaderShard, DataLoaderDispatcher
 
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -33,7 +34,7 @@ else:
         ],
         'rlhf_arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig'],
-        'rlhf_trainer': [
+        'rlhf_trainers': [
             'CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer',
             'GRPOTrainer', 'GKDTrainer'
         ],
@@ -41,6 +42,7 @@ else:
         'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer', 'RerankerTrainer'],
         'mixin': ['SwiftMixin'],
         'utils': ['per_token_loss_func'],
+        'data_loader': ['DataLoaderShard', 'DataLoaderDispatcher'],
     }
 
     import sys

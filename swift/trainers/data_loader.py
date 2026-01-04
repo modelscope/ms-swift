@@ -5,7 +5,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from swift.llm import to_device
+from swift.utils import to_device
 
 
 class BatchSamplerShard:

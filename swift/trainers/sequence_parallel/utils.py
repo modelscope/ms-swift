@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Sampler
 
-from swift.llm import DataLoaderDispatcher
+from swift.trainers import DataLoaderDispatcher
 
 try:
     from trl.trainer.utils import entropy_from_logits
