@@ -1,13 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import sys
-from functools import partial, wraps
+from functools import wraps
 from typing import Any, Dict
 
 from transformers import AutoConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

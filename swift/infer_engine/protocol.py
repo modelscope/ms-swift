@@ -362,11 +362,11 @@ class UsageInfo:
 @dataclass
 class Function:
     name: str
-    arguments: Optional[str]
+    arguments: Optional[Union[str, Any]]
 
     def __post_init__(self):
         if not isinstance(self.arguments, str):
-            self.arguments = json.dumps(self.arguments)
+            self.arguments = json.dumps(self.arguments, ensure_ascii=False)
         self.name = self.name.strip()
         self.arguments = self.arguments.strip()
 

@@ -1,24 +1,23 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass
+import shutil
 from functools import wraps
 from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import List, Optional, TypeVar, Union
 
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_npu_available, strtobool)
 
 from swift.hub import get_hub
-from swift.llm import to_device
-from swift.utils import (deep_getattr, get_dist_setting, get_logger, is_local_master, is_mp, safe_ddp_context,
-                         subprocess_run)
+from swift.utils import (HfConfigFactory, deep_getattr, get_dist_setting, get_logger, is_local_master, is_mp,
+                         safe_ddp_context, subprocess_run, to_device)
 
 logger = get_logger()
 

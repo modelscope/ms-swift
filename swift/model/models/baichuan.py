@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch

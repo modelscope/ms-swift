@@ -1,22 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class ChatGLM4AgentTemplate(BaseAgentTemplate):
     is_glm4_0414 = False
 
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
+    def _find_function_call(single_content: str) -> Optional[Function]:
         single_content = single_content.replace('<|observation|>', '')
         pattern = re.compile(r'([^\n`]*?)\n({.*?})(?=\w*\n|$)', re.DOTALL)
         matches = pattern.findall(single_content)
@@ -25,7 +22,7 @@ class ChatGLM4AgentTemplate(BaseAgentTemplate):
         name, arguments = matches[0]
         return Function(name=name, arguments=arguments)
 
-    def get_toolcall(self, response: str) -> List['Function']:
+    def get_toolcall(self, response: str) -> List[Function]:
         toolcall_list = response.split('<|assistant|>')
         functions = []
         for toolcall in toolcall_list:
@@ -82,8 +79,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
     model_type = 'glm4_5'
 
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
+    def _find_function_call(single_content: str) -> Optional[Function]:
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^\n<]+)', single_content)
         if not func_name_match:
@@ -96,7 +92,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         args = {k.strip(): v.strip() for k, v in zip(keys, values)}
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List['Function']:
+    def get_toolcall(self, response: str) -> List[Function]:
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:

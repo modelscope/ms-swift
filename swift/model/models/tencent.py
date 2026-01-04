@@ -1,8 +1,8 @@
-from typing import Any, Dict
+# Copyright (c) Alibaba, Inc. and its affiliates.
 
 from transformers import PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

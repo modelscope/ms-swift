@@ -399,5 +399,5 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
 
 @dataclass
-class PtArguments(SftArguments):
+class PretrainArguments(SftArguments):
     pass

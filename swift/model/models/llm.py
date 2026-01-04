@@ -3,12 +3,12 @@ from typing import Any, Dict
 
 from transformers import AutoTokenizer
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import ModelLoader, SentenceTransformers, register_model
+from ..register import SentenceTransformers, register_model
 from ..utils import safe_snapshot_download
 
 logger = get_logger()

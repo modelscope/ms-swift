@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_meta import Model, ModelGroup, ModelMeta

@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from typing import Any, Dict
 
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_device
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch

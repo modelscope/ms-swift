@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import ModelLoader, register_model
+from ..register import register_model
 
 logger = get_logger()
 

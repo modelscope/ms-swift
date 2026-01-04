@@ -1,12 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict, Optional
 
 import torch
 from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
@@ -261,7 +260,7 @@ register_model(
         template=TemplateType.jina_reranker_m0,
         model_arch=ModelArch.qwen2_vl,
         architectures=['JinaRerankerM0ForConditionalGeneration'],
-        is_multimodal=True,
+        # is_multimodal=True,
         tags=['reranker', 'vision'],
     ))
 

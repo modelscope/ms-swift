@@ -1,19 +1,16 @@
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class MistralAgentTemplate(BaseAgentTemplate):
 
-    def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer import Function
+    def get_toolcall(self, response: str) -> List[Function]:
         res_list = re.findall(r'\[TOOL_CALLS\]\[(.*?)\]</s>', response, re.DOTALL)
         if not res_list:
             return []

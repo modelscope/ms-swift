@@ -2,13 +2,12 @@
 import os
 import sys
 from collections import OrderedDict
-from functools import partial
 from typing import Any, Dict
 
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch

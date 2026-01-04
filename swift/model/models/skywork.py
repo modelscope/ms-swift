@@ -2,11 +2,11 @@
 
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import ModelLoader, register_model
+from ..register import register_model
 
 
 def get_skywork_model_tokenizer(model_dir: str,

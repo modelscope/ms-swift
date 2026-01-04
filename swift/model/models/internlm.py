@@ -1,13 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from functools import partial
-from types import MethodType
 from typing import Any, Dict
 
-import torch
 from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

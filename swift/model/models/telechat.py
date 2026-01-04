@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from transformers import GenerationConfig, PreTrainedModel
+from transformers import GenerationConfig
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import ModelLoader, register_model
+from ..register import register_model
 
 
 def get_model_tokenizer_telechat(*args, **kwargs):

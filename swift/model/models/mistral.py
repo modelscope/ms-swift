@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from transformers import AutoProcessor, AutoTokenizer, PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

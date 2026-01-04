@@ -2,18 +2,15 @@
 import re
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
 
-from .env import get_dist_setting
 from .logger import get_logger
-from .torch_utils import get_device_count
 from .utils import deep_getattr
 
 logger = get_logger()
@@ -132,40 +129,6 @@ def activate_parameters(model: nn.Module,
         if not has_activate:
             logger.warning('trainable_parameters_regex is provided but no parameters are activated. '
                            f'trainable_parameters_regex: {trainable_parameters_regex}')
-
-
-def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
-    """add feat in accelerate to support MP + DDP"""
-    import psutil
-    # Make sure CUDA is initialized on each GPU to have the right memory info.
-    for i in device_ids:
-        _ = torch.tensor([0], device=i)
-
-    device_ids_set = set(device_ids)
-    max_memory = {}
-    for i in range(get_device_count()):
-        max_memory[i] = 0
-        if i in device_ids_set:
-            max_memory[i] = torch.cuda.mem_get_info(i)[0]
-    max_memory['cpu'] = psutil.virtual_memory().available
-    return max_memory
-
-
-def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, str], int]:
-    """Make sure that the model structure of MP(device_map) is the same, when using DDP."""
-    max_memory_list = [v for k, v in max_memory.items() if (v > 0 and k != 'cpu')]
-    _, local_rank, world_size, _ = get_dist_setting()
-    src_tensor = torch.tensor(max_memory_list).to(local_rank)
-    tgt_tensor_list = [torch.zeros_like(src_tensor) for _ in range(world_size)]
-    dist.all_gather(tgt_tensor_list, src_tensor)
-    tgt_tensor = torch.stack(tgt_tensor_list, dim=0)
-    new_max_memory_iter = iter(tgt_tensor.min(dim=0)[0].tolist())
-    new_max_memory = {}
-    for k, v in max_memory.items():
-        new_max_memory[k] = v
-        if v > 0 and k != 'cpu':
-            new_max_memory[k] = next(new_max_memory_iter)
-    return new_max_memory
 
 
 def find_layers(

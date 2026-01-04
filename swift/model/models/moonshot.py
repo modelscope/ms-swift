@@ -2,8 +2,8 @@
 from transformers import PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
-from ..constant import LLMModelType, MLLMModelType
+from swift.template import TemplateType
+from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_get_input_embeddings

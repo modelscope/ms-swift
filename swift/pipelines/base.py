@@ -5,9 +5,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
 import swift
-from swift.utils import get_logger, parse_args, seed_everything
-from .argument import BaseArguments
-from .utils import ProcessorMixin
+from swift.utils import ProcessorMixin, get_logger, parse_args, seed_everything
+from .arguments import AppArguments, BaseArguments, WebUIArguments
 
 logger = get_logger()
 
@@ -38,7 +37,6 @@ class SwiftPipeline(ABC, ProcessorMixin):
 
     @staticmethod
     def _compat_dsw_gradio(args) -> None:
-        from swift.llm import WebUIArguments, AppArguments
         if (isinstance(args, (WebUIArguments, AppArguments)) and 'JUPYTER_NAME' in os.environ
                 and 'dsw-' in os.environ['JUPYTER_NAME'] and 'GRADIO_ROOT_PATH' not in os.environ):
             os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/{args.server_port}"

@@ -1,13 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import List, Optional, Union
 
 import json
 
+from swift.infer_engine import Function
 from .hermes import HermesAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
 
 
 def render_extra_keys(obj, handled_keys):
@@ -23,8 +21,7 @@ def render_extra_keys(obj, handled_keys):
 class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer import Function
+    def _find_function_call(single_content: str) -> Optional[Function]:
         single_content = single_content.strip()
         # Check whether the complete function tag is included
         if not single_content.startswith('<function=') or not single_content.endswith('</function>'):
@@ -50,7 +47,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
         return Function(name=func_name, arguments=json.dumps(parameters, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List['Function']:
+    def get_toolcall(self, response: str) -> List[Function]:
         # Extract the tool call parameters from the model's response
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []

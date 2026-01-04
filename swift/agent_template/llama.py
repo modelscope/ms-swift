@@ -1,14 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class Llama3AgentTemplate(BaseAgentTemplate):
@@ -17,8 +15,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
     end_token = '<|end_header_id|>'
     eot_token = '<|eot_id|>'
 
-    def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer import Function
+    def get_toolcall(self, response: str) -> List[Function]:
         if response.endswith(self.eom_token):
             response = response[:-len(self.eom_token)]
         functions = []

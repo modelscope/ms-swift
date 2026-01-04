@@ -1,12 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-import shutil
 import sys
 from functools import wraps
 
 from transformers import AutoModel, PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

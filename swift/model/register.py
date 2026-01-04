@@ -4,7 +4,7 @@ import os
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from types import MethodType
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import transformers
@@ -15,7 +15,7 @@ from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import HfConfigFactory, get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
+from swift.utils import HfConfigFactory, get_logger, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
@@ -227,7 +227,7 @@ class ModelLoader(BaseModelLoader):
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
 
-    def get_config(self, model_dir: str):
+    def get_config(self, model_dir: str) -> PretrainedConfig:
         autoconfig_class = self.autoconfig_class or AutoConfig
         config = autoconfig_class.from_pretrained(model_dir, trust_remote_code=True)
         # fix prediction_step (internvl2, ovis, ...)

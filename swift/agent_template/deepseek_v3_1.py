@@ -1,19 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import json
 
+from swift.infer_engine import Function
+from swift.template import Prompt
 from .base import BaseAgentTemplate
-
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 class DeepSeekV31AgentTemplate(BaseAgentTemplate):
 
-    def get_toolcall(self, response: str) -> List['Function']:
+    def get_toolcall(self, response: str) -> List[Function]:
         # Parse tool calls using the DSV3.1 format:
         # <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>name<｜tool▁sep｜>args<｜tool▁call▁end｜>
         pattern = r'<｜tool▁call▁begin｜>(.*?)<｜tool▁sep｜>(.*?)<｜tool▁call▁end｜>'

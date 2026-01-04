@@ -1,11 +1,10 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from typing import List, Literal, Optional, Tuple
 
 import json
 
-from swift.llm import Messages
-from swift.llm.template import get_last_user_round
-from swift.llm.template.utils import ContextType
+from swift.template import ContextType, Messages, get_last_user_round
 from .utils import calculate_loss_scale
 
 ALL_BASE_STRATEGY = ['default', 'last_round', 'all']

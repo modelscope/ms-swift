@@ -2,14 +2,14 @@
 from typing import List, Optional, Union
 
 from swift.utils import get_logger
-from ..argument import TrainArguments
+from ..arguments import PretrainArguments
 from .sft import SwiftSft
 
 logger = get_logger()
 
 
-class SwiftPt(SwiftSft):
-    args_class = TrainArguments
+class SwiftPretrain(SwiftSft):
+    args_class = PretrainArguments
     args: args_class
 
     def _prepare_template(self) -> None:
@@ -20,5 +20,5 @@ class SwiftPt(SwiftSft):
         super()._prepare_template()
 
 
-def pt_main(args: Optional[Union[List[str], TrainArguments]] = None):
-    return SwiftPt(args).main()
+def pretrain_main(args: Optional[Union[List[str], PretrainArguments]] = None):
+    return SwiftPretrain(args).main()

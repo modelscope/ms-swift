@@ -6,14 +6,14 @@ import re
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 import torch
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from transformers.utils.versions import require_version
 
-from swift.utils import get_logger
-from .utils import HfConfigFactory, get_default_torch_dtype, safe_snapshot_download
+from swift.utils import HfConfigFactory, get_logger
+from .utils import get_default_torch_dtype, safe_snapshot_download
 
 logger = get_logger()
 
@@ -201,7 +201,7 @@ def get_matched_model_types(hf_model_type: Optional[List[str]]) -> List[str]:
 def _read_args_json_model_type(model_dir):
     if not os.path.exists(os.path.join(model_dir, 'args.json')):
         return
-    from swift.llm import BaseArguments
+    from swift.pipelines import BaseArguments
     args = BaseArguments.from_pretrained(model_dir)
     return args.model_type
 

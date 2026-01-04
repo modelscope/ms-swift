@@ -3,10 +3,10 @@ from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.utils import strtobool
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch

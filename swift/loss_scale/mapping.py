@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from .agent import AgentFlanLossScale, AlphaUmiLossScale, HermesLossScale, QwenLossScale, REACTLossScale
 from .base import ALL_BASE_STRATEGY, LossScale
 from .other import IgnoreEmptyThinkLossScale

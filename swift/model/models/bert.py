@@ -4,7 +4,7 @@ from types import MethodType
 import torch.nn.functional as F
 from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 
-from swift.llm import TemplateType
+from swift.template import TemplateType
 from swift.utils import get_logger
 from ..constant import BertModelType, RerankerModelType
 from ..model_meta import Model, ModelGroup, ModelMeta

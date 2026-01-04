@@ -2,13 +2,12 @@
 import ast
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 
-if TYPE_CHECKING:
-    from swift.llm.infer import Function
-    from swift.llm.template import Prompt
+from swift.infer_engine import Function
+from swift.template import Prompt, split_str_parts_by
 
 
 @dataclass
@@ -31,9 +30,7 @@ class ReactCompatMixin:
     keyword = AgentKeyword()
 
     @staticmethod
-    def _split_action_action_input(response: str, keyword: AgentKeyword) -> List['Function']:
-        from swift.llm.template import split_str_parts_by
-        from swift.llm.infer import Function
+    def _split_action_action_input(response: str, keyword: AgentKeyword) -> List[Function]:
         agent_parts = split_str_parts_by(response, list(asdict(keyword).values()))
         functions = []
         action_content = None
@@ -48,7 +45,7 @@ class ReactCompatMixin:
 
         return functions
 
-    def get_toolcall(self, response: str) -> List['Function']:
+    def get_toolcall(self, response: str) -> List[Function]:
         functions = self._split_action_action_input(response, self.keyword)
         if len(functions) == 0 and self.keyword != ReactCompatMixin.keyword:
             # compat react

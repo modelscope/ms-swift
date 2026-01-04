@@ -7,10 +7,10 @@ import torch
 from torch import nn
 from transformers.utils import strtobool
 
-from ..constant import LLMTemplateType, MLLMTemplateType
-from ..template_inputs import StdTemplateInputs
 from swift.utils import is_deepspeed_enabled
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import Template, TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
 from .utils import ChatmlTemplateMeta
 

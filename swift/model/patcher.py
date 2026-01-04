@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import accelerate
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from accelerate.utils import find_device
@@ -18,11 +19,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
-from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_last_valid_indices, get_logger, is_mp, is_mp_ddp, safe_ddp_context
-from swift.utils.torch_utils import (_get_max_memory, _sync_max_memory, get_cu_seqlens_from_position_ids,
-                                     get_device_count, get_position_ids_from_cu_seqlens)
-from .utils import HfConfigFactory
+from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
+                         get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
+                         to_float_dtype)
 
 logger = get_logger()
 
@@ -405,6 +404,40 @@ def patch_automodel(model_info, model_meta, automodel_class, return_dummy_model,
         yield
     finally:
         PreTrainedModel.from_pretrained = classmethod(from_pretrained)
+
+
+def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
+    """add feat in accelerate to support MP + DDP"""
+    import psutil
+    # Make sure CUDA is initialized on each GPU to have the right memory info.
+    for i in device_ids:
+        _ = torch.tensor([0], device=i)
+
+    device_ids_set = set(device_ids)
+    max_memory = {}
+    for i in range(get_device_count()):
+        max_memory[i] = 0
+        if i in device_ids_set:
+            max_memory[i] = torch.cuda.mem_get_info(i)[0]
+    max_memory['cpu'] = psutil.virtual_memory().available
+    return max_memory
+
+
+def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, str], int]:
+    """Make sure that the model structure of MP(device_map) is the same, when using DDP."""
+    max_memory_list = [v for k, v in max_memory.items() if (v > 0 and k != 'cpu')]
+    _, local_rank, world_size, _ = get_dist_setting()
+    src_tensor = torch.tensor(max_memory_list).to(local_rank)
+    tgt_tensor_list = [torch.zeros_like(src_tensor) for _ in range(world_size)]
+    dist.all_gather(tgt_tensor_list, src_tensor)
+    tgt_tensor = torch.stack(tgt_tensor_list, dim=0)
+    new_max_memory_iter = iter(tgt_tensor.min(dim=0)[0].tolist())
+    new_max_memory = {}
+    for k, v in max_memory.items():
+        new_max_memory[k] = v
+        if v > 0 and k != 'cpu':
+            new_max_memory[k] = next(new_max_memory_iter)
+    return new_max_memory
 
 
 _mp_ddp_patched = False
