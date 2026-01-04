@@ -19,6 +19,6 @@ def try_get_proc_title():
         return
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--proc_title', type=str, default='ms-swift')
+    parser.add_argument('--proc_title', type=str, default=os.environ.get('SWIFT_PROC_TITLE', 'ms-swift'))
     args, _ = parser.parse_known_args()
     setproctitle(args.proc_title)
