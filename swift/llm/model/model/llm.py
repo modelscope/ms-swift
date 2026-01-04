@@ -383,7 +383,6 @@ register_model(
             ])
         ],
         TemplateType.iquestcoder,
-        get_model_tokenizer_with_flash_attn,
         requires=['transformers==4.52.4'],
         architectures=['IQuestCoderForCausalLM'],
     ))
