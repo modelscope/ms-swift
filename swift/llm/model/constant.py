@@ -126,6 +126,7 @@ class LLMModelType:
     ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'
     longchat = 'longchat'
+    iquestcoder = 'iquestcoder'
 
 
 class BertModelType:
