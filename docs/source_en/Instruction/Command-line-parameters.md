@@ -264,6 +264,7 @@ Other important parameters:
 - 🔥neftune_noise_alpha: Noise magnitude for NEFTune. Default is 0. Common values: 5, 10, 15.
 - 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
   - Note: Liger kernel does not support `device_map`. Use DDP or DeepSpeed for multi-GPU training. Currently, liger_kernel only supports `task_type='causal_lm'`.
+- use_cce: Whether to enable the [cut-cross-entropy](https://github.com/apple/ml-cross-entropy) fused operator to reduce GPU memory usage and accelerate training. Defaults to `False`. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/cce).
 - average_tokens_across_devices: Whether to average token counts across devices. If `True`, `num_tokens_in_batch` is synchronized via `all_reduce` for accurate loss computation. Default is `False`.
 - max_grad_norm: Gradient clipping. Default is 1.
   - Note: The logged `grad_norm` reflects the value **before** clipping.
