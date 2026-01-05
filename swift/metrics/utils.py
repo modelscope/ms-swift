@@ -11,7 +11,7 @@ from swift.utils import get_current_device, get_logger
 logger = get_logger()
 
 
-class _Metric(ABC):
+class Metric(ABC):
 
     def __init__(self):
         self._default = {}
@@ -44,7 +44,7 @@ class _Metric(ABC):
         pass
 
 
-class InferStats(_Metric):
+class InferStats(Metric):
 
     def __init__(self):
         super().__init__()
@@ -71,7 +71,7 @@ class InferStats(_Metric):
         }
 
 
-class MeanMetric(_Metric):
+class MeanMetric(Metric):
 
     def __init__(self, nan_value=0, device=None, group=None):
         super().__init__()

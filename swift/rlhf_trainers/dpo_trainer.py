@@ -12,9 +12,8 @@ from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments
 
-from swift.llm import to_device
-from swift.utils import get_logger
-from ..mixin import DataLoaderMixin, SwiftMixin
+from swift.trainers import DataLoaderMixin, SwiftMixin
+from swift.utils import get_logger, to_device
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__

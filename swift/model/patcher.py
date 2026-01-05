@@ -583,8 +583,7 @@ def gather_sequence_parallel_outputs(
         Gather split tensors produced by sequence parallel training so that downstream
         components (loss, metrics, etc.) can operate on full-length sequences.
         """
-    from swift.trainers.sequence_parallel import sequence_parallel
-    from swift.trainers.sequence_parallel.utils import GatherTensor
+    from swift.sequence_parallel import sequence_parallel, GatherTensor
 
     tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
 

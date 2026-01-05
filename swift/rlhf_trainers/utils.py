@@ -26,8 +26,8 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
 from swift.tuners.lora import LoraConfig
-from swift.utils import (gc_collect, get_logger, get_torch_device, is_swanlab_available, is_vllm_available,
-                         is_wandb_available)
+from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_torch_device,
+                         is_swanlab_available, is_vllm_available, is_wandb_available)
 
 if is_wandb_available():
     import wandb
@@ -1408,8 +1408,7 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
         pass
     else:
         # Fallback: infer from position_ids
-        from swift.utils.torch_utils import get_cu_seqlens_from_position_ids as get_cu_seqlens
-        cu_seqlens = get_cu_seqlens(position_ids)
+        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
 
         # Adjust cu_seqlens for logits_to_keep if needed
         total_length = cu_seqlens[-1].item()

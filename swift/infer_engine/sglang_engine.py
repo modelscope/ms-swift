@@ -11,7 +11,7 @@ from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
 
-from swift.plugins import Metric
+from swift.metrics import Metric
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger
 from .infer_engine import InferEngine

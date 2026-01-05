@@ -41,13 +41,16 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
-from swift.llm import RowPreprocessor, Template, disable_gradient_checkpointing, to_device
-from swift.llm.template.template_inputs import TemplateInputs
-from swift.plugin import orms, rm_plugins
-from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
-                         seed_worker, shutdown_event_loop_in_daemon, start_event_loop_in_daemon,
-                         unwrap_model_for_generation)
-from ..mixin import SwiftMixin
+from swift.dataset import RowPreprocessor
+from swift.infer_engine import TransformersEngine
+from swift.plugins import orms, rm_plugins
+from swift.sequence_parallel import GatherLoss, sequence_parallel
+from swift.template import Template, TemplateInputs
+from swift.trainers import SwiftMixin, disable_gradient_checkpointing
+from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
+                         is_wandb_available, remove_response, seed_worker, shutdown_event_loop_in_daemon,
+                         start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
+from .rlhf_arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_profiling_context,
@@ -80,7 +83,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  *_args,
                  **kwargs):
         patch_save_last_checkpoint()
-        from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
@@ -123,11 +125,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if not self.args.use_vllm:
-            from swift.llm import PtEngine
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1
-            self.engine = PtEngine.from_model_template(self.model, infer_template, max_batch_size=0)  # 0: no limit
+            self.engine = TransformersEngine.from_model_template(
+                self.model, infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -143,7 +145,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = False
 
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
             self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
 
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
@@ -160,7 +161,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _get_train_sampler(self, train_dataset=None):
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
             return RepeatSampler(
                 data_source=train_dataset or self.train_dataset,
                 mini_repeat_count=self.num_generations,
@@ -790,7 +790,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return spg_chunks
         else:
-            from swift.trainers.sequence_parallel import sequence_parallel
             """Split by mini batches for GRPO sequence parallel training"""
             output = [None] * sequence_parallel.sp_world_size
             # gather inputs within a sp group
@@ -1505,9 +1504,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                           input_ids: torch.Tensor,
                           compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via sequence parallel, returns rmpad format [1, total_nnz] for padding_free mode"""
-        from swift.trainers.sequence_parallel.utils import GatherLoss
-        from swift.trainers.sequence_parallel import sequence_parallel
-
         model_inputs = self._prepare_model_inputs(inputs)
         sequence_parallel.prepare_inputs(model_inputs)
         with self._template_context(self.template, inputs):
@@ -1535,8 +1531,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             seq_lengths = inputs['seq_lengths']
             batch_size = seq_lengths.shape[0]
             rp_world_size = sequence_parallel.rp_world_size
-
-            from swift.utils import get_cu_seqlens_from_position_ids
 
             if rp_world_size > 1:
                 # With ring parallel: GatherLoss pads each sequence to world_size * 2 multiple
@@ -1852,7 +1846,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return (self.num_iterations > 1
                     or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0)
         else:
-            from swift.trainers.sequence_parallel import sequence_parallel
             return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
                     (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
 

@@ -26,11 +26,14 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.plugin import MultiTurnScheduler, multi_turns
-from swift.trainers import RolloutTrainerArgumentsMixin
+from swift.infer_engine import RequestConfig, RolloutInferRequest
+from swift.infer_engine.protocol import ChatCompletionResponse, RolloutOutput
+from swift.model import MultiModelKeys
+from swift.plugins import MultiTurnScheduler, multi_turns
+from swift.sequence_parallel import sequence_parallel
+from swift.template import Template
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
+from .rlhf_arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
@@ -1413,7 +1416,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         and automatically bypass SP logic when this condition is true. This makes the
         disable mechanism simple and robust - we only need to set world_size = 1.
         """
-        from swift.trainers.sequence_parallel import sequence_parallel
 
         # Save original SP state
         origin_size = sequence_parallel.world_size

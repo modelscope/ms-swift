@@ -18,11 +18,10 @@ from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 
-from swift.llm import disable_gradient_checkpointing
-from swift.llm.template.template_inputs import TemplateInputs
-from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+from swift.template import TemplateInputs
+from swift.trainers import SwiftMixin, disable_gradient_checkpointing
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response, to_device,
                          unwrap_model_for_generation)
-from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (get_gather_if_zero3_context, identity_data_collator, patch_profiling_context,
                     patch_profiling_decorator, prepare_deepspeed)
@@ -276,7 +275,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             encode_prompt_only: If True, only encode the prompt part (for on-policy/seq_kd generation).
                                If False, encode the full messages including response (for offline dataset).
         """
-        from swift.llm import to_device
         from .utils import replace_assistant_response_with_ids
 
         template = self.template

@@ -5,9 +5,9 @@ from typing import List, Optional, Union
 
 from swift.plugins import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import disable_deepspeed_zero3, get_logger, get_model_parameter_info, safe_snapshot_download
-from ..argument import BaseArguments, RLHFArguments
-from ..model import HfConfigFactory
+from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_logger, get_model_parameter_info,
+                         safe_snapshot_download)
+from ..arguments import BaseArguments, RLHFArguments
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
 
@@ -87,7 +87,7 @@ class SwiftRLHF(SwiftSft):
         model = prepare_adapter(args, model, adapters)
         if origin_key in {'ref', 'reward', 'teacher'}:
             if self.args.sequence_parallel_size > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
+                from swift.sequence_parallel import sequence_parallel
                 sequence_parallel.prepare(
                     self.args.sequence_parallel_size, model, processor, padding_free=args.padding_free)
             model.requires_grad_(False).eval()

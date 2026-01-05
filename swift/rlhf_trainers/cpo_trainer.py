@@ -6,7 +6,7 @@ import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import CPOTrainer as HFCPOTrainer
 
-from ..mixin import SwiftMixin
+from swift.trainers import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFCPOTrainer.__init__

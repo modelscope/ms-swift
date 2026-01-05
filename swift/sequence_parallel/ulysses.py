@@ -11,7 +11,6 @@ from transformers import PreTrainedTokenizer
 
 from swift.model import get_llm_model
 from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting
-from .utils import GatherLoss
 
 
 # Code borrowed from deepspeed, here is why:
@@ -394,6 +393,7 @@ class SequenceParallel:
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
 
     def _prepare_moe_aux_loss(self, base_model: torch.nn.Module):
+        from .utils import GatherLoss
 
         def moe_aux_loss_hook(module, args, kwargs, output):
             router_logits = getattr(output, 'router_logits', None)
@@ -808,3 +808,6 @@ class SequenceParallel:
             _, _, labels, _, _, _, _ = self.pad_and_split_inputs(
                 None, None, labels, None, None, None, real_position_ids=position_ids)
             inputs['labels'] = labels
+
+
+sequence_parallel = SequenceParallel()

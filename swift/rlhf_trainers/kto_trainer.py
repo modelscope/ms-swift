@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from contextlib import contextmanager
 from typing import Dict, Optional, Union
 
 import torch
@@ -8,9 +7,8 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm import disable_gradient_checkpointing
+from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import get_logger
-from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 logger = get_logger()

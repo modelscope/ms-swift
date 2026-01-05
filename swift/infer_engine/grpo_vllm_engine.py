@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 
-from swift.plugins import Metric
+from swift.metrics import Metric
 from swift.template import Template
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, InferRequest, RequestConfig,
                        RolloutOutput)

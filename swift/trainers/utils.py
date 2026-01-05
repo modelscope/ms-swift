@@ -73,7 +73,7 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     labels = labels.flatten().to(device)
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
-        from swift.trainers.sequence_parallel.utils import ChunkedCrossEntropyLoss
+        from swift.sequence_parallel.utils import ChunkedCrossEntropyLoss
         loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
     else:
         loss_fct = CrossEntropyLoss(reduction='none')
@@ -82,11 +82,10 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
-    from swift.trainers.sequence_parallel import sequence_parallel
+    from swift.sequence_parallel import sequence_parallel, GatherLoss
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-    from swift.trainers.sequence_parallel.utils import GatherLoss
     loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
@@ -217,3 +216,24 @@ def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointin
     finally:
         if was_enabled:
             model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
+
+
+def gather_for_unpadded_tensors(input_data, use_gather_object=False):
+    from accelerate.utils import gather_object
+    from swift.sequence_parallel import sequence_parallel
+
+    if getattr(sequence_parallel, 'dp_group', None) is not None:
+        input_data = sequence_parallel._gather_object_dp(input_data)
+    else:
+        input_data = gather_object(input_data)
+    output = []
+    for _data in input_data:
+        if len(_data.shape) == 0:
+            _data = _data.unsqueeze(0)
+        _data = _data.cpu()
+        output.append(_data)
+    if len(output[0].shape) == 1 and output[0].shape[0] > 1:
+        data = torch.stack(output, dim=0)
+    else:
+        data = torch.concat(output, dim=0)
+    return data

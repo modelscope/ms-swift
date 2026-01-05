@@ -8,7 +8,8 @@ import torch.distributed as dist
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Sampler
 
-from swift.trainers import DataLoaderDispatcher
+from swift.dataloader import DataLoaderDispatcher
+from .ulysses import sequence_parallel
 
 
 class GatherTensor(torch.autograd.Function):
@@ -17,7 +18,6 @@ class GatherTensor(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tensor, dim=0, position_ids=None):
         ctx.dim = dim
-        from swift.trainers.sequence_parallel import sequence_parallel
         if position_ids is not None:
             position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
         ctx.position_ids = position_ids
@@ -25,7 +25,6 @@ class GatherTensor(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        from swift.trainers.sequence_parallel import sequence_parallel
         grad_input = sequence_parallel.split(grad_output, dim=ctx.dim, position_ids=ctx.position_ids)
         return grad_input, None, None
 
@@ -44,7 +43,6 @@ class GatherLoss(torch.autograd.Function):
         # change from label.shape to loss, because label may be None
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
-        from swift.trainers.sequence_parallel import sequence_parallel
         if position_ids is not None:
             position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
         ctx.position_ids = position_ids
@@ -57,7 +55,6 @@ class GatherLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_output):
-        from swift.trainers.sequence_parallel import sequence_parallel
         _grad = grad_output[0] * sequence_parallel.world_size
         if sequence_parallel.rp_world_size > 1:
             _grad = sequence_parallel.split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()

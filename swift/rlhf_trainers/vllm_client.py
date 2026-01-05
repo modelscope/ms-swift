@@ -15,11 +15,11 @@ from packaging import version
 from pydantic import BaseModel, ValidationError
 from requests import ConnectionError
 from torch import nn
-from transformers.utils import is_torch_cuda_available
 
-from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
-from swift.plugin import Metric
+from swift.infer_engine import AdapterRequest, RequestConfig
+from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
+from swift.metrics import Metric
+from swift.template import Template
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 

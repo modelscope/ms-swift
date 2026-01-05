@@ -18,8 +18,8 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
+from swift.metrics import Metric
 from swift.model import get_model_tokenizer
-from swift.plugins import Metric
 from swift.template import Template, TemplateMeta
 from swift.tuners import Swift
 from swift.utils import safe_snapshot_download, to_device

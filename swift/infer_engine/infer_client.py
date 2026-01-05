@@ -8,7 +8,7 @@ import json
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
-from swift.plugins import Metric
+from swift.metrics import Metric
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest,
                        ModelList, RequestConfig)

@@ -17,7 +17,7 @@ from PIL import Image
 from transformers import GenerationConfig
 from transformers.utils.versions import require_version
 
-from swift.plugins import Metric
+from swift.metrics import Metric
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from .infer_engine import InferEngine

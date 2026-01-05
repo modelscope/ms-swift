@@ -3,234 +3,24 @@
 import inspect
 import os
 from contextlib import contextmanager, nullcontext
-from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
-from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.metrics import calculate_infonce_metrics, calculate_paired_metrics, calculate_reranker_metrics
-from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
-from .arguments import Seq2SeqTrainingArguments, TrainingArguments
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
+from swift.sequence_parallel import sequence_parallel
+from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
+from .arguments import Seq2SeqTrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
 from .utils import per_token_loss_func, per_token_loss_func_sp
 
 logger = get_logger()
-
-
-class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
-    args: TrainingArguments
-
-    def _prepare_inputs(self, inputs):
-        inputs = super()._prepare_inputs(inputs)
-        # For tasks whose `labels` are per-sample (e.g. seq_cls/reranker/embedding), we must NOT let
-        # SP code treat them as token labels. We detect that case by `labels.dim() == 1` and temporarily
-        # remove labels during `prepare_inputs`.
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            labels = inputs.get('labels', None)
-            pop_labels = isinstance(labels, torch.Tensor) and labels.dim() == 1
-            if pop_labels:
-                labels = inputs.pop('labels', None)
-            try:
-                sequence_parallel.prepare_inputs(inputs)
-            finally:
-                if pop_labels and labels is not None:
-                    inputs['labels'] = labels
-        return inputs
-
-    @contextmanager
-    def _patch_loss_function(self):
-        model = self.model
-        if isinstance(model, PeftModel):
-            model = model.model
-        model_cls = model.__class__
-        if not hasattr(model_cls, 'loss_function'):
-            yield
-            return
-
-        loss_function = model.loss_function
-        _old_loss_function = model_cls.loss_function
-
-        @staticmethod
-        @wraps(loss_function)
-        def new_loss_function(logits, labels, **kwargs):
-            labels = labels.to(logits.device)  # fix device_map
-            return loss_function(logits=logits, labels=labels, **kwargs)
-
-        model_cls.loss_function = new_loss_function
-        try:
-            yield
-        finally:
-            model_cls.loss_function = _old_loss_function
-
-    def train(self, *args, **kwargs):
-        with self._patch_loss_function():
-            return super().train(*args, **kwargs)
-
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
-        if inputs.get('labels') is not None:
-            self._compute_acc(outputs, inputs['labels'])
-        if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
-            loss = loss / self.args.gradient_accumulation_steps
-        return (loss, outputs) if return_outputs else loss
-
-
-def gather_for_unpadded_tensors(input_data, use_gather_object=False):
-    from accelerate.utils import gather_object
-    from swift.trainers.sequence_parallel import sequence_parallel
-
-    if getattr(sequence_parallel, 'dp_group', None) is not None:
-        input_data = sequence_parallel._gather_object_dp(input_data)
-    else:
-        input_data = gather_object(input_data)
-    output = []
-    for _data in input_data:
-        if len(_data.shape) == 0:
-            _data = _data.unsqueeze(0)
-        _data = _data.cpu()
-        output.append(_data)
-    if len(output[0].shape) == 1 and output[0].shape[0] > 1:
-        data = torch.stack(output, dim=0)
-    else:
-        data = torch.concat(output, dim=0)
-    return data
-
-
-class EmbeddingTrainer(Trainer):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.compute_metrics = self.calculate_metric
-        self.preprocess_logits_for_metrics = None
-        self.label_names = ['labels']
-        self.gather_function = gather_for_unpadded_tensors
-
-    def evaluation_loop(self, *args, **kwargs):
-        output = super().evaluation_loop(*args, **kwargs)
-        self.gather_function = gather_for_unpadded_tensors
-        return output
-
-    def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        args = self.args
-        if args.loss_type == 'infonce':
-            return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
-        else:
-            return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
-
-
-class RerankerTrainer(Trainer):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.args.include_for_metrics = ['inputs']
-        self.compute_metrics = self.calculate_metric
-        self.label_names = ['labels']
-
-        # Set up preprocess_logits_for_metrics to reduce memory usage for generative reranker
-        if self.args.loss_type in {'generative_reranker', 'listwise_generative_reranker'}:
-            self.preprocess_logits_for_metrics = self._preprocess_generative_reranker_logits
-        else:
-            self.preprocess_logits_for_metrics = None
-        self.gather_function = gather_for_unpadded_tensors
-
-    def _preprocess_generative_reranker_logits(self, logits, labels):
-        """
-        Preprocess logits for generative reranker to reduce memory usage.
-        Extract only the yes/no token logits at the last valid (non -100) timestep
-        for each sample, avoiding padded timesteps created by multi-GPU gather.
-        """
-
-        # Get token IDs for positive and negative tokens
-        positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
-        negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-
-        tokenizer = getattr(self, 'processing_class', None)
-        if tokenizer is None:
-            # Fallback: return full logits if tokenizer not available
-            return logits
-
-        try:
-            positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
-            negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
-        except Exception:
-            # Fallback: return full logits if token conversion fails
-            return logits
-
-        # Extract only the yes/no token logits from the last non -100 position per sample
-        # Shapes: logits [batch, seq_len, vocab]
-        if len(logits.shape) == 3:
-            positive_logits = logits[:, :, positive_token_id]
-            negative_logits = logits[:, :, negative_token_id]
-            logits = positive_logits - negative_logits
-            return logits
-        else:
-            # Unexpected shape, return as-is
-            return logits
-
-    def evaluation_loop(self, *args, **kwargs):
-        output = super().evaluation_loop(*args, **kwargs)
-        self.gather_function = gather_for_unpadded_tensors
-        return output
-
-    def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        import numpy as np
-        input_ids = eval_prediction.inputs
-        logits = eval_prediction.predictions
-        labels = eval_prediction.label_ids
-
-        if self.template.padding_free:
-            logits = logits[:, -1]
-        else:
-            if logits.ndim == 2 and logits.shape[1] > 1:
-                pad_token_id = self.tokenizer.pad_token_id
-                valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
-                last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
-                last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
-                logits = logits[np.arange(logits.shape[0]), last_valid_indices]
-        return calculate_reranker_metrics(logits, labels)
-
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        if inputs.get('attention_mask') is None and self.template.padding_side != 'left':
-            raise ValueError('When using padding_free, padding_side must be set to "left".')
-        # Check if we have a custom loss function
-        if self.compute_loss_func is not None:
-            # Get labels and compute outputs
-            labels = inputs.get('labels')
-            if labels is not None:
-                labels = inputs.pop('labels')
-
-            outputs = model(**inputs)
-
-            if labels is not None:
-                # Call custom loss function
-                loss = self.compute_loss_func(
-                    outputs,
-                    labels,
-                    num_items_in_batch=num_items_in_batch,
-                    trainer=self,
-                    attention_mask=inputs.get('attention_mask'))
-            else:
-                # Fallback to model's loss
-                loss = outputs.loss
-
-            if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
-                loss = loss / self.args.gradient_accumulation_steps
-
-            if labels is not None:
-                self._compute_acc(outputs, labels, attention_mask=inputs.get('attention_mask'))
-
-            return (loss, outputs) if return_outputs else loss
-        else:
-            return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
 
 
 class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
@@ -240,8 +30,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         if self.args.predict_with_generate:
-            from swift.llm import PtEngine
-            self.infer_engine = PtEngine.from_model_template(
+            self.infer_engine = TransformersEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
 
@@ -283,7 +72,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             with self.template.forward_context(self.model, inputs):
                 return super().prediction_step(
                     model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
-        from swift.llm import RequestConfig, InferRequest
         data_list = inputs['_data']
         labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
         with unwrap_model_for_generation(
@@ -309,11 +97,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
-        from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_inputs(inputs)
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)

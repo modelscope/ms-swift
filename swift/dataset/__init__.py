@@ -3,7 +3,7 @@ import datasets.fingerprint
 from datasets import Dataset as HfDataset
 
 from . import datasets as _datasets
-from .loader import DATASET_TYPE, DatasetSyntax, load_dataset
+from .loader import DATASET_TYPE, DatasetLoader, DatasetSyntax, load_dataset
 from .media import MediaResource
 from .packing import IterablePackingDataset, PackingDataset
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,

@@ -5,16 +5,17 @@ from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
 
-from swift.plugin import extra_callbacks
+from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
+                           LazyLLMDataset, PackingDataset, load_dataset)
+from swift.plugins import extra_callbacks
 from swift.ray import RayHelper
+from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
-from ..argument import TrainArguments
+from ..arguments import SftArguments
 from ..base import SwiftPipeline
-from ..dataset import (AddLengthPreprocessor, EncodePreprocessor, IterablePackingDataset, LazyLLMDataset,
-                       PackingDataset, load_dataset)
-from ..dataset.loader import DatasetLoader
-from ..infer import get_cached_dataset, prepare_generation_config
+from swift.infer_engine import prepare_generation_config
+from ..infer import get_cached_dataset
 from .tuner import TunerMixin
 
 logger = get_logger()
@@ -22,10 +23,10 @@ logger = get_logger()
 
 @RayHelper.worker(group=['default'])
 class SwiftSft(SwiftPipeline, TunerMixin):
-    args_class = TrainArguments
+    args_class = SftArguments
     args: args_class
 
-    def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], SftArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
@@ -53,7 +54,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare(
                 args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
         if self.model is None:
@@ -361,5 +361,5 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return datasets
 
 
-def sft_main(args: Optional[Union[List[str], TrainArguments]] = None):
+def sft_main(args: Optional[Union[List[str], SftArguments]] = None):
     return SwiftSft(args).main()

@@ -8,8 +8,8 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 from tqdm import tqdm
 
+from swift.metrics import Metric
 from swift.model import get_ckpt_dir
-from swift.plugins import Metric
 from swift.template import Template, get_template
 from swift.utils import ProcessorMixin, get_logger
 from .base import BaseInferEngine

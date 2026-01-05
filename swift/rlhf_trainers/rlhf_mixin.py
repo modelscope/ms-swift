@@ -13,6 +13,7 @@ from trl.models.utils import prepare_deepspeed
 from trl.trainer import disable_dropout_in_model
 from trl.trainer.utils import selective_log_softmax
 
+from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.utils import HfConfigFactory
 
 
@@ -62,7 +63,6 @@ class RLHFTrainerMixin:
     def _prepare_inputs(self, inputs):
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_inputs(inputs)
         return inputs
 
@@ -163,8 +163,6 @@ class RLHFTrainerMixin:
             loss_mask = loss_mask.to(logits.device)
             mean_logits = reduce_logits
             per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-            from swift.trainers.sequence_parallel.utils import GatherLoss
-            from swift.trainers.sequence_parallel import sequence_parallel
             position_ids = sequence_parallel.real_position_ids
             total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
             total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)
