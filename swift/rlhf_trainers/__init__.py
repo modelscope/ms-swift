@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .reward_trainer import RewardTrainer
     from .gkd_trainer import GKDTrainer
     from .rlhf_mixin import RLHFTrainerMixin
+    from .args_mixin import GRPOArgumentsMixin
     from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
     from .vllm_client import VLLMClient
 else:
@@ -26,6 +27,7 @@ else:
         'reward_trainer': ['RewardTrainer'],
         'gkd_trainer': ['GKDTrainer'],
         'rlhf_mixin': ['RLHFTrainerMixin'],
+        'args_mixin': ['GRPOArgumentsMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
         'vllm_client': ['VLLMClient'],
     }

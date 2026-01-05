@@ -24,7 +24,6 @@ import traceback
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
-from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
@@ -36,16 +35,16 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
-from swift.llm import RolloutArguments, SwiftPipeline
-from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.plugin.multi_turn import RolloutScheduler, multi_turns
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
-                                               UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
-                                               UpdateFlattenedParamsRequest, check_vllm_version_ge,
-                                               patch_vllm_load_adapter)
+from swift.infer_engine import GRPOVllmEngine, InferClient
+from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig, RolloutInferRequest,
+                                         UpdateWeightsRequest)
+from swift.plugins import RolloutScheduler, multi_turns
+from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
+                                       UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
+                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter)
 from swift.utils import get_logger
-from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
+from ..arguments import RolloutArguments
+from ..base import SwiftPipeline
 
 try:
     from vllm.utils import get_open_port

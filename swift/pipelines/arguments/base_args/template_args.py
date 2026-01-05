@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from swift.llm import TEMPLATE_MAPPING
+from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -160,12 +160,12 @@ class TemplateArguments:
                 self.padding_side = 'right'
 
     def get_template_kwargs(self):
-        from ..train_args import TrainArguments
+        from ..sft_args import SftArguments
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
         remove_unused_columns = self.remove_unused_columns  # from DataArguments
-        if not isinstance(self, TrainArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
+        if not isinstance(self, SftArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
             remove_unused_columns = True
         return {
             'default_system': self.system,

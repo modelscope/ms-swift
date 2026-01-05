@@ -2,8 +2,11 @@
 import os
 from typing import List
 
-from swift.llm import ExportArguments, PtEngine, RequestConfig, Template, prepare_model_template
+from swift.infer_engine import RequestConfig, TransformersEngine
+from swift.template import Template
 from swift.utils import get_logger
+from ..arguments import ExportArguments
+from ..utils import prepare_model_template
 
 logger = get_logger()
 
@@ -32,7 +35,7 @@ def export_to_ollama(args: ExportArguments):
     logger.info('Exporting to ollama:')
     os.makedirs(args.output_dir, exist_ok=True)
     model, template = prepare_model_template(args)
-    pt_engine = PtEngine.from_model_template(model, template)
+    pt_engine = TransformersEngine.from_model_template(model, template)
     logger.info(f'Using model_dir: {pt_engine.model_dir}')
     template_meta = template.template_meta
     with open(os.path.join(args.output_dir, 'Modelfile'), 'w', encoding='utf-8') as f:

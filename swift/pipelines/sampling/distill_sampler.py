@@ -4,10 +4,10 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from swift.llm.infer.protocol import InferRequest, RequestConfig
-from swift.llm.sampling.vanilla_sampler import VanillaSampler
+from swift.infer_engine import InferRequest, RequestConfig
 from swift.ray import RayHelper
 from .utils import get_messages_md5
+from .vanilla_sampler import VanillaSampler
 
 
 class OpenAIEngine:

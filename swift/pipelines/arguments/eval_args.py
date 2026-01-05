@@ -4,8 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Union
 
-from swift.utils import get_logger, json_parse_to_dict
-from .base_args import to_abspath
+from swift.utils import get_logger, json_parse_to_dict, to_abspath
 from .deploy_args import DeployArguments
 
 logger = get_logger()

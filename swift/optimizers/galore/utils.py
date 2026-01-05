@@ -218,7 +218,7 @@ def get_optimizer(args: 'TrainingArguments', config: GaLoreConfig) -> Tuple[Any,
     return optimizer_cls, optimizer_kwargs
 
 
-def _calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
+def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
     if args.max_steps and args.max_steps > 0:
         max_steps = args.max_steps
     else:
@@ -232,7 +232,7 @@ def _calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
 
 
 def create_galore_optimizer(args: 'TrainingArguments', model, dataset):
-    training_steps = _calculate_max_steps(args, dataset)
+    training_steps = calculate_max_steps(args, dataset)
     optimizer, lr_scheduler = _create_optimizer_and_scheduler(
         model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
     # trainer cannot serialize galore_config

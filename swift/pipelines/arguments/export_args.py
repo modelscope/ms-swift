@@ -6,9 +6,8 @@ from typing import List, Literal, Optional
 import torch
 import torch.distributed as dist
 
-from swift.llm import HfConfigFactory
-from swift.utils import get_logger, init_process_group, set_default_ddp_config
-from .base_args import BaseArguments, to_abspath
+from swift.utils import HfConfigFactory, get_logger, init_process_group, set_default_ddp_config, to_abspath
+from .base_args import BaseArguments
 from .merge_args import MergeArguments
 
 logger = get_logger()

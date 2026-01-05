@@ -3,10 +3,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.llm import MODEL_MAPPING
-from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
+from swift.model import MODEL_MAPPING
+from swift.rlhf_trainers import GRPOArgumentsMixin
+from swift.trainers import RLHFArgumentsMixin
 from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
-from .train_args import TrainArguments
+from .sft_args import SftArguments
 
 logger = get_logger()
 rlhf_support_vllm_types = ['grpo', 'gkd']
@@ -148,7 +149,7 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 @dataclass
 class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, RLHFArgumentsMixin,
-                    TrainArguments):
+                    SftArguments):
     """A dataclass holding arguments for Reinforcement Learning from Human Feedback.
 
     Args:
@@ -251,7 +252,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_rollout()
         self._init_teacher_deepspeed()
         GRPOArguments.__post_init__(self)
-        TrainArguments.__post_init__(self)
+        SftArguments.__post_init__(self)
         self._check_sequence_parallel()
         self._check_grpo()
         self._check_gkd()
@@ -412,7 +413,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type not in rlhf_support_vllm_types or (self.vllm_server_host is None
                                                              and self.vllm_server_base_url is None):
             return
-        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        from swift.rlhf_trainers import VLLMClient
         if is_master():
             logger.info('Start connecting to vLLM server')
             self.vllm_client = VLLMClient(
@@ -519,7 +520,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                     'Please set --sequence_parallel_size to 1.')
 
     def _init_teacher_deepspeed(self):
-        """Initialize teacher_deepspeed configuration similar to _init_deepspeed in TrainArguments"""
+        """Initialize teacher_deepspeed configuration similar to _init_deepspeed in SftArguments"""
         if not self.teacher_deepspeed:
             return
 

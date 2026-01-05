@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import json
 import numpy as np
 
-from swift.llm import InferRequest, RequestConfig
+from swift.infer_engine import ChatCompletionResponse, InferEngine, InferRequest, RequestConfig
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -38,7 +38,6 @@ def get_reward(model: Any,
         Index 0: The min-max normalized scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
-    from swift.llm import InferEngine
     infer_func = model.infer if isinstance(model, InferEngine) else model.__call__
     parameters = inspect.signature(infer_func).parameters
     gt_param = {}
@@ -47,7 +46,6 @@ def get_reward(model: Any,
     if isinstance(infer_requests[0], dict):
         infer_requests = [InferRequest(messages=req['messages']) for req in infer_requests]
     rewards = infer_func(infer_requests, request_config=request_config, **gt_param)
-    from swift.llm.infer.protocol import ChatCompletionResponse
     if isinstance(rewards[0], ChatCompletionResponse):
         print('reward:', rewards[0].choices[0].message.content)
         if isinstance(rewards[0].choices[0].message.content, str):

@@ -10,7 +10,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple
 
 from evalscope.api.messages import ChatMessage as EvalChatMessage
 from evalscope.api.model import GenerateConfig, ModelAPI, ModelOutput, ModelUsage
@@ -18,8 +18,7 @@ from evalscope.api.registry import register_model_api
 from evalscope.api.tool import ToolChoice, ToolInfo
 from evalscope.models.utils.openai import chat_choices_from_openai
 
-from ..infer import PtEngine, RequestConfig
-from ..template import InferRequest
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 
 
 @dataclass
@@ -33,7 +32,7 @@ class BatchInferInput:
     ms_input: InferRequest  # ms-swift format request
     ms_config: RequestConfig  # ms-swift format configuration
     batch_size: int  # desired batch size for this request
-    engine: PtEngine  # inference engine to use
+    engine: TransformersEngine  # inference engine to use
 
 
 @dataclass
@@ -102,7 +101,8 @@ class EvalModel(ModelAPI):
         self.max_batch_size = collect_model_arg('max_batch_size')  # maximum batch size
 
         # Initialize the inference engine with batch support
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=self.max_batch_size)
+        self.engine = TransformersEngine.from_model_template(
+            self.model, self.template, max_batch_size=self.max_batch_size)
 
     def generate(
         self,

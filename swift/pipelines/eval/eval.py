@@ -7,9 +7,9 @@ from evalscope.constants import EvalBackend, EvalType
 from evalscope.run import TaskConfig, run_task
 from evalscope.summarizer import Summarizer
 
+from swift.dataset import MediaResource
 from swift.utils import append_to_jsonl, get_logger
-from .. import MediaResource
-from ..argument import EvalArguments
+from ..arguments import EvalArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
 

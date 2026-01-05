@@ -5,10 +5,10 @@ from copy import deepcopy
 import json
 import numpy as np
 
-from swift.llm import RequestConfig
-from swift.llm.sampling.base import Sampler
-from swift.ray.base import RayHelper
+from swift.infer_engine import RequestConfig, TransformersEngine
+from swift.ray import RayHelper
 from swift.utils import get_logger
+from .base import Sampler
 from .utils import get_messages_md5, get_reward
 
 logger = get_logger()
@@ -25,13 +25,12 @@ class VanillaSampler(Sampler):
     @RayHelper.function(group='sampler')
     def _prepare_sampler(self):
         if self.args.sampler_engine == 'pt':
-            from swift.llm import PtEngine
-            _Engine = PtEngine
+            _Engine = TransformersEngine
         elif self.args.sampler_engine == 'vllm':
-            from swift.llm import VllmEngine
+            from swift.infer_engine import VllmEngine
             _Engine = VllmEngine
         elif self.args.sampler_engine == 'lmdeploy':
-            from swift.llm import LmdeployEngine
+            from swift.infer_engine import LmdeployEngine
             _Engine = LmdeployEngine
         elif self.args.sampler_engine == 'no':
             _Engine = None

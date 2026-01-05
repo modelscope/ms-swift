@@ -5,12 +5,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
-import json
 import torch
 from transformers.utils import is_torch_mps_available
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
-from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
+from swift.model import MODEL_MAPPING, get_model_info_meta, get_model_name
+from swift.utils import HfConfigFactory, get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -116,12 +115,12 @@ class ModelArguments:
 
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
-        from swift.llm import TrainArguments
+        from ..sft_args import SftArguments
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments):
+        if isinstance(self, SftArguments):
             self._init_mixed_precision()
 
     def _init_mixed_precision(self):

@@ -5,7 +5,7 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .infer import (infer_main, deploy_main, run_deploy, prepare_model_template, rollout_main)
+    from .infer import (infer_main, deploy_main, run_deploy, rollout_main)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .app import app_main
@@ -15,14 +15,13 @@ if TYPE_CHECKING:
                             DeployArguments, RolloutArguments, RLHFArguments, WebUIArguments, BaseArguments,
                             AppArguments, SamplingArguments)
     from .base import SwiftPipeline
+    from .utils import prepare_model_template
 else:
     _import_structure = {
-        'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main',
             'infer_main',
             'run_deploy',
-            'prepare_model_template',
             'rollout_main',
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
@@ -36,6 +35,7 @@ else:
             'SamplingArguments'
         ],
         'base': ['SwiftPipeline'],
+        'utils': ['prepare_model_template'],
     }
 
     import sys

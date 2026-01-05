@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
-import os
 from typing import List, Union
 
 import torch
@@ -9,10 +8,12 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, deep_getattr
-from swift.plugin import Tuner, extra_tuners
+from swift.optimizers.galore import GaLoreConfig, calculate_max_steps
+from swift.plugins import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters, get_logger
+from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_norm,
+                         freeze_parameters, get_logger)
+from ..arguments import SftArguments
 
 logger = get_logger()
 
@@ -189,7 +190,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None, task_type=None):
+def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=None, task_type=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     task_type = (task_type or args.task_type).upper()
@@ -271,7 +272,6 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
     elif args.train_type == 'adalora':
         lora_kwargs.pop('lorap_lr_ratio', None)
         lora_kwargs['rank_pattern'] = None
-        from swift.plugin.optimizer import calculate_max_steps
         adalora_config = AdaLoraConfig(
             task_type=task_type,
             **lora_kwargs,
@@ -412,7 +412,6 @@ class TunerMixin:
             raise ValueError(f'args.train_type: {args.train_type}')
 
         if args.use_galore:
-            from swift.trainers.optimizers.galore import GaLoreConfig
             if args.galore_target_modules is None:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:

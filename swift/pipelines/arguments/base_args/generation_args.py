@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from swift.infer_engine import RequestConfig
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -60,7 +61,6 @@ class GenerationArguments:
     def get_request_config(self):
         if getattr(self, 'task_type') != 'causal_lm':
             return
-        from swift.llm import RequestConfig
 
         return RequestConfig(
             max_tokens=self.max_new_tokens,

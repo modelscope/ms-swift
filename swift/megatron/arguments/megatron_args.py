@@ -10,7 +10,8 @@ import torch
 from packaging import version
 from transformers.utils.versions import require_version
 
-from swift.llm import get_model_info_meta
+from swift.model import get_model_info_meta
+from swift.pipelines.arguments import ModelArguments
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
@@ -680,7 +681,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.mrope_interleaved = False
 
     def _init_mixed_precision(self):
-        from swift.llm.argument.base_args.model_args import ModelArguments
         ModelArguments._init_mixed_precision(self)
         if self.apply_query_key_layer_scaling is None:
             self.apply_query_key_layer_scaling = self.fp16

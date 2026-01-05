@@ -4,8 +4,9 @@ from typing import Literal, Optional
 
 import gradio as gr
 
+from swift.infer_engine import InferClient, InferRequest, RequestConfig
+from swift.template import History
 from swift.utils import get_file_mm_type
-from ..utils import History
 from .locale import locale_mapping
 
 
@@ -51,9 +52,8 @@ def _parse_text(text: str) -> str:
 
 
 async def model_chat(history: History, real_history: History, system: Optional[str], *, client, model: str,
-                     request_config: Optional['RequestConfig']):
+                     request_config: Optional[RequestConfig]):
     if history:
-        from swift.llm import InferRequest
 
         messages = _history_to_messages(real_history, system)
         resp_or_gen = await client.infer_async(
@@ -97,12 +97,11 @@ def add_file(history: History, real_history: History, file):
 def build_ui(base_url: str,
              model: Optional[str] = None,
              *,
-             request_config: Optional['RequestConfig'] = None,
+             request_config: Optional[RequestConfig] = None,
              is_multimodal: bool = True,
              studio_title: Optional[str] = None,
              lang: Literal['en', 'zh'] = 'en',
              default_system: Optional[str] = None):
-    from swift.llm import InferClient
     client = InferClient(base_url=base_url)
     model = model or client.models[0]
     studio_title = studio_title or model

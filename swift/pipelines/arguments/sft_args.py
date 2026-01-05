@@ -9,8 +9,8 @@ from transformers.utils.versions import require_version
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict)
-from .base_args import BaseArguments, to_abspath
+                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
+from .base_args import BaseArguments
 from .tuner_args import TunerArguments
 
 logger = get_logger()
@@ -396,8 +396,3 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self.training_args.output_dir = self.output_dir
         self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir
-
-
-@dataclass
-class PretrainArguments(SftArguments):
-    pass

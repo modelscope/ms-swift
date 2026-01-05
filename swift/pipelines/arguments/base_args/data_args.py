@@ -1,9 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from swift.llm import DATASET_MAPPING, register_dataset_info
+from swift.dataset import register_dataset_info
 from swift.utils import get_logger, json_parse_to_dict
 
 logger = get_logger()

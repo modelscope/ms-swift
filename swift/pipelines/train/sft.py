@@ -7,15 +7,15 @@ from datasets import Dataset as HfDataset
 
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
                            LazyLLMDataset, PackingDataset, load_dataset)
-from swift.plugins import extra_callbacks
+from swift.infer_engine import prepare_generation_config
+from swift.plugins import EarlyStopCallback, extra_callbacks
 from swift.ray import RayHelper
 from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..arguments import SftArguments
 from ..base import SwiftPipeline
-from swift.infer_engine import prepare_generation_config
-from ..infer import get_cached_dataset
+from ..utils import get_cached_dataset
 from .tuner import TunerMixin
 
 logger = get_logger()
@@ -283,7 +283,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
         if args.early_stop_interval is not None and args.early_stop_interval > 0:
-            from swift.plugin.callback import EarlyStopCallback
             self.callbacks.append(EarlyStopCallback(args.early_stop_interval))
             logger.info('You are using the default early stop callback, this is a implementation of '
                         'stopping training when the best metric showing no improvement within {} steps, '

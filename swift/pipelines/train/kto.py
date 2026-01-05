@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 
 from datasets import Dataset as HfDataset
 
+from swift.dataset import RowPreprocessor
 from swift.utils import get_dist_setting, get_logger
-from ..dataset import RowPreprocessor
 
 logger = get_logger()
 

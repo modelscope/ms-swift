@@ -5,13 +5,15 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
-from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
-from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
+from swift.dataset import DatasetLoader, load_dataset, sample_dataset
+from swift.infer_engine import AdapterRequest, InferRequest, RequestConfig, TransformersEngine
+from swift.metrics import InferStats, MeanMetric, compute_rouge_bleu
 from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
-from ..dataset.loader import DatasetLoader
-from .infer_engine import AdapterRequest, PtEngine
-from .protocol import RequestConfig
-from .utils import InferCliState, get_cached_dataset
+from ..arguments import InferArguments
+from ..base import SwiftPipeline
+from ..export import merge_lora
+from ..utils import get_cached_dataset, prepare_model_template
+from .utils import InferCliState
 
 logger = get_logger()
 
@@ -21,7 +23,6 @@ class SwiftInfer(SwiftPipeline):
     args: args_class
 
     def __init__(self, args: Optional[Union[List[str], InferArguments]] = None) -> None:
-        from swift.llm import merge_lora
         super().__init__(args)
         args = self.args
         if args.merge_lora:
@@ -32,7 +33,8 @@ class SwiftInfer(SwiftPipeline):
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
-            self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
+            self.infer_engine = TransformersEngine.from_model_template(
+                model, self.template, max_batch_size=args.max_batch_size)
             self.infer_engine.reranker_use_activation = args.reranker_use_activation
             logger.info(f'model: {self.infer_engine.model}')
         else:
@@ -61,13 +63,12 @@ class SwiftInfer(SwiftPipeline):
         if infer_backend in {'pt', 'vllm'}:
             kwargs['reranker_use_activation'] = args.reranker_use_activation
         if infer_backend == 'pt':
-            from .infer_engine import PtEngine
-            infer_engine_cls = PtEngine
+            infer_engine_cls = TransformersEngine
             kwargs.update(args.get_model_kwargs())
             if hasattr(args, 'max_batch_size'):
                 kwargs.update({'max_batch_size': args.max_batch_size})
         elif infer_backend == 'vllm':
-            from .infer_engine import VllmEngine
+            from swift.infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
             seed = args.seed
@@ -77,11 +78,11 @@ class SwiftInfer(SwiftPipeline):
                 kwargs['distributed_executor_backend'] = 'external_launcher'
             kwargs['seed'] = seed
         elif infer_backend == 'sglang':
-            from .infer_engine import SglangEngine
+            from swift.infer_engine import SglangEngine
             infer_engine_cls = SglangEngine
             kwargs.update(args.get_sglang_engine_kwargs())
         else:
-            from .infer_engine import LmdeployEngine
+            from swift.infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
         return infer_engine_cls(**kwargs)

@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Literal, Optional
 
 import json
 
-from swift.llm import BaseArguments
 from swift.utils import get_logger
+from .base_args import BaseArguments
 
 logger = get_logger()
 

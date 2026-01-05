@@ -6,7 +6,7 @@ import gradio
 from packaging import version
 
 from swift.utils import get_logger
-from ..argument import AppArguments
+from ..arguments import AppArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
 from .build_ui import build_ui

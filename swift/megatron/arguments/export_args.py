@@ -3,9 +3,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-from swift.llm import HfConfigFactory
-from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_logger
+from swift.utils import HfConfigFactory, get_logger, to_abspath
 from .megatron_args import MegatronArguments
 from .megatron_base_args import MegatronBaseArguments
 
