@@ -3,7 +3,9 @@ import re
 
 import numpy as np
 
-from swift.llm import DATASET_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
+from swift.dataset import DATASET_MAPPING, EncodePreprocessor, load_dataset
+from swift.model import get_model_tokenizer
+from swift.template import get_template
 from swift.utils import stat_array
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'

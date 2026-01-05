@@ -1,6 +1,6 @@
 import unittest
 
-from swift.llm import load_dataset
+from swift.dataset import load_dataset
 
 
 class TestDataset(unittest.TestCase):

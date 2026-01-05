@@ -4,9 +4,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_channel():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-7B-Instruct',
             dataset=['channel.jsonl#1000'],
             split_dataset_ratio=0.01,

@@ -3,7 +3,9 @@ import unittest
 
 import torch
 
-from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
+from swift.infer_engine import TransformersEngine, RequestConfig
+from swift.model import get_model_tokenizer
+from swift.template import get_template
 from swift.utils import get_logger, seed_everything
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -36,7 +38,7 @@ class TestTemplate(unittest.TestCase):
 
     @unittest.skipIf(not torch.cuda.is_available(), reason='GPTQ is only available on GPU')
     def test_template(self):
-        pt_engine = PtEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
+        pt_engine = TransformersEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
         response = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
         response2 = _infer_model(pt_engine)

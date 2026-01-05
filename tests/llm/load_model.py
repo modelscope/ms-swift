@@ -3,7 +3,7 @@ from dataclasses import fields
 
 import torch
 
-from swift.llm import MODEL_ARCH_MAPPING, ModelKeys, get_model_tokenizer
+from swift.model import MODEL_ARCH_MAPPING, ModelKeys, get_model_tokenizer
 
 
 def get_model_and_tokenizer(ms_model_id, model_arch=None):

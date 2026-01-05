@@ -11,9 +11,9 @@ kwargs = {
 
 
 def test_llm():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen3-Embedding-0.6B',
             task_type='embedding',
             dataset=['sentence-transformers/stsb:positive'],

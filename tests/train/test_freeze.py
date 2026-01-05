@@ -14,9 +14,9 @@ def test_full_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
@@ -31,9 +31,9 @@ def test_full_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
@@ -48,9 +48,9 @@ def test_lora_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
@@ -65,9 +65,9 @@ def test_lora_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
