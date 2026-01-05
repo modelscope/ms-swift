@@ -3,23 +3,20 @@ import os
 import re
 import sys
 import time
-from copy import deepcopy
 from datetime import datetime
 from functools import partial
-from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
 import json
-import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import DeployArguments, RLHFArguments, RolloutArguments
-from swift.ui.base import BaseUI
-from swift.ui.llm_grpo.external_runtime import RolloutRuntime
-from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
+from swift.arguments import RolloutArguments
 from swift.utils import get_device_count, get_logger
+from ..base import BaseUI
+from ..llm_train import run_command_in_background_with_popen
+from .external_runtime import RolloutRuntime
 
 logger = get_logger()
 

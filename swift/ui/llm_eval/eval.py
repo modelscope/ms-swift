@@ -3,8 +3,8 @@ from typing import Type
 
 import gradio as gr
 
-from swift.ui.base import BaseUI
 from swift.utils import get_logger
+from ..base import BaseUI
 
 logger = get_logger()
 

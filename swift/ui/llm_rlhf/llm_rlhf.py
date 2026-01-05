@@ -4,21 +4,21 @@ from typing import Dict, Type
 
 import gradio as gr
 
-from swift.llm.argument.base_args.base_args import get_supported_tuners
-from swift.ui.base import BaseUI
-from swift.ui.llm_rlhf.advanced import RLHFAdvanced
-from swift.ui.llm_rlhf.dataset import RLHFDataset
-from swift.ui.llm_rlhf.hyper import RLHFHyper
-from swift.ui.llm_rlhf.model import RLHFModel
-from swift.ui.llm_rlhf.optimizer import RLHFOptimizer
-from swift.ui.llm_rlhf.quantization import RLHFQuantization
-from swift.ui.llm_rlhf.report_to import RLHFReportTo
-from swift.ui.llm_rlhf.rlhf import RLHF
-from swift.ui.llm_rlhf.runtime import RLHFRuntime
-from swift.ui.llm_rlhf.save import RLHFSave
-from swift.ui.llm_rlhf.tuner import RLHFTuner
-from swift.ui.llm_train.llm_train import LLMTrain
+from swift.arguments import get_supported_tuners
 from swift.utils import get_device_count, get_logger
+from ..base import BaseUI
+from ..llm_train import LLMTrain
+from .advanced import RLHFAdvanced
+from .dataset import RLHFDataset
+from .hyper import RLHFHyper
+from .model import RLHFModel
+from .optimizer import RLHFOptimizer
+from .quantization import RLHFQuantization
+from .report_to import RLHFReportTo
+from .rlhf import RLHF
+from .runtime import RLHFRuntime
+from .save import RLHFSave
+from .tuner import RLHFTuner
 
 logger = get_logger()
 

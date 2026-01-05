@@ -1,9 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Type
-
-import gradio as gr
-
-from swift.ui.llm_train.save import Save
+from ..llm_train import Save
 
 
 class RLHFSave(Save):
