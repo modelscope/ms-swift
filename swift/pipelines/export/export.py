@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
-from swift.pipelines import ExportArguments, SwiftPipeline
+from swift.arguments import ExportArguments
+from swift.pipelines import SwiftPipeline
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
 from .cached_dataset import export_cached_dataset

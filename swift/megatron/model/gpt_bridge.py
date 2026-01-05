@@ -15,8 +15,9 @@ from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
-from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
+from swift.model import get_model_tokenizer, save_checkpoint
+from swift.pipelines import get_multimodal_target_regex
+from swift.utils import deep_getattr, get_logger, get_modules_to_not_convert, is_last_rank, safe_snapshot_download
 from ..tuners import LoraParallelLinear
 from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
@@ -1441,7 +1442,6 @@ class GPTBridge:
         args = self.args
         if is_last_rank():
             if is_peft_format:
-                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.task_type == 'seq_cls':
                     peft_config.task_type = 'SEQ_CLS'

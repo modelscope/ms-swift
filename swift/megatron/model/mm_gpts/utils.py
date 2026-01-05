@@ -8,8 +8,8 @@ from megatron.training import get_args
 from transformers import PreTrainedModel
 from transformers.utils import ContextManagers
 
-from swift.llm import deep_getattr, get_model_tokenizer
-from swift.utils import disable_safe_ddp_context_use_barrier
+from swift.model import get_model_tokenizer
+from swift.utils import deep_getattr, disable_safe_ddp_context_use_barrier
 
 
 @contextmanager

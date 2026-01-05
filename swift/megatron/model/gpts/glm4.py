@@ -13,7 +13,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import sharded_state_dict_default
 from packaging import version
 
-from swift.llm import ModelType
+from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model

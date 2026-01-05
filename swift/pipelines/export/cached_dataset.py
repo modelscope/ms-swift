@@ -4,9 +4,9 @@ from typing import List, Optional, Union
 
 import torch
 
+from swift.arguments import ExportArguments
 from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger
-from ..arguments import ExportArguments
 from ..train import SwiftSft
 
 logger = get_logger()

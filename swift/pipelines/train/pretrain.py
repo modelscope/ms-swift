@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
+from swift.arguments import PretrainArguments
 from swift.utils import get_logger
-from ..arguments import PretrainArguments
 from .sft import SwiftSft
 
 logger = get_logger()

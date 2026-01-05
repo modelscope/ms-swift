@@ -13,7 +13,8 @@ from megatron.core.utils import WrappedTensor, deprecate_inference_params, make_
 from megatron.training import get_args
 from PIL import Image
 
-from swift.llm import ModelType, to_device
+from swift.model import ModelType
+from swift.utils import to_device
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..mm_gpt_model import MultimodalGPTModel

@@ -1,10 +1,10 @@
 import math
 from dataclasses import dataclass, fields
 
-from swift.llm import BaseArguments
+from swift.arguments import BaseArguments
+from swift.megatron.model import get_megatron_model_meta
+from swift.megatron.utils import convert_hf_config
 from swift.utils import get_logger
-from ..model import get_megatron_model_meta
-from ..utils import convert_hf_config
 from .megatron_args import MegatronArguments
 
 logger = get_logger()

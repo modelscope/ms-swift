@@ -11,9 +11,6 @@ if TYPE_CHECKING:
     from .app import app_main
     from .train import sft_main, pretrain_main, rlhf_main, get_multimodal_target_regex
     from .sampling import sampling_main
-    from .arguments import (EvalArguments, InferArguments, SftArguments, PretrainArguments, ExportArguments,
-                            DeployArguments, RolloutArguments, RLHFArguments, WebUIArguments, BaseArguments,
-                            AppArguments, SamplingArguments)
     from .base import SwiftPipeline
     from .utils import prepare_model_template
 else:
@@ -29,11 +26,6 @@ else:
         'eval': ['eval_main'],
         'train': ['sft_main', 'pretrain_main', 'rlhf_main', 'get_multimodal_target_regex'],
         'sampling': ['sampling_main'],
-        'arguments': [
-            'EvalArguments', 'InferArguments', ' SftArguments', 'PretrainArguments', 'ExportArguments',
-            'WebUIArguments', 'DeployArguments', 'RolloutArguments', 'RLHFArguments', 'BaseArguments', 'AppArguments',
-            'SamplingArguments'
-        ],
         'base': ['SwiftPipeline'],
         'utils': ['prepare_model_template'],
     }

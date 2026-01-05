@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
 import swift
+from swift.arguments import AppArguments, BaseArguments, WebUIArguments
 from swift.utils import ProcessorMixin, get_logger, parse_args, seed_everything
-from .arguments import AppArguments, BaseArguments, WebUIArguments
 
 logger = get_logger()
 

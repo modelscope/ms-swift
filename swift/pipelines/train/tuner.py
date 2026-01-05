@@ -8,12 +8,12 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
+from swift.arguments import SftArguments
 from swift.optimizers.galore import GaLoreConfig, calculate_max_steps
 from swift.plugins import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_norm,
                          freeze_parameters, get_logger)
-from ..arguments import SftArguments
 
 logger = get_logger()
 

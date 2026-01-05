@@ -17,9 +17,9 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from transformers.utils import strtobool
 
-from swift.pipelines import ExportArguments, HfConfigFactory, prepare_model_template, to_device, to_float_dtype
-from swift.utils import get_logger, get_n_params_grads, is_master
-from .argument import MegatronArguments
+from swift.pipelines import ExportArguments, prepare_model_template
+from swift.utils import HfConfigFactory, get_logger, get_n_params_grads, is_master, to_device, to_float_dtype
+from .arguments import MegatronArguments
 from .model import get_megatron_model_meta
 from .utils import (convert_hf_config, forward_step_helper, get_padding_to, patch_load_base_checkpoint,
                     patch_torch_dist_shard)

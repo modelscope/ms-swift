@@ -19,8 +19,8 @@ from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from megatron.training import get_args
 from packaging import version
 
-from swift.llm import ModelType
 from swift.megatron.utils import get_local_layer_specs
+from swift.model import ModelType
 from swift.utils import get_logger
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge

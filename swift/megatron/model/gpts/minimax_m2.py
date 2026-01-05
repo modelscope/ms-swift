@@ -8,7 +8,7 @@ from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from packaging import version
 
-from swift.llm import ModelType
+from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model

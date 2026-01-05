@@ -5,8 +5,8 @@ from typing import List, Optional, Union
 import gradio
 from packaging import version
 
+from swift.arguments import AppArguments
 from swift.utils import get_logger
-from ..arguments import AppArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
 from .build_ui import build_ui

@@ -15,12 +15,12 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from swift.arguments import DeployArguments, InferArguments
 from swift.infer_engine import AdapterRequest, InferClient
 from swift.infer_engine.protocol import (ChatCompletionRequest, CompletionRequest, EmbeddingRequest, Model, ModelList,
                                          MultiModalRequestMixin)
 from swift.metrics import InferStats
 from swift.utils import JsonlWriter, get_logger
-from ..arguments import DeployArguments, InferArguments
 from .infer import SwiftInfer
 
 logger = get_logger()

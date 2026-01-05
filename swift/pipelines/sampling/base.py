@@ -1,10 +1,10 @@
 from typing import Any, Dict, List
 
+from swift.arguments import SamplingArguments
 from swift.infer_engine import TransformersEngine
 from swift.plugins import orms, prms
 from swift.ray.base import RayHelper
 from swift.utils import get_logger
-from ..arguments import SamplingArguments
 
 logger = get_logger()
 

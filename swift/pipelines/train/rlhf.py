@@ -3,13 +3,13 @@ import os
 from contextlib import nullcontext
 from typing import List, Optional, Union
 
+from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
 from swift.model import get_model_info_meta
 from swift.plugins import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_logger, get_model_parameter_info,
                          safe_snapshot_download)
-from ..arguments import BaseArguments, RLHFArguments
 from ..utils import prepare_adapter
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft

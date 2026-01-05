@@ -10,8 +10,8 @@ import torch
 from packaging import version
 from transformers.utils.versions import require_version
 
+from swift.arguments import ModelArguments
 from swift.model import get_model_info_meta
-from swift.pipelines.arguments import ModelArguments
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')

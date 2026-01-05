@@ -2,10 +2,10 @@
 import os
 from typing import List
 
+from swift.arguments import ExportArguments
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.template import Template
 from swift.utils import get_logger
-from ..arguments import ExportArguments
 from ..utils import prepare_model_template
 
 logger = get_logger()

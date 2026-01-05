@@ -4,15 +4,14 @@ from dataclasses import dataclass
 
 import json
 
-from swift.llm.argument.base_args import to_abspath
-from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank
+from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank, to_abspath
 from .megatron_base_args import MegatronBaseArguments
 
 logger = get_logger()
 
 
 @dataclass
-class MegatronTrainArguments(MegatronBaseArguments):
+class MegatronSftArguments(MegatronBaseArguments):
     add_version: bool = True
     load_args: bool = False
 

@@ -2,11 +2,11 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from .train_args import MegatronTrainArguments
+from .sft_args import MegatronSftArguments
 
 
 @dataclass
-class MegatronRLHFArguments(MegatronTrainArguments):
+class MegatronRLHFArguments(MegatronSftArguments):
     rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = 'dpo'
     loss_scale: str = 'last_round'
     truncation_strategy: Optional[Literal['delete', 'left', 'right', 'split', None]] = None

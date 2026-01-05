@@ -6,8 +6,12 @@ from typing import List, Optional, Union
 
 import json
 
-from swift.llm import SamplingArguments, SwiftPipeline, load_dataset
+from swift.arguments import SamplingArguments
+from swift.dataset import load_dataset
 from swift.utils import get_logger
+from ..base import SwiftPipeline
+from .distill_sampler import DistillSampler
+from .vanilla_sampler import VanillaSampler
 
 logger = get_logger()
 
@@ -27,10 +31,8 @@ class SwiftSampling(SwiftPipeline):
             self.cur_piece, self.total_piece = self.args.data_range
 
         if self.args.sampler_type == 'sample':
-            from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
         elif self.args.sampler_type == 'distill':
-            from swift.llm.sampling.distill_sampler import DistillSampler
             self.sampler = DistillSampler(self.args)
         else:
             raise ValueError(f'Unsupported sampler type: {self.args.sampler_type}')

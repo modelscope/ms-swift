@@ -5,7 +5,7 @@ from typing import Callable, List, Optional, Type
 
 import torch.nn as nn
 
-from swift.llm import MODEL_MAPPING
+from swift.model import MODEL_MAPPING
 from .constant import MLLMMegatronModelType
 from .gpt_bridge import GPTBridge
 from .gpt_model import GPTModel

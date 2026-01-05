@@ -9,7 +9,7 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from megatron.training import get_args
 from packaging import version
 
-from swift.llm import ModelType
+from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..register import MegatronModelMeta, register_megatron_model

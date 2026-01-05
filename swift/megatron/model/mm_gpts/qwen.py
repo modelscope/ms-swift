@@ -2,7 +2,8 @@
 import torch
 from PIL import Image
 
-from swift.llm import ModelType, Template
+from swift.model import ModelType
+from swift.template import Template
 from swift.utils import get_env_args
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge

@@ -5,11 +5,11 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
+from swift.arguments import InferArguments
 from swift.dataset import DatasetLoader, load_dataset, sample_dataset
 from swift.infer_engine import AdapterRequest, InferRequest, RequestConfig, TransformersEngine
 from swift.metrics import InferStats, MeanMetric, compute_rouge_bleu
 from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
-from ..arguments import InferArguments
 from ..base import SwiftPipeline
 from ..export import merge_lora
 from ..utils import get_cached_dataset, prepare_model_template

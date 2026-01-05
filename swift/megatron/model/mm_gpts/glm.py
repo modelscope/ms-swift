@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import ModelType, Template
+from swift.model import ModelType
+from swift.template import Template
 from ..constant import MegatronModelType
-from ..gpt.glm4 import Glm4Bridge, get_glm4_transformer_layer_spec
 from ..gpt_bridge import MultimodalGPTBridge
+from ..gpts.glm4 import Glm4Bridge, get_glm4_transformer_layer_spec
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 

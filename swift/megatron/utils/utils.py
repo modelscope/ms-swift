@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
-from copy import deepcopy
 from typing import Optional, Tuple
 
 import megatron.core
