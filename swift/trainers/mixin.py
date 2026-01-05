@@ -78,6 +78,8 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
         self.template = template
+        self.is_encoder_decoder = self.template.is_encoder_decoder
+        self.padding_free = self.template.padding_free
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
