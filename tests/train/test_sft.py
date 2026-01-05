@@ -247,7 +247,7 @@ def test_resume_only_model():
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-0.5B',
             resume_from_checkpoint=last_model_checkpoint,
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],

@@ -23,7 +23,8 @@ def get_template_info_type(
     hub_token: Optional[str] = None,
     revision: Optional[str] = None,
 ):
-    from swift.llm import get_matched_model_meta, safe_snapshot_download
+    from swift.model import get_matched_model_meta
+    from swift.utils import safe_snapshot_download
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
         model_id_or_path, revision=revision, download_model=False, use_hf=use_hf, hub_token=hub_token)

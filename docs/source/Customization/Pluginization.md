@@ -120,7 +120,7 @@ tuner定制也是swift中有特色的能力之一，开发者可以无视复杂�
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch: ModelKeys = model.model_meta.model_arch
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')

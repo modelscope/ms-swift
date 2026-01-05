@@ -212,7 +212,7 @@ class InternvlhfTemplate(Internvl2Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.image_utils import make_flat_list_of_images, concatenate_list
         from transformers.video_utils import make_batched_videos
-        from swift.llm.template.vision_utils import load_video_hf
+        from swift.template.vision_utils import load_video_hf
         import numpy as np
         encoded = super(InternvlTemplate, self)._encode(inputs)
         input_ids = encoded['input_ids']

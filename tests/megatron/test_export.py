@@ -32,14 +32,14 @@ model_id = 'Qwen/Qwen2-7B-Instruct'
 
 
 def hf2mcore():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model=model_id, to_mcore=True, torch_dtype='bfloat16', exist_ok=True, test_convert_precision=True))
 
 
 def mcore2hf():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             mcore_model='Qwen2-7B-Instruct-mcore',

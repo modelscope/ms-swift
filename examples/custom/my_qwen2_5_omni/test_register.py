@@ -6,7 +6,7 @@ from modelscope import snapshot_download
 from qwen_omni_utils import process_mm_info
 from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 
-from swift.infer_engine import InferRequest, TransformersEngine, RequestConfig
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 
 sys.path.append('examples/custom/my_qwen2_5_omni')
 

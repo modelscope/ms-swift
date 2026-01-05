@@ -83,7 +83,7 @@ if __name__ == '__main__':
     adapters = ['output/vx-xxx/checkpoint-xxx']
     engine = TransformersEngine(model, adapters=adapters, max_batch_size=8)
 
-    # agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
+    # agent_template = agent_template_map['hermes']()  # react_en/qwen_en/qwen_en_parallel
     # engine.default_template.agent_template = agent_template
 
     infer(engine, get_infer_request())

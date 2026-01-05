@@ -9,8 +9,8 @@ from typing import Any, Dict
 
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, TransformersEngine, RequestConfig, TemplateMeta,
-                       register_model, register_template)
+from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, RequestConfig, TemplateMeta,
+                                TransformersEngine, register_model, register_template)
 
 register_template(
     TemplateMeta(

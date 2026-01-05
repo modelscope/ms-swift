@@ -157,7 +157,7 @@ class SwanlabArguments:
 class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """Arguments pertaining to the training process.
 
-    TrainArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
+    SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
     BaseArguments, Seq2SeqTrainingOverrideArguments.
 
     Args:

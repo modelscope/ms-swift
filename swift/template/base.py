@@ -183,7 +183,7 @@ class Template(ProcessorMixin):
         if self.model is not None:
             return self.model
         if self.dummy_model is None:
-            from swift.llm import get_model_tokenizer
+            from swift.model import get_model_tokenizer
             with torch.device('meta'):
                 self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
@@ -1493,7 +1493,7 @@ class Template(ProcessorMixin):
         return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        from swift.llm import RowPreprocessor
+        from swift.dataset import RowPreprocessor
         if self.packing and isinstance(batch[0], list):
             batch = sum(batch, start=[])
         num_samples = len(batch)
@@ -1538,7 +1538,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> Dict[str, Any]:
-        from swift.llm import RowPreprocessor
+        from swift.dataset import RowPreprocessor
         keys = keys or []
         rows = RowPreprocessor.rows_to_batched(batch)
         return {k: rows[k] for k in keys if rows.get(k) is not None}

@@ -1,4 +1,4 @@
-from swift.llm import SamplingArguments, sampling_main
+from swift import SamplingArguments, sampling_main
 
 
 def test_sampling():

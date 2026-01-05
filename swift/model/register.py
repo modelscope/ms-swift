@@ -312,7 +312,7 @@ class ModelLoader(BaseModelLoader):
             model._auto_class = automodel_class.__name__
 
         if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
-            from swift.llm.model.patcher import patch_output_normalizer
+            from swift.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=model_meta)
 
         if self.init_strategy is not None:

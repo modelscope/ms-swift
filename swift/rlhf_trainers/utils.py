@@ -11,7 +11,7 @@ from datetime import timedelta
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import datasets
 import torch
@@ -25,17 +25,16 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
+from swift.template import Messages
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_torch_device,
-                         is_swanlab_available, is_vllm_available, is_wandb_available)
+                         is_swanlab_available, is_vllm_available, is_wandb_available, to_device)
 
 if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
 
-if TYPE_CHECKING:
-    from swift.llm.utils import Messages
 T = TypeVar('T')
 
 TensorLoRARequest = None
@@ -1179,7 +1178,6 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         Combined CHORD loss tensor
     """
     from swift.trainers import per_token_loss_func
-    from swift.llm import to_device
 
     current_step = trainer.state.global_step
     mu = mu_schedule_function(current_step, trainer.args.chord_mu_warmup_steps, trainer.args.chord_mu_decay_steps,

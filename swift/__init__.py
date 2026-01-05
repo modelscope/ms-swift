@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
                             AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
     from .pipelines import (sft_main, pretrain_main, infer_main, rlhf_main, export_main, app_main, eval_main,
-                            sampling_main, rollout_main, deploy_main, merge_lora)
+                            sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
     from .model import get_model
     from .template import get_template
     from .dataset import load_dataset
@@ -26,7 +26,7 @@ else:
         ],
         'pipelines': [
             'sft_main', 'pretrain_main', 'infer_main', 'rlhf_main', 'export_main', 'app_main', 'eval_main',
-            'sampling_main', 'rollout_main', 'deploy_main', 'merge_lora'
+            'sampling_main', 'rollout_main', 'deploy_main', 'merge_lora', 'run_deploy'
         ],
         'model': ['get_model'],
         'template': ['get_template'],

@@ -147,7 +147,7 @@ register_template(Mistral3TemplateMeta('devstral', default_system=devstral_small
 class Mistral2506Template(Mistral2503Template):
 
     def _get_mistral_system(self):
-        from swift.llm import get_model_name
+        from swift.model import get_model_name
         model_dir = self.model_info.model_dir
         model_name = get_model_name(model_dir)
         file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')

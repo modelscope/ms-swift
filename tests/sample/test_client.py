@@ -2,7 +2,7 @@ import os
 
 
 def test_client():
-    from swift.llm import sampling_main, SamplingArguments
+    from swift import sampling_main, SamplingArguments
     import json
     base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     api_key = os.environ.get('OPENAI_API_KEY')

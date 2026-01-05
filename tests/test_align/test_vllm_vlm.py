@@ -186,7 +186,7 @@ def test_deepseek_ocr():
 
 
 if __name__ == '__main__':
-    from swift.llm import VllmEngine, InferRequest, RequestConfig
+    from swift.infer_engine import VllmEngine, InferRequest, RequestConfig
     # test_qwen2_vl()
     # test_qwen2_5_vl()
     # test_deepseek_vl_v2()

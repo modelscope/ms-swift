@@ -10,15 +10,15 @@ from typing import Dict, List, Union
 import json
 import torch
 
-from swift.infer_engine import TransformersEngine, RequestConfig
+from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest
-from swift.template import Template
 from swift.plugins import ORM, AsyncORM, orms, rm_plugins
 # register context manager(used in gym training)
 from swift.plugins.context_manager import ContextManager, context_managers
 from swift.plugins.env import Env, envs
 from swift.plugins.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugins.rm_plugin import DefaultRMPlugin
+from swift.template import Template
 from swift.utils import get_logger, to_device
 
 logger = get_logger()

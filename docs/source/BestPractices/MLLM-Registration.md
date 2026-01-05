@@ -17,13 +17,13 @@ pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 第一步，我们需要注册模型，来获取模型和processor。
 
 ```python
-from swift.llm import (
+from swift.template import (
     register_model, ModelMeta, ModelGroup, Model, register_model_arch, MultiModelKeys,
     get_model_tokenizer_with_flash_attn, get_model_tokenizer
 )
-from swift.llm.model.model.qwen import patch_qwen_vl_utils
-from swift.llm.model.utils import use_submodel_func
-from swift.llm.model.patcher import patch_get_input_embeddings
+from swift.model.model.qwen import patch_qwen_vl_utils
+from swift.model.utils import use_submodel_func
+from swift.model.patcher import patch_get_input_embeddings
 from swift.utils import get_env_args
 
 
@@ -110,14 +110,14 @@ template的功能如下：
 
 
 ```python
-from swift.llm import (
+from swift.temlpate import (
     register_template, Template, get_packed_seq_params, to_float_dtype, TemplateMeta,
     get_template, get_model_tokenizer
 )
 from transformers.integrations import is_deepspeed_zero3_enabled
-from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.template.utils import Context, findall
-from swift.llm.template.vision_utils import load_audio
+from swift.template.template_inputs import StdTemplateInputs
+from swift.template.utils import Context, findall
+from swift.template.vision_utils import load_audio
 from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
 from functools import partial
 from typing import Dict, List, Any, Literal, Optional
@@ -524,11 +524,11 @@ if __name__ == '__main__':
 
 使用python代码训练，这通常更容易debug：
 ```python
-from swift.llm import sft_main, TrainArguments
+from swift import sft_main, SftArguments
 import os
 if __name__ == '__main__':
     os.environ['MAX_PIXELS'] = '1003520'
-    sft_main(TrainArguments(
+    sft_main(SftArguments(
         model='Qwen/Qwen2.5-Omni-7B',
         dataset='AI-ModelScope/LaTeX_OCR#5000',
         model_type='my_qwen2_5_omni',

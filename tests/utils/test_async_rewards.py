@@ -56,7 +56,7 @@ class TestAsyncRewardFunctions(unittest.TestCase):
 
     def test_async_orm_base_class(self):
         """Test that AsyncORM can be subclassed and used correctly."""
-        from swift.plugin import AsyncORM
+        from swift.plugins import AsyncORM
 
         class TestAsyncReward(AsyncORM):
 
@@ -79,7 +79,7 @@ class TestAsyncRewardFunctions(unittest.TestCase):
 
     def test_async_reward_is_detected(self):
         """Test that async reward functions are correctly detected."""
-        from swift.plugin import AsyncORM
+        from swift.plugins import AsyncORM
 
         class SyncReward:
 
@@ -152,7 +152,7 @@ class TestAsyncRewardPerformance(unittest.TestCase):
 
     def test_async_reward_function_batch_performance(self):
         """Test performance of async reward function with batch processing."""
-        from swift.plugin import AsyncORM
+        from swift.plugins import AsyncORM
         from swift.utils import start_event_loop_in_daemon, shutdown_event_loop_in_daemon
 
         sleep_per_item = 0.05  # 50ms per item

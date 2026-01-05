@@ -229,7 +229,7 @@ class MegatronRolloutMixin:
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode."""
         from vllm.distributed import parallel_state as vllm_ps
-        from swift.llm.infer.infer_engine import GRPOVllmEngine
+        from swift.infer_engine import GRPOVllmEngine
 
         args = self.args
         per_device_batch_size = getattr(args, 'per_device_generation_batch_size', args.micro_batch_size)

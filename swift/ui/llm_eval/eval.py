@@ -3,9 +3,9 @@ from typing import Type
 
 import gradio as gr
 
+from swift.arguments import EvalArguments
 from swift.utils import get_logger
 from ..base import BaseUI
-from swift.arguments import EvalArguments
 
 logger = get_logger()
 

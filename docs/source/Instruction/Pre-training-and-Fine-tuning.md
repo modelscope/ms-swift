@@ -85,8 +85,8 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
 你可以使用以下方式进行debug，这与使用命令行微调是等价的，但此方式不支持分布式。微调命令行运行入口可以查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/cli/sft.py)。
 
 ```python
-from swift.llm import sft_main, TrainArguments
-result = sft_main(TrainArguments(
+from swift import sft_main, SftArguments
+result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
     train_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',

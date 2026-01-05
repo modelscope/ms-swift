@@ -257,7 +257,7 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
             resolved to 'regression' if the model is a reward_model or num_labels is 1, and
             'single_label_classification' otherwise.
         """
-    # Value copied from TrainArguments
+    # Value copied from SftArguments
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     task_type: Optional[str] = None

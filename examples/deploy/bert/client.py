@@ -1,6 +1,6 @@
 from typing import List
 
-from swift.llm import InferClient, InferRequest
+from swift.infer_engine import InferClient, InferRequest
 
 
 def infer_batch(engine: InferClient, infer_requests: List[InferRequest]):

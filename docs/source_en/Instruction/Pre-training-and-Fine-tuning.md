@@ -90,8 +90,8 @@ Additionally, we offer a series of scripts to help you understand the training c
 You can use the following method for debugging, which is equivalent to using the command line for fine-tuning, but this method does not support distributed training. You can refer to the entry point for the fine-tuning command line [here](https://github.com/modelscope/ms-swift/blob/main/swift/cli/sft.py).
 
 ```python
-from swift.llm import sft_main, TrainArguments
-result = sft_main(TrainArguments(
+from swift import sft_main, SftArguments
+result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
     train_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',

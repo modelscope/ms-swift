@@ -26,12 +26,13 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 
-from swift.infer_engine import RequestConfig, RolloutInferRequest
-from swift.infer_engine.protocol import ChatCompletionResponse, RolloutOutput
+from swift.infer_engine import RequestConfig
+from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
 from swift.plugins import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
+from swift.tuners import Swift
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from .rlhf_arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -193,8 +194,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
-        from swift.tuners import Swift
-        from swift.llm.infer.infer_engine import GRPOVllmEngine
+        from swift.infer_engine import GRPOVllmEngine
         args = self.args
         model = self.model
         steps_per_generation = args.steps_per_generation if hasattr(args, 'steps_per_generation') else 1

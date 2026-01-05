@@ -90,7 +90,7 @@ def _infer(engine, num_tools: int = 1, agent_tools=None, tool_messages=None, que
 
 
 def test_react_en():
-    agent_template = agent_templates['react_en']()
+    agent_template = agent_template_map['react_en']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1144
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -117,7 +117,7 @@ def test_react_en():
 
 
 def test_react_zh():
-    agent_template = agent_templates['react_zh']()
+    agent_template = agent_template_map['react_zh']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 712
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -127,7 +127,7 @@ def test_react_zh():
 
 
 def test_qwen_en():
-    agent_template = agent_templates['qwen_en']()
+    agent_template = agent_template_map['qwen_en']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 879
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -153,7 +153,7 @@ def test_qwen_en():
 
 
 def test_qwen_zh():
-    agent_template = agent_templates['qwen_zh']()
+    agent_template = agent_template_map['qwen_zh']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 577
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -163,7 +163,7 @@ def test_qwen_zh():
 
 
 def test_qwen_en_parallel():
-    agent_template = agent_templates['qwen_en_parallel']()
+    agent_template = agent_template_map['qwen_en_parallel']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1012
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -189,7 +189,7 @@ def test_qwen_en_parallel():
 
 
 def test_qwen_zh_parallel():
-    agent_template = agent_templates['qwen_zh_parallel']()
+    agent_template = agent_template_map['qwen_zh_parallel']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 688
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -199,7 +199,7 @@ def test_qwen_zh_parallel():
 
 
 def test_hermes():
-    agent_template = agent_templates['hermes']()
+    agent_template = agent_template_map['hermes']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 875
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -232,7 +232,7 @@ def test_hermes():
 
 
 def test_toolbench():
-    agent_template = agent_templates['toolbench']()
+    agent_template = agent_template_map['toolbench']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1833
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
@@ -242,7 +242,7 @@ def test_toolbench():
 
 
 def test_chatglm4():
-    agent_template = agent_templates['chatglm4']()
+    agent_template = agent_template_map['chatglm4']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 846
     engine = TransformersEngine('ZhipuAI/glm-4-9b-chat')
@@ -252,7 +252,7 @@ def test_chatglm4():
 
 
 def test_glm4():
-    agent_template = agent_templates['glm4']()
+    agent_template = agent_template_map['glm4']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 769
     engine = TransformersEngine('ZhipuAI/GLM-4-9B-0414')
@@ -276,7 +276,7 @@ def test_glm4():
 
 
 def test_llama3():
-    agent_template = agent_templates['llama3']()
+    agent_template = agent_template_map['llama3']()
     engine = TransformersEngine('LLM-Research/Llama-3.2-3B-Instruct')
     template = engine.default_template
     template.agent_template = agent_template
@@ -298,7 +298,7 @@ def test_llama3():
 
 
 def test_llama4():
-    agent_template = agent_templates['llama4']()
+    agent_template = agent_template_map['llama4']()
     engine = TransformersEngine('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
     template = engine.default_template
     template.agent_template = agent_template
@@ -374,7 +374,7 @@ def test_glm4_7():
 
 
 def test_qwen3_coder():
-    agent_template = agent_templates['qwen3_coder']()
+    agent_template = agent_template_map['qwen3_coder']()
     engine = TransformersEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
     template = engine.default_template
     template.agent_template = agent_template
@@ -398,7 +398,7 @@ def test_qwen3_coder():
 
 
 def test_deepseek_v3_1():
-    agent_template = agent_templates['deepseek_v3_1']()
+    agent_template = agent_template_map['deepseek_v3_1']()
 
     engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False, download_model=False)
     template = engine.default_template
@@ -463,7 +463,7 @@ def test_deepseek_v3_1():
 
 
 def test_seed_oss():
-    agent_template = agent_templates['seed_oss']()
+    agent_template = agent_template_map['seed_oss']()
 
     engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False, download_model=False)
 

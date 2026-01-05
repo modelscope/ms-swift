@@ -41,5 +41,5 @@ def infer_grounding():
 
 
 if __name__ == '__main__':
-    from swift.llm import draw_bbox, load_image
+    from swift.template import draw_bbox, load_image
     infer_grounding()

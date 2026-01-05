@@ -8,13 +8,13 @@ from swift.model import ModelKeys
 from swift.utils import find_all_linears
 
 if TYPE_CHECKING:
-    from swift.llm import TrainArguments
+    from swift.arguments import SftArguments
 
 
 class Tuner:
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         """Prepare a new model with a tuner
 
         Args:
@@ -80,7 +80,7 @@ class PeftTuner(Tuner):
 class IA3(PeftTuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch: ModelKeys = model.model_meta.model_arch
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
@@ -90,7 +90,7 @@ class IA3(PeftTuner):
 class DummyTuner(PeftTuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         return model
 
 

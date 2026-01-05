@@ -1,7 +1,7 @@
 import os
 import sys
 
-from swift.llm import TrainArguments, sft_main
+from swift import SftArguments, sft_main
 
 sys.path.append('examples/custom/my_qwen2_5_omni')
 
@@ -9,7 +9,7 @@ if __name__ == '__main__':
     import my_register
     os.environ['MAX_PIXELS'] = '1003520'
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-Omni-7B',
             dataset='AI-ModelScope/LaTeX_OCR#5000',
             model_type='my_qwen2_5_omni',

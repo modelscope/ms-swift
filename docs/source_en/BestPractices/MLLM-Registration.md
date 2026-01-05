@@ -529,11 +529,11 @@ Train using Python code, which is usually easier to debug:
 
 
 ```python
-from swift.llm import sft_main, TrainArguments
+from swift import sft_main, SftArguments
 import os
 if __name__ == '__main__':
     os.environ['MAX_PIXELS'] = '1003520'
-    sft_main(TrainArguments(
+    sft_main(SftArguments(
         model='Qwen/Qwen2.5-Omni-7B',
         dataset='AI-ModelScope/LaTeX_OCR#5000',
         model_type='my_qwen2_5_omni',

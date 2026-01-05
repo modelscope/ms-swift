@@ -4,7 +4,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 
 def _test_model(model_id, **kwargs):
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     if model_id.endswith('mcore') or 'megatron_output' in model_id and 'hf' not in model_id:
         export_main(
             ExportArguments(

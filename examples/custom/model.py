@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelMeta, TransformersEngine, RequestConfig, TemplateMeta,
-                       get_model_tokenizer_with_flash_attn, register_model, register_template)
+from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelMeta, RequestConfig, TemplateMeta,
+                                TransformersEngine, get_model_tokenizer_with_flash_attn, register_model,
+                                register_template)
 
 register_template(
     TemplateMeta(

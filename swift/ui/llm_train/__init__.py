@@ -8,9 +8,8 @@ from .model import Model
 from .optimizer import Optimizer
 from .quantization import Quantization
 from .report_to import ReportTo
+from .runtime import Runtime
 from .save import Save
 from .target import Target
 from .tuner import Tuner
 from .utils import run_command_in_background_with_popen
-from .runtime import Runtime
-

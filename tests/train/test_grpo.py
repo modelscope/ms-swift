@@ -18,7 +18,7 @@ SYSTEM_PROMPT = ('A conversation between User and Assistant. The user asks a que
 
 
 def test_llm():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='grpo',
@@ -36,7 +36,7 @@ def test_llm():
 
 
 def test_llm_zero2():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='grpo',
@@ -54,7 +54,7 @@ def test_llm_zero2():
 
 
 def test_llm_vllm():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='grpo',
@@ -73,7 +73,7 @@ def test_llm_vllm():
 
 
 def test_llm_vllm_zero2():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='grpo',
@@ -92,7 +92,7 @@ def test_llm_vllm_zero2():
 
 
 def test_mllm_pt():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='grpo',

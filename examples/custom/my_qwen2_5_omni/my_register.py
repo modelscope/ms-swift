@@ -4,16 +4,16 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm import (Model, ModelGroup, ModelMeta, MultiModelKeys, Template, TemplateMeta, get_model_tokenizer,
-                       get_model_tokenizer_with_flash_attn, get_packed_seq_params, get_template, register_model,
-                       register_model_arch, register_template, to_float_dtype)
-from swift.llm.model.model.qwen import patch_qwen_vl_utils
-from swift.llm.model.patcher import patch_get_input_embeddings
-from swift.llm.model.utils import use_submodel_func
-from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.template.utils import Context, findall
-from swift.llm.template.vision_utils import load_audio
-from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
+from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_tokenizer, register_model,
+                         register_model_arch)
+from swift.model.models.qwen import patch_qwen_vl_utils
+from swift.model.patcher import patch_get_input_embeddings
+from swift.model.utils import use_submodel_func
+from swift.template import Template, TemplateMeta, get_packed_seq_params, get_template, register_template
+from swift.template.template_inputs import StdTemplateInputs
+from swift.template.utils import Context, findall
+from swift.template.vision_utils import load_audio
+from swift.utils import get_env_args, get_logger, is_deepspeed_enabled, to_float_dtype
 
 register_model_arch(
     MultiModelKeys(

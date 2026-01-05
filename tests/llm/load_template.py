@@ -15,7 +15,7 @@ def to_list(input_ids):
 
 
 def load_ds(ds):
-    from swift.llm import load_dataset
+    from swift.dataset import load_dataset
     train_dataset, val_dataset = load_dataset(
         ds,
         split_dataset_ratio=0.0,
@@ -27,7 +27,7 @@ def load_ds(ds):
 
 
 def load_and_tokenize(ms_model_id, template):
-    from swift.llm import EncodePreprocessor, get_model_tokenizer, get_template
+    from swift.dataset import EncodePreprocessor, get_model_tokenizer, get_template
     try:
         vl_fields = ['vl', 'video', 'minicpmv', 'llava', 'vision', 'emu', 'florence']
         model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model='mplug' in ms_model_id.lower())
@@ -71,7 +71,7 @@ def load_and_tokenize(ms_model_id, template):
 
 
 def load_ds_old(ds):
-    from swift.llm import load_dataset
+    from swift.dataset import load_dataset
     train_dataset, val_dataset = load_dataset(ds, split_dataset_ratio=0.0)
     return train_dataset.select(range(1))
 
@@ -79,8 +79,8 @@ def load_ds_old(ds):
 def load_and_tokenize_old(ms_model_id, template):
     model_type = None
     model_info = None
-    from swift.llm import get_model_tokenizer
-    from swift.llm import get_template, MODEL_MAPPING
+    from swift.model import get_model_tokenizer, MODEL_MAPPING
+    from swift.template import get_template
     found = False
     for model_type, model_info in MODEL_MAPPING.items():
         if model_info['model_id_or_path'].lower() == ms_model_id.lower():

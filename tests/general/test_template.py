@@ -1,8 +1,9 @@
 from datasets import Dataset
 
 from swift.dataset import EncodePreprocessor, load_dataset
-from swift.template import TemplateInputs, get_template
 from swift.model import get_model_tokenizer
+from swift.template import TemplateInputs, get_template
+
 
 def test_template():
     _, tokenizer = get_model_tokenizer('Qwen/Qwen2-7B-Instruct', load_model=False)

@@ -457,7 +457,7 @@ def test_ernie():
 
 
 def test_devstral():
-    from swift.llm.template.template.mistral import devstral_small_2505_system
+    from swift.template.templates.mistral import devstral_small_2505_system
 
     pt_engine = TransformersEngine('mistralai/Devstral-Small-2505')
     res = _infer_model(pt_engine, system=devstral_small_2505_system)
