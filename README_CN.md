@@ -258,7 +258,7 @@ trainer.train()
 推理：
 ```python
 # 使用原生pytorch引擎进行推理
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 

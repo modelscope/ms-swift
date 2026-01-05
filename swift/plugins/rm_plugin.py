@@ -39,7 +39,7 @@ class GenRMPlugin(DefaultRMPlugin):
         """
         Generative Reward Model Plugin Example.
 
-        This method sets up the reward model plugin by initializing the PtEngine for efficient inference,
+        This method sets up the reward model plugin by initializing the TransformersEngine for efficient inference,
         configuring the request parameters, and defining the system prompt that guides the reward model in
         evaluating responses.
 
@@ -49,7 +49,7 @@ class GenRMPlugin(DefaultRMPlugin):
     """
 
         super().__init__(model, template)
-        # initilize PTEngine to infer
+        # initilize TransformersEngine to infer
         self.engine = TransformersEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig()  # customise your request config here
         self.system = textwrap.dedent("""

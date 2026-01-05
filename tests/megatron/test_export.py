@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def _infer_model(pt_engine, system=None, messages=None):
     from swift.utils import seed_everything, get_logger
-    from swift.llm import RequestConfig
+    from swift.infer_engine import RequestConfig
     logger = get_logger()
     seed_everything(42)
     request_config = RequestConfig(max_tokens=128, temperature=0)
@@ -50,10 +50,10 @@ def mcore2hf():
 
 
 def infer_hf_align():
-    from swift.llm import PtEngine
-    pt_engine = PtEngine(model_id)
+    from swift.infer_engine import TransformersEngine
+    pt_engine = TransformersEngine(model_id)
     response = _infer_model(pt_engine)
-    pt_engine = PtEngine('Qwen2-7B-Instruct-mcore-hf')
+    pt_engine = TransformersEngine('Qwen2-7B-Instruct-mcore-hf')
     response2 = _infer_model(pt_engine)
     assert response == response2
 

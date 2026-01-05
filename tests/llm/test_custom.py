@@ -3,11 +3,10 @@ import unittest
 from typing import Any, Dict, Optional
 
 import torch
-
-from swift.llm import (DatasetMeta, InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig,
-                       ResponsePreprocessor, TemplateMeta, get_model_tokenizer_with_flash_attn, load_dataset,
-                       register_dataset, register_model, register_template)
-
+from swift.infer_engine import InferRequest, TransformersEngine, RequestConfig
+from swift.model import Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_with_flash_attn
+from swift.template import TemplateMeta, register_template
+from swift.dataset import load_dataset, DatasetMeta, ResponsePreprocessor, register_dataset
 
 class CustomPreprocessor(ResponsePreprocessor):
     prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
@@ -52,7 +51,7 @@ class TestCustom(unittest.TestCase):
     def test_custom_model(self):
         infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
         request_config = RequestConfig(max_tokens=512, temperature=0)
-        engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch.float16)
+        engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch.float16)
         response = engine.infer([infer_request], request_config)
         swift_response = response[0].choices[0].message.content
 

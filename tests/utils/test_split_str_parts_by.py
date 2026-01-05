@@ -1,4 +1,4 @@
-from swift.llm.template import split_str_parts_by
+from swift.template import split_str_parts_by
 
 
 def test_split_str_parts_by():

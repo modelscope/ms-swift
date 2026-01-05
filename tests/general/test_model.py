@@ -9,7 +9,7 @@ os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 def test_qwen2():
     import os
-    from swift.llm import get_model_tokenizer
+    from swift.model import get_model_tokenizer
     model, tokenizer = get_model_tokenizer('Qwen/Qwen2-7B-Instruct', load_model=False)
     print(f'model: {model}, tokenizer: {tokenizer}')
     # test hf
@@ -21,7 +21,7 @@ def test_qwen2():
 
 
 def test_modelscope_hub():
-    from swift.llm import get_model_tokenizer
+    from swift.model import get_model_tokenizer
     model, tokenizer = get_model_tokenizer('Qwen/Qwen2___5-Math-1___5B-Instruct/', load_model=False)
 
 

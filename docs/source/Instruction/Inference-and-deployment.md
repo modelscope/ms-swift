@@ -129,11 +129,11 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-0.5B-Instruct'
 
 # 加载推理引擎
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理
@@ -157,11 +157,11 @@ os.environ['MAX_PIXELS'] = '1003520'
 os.environ['VIDEO_MAX_PIXELS'] = '50176'
 os.environ['FPS_MAX_FRAMES'] = '12'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-VL-3B-Instruct'
 
 # 加载推理引擎
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了3个infer_request来展示batch推理

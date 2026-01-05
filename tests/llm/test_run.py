@@ -323,7 +323,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        from swift.llm import sft_main, infer_main
+        from swift import sft_main, infer_main
         os.environ['PAI_TRAINING_JOB_ID'] = '123456'
         folder = os.path.join(os.path.dirname(__file__), 'config')
         tensorboard_dir = os.path.join('output/pai_test', 'pai_tensorboard')

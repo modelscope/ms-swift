@@ -5,6 +5,7 @@ import gradio as gr
 
 from swift.utils import get_logger
 from ..base import BaseUI
+from swift.arguments import EvalArguments
 
 logger = get_logger()
 
@@ -98,7 +99,6 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
-            from swift.llm.argument.eval_args import EvalArguments
             eval_dataset_dict = EvalArguments.list_eval_dataset()
             default_backend = EvalArguments.eval_backend
         except Exception as e:

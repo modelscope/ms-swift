@@ -1,7 +1,7 @@
 import os
 from typing import List
 
-from swift.llm import BaseArguments, InferRequest, PtEngine, get_template
+from swift.infer_engine import BaseArguments, InferRequest, TransformersEngine, get_template
 
 os.environ['IMAGE_MAX_TOKEN_NUM'] = '1024'
 os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
@@ -20,7 +20,7 @@ infer_request = InferRequest(
 adapter_path = 'output/vx-xxx/checkpoint-xxx'
 args = BaseArguments.from_pretrained(adapter_path)
 
-engine = PtEngine(
+engine = TransformersEngine(
     args.model,
     adapters=[adapter_path],
     task_type='seq_cls',

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig, TemplateMeta,
+from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelMeta, TransformersEngine, RequestConfig, TemplateMeta,
                        get_model_tokenizer_with_flash_attn, register_model, register_template)
 
 register_template(
@@ -24,7 +24,7 @@ register_model(
 if __name__ == '__main__':
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
+    engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
     response = engine.infer([infer_request], request_config)
     swift_response = response[0].choices[0].message.content
 

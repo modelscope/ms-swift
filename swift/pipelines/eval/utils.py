@@ -2,7 +2,7 @@
 EvalScope integration utilities for ms-swift models.
 
 This module provides a custom ModelAPI implementation that enables batch inference
-for evaluation tasks using ms-swift's PtEngine. It implements an asynchronous
+for evaluation tasks using ms-swift's TransformersEngine. It implements an asynchronous
 batch processing system to improve throughput when evaluating models.
 """
 
@@ -57,7 +57,7 @@ class EvalModel(ModelAPI):
     """
     Custom ModelAPI implementation for ms-swift models with batch inference support.
 
-    This class integrates ms-swift's PtEngine with EvalScope's evaluation framework,
+    This class integrates ms-swift's TransformersEngine with EvalScope's evaluation framework,
     providing efficient batch processing for improved evaluation throughput.
     """
 

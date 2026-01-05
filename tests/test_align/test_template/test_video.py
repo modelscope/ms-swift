@@ -33,7 +33,7 @@ def test_qwen2_vl():
     os.environ['FPS_MAX_FRAMES'] = '24'
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['VIDEO_MAX_PIXELS'] = str(100352 // 4)
-    pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen2-VL-2B-Instruct')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -41,21 +41,21 @@ def test_qwen2_vl():
 
 
 def test_internvl2_5():
-    pt_engine = PtEngine('OpenGVLab/InternVL2_5-2B')
+    pt_engine = TransformersEngine('OpenGVLab/InternVL2_5-2B')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
 def test_internvl2_5_mpo():
-    pt_engine = PtEngine('OpenGVLab/InternVL2_5-1B-MPO', model_type='internvl2_5')
+    pt_engine = TransformersEngine('OpenGVLab/InternVL2_5-1B-MPO', model_type='internvl2_5')
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<video>这是什么'}])
     assert response == ('这是一段婴儿在阅读的视频。婴儿穿着浅绿色的上衣和粉色的裤子，戴着黑框眼镜，坐在床上，正在翻阅一本打开的书。'
                         '背景中可以看到婴儿床、衣物和一些家具。视频中可以看到“clipo.com”的水印。婴儿看起来非常专注，似乎在认真地阅读。')
 
 
 def test_xcomposer2_5():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
     messages = [{'role': 'user', 'content': '<video>Describe the video'}]
     messages_with_system = messages.copy()
     messages_with_system.insert(0, {'role': 'system', 'content': ''})
@@ -78,15 +78,15 @@ def test_xcomposer2_5():
 
 
 def test_mplug3():
-    pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
-    # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
+    pt_engine = TransformersEngine('iic/mPLUG-Owl3-7B-240728')
+    # pt_engine = TransformersEngine('iic/mPLUG-Owl3-7B-241101')
     _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine, system='')
 
 
 def test_minicpmv():
-    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    pt_engine = TransformersEngine('OpenBMB/MiniCPM-V-2_6')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -94,7 +94,7 @@ def test_minicpmv():
 
 def test_minicpmo():
     os.environ['VIDEO_MAX_SLICE_NUMS'] = '2'
-    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    pt_engine = TransformersEngine('OpenBMB/MiniCPM-o-2_6')
     messages = [{'role': 'user', 'content': '<video>Describe the video'}]
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -111,7 +111,7 @@ def test_minicpmo():
 
 
 def test_valley():
-    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    pt_engine = TransformersEngine('bytedance-research/Valley-Eagle-7B')
     _infer_model(pt_engine)
 
 
@@ -133,7 +133,7 @@ def _run_qwen2_5_vl_hf(messages, model, template):
 def test_qwen2_5_vl():
     os.environ['FPS'] = '1'
     os.environ['VIDEO_MAX_PIXELS'] = str(360 * 420)
-    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-VL-7B-Instruct')
     query = 'What happened in the video?'
     messages = [{'role': 'user', 'content': query}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
@@ -162,7 +162,7 @@ def test_qwen2_5_vl():
 def test_qwen2_5_omni():
     USE_AUDIO_IN_VIDEO = True
     os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
-    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B', attn_impl='flash_attn')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B', attn_impl='flash_attn')
     system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
               'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
@@ -201,7 +201,7 @@ def _run_qwen3_omni_hf(model, processor, messages):
 def test_qwen3_omni():
     USE_AUDIO_IN_VIDEO = True
     os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
-    pt_engine = PtEngine('Qwen/Qwen3-Omni-30B-A3B-Thinking')
+    pt_engine = TransformersEngine('Qwen/Qwen3-Omni-30B-A3B-Thinking')
     query = 'describe the video.'
     messages = [{'role': 'user', 'content': query}]
     videos = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.mp4']
@@ -229,7 +229,7 @@ def test_qwen3_omni():
 def test_glm4_1v():
     messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
-    pt_engine = PtEngine('ZhipuAI/GLM-4.1V-9B-Thinking')
+    pt_engine = TransformersEngine('ZhipuAI/GLM-4.1V-9B-Thinking')
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -239,7 +239,7 @@ def test_glm4_1v():
 def test_glm4_5v():
     messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
-    pt_engine = PtEngine('ZhipuAI/GLM-4.5V')
+    pt_engine = TransformersEngine('ZhipuAI/GLM-4.5V')
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -247,7 +247,7 @@ def test_glm4_5v():
 
 
 def test_keye_vl():
-    pt_engine = PtEngine('Kwai-Keye/Keye-VL-8B-Preview')
+    pt_engine = TransformersEngine('Kwai-Keye/Keye-VL-8B-Preview')
     messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -257,7 +257,7 @@ def test_keye_vl():
 
 
 def test_keye_vl_1_5():
-    pt_engine = PtEngine('Kwai-Keye/Keye-VL-1_5-8B')
+    pt_engine = TransformersEngine('Kwai-Keye/Keye-VL-1_5-8B')
     messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -267,7 +267,7 @@ def test_keye_vl_1_5():
 
 
 def test_ovis2_5():
-    pt_engine = PtEngine('AIDC-AI/Ovis2.5-2B')
+    pt_engine = TransformersEngine('AIDC-AI/Ovis2.5-2B')
     messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
     videos = ['baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -284,7 +284,7 @@ def run_hf(model, processor, messages):
 
 
 def test_interns1():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
     query = 'Describe this video in detail.'
     messages = [{'role': 'user', 'content': f'<video>{query}'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
@@ -315,7 +315,7 @@ def test_internvl3_5():
         'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'
     ]
     for model in models:
-        pt_engine = PtEngine(model)
+        pt_engine = TransformersEngine(model)
         messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
         videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
         response = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -325,7 +325,7 @@ def test_internvl3_5():
 
 
 def test_minicpmv4_5():
-    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
+    pt_engine = TransformersEngine('OpenBMB/MiniCPM-V-4_5')
     messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
@@ -363,7 +363,7 @@ def _run_qwen3_vl_hf(messages, model, template):
 
 
 def test_qwen3_vl():
-    pt_engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct')
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     query = 'describe this video.'
     messages = [{'role': 'user', 'content': query}]
@@ -388,7 +388,7 @@ def test_qwen3_vl():
 
 
 def test_qwen3_moe_vl():
-    pt_engine = PtEngine('Qwen/Qwen3-VL-30B-A3B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen3-VL-30B-A3B-Instruct')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)

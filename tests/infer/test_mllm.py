@@ -7,15 +7,16 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
-    from swift.llm import InferRequest, get_template
+    from swift.infer_engine import InferRequest
+    from swift.template import get_template
     if infer_backend == 'lmdeploy':
-        from swift.llm import LmdeployEngine
+        from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine('Qwen/Qwen-VL-Chat', torch.float32)
     elif infer_backend == 'pt':
-        from swift.llm import PtEngine
-        engine = PtEngine('Qwen/Qwen2-VL-7B-Instruct')
+        from swift.infer_engine import TransformersEngine
+        engine = TransformersEngine('Qwen/Qwen2-VL-7B-Instruct')
     elif infer_backend == 'vllm':
-        from swift.llm import VllmEngine
+        from swift.infer_engine import VllmEngine
         engine = VllmEngine('Qwen/Qwen2-VL-7B-Instruct')
     template = get_template(engine.model_meta.template, engine.processor)
     infer_requests = [
@@ -36,8 +37,8 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
 
 
 def test_infer(engine, template, infer_requests):
-    from swift.llm import RequestConfig
-    from swift.plugin import InferStats
+    from swift.infer_engine import RequestConfig
+    from swift.metrics import InferStats
     request_config = RequestConfig(temperature=0)
     infer_stats = InferStats()
 
@@ -50,8 +51,8 @@ def test_infer(engine, template, infer_requests):
 
 
 def test_stream(engine, template, infer_requests):
-    from swift.llm import RequestConfig
-    from swift.plugin import InferStats
+    from swift.infer_engine import RequestConfig
+    from swift.metrics import InferStats
     infer_stats = InferStats()
     request_config = RequestConfig(temperature=0, stream=True, logprobs=True)
 

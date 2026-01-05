@@ -1,4 +1,5 @@
-from swift.llm import TemplateInputs, get_model_tokenizer, get_template
+from swift.template import TemplateInputs, get_template
+from swift.model import get_model_tokenizer
 
 
 def test_deepseek_v2_5():

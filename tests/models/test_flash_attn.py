@@ -1,4 +1,4 @@
-from swift.llm import get_model_tokenizer
+from swift.model import get_model_tokenizer
 
 if __name__ == '__main__':
     # model, tokenizer = get_model_tokenizer('Qwen/Qwen2-7B-Instruct', attn_impl='flash_attn')

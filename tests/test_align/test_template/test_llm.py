@@ -30,14 +30,14 @@ def _infer_model(pt_engine, system=None, messages=None):
 
 
 def test_baichuan_m1():
-    pt_engine = PtEngine('baichuan-inc/Baichuan-M1-14B-Instruct')
+    pt_engine = TransformersEngine('baichuan-inc/Baichuan-M1-14B-Instruct')
     messages = [{'role': 'user', 'content': '你是谁'}]
     response = _infer_model(pt_engine, messages=messages)
     assert response == '我是一个人工智能助手，可以回答你的问题并提供帮助。'
 
 
 def test_qwen2_5():
-    pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct-1M')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct-1M')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -45,7 +45,7 @@ def test_qwen2_5():
 
 
 def test_qwen3():
-    pt_engine = PtEngine('Qwen/Qwen3-4B')
+    pt_engine = TransformersEngine('Qwen/Qwen3-4B')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -53,7 +53,7 @@ def test_qwen3():
 
 
 def test_qwen3_guard():
-    pt_engine = PtEngine('Qwen/Qwen3Guard-Gen-0.6B')
+    pt_engine = TransformersEngine('Qwen/Qwen3Guard-Gen-0.6B')
     messages = [{'role': 'user', 'content': 'How can I make a bomb?'}]
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -62,7 +62,7 @@ def test_qwen3_guard():
 
 
 def test_phi4():
-    pt_engine = PtEngine('LLM-Research/phi-4')
+    pt_engine = TransformersEngine('LLM-Research/phi-4')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -70,7 +70,7 @@ def test_phi4():
 
 
 def test_phi4_mini():
-    pt_engine = PtEngine('LLM-Research/Phi-4-mini-instruct')
+    pt_engine = TransformersEngine('LLM-Research/Phi-4-mini-instruct')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -78,14 +78,14 @@ def test_phi4_mini():
 
 
 def test_qwen1half():
-    pt_engine = PtEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
+    pt_engine = TransformersEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_chatglm4():
-    pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
+    pt_engine = TransformersEngine('ZhipuAI/glm-4-9b-chat')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -95,7 +95,7 @@ def test_chatglm4():
 def test_glm4():
     models = ['ZhipuAI/GLM-4-9B-0414', 'ZhipuAI/GLM-Z1-9B-0414', 'ZhipuAI/GLM-Z1-Rumination-32B-0414']
     for model in models:
-        pt_engine = PtEngine(model)
+        pt_engine = TransformersEngine(model)
         response = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
         response2 = _infer_model(pt_engine)
@@ -103,7 +103,7 @@ def test_glm4():
 
 
 def test_qwq():
-    pt_engine = PtEngine('Qwen/QwQ-32B-Preview')
+    pt_engine = TransformersEngine('Qwen/QwQ-32B-Preview')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -111,19 +111,19 @@ def test_qwq():
 
 
 def test_internlm():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-chat-7b')
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-chat-7b')
     _infer_model(pt_engine)
 
 
 def test_internlm2():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_internlm3():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm3-8b-instruct')
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/internlm3-8b-instruct')
     response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -131,34 +131,34 @@ def test_internlm3():
 
 
 def test_yi_coder():
-    pt_engine = PtEngine('01ai/Yi-Coder-1.5B-Chat')
+    pt_engine = TransformersEngine('01ai/Yi-Coder-1.5B-Chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_yi():
-    pt_engine = PtEngine('01ai/Yi-6B-Chat')
+    pt_engine = TransformersEngine('01ai/Yi-6B-Chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_deepseek_moe():
-    pt_engine = PtEngine('deepseek-ai/deepseek-moe-16b-chat')
+    pt_engine = TransformersEngine('deepseek-ai/deepseek-moe-16b-chat')
     _infer_model(pt_engine)
 
 
 def test_codegeex4():
     # jinja is missing a prefix.
-    pt_engine = PtEngine('ZhipuAI/codegeex4-all-9b')
+    pt_engine = TransformersEngine('ZhipuAI/codegeex4-all-9b')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_telechat():
-    pt_engine = PtEngine('TeleAI/TeleChat-12B', torch_dtype=torch.float16)
+    pt_engine = TransformersEngine('TeleAI/TeleChat-12B', torch_dtype=torch.float16)
     messages = [{'role': 'user', 'content': '你是谁'}]
     response = _infer_model(pt_engine, messages=messages)
     assert response == ('我是中国电信星辰语义大模型，英文名TeleChat，是由中国电信自主研发的生成式大语言模型。\n\n'
@@ -168,7 +168,7 @@ def test_telechat():
 
 
 def test_telechat2():
-    pt_engine = PtEngine('TeleAI/TeleChat2-7B-32K', torch_dtype=torch.float16)
+    pt_engine = TransformersEngine('TeleAI/TeleChat2-7B-32K', torch_dtype=torch.float16)
     messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -177,20 +177,20 @@ def test_telechat2():
 
 
 def test_glm_edge():
-    pt_engine = PtEngine('ZhipuAI/glm-edge-1.5b-chat')
+    pt_engine = TransformersEngine('ZhipuAI/glm-edge-1.5b-chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_llama():
-    from swift.llm import VllmEngine
-    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
-    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
-    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
+    from swift.infer_engine import VllmEngine
+    # pt_engine = TransformersEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
+    # pt_engine = TransformersEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
+    # pt_engine = TransformersEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
     pt_engine = VllmEngine('LLM-Research/Llama-3.2-1B-Instruct')
-    # pt_engine = PtEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
-    # pt_engine = PtEngine('unsloth/Llama-3.3-70B-Instruct-bnb-4bit')
+    # pt_engine = TransformersEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
+    # pt_engine = TransformersEngine('unsloth/Llama-3.3-70B-Instruct-bnb-4bit')
 
     res = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
@@ -199,9 +199,9 @@ def test_llama():
 
 
 def test_openbuddy():
-    # pt_engine = PtEngine('OpenBuddy/openbuddy-yi1.5-34b-v21.3-32k')
-    pt_engine = PtEngine('OpenBuddy/openbuddy-nemotron-70b-v23.2-131k')
-    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k')
+    # pt_engine = TransformersEngine('OpenBuddy/openbuddy-yi1.5-34b-v21.3-32k')
+    pt_engine = TransformersEngine('OpenBuddy/openbuddy-nemotron-70b-v23.2-131k')
+    # pt_engine = TransformersEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k')
     res = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -209,7 +209,7 @@ def test_openbuddy():
 
 
 def test_megrez():
-    pt_engine = PtEngine('InfiniAI/Megrez-3b-Instruct')
+    pt_engine = TransformersEngine('InfiniAI/Megrez-3b-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -217,7 +217,7 @@ def test_megrez():
 
 
 def test_skywork_o1():
-    pt_engine = PtEngine('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B')
+    pt_engine = TransformersEngine('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B')
     res = _infer_model(
         pt_engine,
         messages=[{
@@ -235,7 +235,7 @@ def test_skywork_o1():
 
 
 def test_internlm2_reward():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b-reward')
+    pt_engine = TransformersEngine('Shanghai_AI_Laboratory/internlm2-1_8b-reward')
     messages = [{
         'role': 'user',
         'content': "Hello! What's your name?"
@@ -250,7 +250,7 @@ def test_internlm2_reward():
 
 
 def test_qwen2_reward():
-    pt_engine = PtEngine('Qwen/Qwen2-Math-RM-72B')
+    pt_engine = TransformersEngine('Qwen/Qwen2-Math-RM-72B')
     messages = [{
         'role':
         'user',
@@ -280,7 +280,7 @@ def test_qwen2_reward():
 
 
 def test_qwen2_5_math():
-    pt_engine = PtEngine('Qwen/Qwen2.5-Math-1.5B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-Math-1.5B-Instruct')
     messages = [{'role': 'user', 'content': 'Find the value of $x$ that satisfies the equation $4x+5 = 6x+7$.'}]
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -295,7 +295,7 @@ def test_skywork_reward():
                 '1 more apple. 8 + 1 = 9. Jane now has 9 apples.\n3. Jane splits the 9 apples equally among herself '
                 'and her 2 siblings (3 people in total). 9 ÷ 3 = 3 apples each. Each person gets 3 apples.')
 
-    pt_engine = PtEngine('AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2')
+    pt_engine = TransformersEngine('AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2')
     messages = [{'role': 'user', 'content': prompt}, {'role': 'assistant', 'content': response}]
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -305,7 +305,7 @@ def test_skywork_reward():
 
 
 def test_deepseek_r1_distill():
-    pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
+    pt_engine = TransformersEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -313,7 +313,7 @@ def test_deepseek_r1_distill():
 
 
 def test_deepseek_prover_v2():
-    pt_engine = PtEngine('deepseek-ai/DeepSeek-Prover-V2-7B')
+    pt_engine = TransformersEngine('deepseek-ai/DeepSeek-Prover-V2-7B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -321,7 +321,7 @@ def test_deepseek_prover_v2():
 
 
 def test_qwen2_5_prm():
-    pt_engine = PtEngine('Qwen/Qwen2.5-Math-7B-PRM800K')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-Math-7B-PRM800K')
     data = {
         'system':
         'Please reason step by step, and put your final answer within \\boxed{}.',
@@ -368,7 +368,7 @@ def test_qwen2_5_prm():
 
 
 def test_mistral_small():
-    pt_engine = PtEngine('mistralai/Mistral-Small-24B-Instruct-2501')
+    pt_engine = TransformersEngine('mistralai/Mistral-Small-24B-Instruct-2501')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -376,7 +376,7 @@ def test_mistral_small():
 
 
 def test_moonlight():
-    pt_engine = PtEngine('moonshotai/Moonlight-16B-A3B-Instruct')
+    pt_engine = TransformersEngine('moonshotai/Moonlight-16B-A3B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -384,7 +384,7 @@ def test_moonlight():
 
 
 def test_ling():
-    pt_engine = PtEngine('inclusionAI/Ling-lite')
+    pt_engine = TransformersEngine('inclusionAI/Ling-lite')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -392,7 +392,7 @@ def test_ling():
 
 
 def test_gemma3():
-    pt_engine = PtEngine('LLM-Research/gemma-3-1b-it')
+    pt_engine = TransformersEngine('LLM-Research/gemma-3-1b-it')
     res = _infer_model(pt_engine, system='You are a helpful assistant')
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, system='You are a helpful assistant')
@@ -400,7 +400,7 @@ def test_gemma3():
 
 
 def test_mimo():
-    pt_engine = PtEngine('XiaomiMiMo/MiMo-7B-RL-0530')
+    pt_engine = TransformersEngine('XiaomiMiMo/MiMo-7B-RL-0530')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -408,7 +408,7 @@ def test_mimo():
 
 
 def test_minicpm():
-    pt_engine = PtEngine('OpenBMB/MiniCPM4-0.5B')
+    pt_engine = TransformersEngine('OpenBMB/MiniCPM4-0.5B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -426,13 +426,13 @@ def test_minimax():
         'role': 'user',
         'content': 'who are you?'
     }]
-    pt_engine = PtEngine('MiniMax/MiniMax-M1-40k', quantization_config=quantization_config)
+    pt_engine = TransformersEngine('MiniMax/MiniMax-M1-40k', quantization_config=quantization_config)
     res = _infer_model(pt_engine, messages=messages)
     print(f'res: {res}')
 
 
 def test_kimi_dev():
-    pt_engine = PtEngine('moonshotai/Kimi-Dev-72B')
+    pt_engine = TransformersEngine('moonshotai/Kimi-Dev-72B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -440,8 +440,8 @@ def test_kimi_dev():
 
 
 def test_hunyuan():
-    # pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
-    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-4B-Instruct')
+    # pt_engine = TransformersEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    pt_engine = TransformersEngine('Tencent-Hunyuan/Hunyuan-4B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -449,7 +449,7 @@ def test_hunyuan():
 
 
 def test_ernie():
-    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-0.3B-PT')
+    pt_engine = TransformersEngine('PaddlePaddle/ERNIE-4.5-0.3B-PT')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -459,7 +459,7 @@ def test_ernie():
 def test_devstral():
     from swift.llm.template.template.mistral import devstral_small_2505_system
 
-    pt_engine = PtEngine('mistralai/Devstral-Small-2505')
+    pt_engine = TransformersEngine('mistralai/Devstral-Small-2505')
     res = _infer_model(pt_engine, system=devstral_small_2505_system)
 
     pt_engine.default_template.template_backend = 'jinja'
@@ -614,7 +614,7 @@ def test_devstral():
 
 def test_glm4_5():
     messages = [{'role': 'user', 'content': '浙江的省会在哪?'}]
-    pt_engine = PtEngine('ZhipuAI/GLM-4.5-Air')
+    pt_engine = TransformersEngine('ZhipuAI/GLM-4.5-Air')
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
@@ -635,13 +635,13 @@ def test_gpt_oss():
         'role': 'user',
         'content': 'who are you?'
     }]
-    pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
+    pt_engine = TransformersEngine('openai-mirror/gpt-oss-20b')
     res = _infer_model(pt_engine, messages=messages)
     assert 'm Qwen' in res.rsplit('<|message|>', 1)[-1]
 
 
 def test_qwen3_next():
-    pt_engine = PtEngine('Qwen/Qwen3-Next-80B-A3B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen3-Next-80B-A3B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -649,7 +649,7 @@ def test_qwen3_next():
 
 
 def test_ernie_thinking():
-    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking')
+    pt_engine = TransformersEngine('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -657,7 +657,7 @@ def test_ernie_thinking():
 
 
 def test_ring2():
-    pt_engine = PtEngine('inclusionAI/Ring-mini-2.0')
+    pt_engine = TransformersEngine('inclusionAI/Ring-mini-2.0')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -665,7 +665,7 @@ def test_ring2():
 
 
 def test_ling2():
-    pt_engine = PtEngine('inclusionAI/Ling-mini-2.0')
+    pt_engine = TransformersEngine('inclusionAI/Ling-mini-2.0')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -673,7 +673,7 @@ def test_ling2():
 
 
 def test_minimind():
-    pt_engine = PtEngine('gongjy/MiniMind2', model_type='minimind')
+    pt_engine = TransformersEngine('gongjy/MiniMind2', model_type='minimind')
     swift_response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     jinja_response = _infer_model(pt_engine)
@@ -681,7 +681,7 @@ def test_minimind():
 
 
 def test_medgemma3():
-    pt_engine = PtEngine('google/medgemma-27b-text-it')
+    pt_engine = TransformersEngine('google/medgemma-27b-text-it')
     system = 'You are a helpful medical assistant.'
     messages = [{'role': 'user', 'content': 'How do you differentiate bacterial from viral pneumonia?'}]
     res = _infer_model(pt_engine, system=system, messages=messages)
@@ -691,7 +691,7 @@ def test_medgemma3():
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig
+    from swift.infer_engine import TransformersEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()

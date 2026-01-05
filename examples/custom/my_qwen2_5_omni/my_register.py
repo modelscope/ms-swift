@@ -394,7 +394,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def generate(self, model, *args, **kwargs):
-        """`PtEngine` will call template.generate method for text generation; inherit here for customization."""
+        """`TransformersEngine` will call template.generate method for text generation; inherit here for customization."""
         if kwargs.get('video_grid_thw') is not None:
             kwargs['use_audio_in_video'] = self.use_audio_in_video
         return super().generate(model, *args, **kwargs)

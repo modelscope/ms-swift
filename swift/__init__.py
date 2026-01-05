@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from .model import get_model
     from .template import get_template
     from .dataset import load_dataset
-    from .utils import get_logger
+    from .utils import get_logger, safe_snapshot_download
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],
@@ -31,7 +31,7 @@ else:
         'model': ['get_model'],
         'template': ['get_template'],
         'dataset': ['load_dataset'],
-        'utils': ['get_logger'],
+        'utils': ['get_logger', 'safe_snapshot_download'],
     }
 
     import sys

@@ -416,7 +416,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def generate(self, model, *args, **kwargs):
-        """`PtEngine`会调用template.generate方法进行文本生成，这里继承进行自定义。"""
+        """`TransformersEngine`会调用template.generate方法进行文本生成，这里继承进行自定义。"""
         if kwargs.get('video_grid_thw') is not None:
             kwargs['use_audio_in_video'] = self.use_audio_in_video
         return super().generate(model, *args, **kwargs)
@@ -451,14 +451,14 @@ if __name__ == '__main__':
 
 
 ## 推理对齐
-接下来，你需要进行PtEngine与transformers的推理对齐。通常你需要对齐`input_ids`以及输出内容。你可以书写以下测试函数：
+接下来，你需要进行TransformersEngine与transformers的推理对齐。通常你需要对齐`input_ids`以及输出内容。你可以书写以下测试函数：
 
 ```python
 import os
 from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
 from modelscope import snapshot_download
-from swift.llm import PtEngine, InferRequest, RequestConfig
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
 import requests
 
 def infer_hf():
@@ -494,7 +494,7 @@ def infer_hf():
     return inputs['input_ids'][0].tolist(), text[0]
 
 def test_my_qwen2_5_omni():
-    engine = PtEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
+    engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
     infer_request = InferRequest(messages=[{
         "role": "user",
         "content": "<video><image>描述视频和图像。",
@@ -510,7 +510,7 @@ def test_my_qwen2_5_omni():
 
 
 if __name__ == '__main__':
-    # 开启debug模式，会打印`PtEngine.infer`的input_ids和generate_ids
+    # 开启debug模式，会打印`TransformersEngine.infer`的input_ids和generate_ids
     os.environ['SWIFT_DEBUG'] = '1'
     input_ids_hf, response_hf = infer_hf()
     input_ids_swift, response_swift = test_my_qwen2_5_omni()

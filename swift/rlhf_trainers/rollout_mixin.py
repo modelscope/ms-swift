@@ -1027,7 +1027,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         return outputs
 
     def _colocate_rollout(self, inputs: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
-        """Perform co-located rollout inference with PTEngine or vLLMEngine"""
+        """Perform co-located rollout inference with TransformersEngine or vLLMEngine"""
         if self.vllm_tensor_parallel_size > 1:
             local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
             local_input_length = len(inputs)

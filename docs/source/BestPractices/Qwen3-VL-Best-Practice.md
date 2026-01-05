@@ -71,7 +71,7 @@ print(output_text[0])
 # 'A baby wearing glasses sits on a bed, engrossed in reading a book. The baby turns the pages with both hands, occasionally looking up and smiling. The room is cozy, with a crib in the background and clothes scattered around. The baby’s focus and curiosity are evident as they explore the book, creating a heartwarming scene of early learning and discovery.'
 ```
 
-使用 ms-swift 的 `PtEngine` 进行推理：
+使用 ms-swift 的 `TransformersEngine` 进行推理：
 ```python
 import os
 # os.environ['SWIFT_DEBUG'] = '1'
@@ -80,8 +80,8 @@ os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
 os.environ['FPS_MAX_FRAMES'] = '16'
 
 
-from swift.llm import PtEngine, InferRequest, RequestConfig
-engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
+engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',

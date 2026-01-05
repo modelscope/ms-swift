@@ -77,11 +77,11 @@ def get_infer_request():
 
 
 if __name__ == '__main__':
-    from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig
-    from swift.plugin import agent_templates
+    from swift.infer_engine import InferEngine, InferRequest, TransformersEngine, RequestConfig
+    from swift.agent_template import agent_template_map
     model = 'Qwen/Qwen2.5-3B'
     adapters = ['output/vx-xxx/checkpoint-xxx']
-    engine = PtEngine(model, adapters=adapters, max_batch_size=8)
+    engine = TransformersEngine(model, adapters=adapters, max_batch_size=8)
 
     # agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
     # engine.default_template.agent_template = agent_template

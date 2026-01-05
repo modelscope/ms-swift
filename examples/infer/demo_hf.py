@@ -31,7 +31,7 @@ def infer_hf():
 
 
 def infer_swift():
-    from swift.llm import get_model_tokenizer, get_template, InferRequest, RequestConfig, PtEngine
+    from swift.infer_engine import get_model_tokenizer, get_template, InferRequest, RequestConfig, TransformersEngine
     from modelscope import snapshot_download
     from swift.tuners import Swift
     model_dir = snapshot_download('Qwen/Qwen2.5-7B-Instruct')
@@ -39,7 +39,7 @@ def infer_swift():
     model, tokenizer = get_model_tokenizer(model_dir, device_map='auto')
     model = Swift.from_pretrained(model, adapter_dir)
     template = get_template(model.model_meta.template, tokenizer)
-    engine = PtEngine.from_model_template(model, template)
+    engine = TransformersEngine.from_model_template(model, template)
 
     messages = [{
         'role': 'system',

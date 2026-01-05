@@ -1,9 +1,9 @@
 import torch
 
-from swift.llm import InferRequest, PtEngine
+from swift.infer_engine import InferRequest, TransformersEngine
 
 if __name__ == '__main__':
-    engine = PtEngine(
+    engine = TransformersEngine(
         'Qwen/Qwen3-Embedding-4B',
         task_type='embedding',
         torch_dtype=torch.float16,

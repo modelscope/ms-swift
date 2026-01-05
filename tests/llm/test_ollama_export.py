@@ -6,7 +6,7 @@ import unittest
 import transformers
 from packaging import version
 
-from swift.llm import ExportArguments, export_main
+from swift import ExportArguments, export_main
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'

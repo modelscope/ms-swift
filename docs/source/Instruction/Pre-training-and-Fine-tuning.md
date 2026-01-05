@@ -162,8 +162,8 @@ swift infer \
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import (
-    PtEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
+from swift.infer_engine import (
+    TransformersEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
 )
 from swift.tuners import Swift
 # 请调整下面几行
@@ -178,7 +178,7 @@ if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(template_type, tokenizer, default_system=default_system)
-engine = PtEngine.from_model_template(model, template, max_batch_size=2)
+engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理
@@ -199,8 +199,8 @@ print(f'response1: {resp_list[1].choices[0].message.content}')
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import (
-    PtEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
+from swift.infer_engine import (
+    TransformersEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
 )
 from swift.tuners import Swift
 # 请调整下面几行
@@ -215,7 +215,7 @@ if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(template_type, tokenizer, default_system=default_system)
-engine = PtEngine.from_model_template(model, template, max_batch_size=2)
+engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理

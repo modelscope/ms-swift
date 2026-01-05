@@ -46,13 +46,13 @@ def _test_tool(pt_engine, system=None):
 
 
 def test_qwen2_5():
-    pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct')
+    pt_engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
     response = _test_tool(pt_engine)
     assert response == 'Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.'
 
 
 def test_qwq():
-    pt_engine = PtEngine('Qwen/QwQ-32B')
+    pt_engine = TransformersEngine('Qwen/QwQ-32B')
     response = _test_tool(pt_engine)
     assert response[-100:] == ('weather in Beijing is **25°C** with **partly cloudy** skies. '
                                'It looks like a mild day outside—enjoy!')
@@ -60,12 +60,12 @@ def test_qwq():
 
 def test_deepseek_r1_distill():
     # TODO
-    pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B')
+    pt_engine = TransformersEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B')
     _test_tool(pt_engine, system='')
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, InferRequest
+    from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
     from swift.utils import get_logger
     logger = get_logger()
     # test_qwen2_5()
