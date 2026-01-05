@@ -10,11 +10,6 @@ from torch.utils.data import Sampler
 
 from swift.trainers import DataLoaderDispatcher
 
-try:
-    from trl.trainer.utils import entropy_from_logits
-except ImportError:
-    from ..rlhf_trainer.utils import entropy_from_logits
-
 
 class GatherTensor(torch.autograd.Function):
     """Gather tensor from sequence group (autograd supported)"""

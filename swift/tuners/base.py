@@ -19,9 +19,8 @@ from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 from transformers import Trainer
 
+from swift.utils import get_device_count, get_logger
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
-from swift.utils.logger import get_logger
-from ..utils.torch_utils import get_device_count
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig, SwiftOutput

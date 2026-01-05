@@ -10,8 +10,7 @@ import numpy as np
 
 from swift.llm.argument.base_args.ray_args import RayArguments
 from swift.ray.resource_manager import ResourceManager
-from swift.utils import find_free_port
-from swift.utils.utils import find_node_ip
+from swift.utils import find_free_port, find_node_ip
 
 T = TypeVar('T')
 

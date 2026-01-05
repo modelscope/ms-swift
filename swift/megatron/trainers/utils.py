@@ -17,9 +17,7 @@ from megatron.training import get_args, get_wandb_writer
 from packaging import version
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
-from swift.llm import to_device
-from swift.utils import get_logger
-from swift.utils.torch_utils import empty_cache, get_current_device
+from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 try:
     from megatron.training.datasets.data_samplers import RandomSeedDataset

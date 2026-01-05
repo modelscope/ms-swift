@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
-from swift.utils import get_logger
+from swift.utils import empty_cache, get_logger
 
 logger = get_logger()
 
@@ -74,7 +74,6 @@ class PerfMetricsLogCallback(TrainerCallback):
 
     @staticmethod
     def _estimate_device_tflops_by_dtype(device: torch.device, dtype: torch.dtype, repeats: int = 60, dim: int = 8192):
-        from swift.utils.torch_utils import empty_cache
 
         def device_synchronize(sync_device):
             if backend == 'cuda':

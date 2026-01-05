@@ -26,8 +26,8 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
 from swift.tuners.lora import LoraConfig
-from swift.utils import gc_collect, get_logger, is_swanlab_available, is_vllm_available, is_wandb_available
-from swift.utils.torch_utils import get_torch_device
+from swift.utils import (gc_collect, get_logger, get_torch_device, is_swanlab_available, is_vllm_available,
+                         is_wandb_available)
 
 if is_wandb_available():
     import wandb

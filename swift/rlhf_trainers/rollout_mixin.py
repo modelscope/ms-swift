@@ -30,8 +30,7 @@ from swift.llm import MultiModelKeys, RequestConfig, RolloutInferRequest, Templa
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.plugin import MultiTurnScheduler, multi_turns
 from swift.trainers import RolloutTrainerArgumentsMixin
-from swift.utils import get_logger, is_vllm_available, remove_response
-from swift.utils.torch_utils import get_current_device
+from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
