@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
-from swift.llm.train.kto import prepare_kto_dataset
-from swift.trainers.rlhf_trainer.utils import identity_data_collator
+from swift.megatron.arguments import MegatronRLHFArguments
+from swift.megatron.trainers import (MegatronDPOTrainer, MegatronGKDTrainer, MegatronGRPOTrainer, MegatronKTOTrainer,
+                                     MegatronRewardTrainer)
+from swift.pipelines.train import prepare_kto_dataset
+from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, is_last_rank
-from ..argument import MegatronRLHFArguments
-from ..trainers import (MegatronDPOTrainer, MegatronGKDTrainer, MegatronGRPOTrainer, MegatronKTOTrainer,
-                        MegatronRewardTrainer)
 from .sft import MegatronSft
 
 logger = get_logger()

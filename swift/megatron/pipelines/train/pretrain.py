@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Optional, Union
 
-from swift.megatron.arguments import MegatronTrainArguments
+from swift.megatron.arguments import MegatronPretrainArguments
 from swift.utils import get_logger
 from .sft import MegatronSft
 
@@ -9,7 +9,7 @@ logger = get_logger()
 
 
 class MegatronPretrain(MegatronSft):
-    args_class = MegatronTrainArguments
+    args_class = MegatronPretrainArguments
     args: args_class
 
     def _prepare_template(self) -> None:
@@ -20,5 +20,5 @@ class MegatronPretrain(MegatronSft):
         super()._prepare_template()
 
 
-def megatron_pretain_main(args: Optional[Union[List[str], MegatronPretrainArguments]] = None):
+def megatron_pretrain_main(args: Optional[Union[List[str], MegatronPretrainArguments]] = None):
     return MegatronPretrain(args).main()

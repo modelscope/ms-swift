@@ -2,7 +2,7 @@
 import torch
 from megatron.core import mpu
 
-from swift.llm import DataLoaderDispatcher
+from swift.dataloader import DataLoaderDispatcher
 
 
 class MegatronDataLoaderDispatcher(DataLoaderDispatcher):

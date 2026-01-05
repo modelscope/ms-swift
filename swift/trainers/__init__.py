@@ -7,4 +7,4 @@ from .reranker import RerankerTrainer
 from .seq2seq_trainer import Seq2SeqTrainer
 from .trainer import Trainer
 from .trainer_factory import TrainerFactory
-from .utils import disable_gradient_checkpointing, per_token_loss_func
+from .utils import disable_gradient_checkpointing, dynamic_gradient_checkpointing, per_token_loss_func

@@ -5,15 +5,14 @@ from functools import partial
 from typing import List, Optional, Union
 
 import torch
-import torch.distributed as dist
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import TEMPLATE_MAPPING
-from swift.llm.train import SwiftSft
+from swift.megatron.arguments import MegatronSftArguments
+from swift.megatron.trainers import MegatronTrainer
+from swift.megatron.utils import get_padding_to
+from swift.pipelines import SwiftSft
+from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger, is_last_rank, plot_images
-from ..argument import MegatronTrainArguments
-from ..trainers import MegatronTrainer
-from ..utils import get_padding_to
 from .utils import build_streaming_dataloader
 
 if is_torch_npu_available():
@@ -26,13 +25,13 @@ logger = get_logger()
 
 
 class MegatronSft(SwiftSft):
-    args_class = MegatronTrainArguments
+    args_class = MegatronSftArguments
     args: args_class
 
     def prepare_trainer(self):
         return MegatronTrainer(self.args, self.template)
 
-    def __init__(self, args: Optional[Union[List[str], MegatronTrainArguments]] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], MegatronSftArguments]] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
@@ -83,5 +82,5 @@ class MegatronSft(SwiftSft):
                 plot_images(images_dir, args.tensorboard_dir)
 
 
-def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):
+def megatron_sft_main(args: Optional[Union[List[str], MegatronSftArguments]] = None):
     return MegatronSft(args).main()

@@ -11,20 +11,17 @@ import os
 import uuid
 from contextlib import contextmanager, nullcontext
 from copy import copy
-from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import json
 import torch
 from dacite import from_dict
 from megatron.core import mpu
-from megatron.training import get_args
 
-from swift.llm import RequestConfig, RolloutInferRequest, Template, to_device
-from swift.llm.infer.protocol import RolloutOutput
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
-                                               set_expandable_segments)
-from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response
+from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.rlhf_trainers.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
+                                       set_expandable_segments)
+from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, to_device
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer, profiling_context, profiling_decorator)
 

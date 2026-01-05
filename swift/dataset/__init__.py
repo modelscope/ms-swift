@@ -8,7 +8,9 @@ from .media import MediaResource
 from .packing import IterablePackingDataset, PackingDataset
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                            RowPreprocessor)
-from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset, register_dataset_info
+from .register import (
+DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset, register_dataset_info, get_dataset_list
+)
 from .utils import (AddLengthPreprocessor, EncodePreprocessor, LazyLLMDataset, get_temporary_cache_files_directory,
                     sample_dataset)
 
