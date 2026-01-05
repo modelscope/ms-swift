@@ -1,7 +1,7 @@
 from .base import BaseLoss
 
 
-class CrossEntropyLoss(BaseLoss):
+class CustomCrossEntropyLoss(BaseLoss):
 
     def __call__(self, outputs, labels, *, num_items_in_batch=None, loss_scale=None, **kwargs):
         from swift.trainers import per_token_loss_func
