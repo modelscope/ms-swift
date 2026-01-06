@@ -287,7 +287,8 @@ class VllmArguments:
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
         vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
         vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM. Default is None,
-            which will be set to True for encode tasks (embedding, seq_cls, reranker) and False otherwise.
+            which will be set to True for encode tasks (embedding, seq_cls, reranker, generative_reranker),
+            deployment scenarios (swift deploy) and False otherwise.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
         vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
         vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.

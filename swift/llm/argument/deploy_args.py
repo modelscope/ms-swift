@@ -31,7 +31,8 @@ class DeployArguments(InferArguments):
             to 20.
         log_level (Literal['critical', 'error', 'warning', 'info', 'debug', 'trace']): Log level. Defaults to 'info'.
         max_logprobs (int): The maximum number of logprobs to return to the client. Defaults to 20.
-        vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM.
+        vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM.If not set, it defaults to `True`
+            for deployment scenarios.
     """
     host: str = '0.0.0.0'
     port: int = 8000
