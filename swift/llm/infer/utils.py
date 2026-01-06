@@ -137,7 +137,7 @@ def prepare_adapter(args, model, adapters=None):
     else:
         tuner = Swift
     # compat deploy
-    adapters = adapters or args.adapters
+    adapters = adapters if adapters is not None else args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
