@@ -235,6 +235,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             messages = current_request.messages
             if current_turn == 1:
                 # If it's the first turn, remove the response
+                # Keep the original logic, but I think this step is unnecessary here.
                 remove_response(messages)
 
             # Get model response
@@ -243,7 +244,10 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
 
             if current_turn > 1 and not messages[-1]['content']:
-                # If it's not the first turn and the last message content is dummy, remove the response
+                # The dummy assistant message was intentionally kept during `infer_async`
+                # to ensure correct history processing by the template.
+                # It is now removed before appending the new completion.
+                # otherwise, a syntax error would occur when executing messages[-1]['content'] += completion.
                 remove_response(messages)
 
             # Update conversation history
