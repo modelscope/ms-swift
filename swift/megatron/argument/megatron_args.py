@@ -136,6 +136,11 @@ class RLHFMegatronArgumentsMixin:
     # Falls back to old_per_token_logps if rollout_per_token_logps is not available
     off_policy_sequence_mask_delta: Optional[float] = None
 
+    # entropy
+    log_entropy: bool = False
+    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
+    top_entropy_quantile: float = 1.0
+
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
     # reward model
@@ -155,11 +160,6 @@ class RLHFMegatronArgumentsMixin:
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
-
-    # entropy
-    log_entropy: bool = False
-    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
-    top_entropy_quantile: float = 1.0
 
     num_iterations: int = 1
 
@@ -202,10 +202,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
             if self.multi_turn_scheduler:
                 raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
-            if self.log_entropy:
-                raise ValueError('log_entropy is not supported for Megatron GRPO right now')
-            if self.top_entropy_quantile < 1:
-                raise ValueError('top_entropy_quantile < 1 is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 

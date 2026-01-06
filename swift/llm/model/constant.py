@@ -143,6 +143,7 @@ class LLMModelType:
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
     minimind = 'minimind'
+    iquestcoder = 'iquestcoder'
 
 
 class BertModelType:
