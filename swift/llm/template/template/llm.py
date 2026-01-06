@@ -465,7 +465,6 @@ class YoutuLLMTemplate(Template):
         # Only remove thinking content for assistant messages before first_tool_index - 1
         for i, message in enumerate(messages):
             if message['role'] == 'assistant' and isinstance(message['content'], str):
-                # not loop.last and loop.index0 < (first_tool_index - 1)
                 is_last = (i == len(messages) - 1)
                 if not is_last and i < first_tool_index - 1:
                     message['content'] = self._remove_thinking_content(message['content'])
