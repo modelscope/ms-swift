@@ -36,5 +36,6 @@ register_model(
         KimiVLLoader,
         template=TemplateType.kimi_vl,
         model_arch=ModelArch.llava_hf_legacy,
+        architectures=['KimiVLForConditionalGeneration'],
         requires=['transformers<4.49'],
     ))

@@ -778,7 +778,7 @@ register_model(
         ],
         Qwen2VLLoader,
         model_arch=ModelArch.qwen2_vl,
-        achitectures=['Qwen2VLForConditionalGeneration'],
+        architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -813,7 +813,7 @@ register_model(
         ],
         Qwen2_5VLLoader,
         model_arch=ModelArch.qwen2_vl,
-        achitectures=['Qwen2_5_VLForConditionalGeneration'],
+        architectures=['Qwen2_5_VLForConditionalGeneration'],
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -1552,5 +1552,5 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
-        architectures=['Qwen3ForCausalLM']
+        architectures=['Qwen3ForCausalLM'],
         task_type='reranker'))

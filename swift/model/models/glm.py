@@ -153,8 +153,8 @@ register_model(
                 Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
             ], TemplateType.glm4_z1_rumination)
         ],
-        model_arch=ModelArch.chatglm,
         requires=['transformers>=4.51'],
+        architectures=['Glm4ForCausalLM'],
     ))
 
 register_model(
@@ -256,6 +256,7 @@ register_model(
         GLM4vLoader,
         template=TemplateType.glm4v,
         model_arch=ModelArch.glm4v,
+        architectures=['Glm4vForConditionalGeneration'],
     ))
 
 
@@ -418,6 +419,7 @@ register_model(
             ], TemplateType.glm4_7),
         ],
         requires=['transformers>=4.54'],
+        architectures=['Glm4MoeForCausalLM'],
     ))
 
 
@@ -448,5 +450,6 @@ register_model(
         Glm4vMoeLoader,
         template=TemplateType.glm4_5v,
         model_arch=ModelArch.glm4v,
+        architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56'],
     ))

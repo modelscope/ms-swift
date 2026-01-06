@@ -6,6 +6,7 @@ from transformers import AutoConfig, PretrainedConfig
 
 from swift.utils import HfConfigFactory, safe_snapshot_download
 from .base import Template
+from .utils import Processor
 from .template_meta import TemplateMeta
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}

@@ -20,6 +20,7 @@ register_model(
                 Model('PaddlePaddle/ERNIE-4.5-0.3B-PT', 'baidu/ERNIE-4.5-0.3B-PT'),
             ], TemplateType.ernie),
         ],
+        architectures=['Ernie4_5_ForCausalLM'],
     ))
 
 register_model(
@@ -36,6 +37,7 @@ register_model(
                 Model('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking', 'baidu/ERNIE-4.5-21B-A3B-Thinking'),
             ], TemplateType.ernie_thinking),
         ],
+        architectures=['Ernie4_5_MoeForCausalLM'],
     ))
 
 register_model(

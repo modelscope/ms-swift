@@ -28,6 +28,7 @@ register_model(
         ],
         ModernBertLoader,
         requires=['transformers>=4.48'],
+        architectures=['ModernBertForMaskedLM'],
         tags=['bert']))
 
 
@@ -53,6 +54,7 @@ register_model(
         ])],
         GTEBertLoader,
         requires=['transformers>=4.48'],
+        architectures=['ModernBertModel'],
         tags=['bert', 'embedding']))
 
 
@@ -72,6 +74,7 @@ register_model(
         GTEBertReranker,
         template=TemplateType.bert,
         requires=['transformers>=4.48'],
+        architectures=['ModernBertForSequenceClassification'],
         tags=['bert', 'reranker']))
 
 register_model(

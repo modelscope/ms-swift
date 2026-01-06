@@ -236,6 +236,7 @@ register_model(
         ],
         LlamaLoader,
         model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
     ))
 
 
@@ -293,6 +294,7 @@ register_model(
         template=TemplateType.llama4,
         requires=['transformers>=4.51'],
         model_arch=ModelArch.llama4,
+        architectures=['Llama4ForConditionalGeneration'],
         tags=['vision'],
     ))
 

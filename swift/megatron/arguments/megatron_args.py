@@ -343,8 +343,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_prefetch_factor: int = 2
     group_by_length: bool = False
 
-    architectures: Optional[str] = None
-    llm_architectures: Optional[str] = None
+    hf_model_type: Optional[str] = None
+    llm_model_type: Optional[str] = None
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
