@@ -628,13 +628,13 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                             if param.is_cpu:
                                 param = param.to(torch.device('cuda'))
                             param = param.full_tensor()
-                        raw_state_dict[name] = param.clone()
+                        raw_state_dict[name] = param
                 else:
                     # DeepSpeed: use named_parameters + param.data
                     for name, param in self.model.named_parameters():
                         if parameter_group and name not in parameter_group:
                             continue
-                        raw_state_dict[name] = param.data.clone()
+                        raw_state_dict[name] = param.data
             finally:
                 if is_peft and not self._is_fsdp2:
                     with patch_lora_unmerge(self.model):
