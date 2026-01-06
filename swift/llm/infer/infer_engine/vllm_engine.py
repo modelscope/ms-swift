@@ -139,6 +139,7 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             task=task_type,
             disable_cascade_attn=disable_cascade_attn,
+            load_format=load_format,
             mm_processor_cache_gb=mm_processor_cache_gb,
             speculative_config=speculative_config,
             **engine_kwargs,
