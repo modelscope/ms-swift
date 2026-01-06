@@ -419,8 +419,8 @@ register_model(
         LLMModelType.youtu_llm,
         [
             ModelGroup([
-                Model('Tencent-YouTu-Research/Youtu-LLM-2B'),
-                Model('Tencent-YouTu-Research/Youtu-LLM-2B-Base'),
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B', 'tencent/Youtu-LLM-2B'),
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B-Base', 'tencent/Youtu-LLM-2B-Base'),
             ])
         ],
         TemplateType.youtu_llm,
