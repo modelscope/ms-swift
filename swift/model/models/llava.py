@@ -1,9 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import sys
 from functools import wraps
-from typing import Any, Dict
 
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
@@ -21,10 +20,10 @@ class LlavaLlamaHfLoader(ModelLoader):
         self.autoconfig_class = LlavaConfig
         return super().get_config(model_dir)
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -62,10 +61,10 @@ def _patch_llava(model):
 
 class LlavahfLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -88,10 +87,10 @@ register_model(
 
 class LlavaOnevisionHfLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaOnevisionForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaOnevisionForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaOnevisionForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -115,10 +114,10 @@ register_model(
 
 class LlavaNextHfLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaNextForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaNextForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaNextForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -203,11 +202,14 @@ register_model(
         tags=['vision'],
     ))
 
-# def get_model_tokenizer_llava_next_yi(*args, **kwargs):
-#     model, tokenizer = get_model_tokenizer_llava_next(*args, **kwargs)
-#     if model is not None:
-#         model.config.image_token_index = 64003
-#     return model, tokenizer
+
+class LlavaNextYiHfLoader(LlavaNextHfLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config = super().get_config(model_dir)
+        config.image_token_index = 64003
+        return config
+
 
 register_model(
     ModelMeta(
@@ -228,10 +230,10 @@ register_model(
 
 class LlavaNextVideoHfLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaNextVideoForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaNextVideoForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaNextVideoForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -253,12 +255,13 @@ register_model(
     ))
 
 
-def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_llava_next_video(*args, **kwargs)
-    if model is not None:
-        model.config.video_token_index = 64003
-        model.config.image_token_index = 64004
-    return model, tokenizer
+class LlavaNextVideoYiHfLoader(LlavaNextVideoHfLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config = super().get_config(model_dir)
+        config.video_token_index = 64003
+        config.image_token_index = 64004
+        return config
 
 
 register_model(
@@ -269,7 +272,7 @@ register_model(
                 Model('llava-hf/LLaVA-NeXT-Video-34B-hf', 'llava-hf/LLaVA-NeXT-Video-34B-hf'),
             ], ),
         ],
-        LlavaNextVideoHfLoader,
+        LlavaNextVideoYiHfLoader,
         template=TemplateType.llava_next_video_hf,
         architectures=['LlavaNextVideoForConditionalGeneration'],
         model_arch=ModelArch.llava_next_video_hf,
@@ -282,9 +285,18 @@ class LlavaLoader(ModelLoader):
     llm_model_type = None
 
     def get_config(self, model_dir: str):
-        return None
+        if self.llm_model_type == 'mistral':
+            from llava.model import LlavaMistralConfig
+            self.auto_config_cls = LlavaMistralConfig
+        elif 'llama' in self.llm_model_type:  # llama
+            from llava.model import LlavaConfig
+            self.auto_config_cls = LlavaConfig
+        config = super().get_config(model_dir)
+        if not hasattr(config, 'max_sequence_length'):
+            config.max_sequence_length = 2048
+        return config
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             if 'next' in self.llm_model_type:
@@ -294,11 +306,10 @@ class LlavaLoader(ModelLoader):
             local_repo_path = git_clone_github(repo_path)
         sys.path.append(local_repo_path)
         if self.llm_model_type == 'mistral':
-            from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
-            config = LlavaMistralConfig.from_pretrained(model_dir)
-            automodel_class = LlavaMistralForCausalLM
+            from llava.model import LlavaMistralForCausalLM
+            auto_model_cls = LlavaMistralForCausalLM
         elif 'llama' in self.llm_model_type:  # llama
-            from llava.model import LlavaLlamaForCausalLM, LlavaConfig
+            from llava.model import LlavaLlamaForCausalLM
             if not hasattr(LlavaLlamaForCausalLM, '__old_forward'):  # Avoid double patching
                 forward = LlavaLlamaForCausalLM.forward
                 LlavaLlamaForCausalLM.__old_forward = forward
@@ -309,35 +320,22 @@ class LlavaLoader(ModelLoader):
                     return forward(*args, **kwargs)
 
                 LlavaLlamaForCausalLM.forward = _new_forward
-            config = LlavaConfig.from_pretrained(model_dir)
-            automodel_class = LlavaLlamaForCausalLM
+            auto_model_cls = LlavaLlamaForCausalLM
         else:  # qwen
             from llava.model import LlavaQwenForCausalLM
-            automodel_class = LlavaQwenForCausalLM
-            config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+            auto_model_cls = LlavaQwenForCausalLM
 
         config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336', check_local=True)
-        self.automodel_class = self.automodel_class or automodel_class
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or auto_model_cls
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         vision_tower = model.get_vision_tower()
         device_map = str(model_kwargs.get('device_map', str(model.device)))
         if not vision_tower.is_loaded:
             vision_tower.load_model(device_map=device_map)
-        if not hasattr(model.config, 'max_sequence_length'):
-            model.config.max_sequence_length = 2048
         _patch_llava(model)
+        model.resize_token_embeddings(len(processor))
+        processor.image_processor = vision_tower.image_processor
         return model
-
-
-def get_model_tokenizer_llava(model_dir: str,
-                              model_info,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    if model is not None:
-        model.resize_token_embeddings(len(tokenizer))
-        tokenizer.image_processor = vision_tower.image_processor
-    return model, tokenizer
 
 
 class Llama3LlavaNextLoader(LlavaLoader):
@@ -423,12 +421,16 @@ register_model(
 
 class LlavaOnevisionLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config = super().get_config(model_dir)
+        config.vision_start_token_id = 151652
+        return config
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model_cls = get_class_from_dynamic_module(
             'modeling_llavaonevision1_5.LLaVAOneVision1_5_ForConditionalGeneration', model_dir)
         model_cls._no_split_modules = ['LLaVAOneVision1_5_DecoderLayer', 'RiceBlock']
-        config.vision_start_token_id = 151652
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(

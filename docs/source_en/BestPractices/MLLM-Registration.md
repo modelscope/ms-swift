@@ -45,7 +45,7 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
     from qwen_omni_utils import vision_process
     print('Run my_qwen2_5_omni...')
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniForConditionalGeneration
+    kwargs['auto_model_cls'] = kwargs['auto_model_cls'] or Qwen2_5OmniForConditionalGeneration
     # Customize how to get tokenizer and config in `get_model_tokenizer_with_flash_attn`
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer

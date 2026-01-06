@@ -5,11 +5,11 @@ from typing import Any, Dict, Type
 import torch
 import transformers
 from packaging import version
-from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_logger, safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -43,10 +43,10 @@ def _patch_tokenizer(tokenizer):
 
 class ChatGLMLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         if model_kwargs.get('quantization_config') is not None:
             model_kwargs['quantization_config'].llm_int8_skip_modules = ['output_layer']
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
 
@@ -57,23 +57,19 @@ class ChatGLMLoader(ModelLoader):
         CrossEntropyLoss.forward = cross_entropy_forward
         return model
 
-
-def get_model_tokenizer_chatglm(model_dir: str,
-                                model_info,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    # fix transformers>=4.34 bug
-    if version.parse(transformers.__version__) >= version.parse('4.34'):
-        tokenizer_config = get_tokenizer_config(model_dir)
-        class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-        tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
-        tokenizer_cls._auto_class = 'AutoTokenizer'
-        remove_property(tokenizer_cls, tokenizer_config)
-        kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    _patch_tokenizer(tokenizer)
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        # fix transformers>=4.34 bug
+        if version.parse(transformers.__version__) >= version.parse('4.34'):
+            tokenizer_config = get_tokenizer_config(model_dir)
+            class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+            tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
+            tokenizer_cls._auto_class = 'AutoTokenizer'
+            remove_property(tokenizer_cls, tokenizer_config)
+            tokenizer = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+        else:
+            tokenizer = super().get_processor(model_dir, config)
+        _patch_tokenizer(tokenizer)
+        return tokenizer
 
 
 register_model(
@@ -112,17 +108,14 @@ register_model(
         model_arch=ModelArch.chatglm))
 
 
-def get_model_tokenizer_chatglm4(model_dir: str,
-                                 model_info,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
+class ChatGLM4Loader(ChatGLMLoader):
 
-    model, tokenizer = get_model_tokenizer_chatglm(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
-        for k in tokenizer.special_tokens.keys():
-            tokenizer.add_tokens(k)
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer = super().get_processor(model_dir, config)
+        if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
+            for k in tokenizer.special_tokens.keys():
+                tokenizer.add_tokens(k)
+        return tokenizer
 
 
 register_model(
@@ -138,7 +131,7 @@ register_model(
                 Model('ZhipuAI/LongWriter-glm4-9b', 'zai-org/LongWriter-glm4-9b'),
             ])
         ],
-        ChatGLMLoader,
+        ChatGLM4Loader,
         template=TemplateType.chatglm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
@@ -170,7 +163,7 @@ register_model(
         [ModelGroup([
             Model('ZhipuAI/codegeex4-all-9b', 'zai-org/codegeex4-all-9b'),
         ])],
-        ChatGLMLoader,
+        ChatGLM4Loader,
         template=TemplateType.codegeex4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
@@ -181,8 +174,8 @@ register_model(
 
 class ChatGLM4vLoader(ChatGLMLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         # fix device_map 4
         n_gpu = get_device_count()
         local_world_size = get_dist_setting()[3]
@@ -195,16 +188,10 @@ class ChatGLM4vLoader(ChatGLMLoader):
             model.transformer.vision.eoi.data = model.transformer.vision.eoi.to(device)
         return model
 
-
-def get_model_tokenizer_chatglm4v(model_dir: str,
-                                  model_info,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_chatglm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    # fix merge-lora
-    tokenizer.init_kwargs['image_size'] = 1120
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = super().get_processor(model_dir, config)
+        processor.init_kwargs['image_size'] = 1120
+        return processor
 
 
 register_model(
@@ -233,10 +220,10 @@ register_model(
 
 class GLM4vLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Glm4vForConditionalGeneration
-        self.automodel_class = self.automodel_class or Glm4vForConditionalGeneration
-        model = self.get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Glm4vForConditionalGeneration
+        model = self.get_model(model_dir, *args, **kwargs)
         if hasattr(model, 'visual'):
             patch_get_input_embeddings(model.visual, 'patch_embed')
 
@@ -274,21 +261,16 @@ register_model(
 
 class CogVLMLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
         logger.info('Please ignore the unimported warning.')
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
-
-def get_model_tokenizer_cogvlm(model_dir: str,
-                               model_info,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
-    tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False, check_local=True)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False, check_local=True)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
+        return tokenizer
 
 
 register_model(
@@ -331,8 +313,8 @@ register_model(
 
 class CogVLM2Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         # fix device map 4
         for layer in model.model.vision.transformer.layers:
             patch_output_to_input_device(layer.mlp)
@@ -389,11 +371,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_glm_edge_v(model_dir: str, *args, **kwargs):
-    from transformers import AutoImageProcessor
-    processor = AutoImageProcessor.from_pretrained(model_dir)
-    processor.tokenizer = tokenizer
-    return model, processor
+class GLMEdgeVLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import AutoImageProcessor
+        self.auto_tokenizer_class = AutoImageProcessor
+        return super().get_processor(model_dir, config)
 
 
 register_model(
@@ -405,6 +388,7 @@ register_model(
                 Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
+        GLMEdgeVLoader,
         template=TemplateType.glm_edge_v,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
@@ -439,10 +423,10 @@ register_model(
 
 class Glm4vMoeLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Glm4vMoeForConditionalGeneration
-        self.automodel_class = self.automodel_class or Glm4vMoeForConditionalGeneration
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Glm4vMoeForConditionalGeneration
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_get_input_embeddings(model.visual, 'patch_embed')
         return model
 

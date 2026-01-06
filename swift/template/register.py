@@ -2,6 +2,9 @@
 
 from typing import Dict, Literal, Optional
 
+from transformers import AutoConfig, PretrainedConfig
+
+from swift.utils import HfConfigFactory, safe_snapshot_download
 from .base import Template
 from .template_meta import TemplateMeta
 
@@ -13,23 +16,6 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     TEMPLATE_MAPPING[template_type] = template_meta
-
-
-def get_template_info_type(
-    model_id_or_path: str,
-    template_type=None,
-    # hub
-    use_hf: Optional[bool] = None,
-    hub_token: Optional[str] = None,
-    revision: Optional[str] = None,
-):
-    from swift.model import get_matched_model_meta
-    from swift.utils import safe_snapshot_download
-    model_meta = get_matched_model_meta(model_id_or_path)
-    model_dir = safe_snapshot_download(
-        model_id_or_path, revision=revision, download_model=False, use_hf=use_hf, hub_token=hub_token)
-    template_type = template_type or getattr(model_meta, 'template', None)
-    return model_dir, template_type
 
 
 def get_template(
@@ -54,14 +40,12 @@ def get_template(
     response_prefix: Optional[str] = None,
     enable_thinking: Optional[bool] = None,
     add_non_thinking_prefix: bool = True,
-    # model
-    model=None,  # Some templates need to pass in the model.
     # hub
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     revision: Optional[str] = None,
 ) -> 'Template':
-    model_dir, template_type = get_template_info_type(
+    model_dir, template_type = get_template_info_meta(
         model_id_or_path, use_hf=use_hf, hub_token=hub_token, revision=revision)
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls

@@ -12,13 +12,13 @@ from ..register import ModelLoader, register_model
 
 class KimiVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         KimiVLPreTrainedModel = get_class_from_dynamic_module('modeling_kimi_vl.KimiVLPreTrainedModel', model_dir)
         try:
             del KimiVLPreTrainedModel._supports_sdpa
         except AttributeError:
             pass
-        model = self.get_model(model_dir, config, model_kwargs)
+        model = self.get_model(model_dir, *args, **kwargs)
         patch_get_input_embeddings(model.vision_tower, 'patch_embed')
         return model
 

@@ -11,11 +11,11 @@ from ..register import ModelLoader, register_model
 
 class HunyuanVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import HunYuanVLForConditionalGeneration
-        self.automodel_class = self.automodel_class or HunYuanVLForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or HunYuanVLForConditionalGeneration
         self.attn_impl = self.attn_impl or 'eager'
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(

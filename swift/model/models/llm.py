@@ -1,24 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PretrainedConfig
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_logger, safe_snapshot_download
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import SentenceTransformers, register_model
+from ..register import ModelLoader, SentenceTransformersLoader, register_model
 
 logger = get_logger()
 
 
-def get_model_tokenizer_grok(*args, **kwargs):
-    tokenizer_dir = safe_snapshot_download('AI-ModelScope/grok-1-tokenizer', download_model=False, check_local=True)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    return model, tokenizer
+class GrokLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer_dir = safe_snapshot_download('AI-ModelScope/grok-1-tokenizer', download_model=False, check_local=True)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
+        return tokenizer
 
 
 register_model(
@@ -28,21 +28,16 @@ register_model(
                 Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
             ]),
         ],
+        GrokLoader,
         template=TemplateType.default,
         architectures=['Grok1ModelForCausalLM'],
-        model_arch=ModelArch.llama
-        # TODO
-    ))
+        model_arch=ModelArch.llama))
 
 
-def get_model_tokenizer_polylm(model_dir: str,
-                               model_info,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
-    return get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+class PolyLMLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
 
 
 register_model(
@@ -55,27 +50,24 @@ register_model(
                     Model('damo/nlp_polylm_13b_text_generation', 'DAMO-NLP-MT/polylm-13b'),
                 ], ),
         ],
+        PolyLMLoader,
         template=TemplateType.default,
         architectures=['GPT2LMHeadModel'],
         model_arch=ModelArch.qwen))
 
 
-def get_model_tokenizer_yuan(model_dir: str,
-                             model_info,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_dir, add_eos_token=False, add_bos_token=False, eos_token='<eod>', legacy=True)
-    addi_tokens = [
-        '<sep>', '<pad>', '<mask>', '<predict>', '<FIM_SUFFIX>', '<FIM_PREFIX>', '<FIM_MIDDLE>', '<commit_before>',
-        '<commit_msg>', '<commit_after>', '<jupyter_start>', '<jupyter_text>', '<jupyter_code>', '<jupyter_output>',
-        '<empty_output>'
-    ]
-    tokenizer.add_tokens(addi_tokens, special_tokens=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-    return model, tokenizer
+class YuanLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_dir, add_eos_token=False, add_bos_token=False, eos_token='<eod>', legacy=True)
+        addi_tokens = [
+            '<sep>', '<pad>', '<mask>', '<predict>', '<FIM_SUFFIX>', '<FIM_PREFIX>', '<FIM_MIDDLE>', '<commit_before>',
+            '<commit_msg>', '<commit_after>', '<jupyter_start>', '<jupyter_text>', '<jupyter_code>', '<jupyter_output>',
+            '<empty_output>'
+        ]
+        tokenizer.add_tokens(addi_tokens, special_tokens=True)
+        return tokenizer
 
 
 register_model(
@@ -92,6 +84,7 @@ register_model(
                 Model('IEITYuan/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
             ]),
         ],
+        YuanLoader,
         template=TemplateType.yuan,
         model_arch=ModelArch.llama,
         architectures=['YuanForCausalLM'],
@@ -237,7 +230,7 @@ register_model(
                 Model('iic/gte_Qwen2-7B-instruct', 'Alibaba-NLP/gte-Qwen2-7B-instruct'),
             ]),
         ],
-        SentenceTransformers,
+        SentenceTransformersLoader,
         hf_model_type=['qwen2']))
 
 register_model(

@@ -88,8 +88,8 @@ register_model(
 
 class InternVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         if self.model_info.quant_method == 'bnb':  # 'is_training'
             # patch: bnb backward shape mismatch bug
             if model is not None and model.language_model is not None:
@@ -370,9 +370,9 @@ register_model(
 
 class Interns1Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers.modeling_utils import PreTrainedModel
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         if not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
             old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
 
@@ -393,10 +393,10 @@ class Interns1Loader(ModelLoader):
 
 class InternVLHfLoader(Interns1Loader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
-        self.automodel_class = self.automodel_class or AutoModelForImageTextToText
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -471,7 +471,7 @@ register_model(
 class Xcomposer2Loader(ModelLoader):
     version = 'v2'
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         if self.version == 'v2-4khd':
             from transformers import CLIPVisionModel
 
@@ -484,7 +484,7 @@ class Xcomposer2Loader(ModelLoader):
 
             CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
             CLIPVisionTower.load_model = load_model
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         model.vit.vision_tower.gradient_checkpointing_enable()
         if self.version == 'v2':
             # fix AttributeError: no attribute 'attention_dropout'
@@ -493,15 +493,6 @@ class Xcomposer2Loader(ModelLoader):
         if self.version == 'v2.5':
             patch_output_to_input_device(model.vit)
             patch_output_to_input_device(model.vision_proj)
-
-
-def get_model_tokenizer_xcomposer2(model_dir: str,
-                                   model_info,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    use_flash_attn = kwargs.pop('use_flash_attn', False)  # TODO: check
-    return model, tokenizer
 
 
 register_model(
@@ -562,14 +553,6 @@ register_model(
         requires=['decord'],
         # target_modules: attention.wqkv attention.wo feed_forward.w1 feed_forward.w2 feed_forward.w3
     ))
-
-
-def get_model_tokenizer_xcomposer_ol(model_dir, *args, **kwargs):
-    model_tag = model_dir.rsplit('/', 1)[-1]
-    if model_tag == 'audio':
-
-        return get_model_tokenizer_qwen2_audio(model_dir, *args, **kwargs)
-
 
 register_model(
     ModelMeta(

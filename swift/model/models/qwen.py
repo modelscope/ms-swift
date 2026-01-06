@@ -8,12 +8,12 @@ import torch
 import transformers
 from packaging import version
 from PIL import Image
-from transformers import AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled, to_device
 from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
 from ..model_arch import ModelArch
@@ -28,7 +28,7 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 class QwenLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         if self.torch_dtype is not None:
             k_true = dtype_mapping[self.torch_dtype]
             for k in dtype_mapping.values():
@@ -38,7 +38,7 @@ class QwenLoader(ModelLoader):
         if not isinstance(quantization_config, BitsAndBytesConfig):
             # not bnb quant
             config.torch_dtype = None
-        model = self.get_model(model_dir, config, model_kwargs)
+        model = self.get_model(model_dir, config, processor, model_kwargs)
         try:
             # fix mp+ddp bug
             model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
@@ -51,21 +51,11 @@ class QwenLoader(ModelLoader):
         use_flash_attn = AttnImpl.to_use_flash_attn(self.attn_impl, 'auto')
         config.use_flash_attn = use_flash_attn
 
-
-def get_model_tokenizer_qwen(model_dir: str,
-                             model_info,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             model_config=None,
-                             **kwargs):
-
-    tokenizer = kwargs.get('tokenizer')
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = tokenizer.eod_id
-    kwargs['tokenizer'] = tokenizer
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer = super().get_processor(model_dir, config)
+        if tokenizer.eos_token_id is None:
+            tokenizer.eos_token_id = tokenizer.eod_id
+        return tokenizer
 
 
 register_model(
@@ -140,28 +130,21 @@ def fix_qwen_inplace_bug(model) -> None:
 
 class QwenAudioLoader(QwenLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         fix_qwen_inplace_bug(model)
         return model
 
-
-def get_model_tokenizer_qwen_audio(model_dir: str,
-                                   model_info,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    tokenizer_config = get_tokenizer_config(model_dir)
-    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
-    tokenizer_cls._auto_class = 'AutoTokenizer'
-    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
-    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer_config = get_tokenizer_config(model_dir)
+        class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+        tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
+        tokenizer_cls._auto_class = 'AutoTokenizer'
+        tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+        if not hasattr(tokenizer_cls, '_old_decode'):
+            tokenizer_cls._old_decode = tokenizer_cls._decode
+            tokenizer_cls._decode = _qwen_vl_audio_decode
+        return tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
 
 
 register_model(
@@ -198,7 +181,7 @@ def _qwen_vl_visual_block_forward(
 
 class QwenVLLoader(QwenLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         if (model_kwargs.get('quantization_config') is not None
                 and isinstance(model_kwargs['quantization_config'], BitsAndBytesConfig)):
             # https://github.com/pytorch/pytorch/issues/58969
@@ -217,7 +200,7 @@ class QwenVLLoader(QwenLoader):
             visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
             visual_block_cls.__old_forward = visual_block_cls.forward
             visual_block_cls.forward = _qwen_vl_visual_block_forward
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         device_type = next(model.parameters()).device.type
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
@@ -228,24 +211,16 @@ class QwenVLLoader(QwenLoader):
         patch_fixed_device(model.transformer.visual, f'{device_type}:0')
         return model
 
-
-def get_model_tokenizer_qwen_vl(model_dir: str,
-                                model_info,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-
-    tokenizer_config = get_tokenizer_config(model_dir)
-    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
-    tokenizer_cls._auto_class = 'AutoTokenizer'
-    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
-
-    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    return model, tokenizer
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer_config = get_tokenizer_config(model_dir)
+        class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+        tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
+        tokenizer_cls._auto_class = 'AutoTokenizer'
+        tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
+        if not hasattr(tokenizer_cls, '_old_decode'):
+            tokenizer_cls._old_decode = tokenizer_cls._decode
+            tokenizer_cls._decode = _qwen_vl_audio_decode
+        return tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
 
 
 register_model(
@@ -725,21 +700,15 @@ def compat_qwen_vl_utils(image_patch_size: int):
 
 class Qwen2VLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen2VLForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen2VLForConditionalGeneration
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Qwen2VLForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
         return model
 
-
-def get_model_tokenizer_qwen2_vl(*args, **kwargs):
-    # TODO: remove
-    from qwen_vl_utils import vision_process
-    import qwen_vl_utils
-    check_qwen_vl_utils = kwargs.get('_check_qwen_vl_utils', True)
-    if check_qwen_vl_utils:
+    def _check_qwen_vl_utils(self):
         try:
             qwen_vl_utils_version = importlib.metadata.version('qwen_vl_utils')
         except importlib.metadata.PackageNotFoundError:
@@ -749,9 +718,14 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
             compat_qwen_vl_utils(image_patch_size=14)
         else:
             require_version('qwen_vl_utils<0.0.12')
-    global_vars = patch_qwen_vl_utils(vision_process)
-    tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
-    return model, tokenizer
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        self._check_qwen_vl_utils()
+        from qwen_vl_utils import vision_process
+        processor = super().get_processor(model_dir, config)
+        global_vars = patch_qwen_vl_utils(vision_process)
+        processor.global_vars = global_vars  # In order to have different hashes for the template.
+        return processor
 
 
 register_model(
@@ -804,10 +778,10 @@ register_model(
 
 class Qwen2_5VLLoader(Qwen2VLLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Qwen2_5_VLForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen2_5_VLForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Qwen2_5_VLForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -1035,21 +1009,16 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
 
 class Qwen3VLLoader(Qwen2VLLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def _check_qwen_vl_utils(self):
+        require_version('qwen_vl_utils>=0.0.14')
+        compat_qwen_vl_utils(image_patch_size=16)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3VLForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen3VLForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
-
-
-def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
-    # TODO: remove
-    require_version('qwen_vl_utils>=0.0.14')
-    compat_qwen_vl_utils(image_patch_size=16)
-    kwargs['_check_qwen_vl_utils'] = False
-    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
-    if model is not None:
+        self.auto_model_cls = self.auto_model_cls or Qwen3VLForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         _compat_qwen3_vl_mixed_data(model.model, processor)
-    return model, processor
+        return model
 
 
 register_model(
@@ -1080,23 +1049,13 @@ register_model(
         tags=['vision', 'video']))
 
 
-class Qwen3VLMoeLoader(Qwen2VLLoader):
+class Qwen3VLMoeLoader(Qwen3VLLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3VLMoeForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen3VLMoeForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3VLMoeForConditionalGeneration
         patch_Qwen3VLMoeTextExperts_dtype()
-        return super().get_model(model_dir, config, model_kwargs)
-
-
-def get_model_tokenizer_qwen3_vl_moe(model_dir, *args, **kwargs):
-    require_version('qwen_vl_utils>=0.0.14')
-    compat_qwen_vl_utils(image_patch_size=16)
-    kwargs['_check_qwen_vl_utils'] = False
-    model, processor = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
-    if model is not None:
-        _compat_qwen3_vl_mixed_data(model.model, processor, True)
-    return model, processor
+        return super().get_model(model_dir, config, processor, model_kwargs)
 
 
 register_model(
@@ -1125,15 +1084,16 @@ class Qwen2_5OmniLoader(ModelLoader):
     def get_config(self, model_dir):
         from transformers import Qwen2_5OmniConfig
         self.autoconfig_class = Qwen2_5OmniConfig
-        return super().get_config(model_dir)
-
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen2_5OmniForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen2_5OmniForConditionalGeneration
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+        config = super().get_config(model_dir)
         if enable_audio_output is not None:
             config.enable_audio_output = enable_audio_output
-        model = self.get_model(model_dir, config, model_kwargs)
+        return config
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import Qwen2_5OmniForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen2_5OmniForConditionalGeneration
+        model = self.get_model(model_dir, *args, **kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
@@ -1141,15 +1101,13 @@ class Qwen2_5OmniLoader(ModelLoader):
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
         return model
 
-
-def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
-    # Qwen2_5OmniProcessor
-    from qwen_omni_utils import vision_process
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    return model, processor
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import Qwen2_5OmniProcessor
+        from qwen_omni_utils import vision_process
+        processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        global_vars = patch_qwen_vl_utils(vision_process)
+        processor.global_vars = global_vars
+        return processor
 
 
 register_model(
@@ -1321,34 +1279,33 @@ class Qwen3OmniLoader(ModelLoader):
     def get_config(self, model_dir: str):
         from transformers import Qwen3OmniMoeConfig
         self.autoconfig_class = Qwen3OmniMoeConfig
-        return super().get_config(model_dir)
-
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3OmniMoeForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen3OmniMoeForConditionalGeneration
+        config = super().get_config(model_dir)
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         if enable_audio_output is not None:
             config.enable_audio_output = enable_audio_output
-        model = super().get_model(model_dir, config, model_kwargs)
+        return config
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3OmniMoeForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3OmniMoeForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
         patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
+        _compat_qwen3_omni_mixed_data(model.thinker, processor)
         return model
 
-
-def get_model_tokenizer_qwen3_omni(model_dir, *args, **kwargs):
-    # , Qwen3OmniMoeProcessor, Qwen3OmniMoeConfig
-    from qwen_omni_utils import vision_process
-    processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    kwargs['model_config'].thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    _compat_qwen3_omni_mixed_data(model.thinker, processor)
-    return model, processor
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import Qwen3OmniMoeProcessor
+        from qwen_omni_utils import vision_process
+        processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        config.thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
+        global_vars = patch_qwen_vl_utils(vision_process)
+        processor.global_vars = global_vars
+        return processor
 
 
 register_model(
@@ -1370,8 +1327,8 @@ register_model(
 
 class MidashengLMLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         model.audio_encoder.float()
         patch_output_clone(model.decoder.model.embed_tokens)
         return model
@@ -1392,9 +1349,10 @@ register_model(
 
 class Qwen2AudioLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Qwen2AudioForConditionalGeneration
-        self.automodel_class = self.automodel_class or Qwen2AudioForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen2AudioForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -1415,9 +1373,9 @@ register_model(
 
 class OvisLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         self.attn_impl_keys = ['llm_attn_implementation']
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         model.visual_tokenizer.to(model.dtype)
         model.vte.to(model.dtype)
 
@@ -1495,8 +1453,8 @@ register_model(
 
 class Ovis2_5Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         model.visual_tokenizer.to(model.dtype)
         model.vte.to(model.dtype)
 

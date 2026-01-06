@@ -2,10 +2,10 @@
 from types import MethodType
 
 import torch
-from transformers import PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType, RerankerModelType
 from ..model_arch import ModelArch
@@ -20,10 +20,10 @@ logger = get_logger()
 
 class Idefics3Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForVision2Seq
-        self.automodel_class = self.automodel_class or AutoModelForVision2Seq
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or AutoModelForVision2Seq
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -45,10 +45,10 @@ register_model(
 
 class PixtralLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import LlavaForConditionalGeneration
-        self.automodel_class = self.automodel_class or LlavaForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -70,8 +70,8 @@ register_model(
 
 class MolMoeLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
 
         # fix bug for molmoe-1b
         def to_dict(self, *args, **kwargs):
@@ -107,10 +107,10 @@ register_model(
 
 class MolmoLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
         model_cls._no_split_modules = ['MolmoSequentialBlock']
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.transformer.wte)
         return model
 
@@ -136,20 +136,22 @@ register_model(
 
 class MegrezOmniLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model_cls = get_class_from_dynamic_module('modeling_megrezo.MegrezO', model_dir)
         model_cls._no_split_modules = ['ResidualAttentionBlock', 'LlamaDecoderLayer']
         model_cls = get_class_from_dynamic_module('modeling_megrezo.SiglipVisionTransformer', model_dir)
         model_cls._no_split_modules = ['SiglipEncoderLayer']
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.llm.model.embed_tokens)
         use_submodel_func(model, 'llm')
         return model
 
+    def _get_model_processor(self, model_dir, config):
+        model, processor = super().get_processor(model_dir, config)
+        if model:
+            processor = model._get_or_init_processor()
+        return model, processor
 
-# def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
-#     processor = model._get_or_init_processor()
-#     return model, processor
 
 register_model(
     ModelMeta(
@@ -183,13 +185,13 @@ register_model(
 
 class JinaRerankerM0Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         # Use AutoModel to respect the model repo's dynamic class mapping
         # and load the custom Jina reranker head via trust_remote_code.
         from transformers import AutoModel
         from transformers.modeling_outputs import SequenceClassifierOutputWithPast
-        self.automodel_class = self.automodel_class or AutoModel
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, *args, **kwargs)
         # Patch forward to return a sequence-classification-style output with `.logits`
         # Use the model's own head (already present in jina-reranker-m0), just wrap outputs.
 
@@ -265,12 +267,14 @@ register_model(
     ))
 
 
-def get_model_tokenizer_keye_vl(model_dir: str, *args, **kwargs):
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    from keye_vl_utils import vision_process
-    global_vars = patch_qwen_vl_utils(vision_process)
-    processor.global_vars = global_vars
-    return model, processor
+class KeyeVLLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = super().get_processor(model_dir, config)
+        from keye_vl_utils import vision_process
+        global_vars = patch_qwen_vl_utils(vision_process)
+        processor.global_vars = global_vars
+        return processor
 
 
 register_model(
@@ -306,10 +310,10 @@ register_model(
 
 class DotsOCRLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model_cls = get_class_from_dynamic_module('modeling_dots_vision.DotsVisionTransformer', model_dir)
         model_cls._no_split_modules = ['DotsVisionBlock']
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -328,8 +332,8 @@ register_model(
 
 class Sail2VLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         use_submodel_func(model, 'language_model')
         return model
 

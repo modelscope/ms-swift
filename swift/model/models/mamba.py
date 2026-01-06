@@ -12,11 +12,11 @@ logger = get_logger()
 
 class MambaLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         logger.info(
             '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
             'be really slow!')
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(

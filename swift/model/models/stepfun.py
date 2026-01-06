@@ -15,9 +15,9 @@ from ..register import ModelLoader, register_model
 
 class GotOCR2Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        self.automodel_class = AutoModel
-        return super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        self.auto_model_cls = AutoModel
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -36,10 +36,10 @@ register_model(
 
 class GotOCR2HfLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers.models.got_ocr2 import GotOcr2ForConditionalGeneration
         GotOcr2ForConditionalGeneration._no_split_modules = ['GotOcr2VisionLayer']
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -58,14 +58,14 @@ register_model(
 
 class StepAudioLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/stepfun-ai/Step-Audio.git')
         sys.path.append(local_repo_path)
         from tokenizer import StepAudioTokenizer
         encoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-Tokenizer', check_local=True)
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         model.encoder = StepAudioTokenizer(encoder_path)
         # from tts import StepAudioTTS
         # if not os.path.exists('speakers'):
@@ -109,8 +109,8 @@ def _patch_step_audio2_mini(model):
 
 class StepAudio2MiniLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.embed_tokens)
         _patch_step_audio2_mini(model)
         return model

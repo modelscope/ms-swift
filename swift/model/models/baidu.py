@@ -54,18 +54,12 @@ register_model(
 
 class ErnieVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         MOEAllGatherLayerV2 = get_class_from_dynamic_module('modeling_ernie4_5_vl.MOEAllGatherLayerV2', model_dir)
         self.leaf_modules = MOEAllGatherLayerV2
-        return super().get_model(model_dir, config, model_kwargs)
-
-
-def get_model_tokenizer_ernie_vl(model_dir, *args, **kwargs):
-    # TODO: remove
-    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
-    if model is not None:
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         model.add_image_preprocess(processor)
-    return model, processor
+        return model
 
 
 register_model(

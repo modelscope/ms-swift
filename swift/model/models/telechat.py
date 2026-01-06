@@ -1,21 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from transformers import GenerationConfig
+from transformers import GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 
 from swift.template import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import register_model
+from ..register import ModelLoader, register_model
 
 
-def get_model_tokenizer_telechat(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    model_dir = args[0]
-    generation_config = GenerationConfig.from_pretrained(model_dir)
-    for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
-        setattr(tokenizer, k, getattr(generation_config, k))
-    return model, tokenizer
+class TeleChatLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, processor, **kwargs)
+        generation_config = GenerationConfig.from_pretrained(model_dir)
+        for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
+            setattr(processor, k, getattr(generation_config, k))
+        return model
 
 
 register_model(
@@ -36,6 +37,7 @@ register_model(
                 Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
             ]),
         ],
+        TeleChatLoader,
         template=TemplateType.telechat,
         model_arch=ModelArch.telechat,
         architectures=['TelechatForCausalLM', 'TeleChatForCausalLM'],

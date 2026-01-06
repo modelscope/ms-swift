@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 import torch
-from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils.versions import require_version
 
 from swift.utils import HfConfigFactory, get_logger, safe_snapshot_download
@@ -50,7 +50,7 @@ class BaseModelLoader(ABC):
         pass
 
     @abstractmethod
-    def load(self) -> PreTrainedModel:
+    def load(self) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
         pass
 
 
@@ -263,6 +263,7 @@ def get_model_info_meta(
         task_type=None,
         num_labels=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
+    from .register import ModelLoader
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
         model_id_or_path,
@@ -285,7 +286,7 @@ def get_model_info_meta(
                              'Please refer to the documentation and specify an appropriate `model_type` manually: '
                              'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
         else:
-            model_meta = ModelMeta(None, [], get_model_tokenizer_from_local, template='dummy', model_arch=None)
+            model_meta = ModelMeta(None, [], ModelLoader, template='dummy', model_arch=None)
             logger.info(f'Temporarily create model_meta: {model_meta}')
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)

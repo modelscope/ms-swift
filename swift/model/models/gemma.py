@@ -6,15 +6,15 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_to_input_device
-from ..register import ModelLoader, SentenceTransformers, register_model
+from ..register import ModelLoader, SentenceTransformersLoader, register_model
 
 
 class PaligemmaVisionLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import PaliGemmaForConditionalGeneration
-        self.automodel_class = self.automodel_class or PaliGemmaForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or PaliGemmaForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -93,10 +93,10 @@ register_model(
 
 class Gemma3TextLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
         self.attn_impl = self.attn_impl or 'eager'
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -121,12 +121,12 @@ register_model(
 
 class Gemma3VisionLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Gemma3ForConditionalGeneration
-        self.automodel_class = self.automodel_class or Gemma3ForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Gemma3ForConditionalGeneration
         # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
         self.attn_impl = self.attn_impl or 'eager'
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -155,10 +155,10 @@ register_model(
 
 class Gemma3nLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Gemma3nForConditionalGeneration
-        self.automodel_class = self.automodel_class or Gemma3nForConditionalGeneration
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Gemma3nForConditionalGeneration
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_to_input_device(model.model.embed_vision)
         patch_output_to_input_device(model.model.embed_audio)
         return model
@@ -190,6 +190,6 @@ register_model(
                 Model('google/embeddinggemma-300m', 'google/embeddinggemma-300m'),
             ], ),
         ],
-        SentenceTransformers,
+        SentenceTransformersLoader,
         architectures=['Gemma3TextModel'],
     ))

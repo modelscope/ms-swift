@@ -3,9 +3,9 @@ import os
 import sys
 from typing import Any, Dict
 
-from transformers import AutoTokenizer, PreTrainedModel
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_logger, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -15,44 +15,40 @@ from ..register import ModelLoader, register_model
 logger = get_logger()
 
 
-def get_model_tokenizer_yi(model_dir, *args, **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-
-
 class YiVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir: str) -> PretrainedConfig:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
         sys.path.append(os.path.join(local_repo_path, 'VL'))
-        from llava.model import LlavaLlamaForCausalLM, LlavaConfig
-        from llava.model.constants import key_info
+        from llava.model import LlavaConfig
+        config = LlavaConfig.from_pretrained(model_dir)
+        mm_vision_tower = config.mm_vision_tower
+        config.mm_vision_tower = os.path.join(model_dir, *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
+        config.attention_dropout = 0.
+        if not hasattr(config, 'max_sequence_length'):
+            config.max_sequence_length = 2048
+        return config
 
-        model_config = LlavaConfig.from_pretrained(model_dir)
-        mm_vision_tower = model_config.mm_vision_tower
-        model_config.mm_vision_tower = os.path.join(model_dir, *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
-        model_config.attention_dropout = 0.
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+
+    def get_model(self, model_dir: str, config, processor, **kwargs) -> PreTrainedModel:
+        from llava.model import LlavaLlamaForCausalLM
+        from llava.model.constants import key_info
         key_info['model_path'] = model_dir
-        self.automodel_class = self.automodel_class or LlavaLlamaForCausalLM
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or LlavaLlamaForCausalLM
+        model = super().get_model(model_dir, config, processor, **kwargs)
         vision_tower = model.get_vision_tower()
         vision_tower.load_model()
-        vision_tower.to(device=model.device, dtype=model_config.torch_dtype)
-        if not hasattr(model.config, 'max_sequence_length'):
-            model.config.max_sequence_length = 2048
+        vision_tower.to(device=model.device, dtype=config.torch_dtype)
+
+        logger.info('Please ignore the above warning.')
+        logger.info('Loading the parameters of vision_tower...')
+        model.resize_token_embeddings(len(processor))
+        processor.image_processor = vision_tower.image_processor
         return model
-
-
-def get_model_tokenizer_yi_vl(model_dir: str,
-                              model_info,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    logger.info('Please ignore the above warning.')
-    logger.info('Loading the parameters of vision_tower...')
-    model.resize_token_embeddings(len(tokenizer))
-    tokenizer.image_processor = vision_tower.image_processor
 
 
 register_model(

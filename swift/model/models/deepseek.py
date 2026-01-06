@@ -2,9 +2,9 @@
 import sys
 from typing import Any, Dict
 
-from transformers import AutoModel, PreTrainedModel
+from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -16,8 +16,8 @@ from ..utils import use_submodel_func
 
 class DeepseekLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
 
@@ -129,10 +129,9 @@ class DeepseekV32Loader(ModelLoader):
             from transformers.models.deepseek_v32 import DeepseekV32Config
         except ImportError:
             from transformers.models.deepseek_v3 import DeepseekV3Config as DeepseekV32Config
-        self.autoconfig_class = DeepseekV32Config
-        return super().get_config(model_dir)
+        return DeepseekV32Config.from_pretrained(model_dir)
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         try:
             from transformers.models.deepseek_v32 import DeepseekV32ForCausalLM
         except ImportError:
@@ -141,8 +140,8 @@ class DeepseekV32Loader(ModelLoader):
             from transformers.models.deepseek_v3 import DeepseekV3ForCausalLM as DeepseekV32ForCausalLM
             if not self.return_dummy_model:
                 raise ValueError('DeepSeek-V3.2 is not supported in transformers.')
-        self.automodel_class = DeepseekV32ForCausalLM
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = DeepseekV32ForCausalLM
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -165,8 +164,12 @@ register_model(
 
 class DeepseekVLLoader(ModelLoader):
 
-    def _get_model(self, model_dir: str, config, model_kwargs, llm_prefix) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from deepseek_vl.models import VLChatProcessor
+        return VLChatProcessor.from_pretrained(model_dir, trust_remote_code=True)
+
+    def _get_model(self, model_dir: str, llm_prefix, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         llm = getattr(model, llm_prefix)
         patch_output_clone(llm.model.embed_tokens)
         patch_output_to_input_device(llm.model.embed_tokens)
@@ -174,7 +177,7 @@ class DeepseekVLLoader(ModelLoader):
         model.generation_config = llm.generation_config
         return model
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         # compat with python==3.10
         if sys.version_info.minor >= 10:
             import collections
@@ -185,12 +188,7 @@ class DeepseekVLLoader(ModelLoader):
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
         sys.path.append(local_repo_path)
-        return self._get_model(model_dir, config, model_kwargs, 'language_model')
-
-
-def get_model_tokenizer_deepseek_vl(model_dir: str, *args, **kwargs):
-    from deepseek_vl.models import VLChatProcessor
-    processor = VLChatProcessor.from_pretrained(model_dir)
+        return self._get_model(model_dir, 'language_model', *args, **kwargs)
 
 
 register_model(
@@ -212,17 +210,16 @@ register_model(
 
 class DeepseekJanusLoader(DeepseekVLLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
         sys.path.append(local_repo_path)
-        return self._get_model(model_dir, config, model_kwargs, 'language_model')
+        return self._get_model(model_dir, 'language_model', *args, **kwargs)
 
-
-def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
-    from janus.models import VLChatProcessor
-    processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from janus.models import VLChatProcessor
+        return VLChatProcessor.from_pretrained(model_dir, trust_remote_code=True)
 
 
 register_model(
@@ -257,24 +254,23 @@ register_model(
 
 class DeepseekVL2Loader(DeepseekVLLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
         sys.path.append(local_repo_path)
-        return super()._get_model(model_dir, config, model_kwargs, 'language')
+        return super()._get_model(model_dir, 'language', *args, **kwargs)
 
-
-def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
-
-    try:
-        from deepseek_vl2.models import DeepseekVLV2Processor
-    except ImportError:
-        # compat transformers>=4.42
-        import transformers
-        transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
-        from deepseek_vl2.models import DeepseekVLV2Processor
-    processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        try:
+            from deepseek_vl2.models import DeepseekVLV2Processor
+        except ImportError:
+            # compat transformers>=4.42
+            import transformers
+            transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
+            from deepseek_vl2.models import DeepseekVLV2Processor
+        processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
+        return processor
 
 
 register_model(
@@ -298,32 +294,26 @@ register_model(
 
 class DeepseekOCR(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        self.automodel_class = self.automodel_class or AutoModel
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.sam_model)
         patch_output_to_input_device(model.model.vision_model)
         patch_output_to_input_device(model.model.projector)
         return model
 
-
-def get_model_tokenizer_deepseek_ocr(model_dir: str,
-                                     model_info,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
-    from transformers import AutoModel, AutoProcessor, AutoTokenizer
-    # When not loading model (e.g., vllm backend), avoid triggering AutoConfig which would execute
-    # trust_remote_code and cause transformers version compatibility issues
-    if not load_model:
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import AutoProcessor, AutoTokenizer
+        # When not loading model (e.g., vllm backend), avoid triggering AutoConfig which would execute
+        # trust_remote_code and cause transformers version compatibility issues
         # For vllm backend, we only need the processor/tokenizer
         try:
             processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
         except Exception:
             # Fallback to AutoTokenizer if AutoProcessor is not available
             processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-        return None, processor
+        return processor
 
 
 register_model(

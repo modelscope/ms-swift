@@ -25,12 +25,12 @@ class ValleyLoader(ModelLoader):
         self.autoconfig_class = ValleyConfig
         return super().get_config(model_dir)
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers.modeling_outputs import CausalLMOutputWithPast
         from valley_eagle.model.language_model.valley_qwen2 import ValleyQwen2ForCausalLM
         config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/siglip-so400m-patch14-384', check_local=True)
         config.eagle_vision_tower = safe_snapshot_download('Qwen/Qwen2-VL-7B-Instruct', check_local=True)
-        automodel_class = ValleyQwen2ForCausalLM
+        auto_model_cls = ValleyQwen2ForCausalLM
 
         if not hasattr(ValleyQwen2ForCausalLM, '_origin_forward'):
             forward = ValleyQwen2ForCausalLM.forward
@@ -52,25 +52,16 @@ class ValleyLoader(ModelLoader):
                 )
 
             ValleyQwen2ForCausalLM.forward = new_forward
-        self.automodel_class = automodel_class
-        model = super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = auto_model_cls
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         model.generation_config.repetition_penalty = 1.0  # Otherwise, Error. Same for original code.
-        return model
 
-
-def get_model_tokenizer_valley(model_dir: str,
-                               model_info,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model is not None:
         from transformers import AutoProcessor, SiglipImageProcessor
-        tokenizer.image_processor = SiglipImageProcessor.from_pretrained(model.config.mm_vision_tower)
-        tokenizer.qwen2vl_processor = AutoProcessor.from_pretrained(
+        processor.image_processor = SiglipImageProcessor.from_pretrained(model.config.mm_vision_tower)
+        processor.qwen2vl_processor = AutoProcessor.from_pretrained(
             model.config.eagle_vision_tower, max_pixels=1280 * 28 * 28)
-        tokenizer.image_processor.crop_size = tokenizer.image_processor.size['height']
-    return model, tokenizer
+        processor.image_processor.crop_size = processor.image_processor.size['height']
+        return model
 
 
 register_model(

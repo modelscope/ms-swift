@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import AutoProcessor, AutoTokenizer, PreTrainedModel
+from transformers import AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -117,29 +117,24 @@ register_model(
     ))
 
 
-def get_model_tokenizer_devstral_2505(model_dir: str,
-                                      model_info,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      **kwargs):
-    # src: sglang did the same (https://github.com/sgl-project/sglang/pull/6547)
-    tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+class DevstralLoader(ModelLoader):
 
-    kwargs['tokenizer'] = tokenizer
-    model, processor = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, processor
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        # src: sglang did the same (https://github.com/sgl-project/sglang/pull/6547)
+        tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+        return tokenizer
 
 
 register_model(
     ModelMeta(
-        model_type=LLMModelType.devstral,
-        model_groups=[
+        LLMModelType.devstral, [
             ModelGroup([
                 Model('mistralai/Devstral-Small-2505', 'mistralai/Devstral-Small-2505'),
             ],
                        requires=['transformers>=4.43', 'mistral-common>=1.5.5'])
         ],
+        DevstralLoader,
         template=TemplateType.devstral,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
@@ -147,10 +142,10 @@ register_model(
 
 class Mistral3Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Mistral3ForConditionalGeneration
-        self.automodel_class = self.automodel_class or Mistral3ForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Mistral3ForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -191,18 +186,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_mistral_2506(model_dir: str,
-                                     model_info,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
-    from transformers import Mistral3ForConditionalGeneration
-    tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
-    processor = AutoProcessor.from_pretrained(tokenizer_dir)
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
-    kwargs['tokenizer'] = processor.tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    return model, processor
+class Mistral3_2506Loader(Mistral3Loader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
+        processor = AutoProcessor.from_pretrained(tokenizer_dir)
+        return processor
 
 
 register_model(
@@ -213,7 +202,7 @@ register_model(
                 Model('mistralai/Mistral-Small-3.2-24B-Instruct-2506', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'),
             ]),
         ],
-        Mistral3Loader,
+        Mistral3_2506Loader,
         template=TemplateType.mistral_2506,
         hf_model_type=['mistral3'],
         model_arch=ModelArch.llava_hf,

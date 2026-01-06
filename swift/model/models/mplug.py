@@ -4,10 +4,10 @@ import sys
 from collections import OrderedDict
 from typing import Any, Dict
 
-from transformers import PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_logger, git_clone_github
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
@@ -21,7 +21,7 @@ logger = get_logger()
 
 class MplugOwl2Loader(ModelLoader):
 
-    def _get_model(self, model_dir: str, config, model_kwargs, vocab_size) -> PreTrainedModel:
+    def _get_model(self, model_dir: str, vocab_size, *args, **kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
@@ -32,23 +32,17 @@ class MplugOwl2Loader(ModelLoader):
         from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
         if vocab_size is not None:
             config.vocab_size = vocab_size
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         logger.info('Please ignore the unimported warning.')
         return model
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        return self._get_model(model_dir, config, model_kwargs, None)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        return self._get_model(model_dir, None, *args, **kwargs)
 
-
-def get_model_tokenizer_mplug_owl2(model_dir: str,
-                                   model_info,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    from transformers.models.clip.image_processing_clip import CLIPImageProcessor
-    processor = CLIPImageProcessor.from_pretrained(model_dir)
-    processor.tokenizer = tokenizer
-    return model, processor
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+        processor = CLIPImageProcessor.from_pretrained(model_dir)
+        return processor
 
 
 register_model(
@@ -65,8 +59,8 @@ register_model(
 
 class MplugOwl2_1Loader(QwenLoader, MplugOwl2Loader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        return self._get_model(model_dir, config, model_kwargs, 151851)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        return self._get_model(model_dir, 151851, *args, **kwargs)
 
 
 register_model(
@@ -83,11 +77,11 @@ register_model(
 
 class MplugOwl3Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         get_class_from_dynamic_module('configuration_hyper_qwen2.HyperQwen2Config', model_dir)
         model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
         model_cls._no_split_modules = ['SiglipEncoderLayer']
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         func_list = ['generate', 'forward']
         use_submodel_func(model, 'language_model', func_list)
 
@@ -108,14 +102,11 @@ class MplugOwl3Loader(ModelLoader):
         model._forward_hooks_with_kwargs = hooks_with_kwargs
         return model
 
-
-def get_model_tokenizer_mplug_owl3(model_dir: str,
-                                   model_info,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    processor = model.init_processor(tokenizer)
-    return model, processor
+    def _get_model_processor(self, model_dir, config):
+        model, tokenizer = super()._get_model_processor(model_dir, config)
+        if model:
+            tokenizer = model.init_processor(tokenizer)
+        return model, tokenizer
 
 
 register_model(
@@ -149,14 +140,13 @@ register_model(
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_doc_owl2(model_dir: str,
-                                 model_info,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    processor = model.init_processor(tokenizer, basic_image_size=504, crop_anchors='grid_12')
-    return model, processor
+class DocOwl2Loader(ModelLoader):
+
+    def _get_model_processor(self, model_dir, config):
+        model, tokenizer = super()._get_model_processor(model_dir, config)
+        if model:
+            tokenizer = model.init_processor(tokenizer, basic_image_size=504, crop_anchors='grid_12')
+        return model, tokenizer
 
 
 register_model(
@@ -166,6 +156,7 @@ register_model(
                 Model('iic/DocOwl2', 'mPLUG/DocOwl2'),
             ]),
         ],
+        DocOwl2Loader,
         template=TemplateType.doc_owl2,
         architectures=['mPLUGDocOwl2'],
         model_arch=ModelArch.doc_owl2,

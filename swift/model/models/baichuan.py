@@ -17,8 +17,8 @@ logger = get_logger()
 
 class BaichuanLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         # baichuan-13b does not implement the `get_input_embeddings` function
         # fix gradient_checkpointing bug
         try:
@@ -46,7 +46,7 @@ register_model(
 
 class BaichuanM1Loader(BaichuanLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers.dynamic_module_utils import get_class_from_dynamic_module
         rotary_embedding = get_class_from_dynamic_module('modeling_baichuan.RotaryEmbedding', model_dir)
         _old_forward = rotary_embedding.forward
@@ -57,7 +57,7 @@ class BaichuanM1Loader(BaichuanLoader):
             return res
 
         rotary_embedding.forward = _new_forward
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -89,7 +89,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
 
 class Baichuan2Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         if not hasattr(config, 'z_loss_weight'):
             config.z_loss_weight = 0
         # patch: baichuan2_13b configuration_baichuan.py bug
@@ -97,7 +97,7 @@ class Baichuan2Loader(ModelLoader):
             gradient_checkpointing = config.gradient_checkpointing
             if isinstance(gradient_checkpointing, (tuple, list)):
                 config.gradient_checkpointing = gradient_checkpointing[0]
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, config, *args, **kwargs)
         model_ori = model
         if not hasattr(model, 'lm_head'):  # fix awq
             model = model.model

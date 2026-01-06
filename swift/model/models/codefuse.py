@@ -1,13 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict
+from transformers import AutoTokenizer, PretrainedConfig
 
-from transformers import AutoTokenizer
-
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import register_model
+from ..register import ModelLoader, register_model
 from .glm import ChatGLMLoader
 from .qwen import QwenLoader
 
@@ -39,14 +37,10 @@ register_model(
     ))
 
 
-def get_model_tokenizer_codellama(model_dir: str,
-                                  model_info,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
-    return get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+class CodeLlamaLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
 
 
 register_model(
@@ -60,6 +54,7 @@ register_model(
                 tags=['coding'],
             ),
         ],
+        CodeLlamaLoader,
         template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
         hf_model_type=['llama'],

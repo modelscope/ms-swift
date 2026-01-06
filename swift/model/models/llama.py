@@ -14,10 +14,11 @@ from ..register import ModelLoader, register_model
 
 class LlamaLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir):
+        config = super().get_config(model_dir)
         if getattr(config, 'pretraining_tp', 1) > 1:
             config.pretraining_tp = 1
-        return super().get_model(model_dir, config, model_kwargs)
+        return config
 
 
 register_model(
@@ -240,10 +241,10 @@ register_model(
 
 class Llama3_2VisionLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import MllamaForConditionalGeneration
-        self.automodel_class = self.automodel_class or MllamaForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or MllamaForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -268,10 +269,10 @@ register_model(
 
 class Llama4Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Llama4ForConditionalGeneration
-        self.automodel_class = self.automodel_class or Llama4ForConditionalGeneration
-        return super().get_model(model_dir, config, model_kwargs)
+        self.auto_model_cls = self.auto_model_cls or Llama4ForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(
@@ -298,7 +299,7 @@ register_model(
 
 class Llama3OmniLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
@@ -308,7 +309,7 @@ class Llama3OmniLoader(ModelLoader):
         config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
         if not os.path.exists(config.speech_encoder):
             whisper.load_model('large-v3', download_root=model_dir)
-        self.automodel_class = self.automodel_class or OmniSpeech2SLlamaForCausalLM
+        self.auto_model_cls = self.auto_model_cls or OmniSpeech2SLlamaForCausalLM
         for key in ['forward', 'generate']:
             try:
                 delattr(OmniSpeech2SLlamaForCausalLM, key)
@@ -318,7 +319,7 @@ class Llama3OmniLoader(ModelLoader):
         # not support device_map='auto'
         device_map = model_kwargs['device_map']
         model_kwargs['device_map'] = None
-        model = super().get_model(model_dir, config, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         model.to(get_device() if device_map == 'auto' else device_map)
         return model
 

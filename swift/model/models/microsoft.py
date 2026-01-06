@@ -2,9 +2,9 @@
 from types import MethodType
 from typing import Any, Dict
 
-from transformers import PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_device, get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -15,27 +15,19 @@ from ..utils import use_submodel_func
 
 
 class Phi3VisionLoader(ModelLoader):
+    num_crops = 4
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor_kwargs = {'num_crops': get_env_args('num_crops', int, self.num_crops)}
+        from transformers import AutoProcessor
+        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
+        return processor
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.vision_embed_tokens.wte)
         return model
 
-
-def get_model_tokenizer_phi3_vision(model_dir: str,
-                                    model_info,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
-    processor_kwargs = {}
-    if 'num_crops' in kwargs:
-        processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
-    return model, processor
-
-
-# partial(get_model_tokenizer_phi3_vision, num_crops=4)
 
 register_model(
     ModelMeta(
@@ -57,23 +49,22 @@ register_model(
 
 class Phi4MultimodalLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = super().get_processor(model_dir, config)
+        processor.audio_processor.audio_compression_rate = processor.audio_processor.compression_rate
+        processor.audio_processor.audio_downsample_rate = processor.audio_processor.qformer_compression_rate
+        processor.audio_processor.audio_feat_stride = processor.audio_processor.feat_stride
+        del processor.audio_processor.feature_size
+        del processor.audio_processor.sampling_rate
+        del processor.audio_processor.padding_value
+        del processor.__class__.chat_template
+        processor.chat_template = None
+        return processor
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
         model.set_lora_adapter(['vision', 'speech'])
         return model
-
-
-def get_model_tokenizer_phi4_multimodal(*args, **kwargs):
-    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
-    processor.audio_processor.audio_compression_rate = processor.audio_processor.compression_rate
-    processor.audio_processor.audio_downsample_rate = processor.audio_processor.qformer_compression_rate
-    processor.audio_processor.audio_feat_stride = processor.audio_processor.feat_stride
-    del processor.audio_processor.feature_size
-    del processor.audio_processor.sampling_rate
-    del processor.audio_processor.padding_value
-    del processor.__class__.chat_template
-    processor.chat_template = None
-    return model, processor
 
 
 register_model(
@@ -93,24 +84,15 @@ register_model(
 
 class FlorenceLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        config.vision_config.model_type = 'davit'  # fix merge-lora
+        if model_kwargs['device_map'] == 'auto':
+            model_kwargs['device_map'] = get_device()
         with patch_ignore_check_imports():
-            model = super().get_model(model_dir, config, model_kwargs)
+            model = super().get_model(model_dir, config, processor, model_kwargs)
         model.vision_tower.enable_checkpoint = True
         use_submodel_func(model, 'language_model', ['generate', 'forward'])
         return model
-
-
-def get_model_tokenizer_florence(model_dir: str,
-                                 model_info,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    model_config.vision_config.model_type = 'davit'  # fix merge-lora
-    if model_kwargs['device_map'] == 'auto':
-        model_kwargs['device_map'] = get_device()
-    kwargs['model_config'] = model_config
-    return model, processor
 
 
 register_model(
@@ -135,8 +117,8 @@ register_model(
 
 class Phi3SmallLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
 
         def rotary_emb(self, query_states, key_states, **kwargs):
             q_type = query_states.dtype

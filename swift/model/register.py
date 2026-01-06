@@ -15,6 +15,7 @@ from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
+from swift.template import Processor
 from swift.utils import HfConfigFactory, get_logger, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
@@ -65,7 +66,7 @@ def load_by_unsloth(args):
         compiler.distributed_function = _origin_distributed_function
 
     with _patch_distributed_function():
-        if model_meta.is_multimodal:
+        if model_info.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
         elif model_info.is_moe_model:
             from unsloth import FastModel as UnslothModel
@@ -155,34 +156,6 @@ def get_model_list() -> List[str]:
     return models
 
 
-def get_model_tokenizer_from_local(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   *,
-                                   tokenizer=None,
-                                   model_config=None,
-                                   automodel_class=None,
-                                   **kwargs):
-    """Load the model and tokenizer from the local model_dir."""
-
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-
-    pad_token = tokenizer.pad_token_id
-    if pad_token is None:
-        pad_token = tokenizer.eos_token_id
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = pad_token
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = pad_token
-    assert tokenizer.eos_token_id is not None
-    assert tokenizer.pad_token_id is not None
-    HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
-
-    return model, tokenizer
-
-
 class ModelLoader(BaseModelLoader):
 
     def __init__(
@@ -190,25 +163,29 @@ class ModelLoader(BaseModelLoader):
         model_info: ModelInfo,
         model_meta: ModelMeta,
         *,
+        load_model: bool = False,
         # model kwargs
         attn_impl: Optional[str] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,
-        automodel_class=None,
+        auto_model_cls=None,
         return_dummy_model: bool = False,
+        new_special_tokens: Optional[List[str]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
-
         self.model_info = model_info
         self.model_meta = model_meta
+        self.load_model = load_model
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
-        self.automodel_class = automodel_class
-        self.autoconfig_class = None
+        self.auto_model_cls = auto_model_cls
+        self.auto_config_cls = None
+        self.auto_tokenizer_class = None
         self.return_dummy_model = return_dummy_model
+        self.new_special_tokens = new_special_tokens
         self.model_kwargs = model_kwargs
 
         self.problem_type = kwargs.get('problem_type')
@@ -216,6 +193,7 @@ class ModelLoader(BaseModelLoader):
         self.init_strategy = kwargs.get('init_strategy')
         self.local_repo_path = kwargs.get('local_repo_path')
         self.leaf_modules = None
+        self.pad_token = None
         if model_info.quant_method == 'fp8':
             self.torch_dtype = 'auto'
         else:
@@ -227,9 +205,7 @@ class ModelLoader(BaseModelLoader):
         _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
 
-    def get_config(self, model_dir: str) -> PretrainedConfig:
-        autoconfig_class = self.autoconfig_class or AutoConfig
-        config = autoconfig_class.from_pretrained(model_dir, trust_remote_code=True)
+    def _postprocess_config(self, config):
         # fix prediction_step (internvl2, ovis, ...)
         if not hasattr(config, 'keys_to_ignore_at_inference'):
             config.keys_to_ignore_at_inference = []
@@ -255,28 +231,51 @@ class ModelLoader(BaseModelLoader):
                     problem_type = 'single_label_classification'
             config.problem_type = problem_type
         self._update_attn_impl(config)
+        self.model_info.config = config
         return config
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        auto_config_cls = self.auto_config_cls or AutoConfig
+        return auto_config_cls.from_pretrained(model_dir, trust_remote_code=True)
+
+    def _get_tokenizer(self, processor):
+        if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
+            tokenizer = processor.tokenizer
+            patch_getattr(processor.__class__, 'tokenizer')
+        else:
+            tokenizer = processor
+        return tokenizer
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        auto_tokenizer_cls = self.auto_tokenizer_class
+        if auto_tokenizer_cls is None:
+            if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')):
+                from transformers import AutoProcessor
+                auto_tokenizer_cls = AutoProcessor
+            else:
+                auto_tokenizer_cls = AutoTokenizer
+        return auto_tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
         model_info = self.model_info
         model_meta = self.model_meta
-        automodel_class = self.automodel_class
+        auto_model_cls = self.auto_model_cls
         model = None
-        if model_info.task_type in {'seq_cls', 'reranker'
-                                    } and self.automodel_class is None and not self.return_dummy_model:
+        if model_info.task_type in {'seq_cls', 'reranker'} and auto_model_cls is None and not self.return_dummy_model:
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
                         model_dir, config=config, trust_remote_code=True, **self.model_kwargs)
-                    automodel_class = AutoModelForSequenceClassification
+                    auto_model_cls = AutoModelForSequenceClassification
                 except ValueError:
                     pass
 
-        automodel_class = automodel_class or AutoModelForCausalLM
+        auto_model_cls = auto_model_cls or AutoModelForCausalLM
         context_kwargs = {
             'model_info': model_info,
             'model_meta': model_meta,
-            'automodel_class': automodel_class,
+            'auto_model_cls': auto_model_cls,
             'return_dummy_model': self.return_dummy_model,
         }
         if model is None:
@@ -296,42 +295,68 @@ class ModelLoader(BaseModelLoader):
             else:
                 context = partial(patch_automodel, **context_kwargs)
             with context():
-                model = automodel_class.from_pretrained(
-                    model_dir, config=config, trust_remote_code=True, **model_kwargs)
-        self._postprocess_model(model_dir, model, automodel_class)
-        return model
-
-    def _postprocess_model(self, model_dir, model, automodel_class=None):
-        model_info = self.model_info
-        model_meta = self.model_meta
-        config = model.config
+                model = auto_model_cls.from_pretrained(model_dir, config=config, trust_remote_code=True, **model_kwargs)
         # fix not save modeling_xxx.py (transformers 4.45)
         # https://github.com/huggingface/transformers/issues/24737
-        has_remote_code = hasattr(config, 'auto_map') and automodel_class.__name__ in config.auto_map
+        has_remote_code = hasattr(config, 'auto_map') and auto_model_cls.__name__ in config.auto_map
         if has_remote_code and model._auto_class is None:
-            model._auto_class = automodel_class.__name__
+            model._auto_class = auto_model_cls.__name__
 
-        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+        if model_info.task_type == 'embedding' and auto_model_cls.__name__ != 'AutoModel':
             from swift.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=model_meta)
+        return model
+
+    def _postprocess_model(self, model_dir, model):
+        model_info = self.model_info
 
         if self.init_strategy is not None:
             InitModelStrategy.init_parameters(model, self.init_strategy)
-
-        model_info.config = config
         # fix seq classification task
         if self.leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
         if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-            self._compat_transformers5(model, model_meta)
+            self._compat_transformers5(model)
         model.model_info = self.model_info
         model.model_meta = self.model_meta
         model.model_dir = model_dir
         self._init_generation_config(model, model_dir)
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _compat_transformers5(self, model, model_meta):
-        if model_meta.is_multimodal:
+    def _add_new_special_tokens(self, model, tokenizer):
+        if not self.new_special_tokens:
+            return
+        num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
+        if num_new_tokens > 0:
+            logger.info(f'Added {num_new_tokens} new special tokens.')
+
+            if model is not None and not self.return_dummy_model:
+                llm_model = get_lm_head_model(model, self.model_meta)
+                origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
+                if origin_vocab_size < len(tokenizer):
+                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                    llm_model.resize_token_embeddings(vocab_size)
+                    # fix transformers==4.52.4 qwen2.5-vl
+                    HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
+
+    def _postprocess_processor(self, processor: Processor):
+        tokenizer = self._get_tokenizer(processor)
+        pad_token = tokenizer.pad_token_id
+        if pad_token is None:
+            pad_token = tokenizer.eos_token_id
+        if tokenizer.eos_token_id is None:
+            tokenizer.eos_token_id = pad_token
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = pad_token
+        assert tokenizer.eos_token_id is not None
+        assert tokenizer.pad_token_id is not None
+        self.pad_token = pad_token
+        tokenizer.model_info = self.model_info
+        tokenizer.model_meta = self.model_meta
+
+    def _compat_transformers5(self, model):
+        if self.model_info.is_multimodal:
             for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
                 _set_property(model, key)
 
@@ -389,18 +414,30 @@ class ModelLoader(BaseModelLoader):
         if getattr(model, 'generation_config', None):
             fix_do_sample_warning(model.generation_config)
 
-    def load(self) -> PreTrainedModel:
+    def _get_model_processor(self, model_dir, config):
+        processor = self.get_processor(model_dir, config)
+        model = None
+        if self.load_model:
+            model = self.get_model(model_dir, config, processor, self.model_kwargs.copy())
+        return model, processor
+
+    def load(self) -> Tuple[Optional[PreTrainedModel], Processor]:
         patch_offload_context = patch_attach_align_device_hook_on_blocks() if self.patch_offload else nullcontext()
         model_dir = self.model_info.model_dir
         with patch_get_dynamic_module(), patch_tp_plan(True), patch_offload_context:
             config = self.get_config(model_dir)
-            model = self.get_model(model_dir, config, self.model_kwargs.copy())
-        return model
+            self._postprocess_config(config)
+            model, processor = self._get_model_processor(model_dir, config)
+            self._postprocess_processor(processor)
+            if model:
+                self._postprocess_model(model_dir, model)
+        self._add_new_special_tokens(model, processor)
+        return model, processor
 
 
-class SentenceTransformers(ModelLoader):
+class SentenceTransformersLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer(
             model_dir, trust_remote_code=True, model_kwargs={
@@ -416,56 +453,23 @@ class SentenceTransformers(ModelLoader):
             self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
-        self._postprocess_model(model_dir, model, None)
         return model
-
-
-def get_model_tokenizer_sentence_transformers(model_dir: str,
-                                              model_info: ModelInfo,
-                                              model_kwargs: Dict[str, Any],
-                                              load_model: bool = True,
-                                              *,
-                                              tokenizer=None,
-                                              model_config=None,
-                                              automodel_class=None,
-                                              **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info.config = model_config
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    if load_model:
-        tokenizer = model.tokenizer
-    else:
-        model = None
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    return model, tokenizer
-
-
-def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
-    # TODO: remove
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    return model, processor
 
 
 class RewardModelLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         if 'AutoModel' in (getattr(config, 'auto_map', None) or {}):
-            self.automodel_class = self.automodel_class or AutoModel
-        return super().get_model(model_dir, config, model_kwargs)
+            self.auto_model_cls = self.auto_model_cls or AutoModel
+        return super().get_model(model_dir, config, processor, model_kwargs)
 
 
-def get_model(
+def get_model_processor(
     model_id_or_path: str,
+    *,
     torch_dtype: Optional[torch.dtype] = None,
     device_map: Union[str, Dict[str, Any], None] = None,
-    *,
+    load_model: bool = True,
     # hub
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
@@ -478,17 +482,18 @@ def get_model(
     attn_impl: Optional[str] = None,
     rope_scaling: Optional[Dict[str, Any]] = None,
     max_model_len: Optional[int] = None,
-    automodel_class=None,
+    auto_model_cls=None,
+    new_special_tokens: Optional[List[str]] = None,
     task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
     return_dummy_model: bool = False,
     model_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs,
-) -> PreTrainedModel:
+) -> Tuple[Optional[PreTrainedModel], Processor]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
-    model_kwargs: Passed to `automodel_class.from_pretrained`.
+    model_kwargs: Passed to `auto_model_cls.from_pretrained`.
     load_model: Whether to load the model. If set to False, the model will return `None`.
     use_hf: Indicates whether the model download hub is modelscope or huggingface.
     model_type: If it is not possible to uniquely determine the model_type from the architecture in config.json,
@@ -524,42 +529,13 @@ def get_model(
     loader = ModelLoader(
         model_info,
         model_meta,
+        load_model=load_model,
         attn_impl=attn_impl,
         rope_scaling=rope_scaling,
         max_model_len=max_model_len,
-        automodel_class=automodel_class,
+        auto_model_cls=auto_model_cls,
         return_dummy_model=return_dummy_model,
+        new_special_tokens=new_special_tokens,
         model_kwargs=model_kwargs,
         **kwargs)
     return loader.load()
-
-
-def get_model_tokenizer(
-        load_model: bool = True,
-        # hub
-        new_special_tokens: Optional[List[str]] = None,
-        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
-    # TODO: remove
-    if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
-        tokenizer = processor.tokenizer
-        patch_getattr(processor.__class__, 'tokenizer')
-    else:
-        tokenizer = processor
-    if new_special_tokens:
-        num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': new_special_tokens})
-        if num_new_tokens > 0:
-            logger.info(f'Added {num_new_tokens} new special tokens.')
-
-            if model is not None and not return_dummy_model:
-                llm_model = get_lm_head_model(model, model_meta)
-                origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
-                if origin_vocab_size < len(tokenizer):
-                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
-                    llm_model.resize_token_embeddings(vocab_size)
-                    # fix transformers==4.52.4 qwen2.5-vl
-                    HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
-
-    tokenizer.model_info = model_info
-    tokenizer.model_meta = model_meta
-
-    return model, processor

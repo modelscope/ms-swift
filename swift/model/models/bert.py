@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from types import MethodType
-
 import torch.nn.functional as F
 from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 
@@ -15,9 +13,9 @@ logger = get_logger()
 
 class ModernBertLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         config.reference_compile = False
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, config, *args, **kwargs)
 
 
 register_model(
@@ -35,9 +33,9 @@ register_model(
 
 class GTEBertLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        self.automodel_class = self.automodel_class or AutoModel
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, *args, **kwargs)
 
         def _normalizer_hook(module, input, output):
             output.last_hidden_state = F.normalize(output.last_hidden_state[:, 0], p=2, dim=1)
@@ -60,9 +58,9 @@ register_model(
 
 class GTEBertReranker(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        self.automodel_class = self.automodel_class or AutoModelForSequenceClassification
-        return super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModelForSequenceClassification
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(

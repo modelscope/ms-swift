@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
@@ -56,24 +55,16 @@ def _patch_minicpmv_device_map(model) -> None:
 
 class MiniCPMVLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
-        model = super().get_model(model_dir, config, model_kwargs)
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         model.resampler.to(self.torch_dtype)  # fix float32
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)
+        if hasattr(model, 'get_slice_image_placeholder'):
+            processor.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, processor)
+            processor.transform = MethodType(model.transform, processor)
         return model
-
-
-def get_model_tokenizer_minicpmv(model_dir: str,
-                                 model_info,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    if hasattr(model, 'get_slice_image_placeholder'):
-        tokenizer.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, tokenizer)
-        tokenizer.transform = MethodType(model.transform, tokenizer)
-    return model, tokenizer
 
 
 register_model(
@@ -96,22 +87,12 @@ register_model(
 
 class MiniCPMV2Loader(MiniCPMVLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         with patch_device_map():
-            model = super().get_model(model_dir, config, model_kwargs)
+            model = super().get_model(model_dir, *args, **kwargs)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
         return model
-
-
-def get_model_tokenizer_minicpmv_2_x(model_dir: str,
-                                     model_info,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    return model, processor
 
 
 register_model(
@@ -149,10 +130,10 @@ register_model(
 
 class MiniCPMO2Loader(MiniCPMV2Loader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
         config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
-        return super().get_model(model_dir, config, model_kwargs)
+        return super().get_model(model_dir, *args, **kwargs)
 
 
 register_model(

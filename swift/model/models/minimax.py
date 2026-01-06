@@ -1,12 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict
 
 import json
-from transformers import AutoProcessor, PreTrainedModel
+from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.template import TemplateType
+from swift.template import Processor, TemplateType
 from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -18,7 +17,7 @@ logger = get_logger()
 
 class MiniMaxVLLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         logger.warn('NOTE: minimax-vl-01 model does not support training.')
         n_gpu = get_device_count()
         _, local_rank, _, local_world_size = get_dist_setting()
@@ -63,28 +62,19 @@ class MiniMaxVLLoader(ModelLoader):
                     device_map[f'language_model.model.layers.{i * layers_per_device + j}'] = get_device(device_ids[i])
             model_kwargs['device_map'] = device_map
         with patch_ignore_check_imports():
-            return super().get_model(model_dir, config, model_kwargs)
+            return super().get_model(model_dir, config, processor, model_kwargs)
 
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        MiniMaxVL01ProcessorKwargs = get_class_from_dynamic_module(
+            'processing_minimax_vl_01.MiniMaxVL01ProcessorKwargs', model_dir)
+        get_hw_multiple_of = get_class_from_dynamic_module('processing_minimax_vl_01.get_hw_multiple_of', model_dir)
+        get_num_token = get_class_from_dynamic_module('processing_minimax_vl_01.get_num_token', model_dir)
 
-def get_model_tokenizer_minimax_vl(model_dir: str,
-                                   model_info,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    MiniMaxVL01ProcessorKwargs = get_class_from_dynamic_module('processing_minimax_vl_01.MiniMaxVL01ProcessorKwargs',
-                                                               model_dir)
-    get_hw_multiple_of = get_class_from_dynamic_module('processing_minimax_vl_01.get_hw_multiple_of', model_dir)
-    get_num_token = get_class_from_dynamic_module('processing_minimax_vl_01.get_num_token', model_dir)
-
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    processor.MiniMaxVL01ProcessorKwargs = MiniMaxVL01ProcessorKwargs
-    processor.get_hw_multiple_of = get_hw_multiple_of
-    processor.get_num_token = get_num_token
-    with patch_ignore_check_imports():
-        model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model,
-                                                               **kwargs)
-    processor.tokenizer = tokenizer
-    return model, processor
+        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        processor.MiniMaxVL01ProcessorKwargs = MiniMaxVL01ProcessorKwargs
+        processor.get_hw_multiple_of = get_hw_multiple_of
+        processor.get_num_token = get_num_token
+        return processor
 
 
 register_model(
@@ -102,7 +92,7 @@ register_model(
 
 class MinimaxTextLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, config, model_kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         logger.warn('NOTE: minimax-text-01 model does not support training.')
         n_gpu = get_device_count()
         _, local_rank, _, local_world_size = get_dist_setting()
@@ -131,7 +121,7 @@ class MinimaxTextLoader(ModelLoader):
                     device_map[f'model.layers.{i * layers_per_device + j}'] = get_device(i)
             model_kwargs['device_map'] = device_map
         with patch_ignore_check_imports():
-            return super().get_model(model_dir, config, model_kwargs)
+            return super().get_model(model_dir, config, processor, model_kwargs)
 
 
 register_model(

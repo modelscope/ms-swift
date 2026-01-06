@@ -2,11 +2,23 @@
 
 from typing import Any, Dict
 
-from swift.template import TemplateType
+from transformers import PretrainedConfig
+
+from swift.template import Processor, TemplateType
 from ..constant import LLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..register import register_model
+from ..register import ModelLoader, register_model
+
+
+class SkyworkLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        tokenizer = super().get_processor(model_dir, config)
+        tokenizer.add_tokens('[USER]')
+        tokenizer.add_tokens('[BOT]')
+        tokenizer.add_tokens('[SEP]')
+        return tokenizer
 
 
 def get_skywork_model_tokenizer(model_dir: str,
@@ -15,10 +27,7 @@ def get_skywork_model_tokenizer(model_dir: str,
                                 load_model: bool = True,
                                 **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if 'chat' in model_dir:
-        tokenizer.add_tokens('[USER]')
-        tokenizer.add_tokens('[BOT]')
-        tokenizer.add_tokens('[SEP]')
+
     return model, tokenizer
 
 
