@@ -599,7 +599,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             parameter_group_no_lora: Optional parameter group without LoRA names
 
         Returns:
-            State dict ready for vLLM (no clone needed since unmerge happens after load)
+            State dict ready for vLLM
         """
         is_peft = is_peft_model(self.model)
 
