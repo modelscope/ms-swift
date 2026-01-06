@@ -115,8 +115,6 @@ class RolloutArguments(DeployArguments):
 
     def __post_init__(self):
         self._check_trl_version()
-        # Set default engine type before parent's __post_init__ to prevent
-        # DeployArguments from setting vllm_use_async_engine=True
         self._set_default_engine_type()
         super().__post_init__()
         self._check_args()
