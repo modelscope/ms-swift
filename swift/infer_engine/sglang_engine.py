@@ -12,9 +12,9 @@ from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
 
 from swift.metrics import Metric
+from swift.model import get_model_processor
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger
-from swift.model import get_model_processor
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,

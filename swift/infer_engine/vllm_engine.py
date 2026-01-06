@@ -12,8 +12,9 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
-from swift.model import get_model_processor
+
 from swift.metrics import Metric
+from swift.model import get_model_processor
 from swift.template import Template, TemplateMeta
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
 from .infer_engine import InferEngine

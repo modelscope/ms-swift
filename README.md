@@ -246,7 +246,7 @@ Training:
 
 ```python
 # Retrieve the model and template, and add a trainable LoRA module
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(model.model_meta.template, tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
 
