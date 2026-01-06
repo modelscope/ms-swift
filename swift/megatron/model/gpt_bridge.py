@@ -15,11 +15,13 @@ from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
-from swift.model import get_model_tokenizer, save_checkpoint
+from swift.model import get_model_processor, save_checkpoint
 from swift.pipelines import get_multimodal_target_regex
-from swift.utils import deep_getattr, get_logger, get_modules_to_not_convert, is_last_rank, safe_snapshot_download
+from swift.utils import (
+deep_getattr, get_logger, get_modules_to_not_convert, is_last_rank, safe_snapshot_download,
+MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
+)
 from ..tuners import LoraParallelLinear
-from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -104,7 +106,7 @@ class GPTBridge:
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
-            self.hf_model, self.processor = get_model_tokenizer(
+            self.hf_model, self.processor = get_model_processor(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
     def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:

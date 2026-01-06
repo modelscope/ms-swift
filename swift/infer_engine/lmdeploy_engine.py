@@ -20,6 +20,7 @@ from transformers.utils.versions import require_version
 from swift.metrics import Metric
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
+from swift.model import get_model_processor
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -58,7 +59,7 @@ class LmdeployEngine(InferEngine):
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
-        self.processor = get_model_tokenizer(
+        self.processor = get_model_processor(
             model_id_or_path,
             torch_dtype,
             load_model=False,

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_tokenizer, register_model,
+from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_processor, register_model,
                          register_model_arch)
 from swift.model.models.qwen import patch_qwen_vl_utils
 from swift.model.patcher import patch_get_input_embeddings
@@ -91,7 +91,7 @@ register_model(
 
 if __name__ == '__main__':
     # Test and debug
-    model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
+    model, processor = get_model_processor('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
 
 logger = get_logger()
 
@@ -416,7 +416,7 @@ register_template(
 
 if __name__ == '__main__':
     # Test and debug
-    model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
+    model, processor = get_model_processor('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
     template = get_template('my_qwen2_5_omni', processor)
     data = {
         'messages': [

@@ -12,7 +12,7 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
-
+from swift.model import get_model_processor
 from swift.metrics import Metric
 from swift.template import Template, TemplateMeta
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
@@ -105,7 +105,7 @@ class VllmEngine(InferEngine):
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.reranker_use_activation = reranker_use_activation
-        self.processor = get_model_tokenizer(
+        self.processor = get_model_processor(
             model_id_or_path,
             torch_dtype,
             load_model=False,

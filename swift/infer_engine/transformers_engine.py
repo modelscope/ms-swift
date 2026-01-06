@@ -19,7 +19,7 @@ from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
 from swift.metrics import Metric
-from swift.model import get_model_tokenizer
+from swift.model import get_model_processor
 from swift.template import Template, TemplateMeta
 from swift.tuners import Swift
 from swift.utils import safe_snapshot_download, to_device
@@ -66,7 +66,7 @@ class TransformersEngine(InferEngine):
             reranker_use_activation: bool = True,
             **kwargs):
         download_model = kwargs.pop('download_model', True)
-        self.model, self.processor = get_model_tokenizer(
+        self.model, self.processor = get_model_processor(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,

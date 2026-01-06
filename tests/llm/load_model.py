@@ -3,14 +3,14 @@ from dataclasses import fields
 
 import torch
 
-from swift.model import MODEL_ARCH_MAPPING, ModelKeys, get_model_tokenizer
+from swift.model import MODEL_ARCH_MAPPING, ModelKeys, get_model_processor
 
 
 def get_model_and_tokenizer(ms_model_id, model_arch=None):
     try:
         import transformers
         print(f'Test model: {ms_model_id} with transformers version: {transformers.__version__}')
-        model_ins, tokenizer = get_model_tokenizer(ms_model_id)
+        model_ins, tokenizer = get_model_processor(ms_model_id)
         model_ins: torch.nn.Module
         if model_arch:
             model_arch: ModelKeys = MODEL_ARCH_MAPPING[model_arch]

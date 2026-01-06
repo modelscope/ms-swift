@@ -49,7 +49,7 @@ def infer_lora(infer_request: 'InferRequest'):
     # engine = TransformersEngine.from_model_template(model, template)
 
     # method3
-    model, tokenizer = get_model_tokenizer(args.model)
+    model, tokenizer = get_model_processor(args.model)
     model = Swift.from_pretrained(model, adapter_path)
     template = get_template(args.template, tokenizer, args.system)
     engine = TransformersEngine.from_model_template(model, template)
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     from swift.infer_engine import TransformersEngine, RequestConfig, AdapterRequest, InferRequest
     from swift.arguments import BaseArguments
     from swift.template import get_template
-    from swift.model import get_model_tokenizer
+    from swift.model import get_model_processor
     from swift.utils import safe_snapshot_download
     from swift.tuners import Swift
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])

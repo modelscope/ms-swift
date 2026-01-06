@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 
 from swift.hub import get_hub
-from swift.model import get_ckpt_dir, get_model_tokenizer, load_by_unsloth
+from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
 from swift.plugins import extra_tuners
 from swift.ray import RayArguments
 from swift.template import Processor, Template, get_template
@@ -342,4 +342,4 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         res['task_type'] = task_type or self.task_type
         res['num_labels'] = num_labels or self.num_labels
 
-        return get_model_tokenizer(**res)
+        return get_model_processor(**res)

@@ -4,7 +4,7 @@ import unittest
 import torch
 
 from swift.infer_engine import RequestConfig, TransformersEngine
-from swift.model import get_model_tokenizer
+from swift.model import get_model_processor
 from swift.template import get_template
 from swift.utils import get_logger, seed_everything
 
@@ -83,8 +83,8 @@ class TestTemplate(unittest.TestCase):
         ]
 
         # testing two template type.
-        tokenizer = get_model_tokenizer('Qwen/Qwen2.5-7B-Instruct', load_model=False)[1]
-        template = get_template(tokenizer.model_meta.template, tokenizer)
+        tokenizer = get_model_processor('Qwen/Qwen2.5-7B-Instruct', load_model=False)[1]
+        template = get_template(tokenizer)
         for agent_template_type in ('react_zh', 'qwen_zh'):
             agent_template = agent_template_map[agent_template_type]()
             template.agent_template = agent_template

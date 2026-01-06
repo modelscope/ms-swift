@@ -31,12 +31,13 @@ def infer_hf():
 
 
 def infer_swift():
-    from swift.infer_engine import get_model_tokenizer, get_template, InferRequest, RequestConfig, TransformersEngine
+    from swift import get_model_processor, get_template
+    from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
     from modelscope import snapshot_download
     from swift.tuners import Swift
     model_dir = snapshot_download('Qwen/Qwen2.5-7B-Instruct')
     adapter_dir = snapshot_download('swift/test_lora')
-    model, tokenizer = get_model_tokenizer(model_dir, device_map='auto')
+    model, tokenizer = get_model_processor(model_dir, device_map='auto')
     model = Swift.from_pretrained(model, adapter_dir)
     template = get_template(model.model_meta.template, tokenizer)
     engine = TransformersEngine.from_model_template(model, template)

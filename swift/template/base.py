@@ -181,9 +181,9 @@ class Template(ProcessorMixin):
         if self.model is not None:
             return self.model
         if self.dummy_model is None:
-            from swift.model import get_model_tokenizer
+            from swift.model import get_model_processor
             with torch.device('meta'):
-                self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
+                self.dummy_model = get_model_processor(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
 
     @staticmethod

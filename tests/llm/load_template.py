@@ -27,13 +27,14 @@ def load_ds(ds):
 
 
 def load_and_tokenize(ms_model_id, template):
-    from swift.dataset import EncodePreprocessor, get_model_tokenizer, get_template
+    from swift.dataset import EncodePreprocessor
+    from swift import get_model_processor, get_template
     try:
         vl_fields = ['vl', 'video', 'minicpmv', 'llava', 'vision', 'emu', 'florence']
-        model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model='mplug' in ms_model_id.lower())
+        model_ins, tokenizer = get_model_processor(ms_model_id, load_model='mplug' in ms_model_id.lower())
         template_ins = get_template(template, tokenizer)
         if template_ins.use_model:
-            model_ins, _ = get_model_tokenizer(ms_model_id, load_model=True)
+            model_ins, _ = get_model_processor(ms_model_id, load_model=True)
             template_ins.model = model_ins
         template_ins.set_mode('train')
         if 'audio' in template_ins.__class__.__name__.lower():
@@ -79,7 +80,7 @@ def load_ds_old(ds):
 def load_and_tokenize_old(ms_model_id, template):
     model_type = None
     model_info = None
-    from swift.model import get_model_tokenizer, MODEL_MAPPING
+    from swift.model import get_model_processor, MODEL_MAPPING
     from swift.template import get_template
     found = False
     for model_type, model_info in MODEL_MAPPING.items():
@@ -91,7 +92,7 @@ def load_and_tokenize_old(ms_model_id, template):
         raise ValueError(f'No model_type found: {ms_model_id}')
 
     vl_fields = ['vl', 'video', 'minicpm-v', 'llava', 'vision', 'emu', 'florence']
-    model_ins, tokenizer = get_model_tokenizer(model_type, load_model=True)
+    model_ins, tokenizer = get_model_processor(model_type, load_model=True)
 
     if model_info['template'] == 'default-generation':
         model_info['template'] = template.replace('_', '-')

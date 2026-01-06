@@ -14,6 +14,7 @@ from transformers import GenerationConfig
 from swift.metrics import Metric
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger
+from swift.model import get_model_processor
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
@@ -58,7 +59,7 @@ class SglangEngine(InferEngine):
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
-        self.processor = get_model_tokenizer(
+        self.processor = get_model_processor(
             model_id_or_path,
             torch_dtype,
             load_model=False,

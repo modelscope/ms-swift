@@ -8,7 +8,7 @@ from megatron.training import get_args
 from transformers import PreTrainedModel
 from transformers.utils import ContextManagers
 
-from swift.model import get_model_tokenizer
+from swift.model import get_model_processor
 from swift.utils import deep_getattr, disable_safe_ddp_context_use_barrier
 
 
@@ -58,7 +58,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         context_list.append(patch_hf_initialize_weight())
         kwargs['model_type'] = args.hf_model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
-            model, self.processor = get_model_tokenizer(
+            model, self.processor = get_model_processor(
                 args.model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
         for hf_prefix, mg_prefix in self.module_mapping.items():
