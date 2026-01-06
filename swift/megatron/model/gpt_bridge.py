@@ -283,8 +283,9 @@ class GPTBridge:
             elif hf_state_dict is None:
                 return {}
             else:
-                for k, v in hf_state_dict.items():
-                    hf_state_dict[k] = v.to(self._target_device)
+                if self._target_device is not None:
+                    for k, v in hf_state_dict.items():
+                        hf_state_dict[k] = v.to(self._target_device)
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):
