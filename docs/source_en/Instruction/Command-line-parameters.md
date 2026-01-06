@@ -426,7 +426,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_quantization: vllm is able to quantize model with this argument, supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - 🔥vllm_enable_prefix_caching: Enables vLLM's automatic prefix caching to save processing time for repeated prompt prefixes, improving inference efficiency. Default is `None`, following vLLM's default behavior.
   - The default value of this parameter is `False` in "ms-swift<3.9.1".
-- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. Default is None, which is automatically set based on the scenario: encode tasks (embedding, seq_cls, reranker, generative_reranker) default to True, deployment scenarios (swift deploy) default to True, and other scenarios default to False. Note: Encode tasks must use the async engine.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
 - vllm_engine_kwargs: Extra arguments for vllm, formatted as a JSON string. Default is `None`.
 
