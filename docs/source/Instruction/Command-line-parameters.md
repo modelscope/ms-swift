@@ -418,7 +418,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - vllm_quantization: vllm可以在内部量化模型，参数支持的值详见[这里](https://docs.vllm.ai/en/latest/serving/engine_args.html)。
 - 🔥vllm_enable_prefix_caching: 开启vllm的自动前缀缓存，节约重复查询前缀的处理时间，加快推理效率。默认为`None`，跟随vLLM行为。
   - 该参数在"ms-swift<3.9.1"的默认值为`False`。
-- vllm_use_async_engine: vLLM backend下是否使用async engine。部署情况（swift deploy）默认为True，其他情况默认为False。
+- vllm_use_async_engine: vLLM backend下是否使用async engine。默认为None，会根据场景自动设置：encode任务（embedding、seq_cls、reranker、generative_reranker）默认为True，部署场景（swift deploy）默认为True，其他情况默认为False。注意：encode任务需使用async engine。
 - vllm_reasoning_parser: 推理解析器类型，用于思考模型的思维链内容解析。默认为`None`。仅用于 `swift deploy` 命令。可选的种类参考[vLLM文档](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)。
 - vllm_engine_kwargs: vllm的额外参数，格式为json字符串。默认为None。
 
