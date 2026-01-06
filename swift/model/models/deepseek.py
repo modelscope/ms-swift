@@ -38,6 +38,7 @@ register_model(
         ],
         DeepseekLoader,
         template=TemplateType.deepseek,
+        architectures=['DeepseekForCausalLM'],
     ))
 
 register_model(
@@ -61,6 +62,7 @@ register_model(
         ],
         DeepseekLoader,
         model_arch=ModelArch.deepseek_v2,
+        architectures=['DeepseekV2ForCausalLM'],
         requires=['transformers>=4.39.3'],
     ))
 
@@ -118,6 +120,7 @@ register_model(
         ],
         DeepseekLoader,
         model_arch=ModelArch.deepseek_v2,
+        architectures=['DeepseekV3ForCausalLM'],
         requires=['transformers>=4.39.3'],
     ))
 
@@ -287,12 +290,12 @@ register_model(
         template=TemplateType.deepseek_vl2,
         model_arch=ModelArch.deepseek_vl2,
         requires=['transformers<4.42'],
-        hf_model_type=['deepseek_v2'],
+        architectures=['DeepseekV2ForCausalLM'],
         tags=['vision'],
     ))
 
 
-class DeepseekOCR(ModelLoader):
+class DeepseekOCRLoader(ModelLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         self.auto_model_cls = self.auto_model_cls or AutoModel
@@ -324,9 +327,10 @@ register_model(
                 Model('deepseek-ai/DeepSeek-OCR', 'deepseek-ai/DeepSeek-OCR'),
             ]),
         ],
-        DeepseekOCR,
+        DeepseekOCRLoader,
         template=TemplateType.deepseek_ocr,
         model_arch=ModelArch.deepseek_ocr,
+        architectures=['DeepseekOCRForCausalLM'],
         requires=['transformers==4.46.3', 'easydict'],
         tags=['vision'],
     ))

@@ -526,7 +526,7 @@ def get_model_processor(
         model_kwargs['quantization_config'] = quantization_config
     if max_memory:
         model_kwargs['max_memory'] = max_memory
-    loader = ModelLoader(
+    loader = model_meta.loader(
         model_info,
         model_meta,
         load_model=load_model,

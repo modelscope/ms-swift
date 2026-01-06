@@ -118,6 +118,6 @@ register_model(
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
             ], TemplateType.sus),
         ],
-        hf_model_type=['llama'],
+        architectures=['LlamaForCausalLM'],
         model_arch=ModelArch.llama,
     ))

@@ -39,7 +39,7 @@ register_model(
                 requires=['transformers>=4.45']),
         ],
         model_arch=ModelArch.llama,
-        hf_model_type=['llama'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(

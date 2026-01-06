@@ -179,7 +179,7 @@ register_model(
         Qwen2VLLoader,
         template=TemplateType.qwen2_gme,
         model_arch=ModelArch.qwen2_vl,
-        hf_model_type=['qwen2_vl'],
+        architectures=['Qwen2VLForConditionalGeneration'],
         tags=['vision']))
 
 

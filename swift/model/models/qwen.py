@@ -38,7 +38,7 @@ class QwenLoader(ModelLoader):
         if not isinstance(quantization_config, BitsAndBytesConfig):
             # not bnb quant
             config.torch_dtype = None
-        model = self.get_model(model_dir, config, processor, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         try:
             # fix mp+ddp bug
             model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
@@ -94,6 +94,7 @@ register_model(
                        tags=['financial']),
         ],
         QwenLoader,
+        architectures=['QWenLMHeadModel'],
         template=TemplateType.qwen,
         model_arch=ModelArch.qwen))
 
@@ -106,7 +107,7 @@ register_model(
         ])],
         QwenLoader,
         template=TemplateType.modelscope_agent,
-        hf_model_type=['qwen'],
+        architectures=['QWenLMHeadModel'],
         model_arch=ModelArch.qwen))
 
 
@@ -158,7 +159,7 @@ register_model(
         QwenAudioLoader,
         template=TemplateType.qwen_audio,
         model_arch=ModelArch.qwen_audio,
-        hf_model_type=['qwen'],
+        architectures=['QWenLMHeadModel'],
         additional_saved_files=['mel_filters.npz'],
         tags=['audio']))
 
@@ -235,7 +236,7 @@ register_model(
         QwenVLLoader,
         template=TemplateType.qwen_vl,
         model_arch=ModelArch.qwen_vl,
-        hf_model_type=['qwen'],
+        architectures=['QWenLMHeadModel'],
         additional_saved_files=['SimSun.ttf'],
         tags=['vision']))
 
@@ -468,6 +469,7 @@ register_model(
             ], TemplateType.deepseek_r1),
         ],
         requires=['transformers>=4.37'],
+        architectures=['Qwen2ForCausalLM'],
         model_arch=ModelArch.llama))
 
 register_model(
@@ -487,6 +489,7 @@ register_model(
             ])
         ],
         template=TemplateType.qwen,
+        architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
     ))
 
@@ -545,6 +548,7 @@ register_model(
             ], TemplateType.qwen3_nothinking),
         ],
         requires=['transformers>=4.51'],
+        architectures=['Qwen3ForCausalLM'],
         model_arch=ModelArch.llama))
 
 register_model(
@@ -599,6 +603,7 @@ register_model(
                 TemplateType.qwen3_thinking),
         ],
         requires=['transformers>=4.51'],
+        architectures=['Qwen3MoeForCausalLM'],
     ))
 
 register_model(
@@ -615,6 +620,7 @@ register_model(
             ], TemplateType.qwen3_thinking)
         ],
         requires=['transformers>=4.57'],
+        architectures=['Qwen3NextForCausalLM'],
     ))
 
 
@@ -772,6 +778,7 @@ register_model(
         ],
         Qwen2VLLoader,
         model_arch=ModelArch.qwen2_vl,
+        achitectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -806,6 +813,7 @@ register_model(
         ],
         Qwen2_5VLLoader,
         model_arch=ModelArch.qwen2_vl,
+        achitectures=['Qwen2_5_VLForConditionalGeneration'],
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
@@ -1045,6 +1053,7 @@ register_model(
         ],
         Qwen3VLLoader,
         model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
@@ -1074,7 +1083,7 @@ register_model(
         ],
         Qwen3VLMoeLoader,
         model_arch=ModelArch.qwen3_vl,
-        hf_model_type=['qwen3_vl_moe'],
+        architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
@@ -1093,7 +1102,7 @@ class Qwen2_5OmniLoader(ModelLoader):
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Qwen2_5OmniForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen2_5OmniForConditionalGeneration
-        model = self.get_model(model_dir, *args, **kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
@@ -1121,6 +1130,7 @@ register_model(
         ],
         Qwen2_5OmniLoader,
         model_arch=ModelArch.qwen2_5_omni,
+        architectures=['Qwen2_5OmniModel', 'Qwen2_5OmniForConditionalGeneration'],
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
@@ -1320,6 +1330,7 @@ register_model(
         ],
         Qwen3OmniLoader,
         model_arch=ModelArch.qwen3_omni,
+        architectures=['Qwen3OmniMoeForConditionalGeneration'],
         requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
         tags=['vision', 'video', 'audio'],
     ))
@@ -1342,6 +1353,7 @@ register_model(
         ], TemplateType.midashenglm)],
         MidashengLMLoader,
         model_arch=ModelArch.midashenglm,
+        architectures=['MiDashengLMModel'],
         requires=['transformers>=4.52', 'soundfile'],
         tags=['audio'],
     ))
@@ -1366,6 +1378,7 @@ register_model(
         ],
         Qwen2AudioLoader,
         model_arch=ModelArch.qwen2_audio,
+        architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45,<4.49', 'librosa'],
         tags=['audio'],
     ))
@@ -1425,7 +1438,7 @@ register_model(
         ],
         OvisLoader,
         model_arch=ModelArch.ovis,
-        hf_model_type=['ovis'],
+        architectures=['Ovis'],
         tags=['vision'],
     ))
 
@@ -1445,7 +1458,7 @@ register_model(
         OvisLoader,
         template=TemplateType.ovis2,
         model_arch=ModelArch.ovis,
-        hf_model_type=['ovis'],
+        architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
@@ -1478,7 +1491,7 @@ register_model(
         Ovis2_5Loader,
         template=TemplateType.ovis2_5,
         model_arch=ModelArch.ovis2_5,
-        hf_model_type=['ovis2_5'],
+        architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
@@ -1527,7 +1540,7 @@ register_model(
         ],
         template=TemplateType.qwen3_emb,
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
-        hf_model_type=['qwen3']))
+        architectures=['Qwen3ForCausalLM']))
 
 register_model(
     ModelMeta(
@@ -1539,5 +1552,5 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
-        hf_model_type=['qwen3'],
+        architectures=['Qwen3ForCausalLM']
         task_type='reranker'))

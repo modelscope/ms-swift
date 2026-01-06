@@ -57,5 +57,5 @@ register_model(
         CodeLlamaLoader,
         template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
-        hf_model_type=['llama'],
+        architectures=['LlamaForCausalLM'],
     ))

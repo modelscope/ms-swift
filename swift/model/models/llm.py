@@ -231,7 +231,7 @@ register_model(
             ]),
         ],
         SentenceTransformersLoader,
-        hf_model_type=['qwen2']))
+        architectures=['Qwen2ForCausalLM']))
 
 register_model(
     ModelMeta(
@@ -268,6 +268,7 @@ register_model(
             ])
         ],
         template=TemplateType.dots1,
+        architectures=['Dots1ForCausalLM'],
         requires=['transformers>=4.53'],
     ))
 
@@ -278,6 +279,7 @@ register_model(
             Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
         ])],
         template=TemplateType.hunyuan_moe,
+        architectures=['HunYuanMoEV1ForCausalLM'],
     ))
 
 register_model(
@@ -313,6 +315,7 @@ register_model(
         ],
         template=TemplateType.hunyuan,
         requires=['transformers>=4.55.0.dev0'],
+        architectures=['HunYuanDenseV1ForCausalLM'],
     ))
 
 register_model(
@@ -325,6 +328,7 @@ register_model(
         ],
         template=TemplateType.gpt_oss,
         ignore_patterns=['metal/', 'original/'],
+        architectures=['GptOssForCausalLM'],
         requires=['transformers>=4.55']))
 
 register_model(

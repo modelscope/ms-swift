@@ -64,7 +64,6 @@ class ModelMeta:
 
     template: Optional[str] = None
     model_arch: Optional[str] = None
-    hf_model_type: List[str] = field(default_factory=list)
     architectures: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
@@ -90,8 +89,6 @@ class ModelMeta:
             self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
-        if len(self.hf_model_type) == 0:
-            self.hf_model_type.append(self.model_type)
 
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
@@ -188,9 +185,8 @@ def _get_arch_mapping():
     return res
 
 
-def get_matched_model_types(hf_model_type: Optional[List[str]]) -> List[str]:
+def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     """Get possible model_type."""
-    # TODO
     architectures = architectures or ['null']
     if architectures:
         architectures = architectures[0]
@@ -223,8 +219,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
-        hf_model_type = HfConfigFactory.get_config_attr(config, 'model_type')
-        model_types = get_matched_model_types(hf_model_type)
+        architectures = HfConfigFactory.get_config_attr(config, 'architectures')
+        model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Failed to automatically match `model_type`. '
                              f'Please explicitly pass the `model_type` for `{model_dir}`. '

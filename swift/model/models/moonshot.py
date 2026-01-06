@@ -18,7 +18,7 @@ class KimiVLLoader(ModelLoader):
             del KimiVLPreTrainedModel._supports_sdpa
         except AttributeError:
             pass
-        model = self.get_model(model_dir, *args, **kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         patch_get_input_embeddings(model.vision_tower, 'patch_embed')
         return model
 

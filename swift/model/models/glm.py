@@ -223,7 +223,7 @@ class GLM4vLoader(ModelLoader):
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Glm4vForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Glm4vForConditionalGeneration
-        model = self.get_model(model_dir, *args, **kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
         if hasattr(model, 'visual'):
             patch_get_input_embeddings(model.visual, 'patch_embed')
 

@@ -181,6 +181,7 @@ register_model(
         Mistral3Loader,
         template=TemplateType.mistral_2503,
         model_arch=ModelArch.llava_hf,
+        architectures=['Mistral3ForConditionalGeneration'],
         tags=['vision'],
         ignore_patterns=[],
     ))
@@ -204,7 +205,7 @@ register_model(
         ],
         Mistral3_2506Loader,
         template=TemplateType.mistral_2506,
-        hf_model_type=['mistral3'],
+        architectures=['Mistral3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
     ))
