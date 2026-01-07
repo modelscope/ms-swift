@@ -157,6 +157,47 @@ register_template(Llama3TemplateMeta(
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """处理 packing 时的多模态数据合并。
+
+        主要处理 image_bound 的偏移调整和 pixel_values、tgt_sizes 的拼接。
+        """
+        # 1. 调用父类方法处理 input_ids, labels, loss_scale, position_ids 等
+        packed = super().packing_row(row)
+
+        # 2. 处理 image_bound - 需要根据累积的 token offset 调整索引
+        image_bounds = []
+        offset = 0
+        for r in row:
+            bounds = r.get('image_bound')
+            if bounds is not None:
+                for bound in bounds:
+                    if isinstance(bound, torch.Tensor) and bound.numel() > 0:
+                        adjusted = bound + offset
+                        image_bounds.append(adjusted)
+                    elif isinstance(bound, (list, tuple)) and len(bound) > 0:
+                        adjusted = torch.tensor(bound) + offset
+                        image_bounds.append(adjusted)
+            offset += r['length']
+        packed['image_bound'] = image_bounds
+
+        # 3. 拼接 pixel_values 和 tgt_sizes
+        pixel_values = []
+        for r in row:
+            pv = r.get('pixel_values')
+            if pv is not None:
+                pixel_values.extend(pv)
+        packed['pixel_values'] = pixel_values
+
+        tgt_sizes = []
+        for r in row:
+            ts = r.get('tgt_sizes')
+            if ts is not None:
+                tgt_sizes.extend(ts)
+        packed['tgt_sizes'] = tgt_sizes
+
+        return packed
+
     def init_env_args(self):
         super().init_env_args()
         self.max_num_frames = get_env_args('max_num_frames', int, 64)
@@ -243,6 +284,23 @@ register_template(ChatmlTemplateMeta(
 
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """处理 packing 时的多模态数据合并。
+
+        在 MiniCPMV2_6Template 基础上，额外处理 temporal_ids 字段（视频场景）。
+        """
+        packed = super().packing_row(row)
+
+        # 处理 temporal_ids（视频场景）
+        temporal_ids = []
+        for r in row:
+            tid = r.get('temporal_ids')
+            if tid is not None:
+                temporal_ids.extend(tid)
+        packed['temporal_ids'] = temporal_ids
+
+        return packed
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
