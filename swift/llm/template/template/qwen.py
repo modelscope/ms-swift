@@ -95,6 +95,28 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template='qwen3_coder'))
 
 
+class Qwen3EmbTemplate(Template):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.system is not None:
+            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
+            inputs.system = None
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
+        return inputs
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.qwen3_emb,
+        template_cls=Qwen3EmbTemplate,
+        suffix=['<|endoftext|>'],
+        prefix=[],
+        chat_sep=[],
+        prompt=['{{QUERY}}']))
+
+
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
