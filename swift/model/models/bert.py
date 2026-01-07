@@ -27,6 +27,7 @@ register_model(
             ])
         ],
         ModernBertLoader,
+        template=TemplateType.dummy,
         requires=['transformers>=4.48'],
         architectures=['ModernBertForMaskedLM'],
         tags=['bert']))
@@ -53,6 +54,7 @@ register_model(
             Model('iic/gte-modernbert-base', 'Alibaba-NLP/gte-modernbert-base'),
         ])],
         GTEBertLoader,
+        template=TemplateType.dummy,
         requires=['transformers>=4.48'],
         architectures=['ModernBertModel'],
         tags=['bert', 'embedding']))
@@ -78,6 +80,9 @@ register_model(
         tags=['bert', 'reranker']))
 
 register_model(
-    ModelMeta(BertModelType.bert, [ModelGroup([
-        Model('iic/nlp_structbert_backbone_base_std'),
-    ])], tags=['bert']))
+    ModelMeta(
+        BertModelType.bert, [ModelGroup([
+            Model('iic/nlp_structbert_backbone_base_std'),
+        ])],
+        template=TemplateType.dummy,
+        tags=['bert']))

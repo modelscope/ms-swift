@@ -111,6 +111,7 @@ class LLMTemplateType:
     dbrx = 'dbrx'
 
     bert = 'bert'
+    dummy = 'dummy'
     minimind = 'minimind'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'

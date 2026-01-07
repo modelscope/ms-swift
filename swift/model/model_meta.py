@@ -70,7 +70,6 @@ class ModelMeta:
     torch_dtype: Optional[torch.dtype] = None
 
     is_reward: bool = False
-    is_reranker: bool = False
     task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
@@ -80,20 +79,22 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from .constant import MLLMModelType, RMModelType, RerankerModelType
+        from .constant import RMModelType, RerankerModelType
         from .register import ModelLoader
-        if self.template is None:
-            self.template = 'dummy'
         assert not isinstance(self.loader, str)  # check ms-swift4.0
         if self.loader is None:
             self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
-
+        self.available_templates = set([self.template])
+        for model_group in self.model_groups:
+            self.available_templates.add(model_group.template)
+        self.available_templates.discard(None)
+        self.available_templates = list(self.available_templates)
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
         if self.model_type in RerankerModelType.__dict__:
-            self.is_reranker = True
+            self.task_type = 'reranker'
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
@@ -137,7 +138,7 @@ class ModelInfo:
     is_moe_model: bool = False
     is_multimodal: bool = False
     config: Optional[PretrainedConfig] = None
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
+    task_type: Optional[str] = None
     num_labels: Optional[int] = None
 
     def __post_init__(self):
@@ -258,6 +259,7 @@ def get_model_info_meta(
         quantization_config=None,
         task_type=None,
         num_labels=None,
+        problem_type=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
     from .register import ModelLoader
     model_meta = get_matched_model_meta(model_id_or_path)
@@ -309,9 +311,14 @@ def get_model_info_meta(
         logger.info('Setting generative_reranker task (no num_labels needed)')
     elif task_type == 'seq_cls':
         assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+        if problem_type is None:
+            if num_labels == 1:
+                problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'
 
     model_info.task_type = task_type
     model_info.num_labels = num_labels
-
+    model_info.problem_type = problem_type
     model_meta.check_requires(model_info)
     return model_info, model_meta

@@ -187,8 +187,6 @@ class ModelLoader(BaseModelLoader):
         self.return_dummy_model = return_dummy_model
         self.new_special_tokens = new_special_tokens
         self.model_kwargs = model_kwargs
-
-        self.problem_type = kwargs.get('problem_type')
         self.patch_offload = kwargs.pop('patch_offload', False)
         self.init_strategy = kwargs.get('init_strategy')
         self.local_repo_path = kwargs.get('local_repo_path')
@@ -223,12 +221,9 @@ class ModelLoader(BaseModelLoader):
         if num_labels and self.model_info.task_type in ['seq_cls', 'reranker']:
             self.model_info.num_labels = num_labels
             config.num_labels = num_labels
-        if self.model_info.task_type == 'seq_cls':
-            if self.problem_type is None:
-                if self.model_info.num_labels == 1 or self.model_meta.is_reward:
-                    problem_type = 'regression'
-                else:
-                    problem_type = 'single_label_classification'
+        problem_type = self.model_info.problem_type or getattr(config, 'problem_type', None)
+        if problem_type and self.model_info.task_type == 'seq_cls':
+            self.model_info.problem_type = problem_type
             config.problem_type = problem_type
         self._update_attn_impl(config)
         self.model_info.config = config
@@ -288,7 +283,7 @@ class ModelLoader(BaseModelLoader):
                                'ignore_mismatched_sizes will be set to True')
                 model_kwargs['ignore_mismatched_sizes'] = True
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
-            elif model_info.task_type == 'reranker' and not model_meta.is_reranker:
+            elif model_info.task_type == 'reranker':
                 # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
                 logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
                 context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
@@ -486,6 +481,7 @@ def get_model_processor(
     new_special_tokens: Optional[List[str]] = None,
     task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     return_dummy_model: bool = False,
     model_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs,
@@ -518,7 +514,8 @@ def get_model_processor(
         model_type=model_type,
         quantization_config=quantization_config,
         task_type=task_type,
-        num_labels=num_labels)
+        num_labels=num_labels,
+        problem_type=problem_type)
     if device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
@@ -539,3 +536,32 @@ def get_model_processor(
         model_kwargs=model_kwargs,
         **kwargs)
     return loader.load()
+
+
+def get_processor(
+    model_id_or_path: str,
+    *,
+    # hub
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    revision: Optional[str] = None,
+    download_model: Optional[bool] = None,
+    # model kwargs
+    model_type: Optional[str] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    num_labels: Optional[int] = None,
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
+    **kwargs,
+) -> Processor:
+    return get_model_processor(
+        model_id_or_path,
+        use_hf=use_hf,
+        hub_token=hub_token,
+        revision=revision,
+        download_model=download_model,
+        model_type=model_type,
+        task_type=task_type,
+        num_labels=num_labels,
+        problem_type=problem_type,
+        load_model=False,
+        **kwargs)[1]

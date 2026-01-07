@@ -231,6 +231,7 @@ register_model(
             ]),
         ],
         SentenceTransformersLoader,
+        template=TemplateType.dummy,
         architectures=['Qwen2ForCausalLM']))
 
 register_model(

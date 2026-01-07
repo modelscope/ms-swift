@@ -191,5 +191,6 @@ register_model(
             ], ),
         ],
         SentenceTransformersLoader,
+        template=TemplateType.dummy,
         architectures=['Gemma3TextModel'],
     ))

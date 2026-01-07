@@ -47,8 +47,7 @@ def get_template(
     hub_token: Optional[str] = None,
     revision: Optional[str] = None,
 ) -> 'Template':
-    model_dir, template_type = get_template_info_meta(
-        model_id_or_path, use_hf=use_hf, hub_token=hub_token, revision=revision)
+    template_type = processor.model_meta.template
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
