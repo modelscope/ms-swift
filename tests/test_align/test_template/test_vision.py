@@ -54,7 +54,7 @@ def test_qwen2_5_vl_batch_infer():
         }],
         'videos': ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     }],
-                           request_config=request_config)
+                        request_config=request_config)
     response_list = [resp[0].choices[0].message.content, resp[1].choices[0].message.content]
     model = engine.model
     template = engine.default_template

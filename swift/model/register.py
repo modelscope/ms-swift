@@ -506,7 +506,7 @@ def get_model_processor(
     patch_mp_ddp()
     model_info, model_meta = get_model_info_meta(
         model_id_or_path,
-        torch_dtype,
+        torch_dtype=torch_dtype,
         use_hf=use_hf,
         hub_token=hub_token,
         revision=revision,

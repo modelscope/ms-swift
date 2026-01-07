@@ -26,8 +26,9 @@ class GRPOVllmEngine(VllmEngine):
     def __init__(
         self,
         model_id_or_path: str,
-        torch_dtype: Optional[torch.dtype] = None,
         *,
+        template: Optional[Template] = None,
+        torch_dtype: Optional[torch.dtype] = None,
         use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
@@ -59,11 +60,11 @@ class GRPOVllmEngine(VllmEngine):
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
-        template: Optional[Template] = None,
         **kwargs,
     ) -> None:
         super().__init__(
             model_id_or_path=model_id_or_path,
+            template=template,
             torch_dtype=torch_dtype,
             use_async_engine=use_async_engine,
             model_type=model_type,
@@ -94,7 +95,6 @@ class GRPOVllmEngine(VllmEngine):
             distributed_executor_backend=distributed_executor_backend,
             quantization=quantization,
             engine_kwargs=engine_kwargs,
-            template=template,
         )
 
     def infer(
@@ -103,7 +103,6 @@ class GRPOVllmEngine(VllmEngine):
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
@@ -121,7 +120,6 @@ class GRPOVllmEngine(VllmEngine):
             infer_requests,
             request_config,
             metrics,
-            template=template,
             use_tqdm=use_tqdm,
             adapter_request=adapter_request,
         )
@@ -181,17 +179,16 @@ class GRPOVllmEngine(VllmEngine):
         new_tasks = [_new_run(task) for task in tasks]
         return await self.batch_run(new_tasks)
 
-    def _create_chat_completion_response(self, result, inputs, template: Template, request_config,
-                                         request_id) -> ChatCompletionResponse:
+    def _create_chat_completion_response(self, result, inputs, request_config, request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = template.decode(output.token_ids)
+            response = self.template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
-            toolcall = self._get_toolcall(response, template)
+            toolcall = self._get_toolcall(response)
 
             token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(

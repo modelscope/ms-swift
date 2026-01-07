@@ -29,8 +29,9 @@ class SglangEngine(InferEngine):
     def __init__(
         self,
         model_id_or_path: str,
-        torch_dtype: Optional[torch.dtype] = None,
         *,
+        template: Optional[Template] = None,
+        torch_dtype: Optional[torch.dtype] = None,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -55,13 +56,12 @@ class SglangEngine(InferEngine):
         speculative_num_draft_tokens: Optional[int] = None,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
-        template: Optional[Template] = None,
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
         self.processor = get_model_processor(
             model_id_or_path,
-            torch_dtype,
+            torch_dtype=torch_dtype,
             load_model=False,
             download_model=True,
             model_type=model_type,
@@ -137,17 +137,17 @@ class SglangEngine(InferEngine):
 
         return kwargs
 
-    def _add_stop_words(self, generation_config: Dict[str, Any], request_config: RequestConfig,
-                        template_meta: TemplateMeta) -> None:
+    def _add_stop_words(self, generation_config: Dict[str, Any], request_config: RequestConfig) -> None:
+        template_meta = self.template.template_meta
         stop_words = (request_config.stop or []) + (self.generation_config.get('stop') or []) + template_meta.stop_words
         generation_config['stop_token_ids'] = self._get_stop_token_ids(stop_words)
 
-    def _create_chat_completion_response(self, output, inputs, template, return_details: bool = False):
+    def _create_chat_completion_response(self, output, inputs, return_details: bool = False):
         assert output is not None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
-        response = template.decode(output['output_ids'])
-        toolcall = self._get_toolcall(response, template)
+        response = self.template.decode(output['output_ids'])
+        toolcall = self._get_toolcall(response)
         token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
@@ -176,37 +176,27 @@ class SglangEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)
+        return super().infer(infer_requests, request_config, metrics, use_tqdm=use_tqdm)
 
     async def infer_async(self,
                           infer_request: InferRequest,
                           request_config: Optional[RequestConfig] = None,
                           *,
-                          template: Optional[Template] = None,
                           pre_infer_hook=None,
                           **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
-        if template is None:
-            template = self.default_template
-
-        template.set_mode('sglang')
+        self.template.set_mode('sglang')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
+            inputs = await loop.run_in_executor(None, self.template.encode, infer_request, True)
         if self.task_type == 'embedding':
             inputs.pop('length', None)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template.template_meta)
-        kwargs.update({
-            'template': template,
-            'inputs': inputs,
-            'generation_config': generation_config,
-            'request_config': request_config
-        })
+        self._add_stop_words(generation_config, request_config)
+        kwargs.update({'inputs': inputs, 'generation_config': generation_config, 'request_config': request_config})
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
@@ -217,7 +207,7 @@ class SglangEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
-    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any], **kwargs) -> EmbeddingResponse:
+    async def _infer_embedding_async(self, inputs: Dict[str, Any], **kwargs) -> EmbeddingResponse:
         from sglang.srt.managers.io_struct import EmbeddingReqInput
         obj = EmbeddingReqInput(
             input_ids=inputs['input_ids'], image_data=inputs.get('images'), audio_data=inputs.get('audios'))
@@ -230,27 +220,26 @@ class SglangEngine(InferEngine):
             usage=usage_info,
             id=random_uuid())
 
-    async def _infer_full_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
+    async def _infer_full_async(self, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                 request_config: RequestConfig) -> ChatCompletionResponse:
         engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
         output = await self.engine.async_generate(**engine_inputs, sampling_params=generation_config)
         output['prompt_token_ids'] = inputs['input_ids']
-        return self._create_chat_completion_response(output, inputs, template, request_config.return_details)
+        return self._create_chat_completion_response(output, inputs, request_config.return_details)
 
-    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
+    async def _infer_stream_async(self, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
         engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
         result_generator = await self.engine.async_generate(
             **engine_inputs, sampling_params=generation_config, stream=True)
-        infer_streamer = InferStreamer(template)
+        infer_streamer = InferStreamer(self.template)
         async for output in result_generator:
-            res = self._create_chat_completion_stream_response(output, template, infer_streamer)
+            res = self._create_chat_completion_stream_response(output, infer_streamer)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, output, template,
-                                                infer_streamer) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, output, infer_streamer) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
@@ -261,7 +250,7 @@ class SglangEngine(InferEngine):
         toolcall = None
         if is_finished:
             finish_reason = finish_reason['type']
-            toolcall = self._get_toolcall(template.decode(output['output_ids']), template)
+            toolcall = self._get_toolcall(self.template.decode(output['output_ids']))
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         # TODO: logprobs

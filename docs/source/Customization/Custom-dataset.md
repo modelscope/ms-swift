@@ -238,10 +238,10 @@ ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift.template import get_model_tokenizer, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer)
+processor = get_processor('Qwen/Qwen2.5-VL-7B-Instruct')
+template = get_template(processor)
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data, return_template_inputs=True)

@@ -247,8 +247,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
 
 def get_model_info_meta(
         model_id_or_path: str,
-        torch_dtype: Optional[torch.dtype] = None,
         *,
+        torch_dtype: Optional[torch.dtype] = None,
         # hub
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,

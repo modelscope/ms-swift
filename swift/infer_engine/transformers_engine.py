@@ -14,6 +14,7 @@ import json
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from torch import nn
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
@@ -46,41 +47,44 @@ class TransformersEngine(InferEngine):
 
     def __init__(
             self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
+            model: Union[str, nn.Module],
             *,
-            adapters: List[str] = None,
+            template: Optional[Template] = None,
+            adapters: Optional[List[str]] = None,
             max_batch_size: int = 1,  # 0/1: no limit
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            revision: Optional[str] = None,
-            hub_token: Optional[str] = None,
-            load_model: bool = True,
+            reranker_use_activation: bool = True,
             # model kwargs
+            torch_dtype: Optional[torch.dtype] = None,
+            model_type: Optional[str] = None,
             attn_impl: Optional[str] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             task_type: Optional[str] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
-            template: Optional[Template] = None,
-            reranker_use_activation: bool = True,
+            # hub kwargs
+            use_hf: Optional[bool] = None,
+            revision: Optional[str] = None,
+            hub_token: Optional[str] = None,
             **kwargs):
-        download_model = kwargs.pop('download_model', True)
-        self.model, self.processor = get_model_processor(
-            model_id_or_path,
-            torch_dtype,
-            load_model=load_model,
-            model_type=model_type,
-            download_model=download_model,
-            use_hf=use_hf,
-            hub_token=hub_token,
-            revision=revision,
-            device_map=device_map,
-            quantization_config=quantization_config,
-            attn_impl=attn_impl,
-            task_type=task_type,
-            model_kwargs=model_kwargs,
-            **kwargs)
+        if isinstance(model, str):
+            self.model, self.processor = get_model_processor(
+                model,
+                torch_dtype=torch_dtype,
+                model_type=model_type,
+                use_hf=use_hf,
+                hub_token=hub_token,
+                revision=revision,
+                device_map=device_map,
+                quantization_config=quantization_config,
+                attn_impl=attn_impl,
+                task_type=task_type,
+                model_kwargs=model_kwargs,
+                **kwargs)
+        elif isinstance(model, nn.Module):
+            self.model = model
+            if template is None:
+                raise ValueError('`template` is required when `model` is a nn.Module')
+            self.processor = template.processor
         self.reranker_use_activation = reranker_use_activation
         self.max_batch_size = max_batch_size
         if isinstance(adapters, str):
@@ -105,9 +109,7 @@ class TransformersEngine(InferEngine):
     def _fetch_infer_requests(self):
         while not self._queue.empty():
             infer_request, kwargs, queue = self._queue.get()
-            template = kwargs['template']
-            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], template
-                                                and template.template_meta))).hexdigest()
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config']))).hexdigest()
             if info not in self._task_pool:
                 self._task_pool[info] = kwargs, []
             self._task_pool[info][1].append((infer_request, queue))
@@ -152,15 +154,6 @@ class TransformersEngine(InferEngine):
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
-    @classmethod
-    def from_model_template(cls, model, template=None, *, max_batch_size: int = 1):
-        self = super().__new__(cls)
-        self.model = model
-        self.processor = template.processor
-        self.max_batch_size = max_batch_size
-        self._post_init(template)
-        return self
-
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config, self.tokenizer)
         generation_config.return_dict_in_generate = True
@@ -169,8 +162,8 @@ class TransformersEngine(InferEngine):
         generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
-    def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,
-                        template_meta: TemplateMeta) -> None:
+    def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfiga) -> None:
+        template_meta = self.template.template_meta
         stop_words = (request_config.stop or []) + template_meta.stop_words
         generation_config.stop_words = self._get_stop_words(stop_words)
 
@@ -207,7 +200,7 @@ class TransformersEngine(InferEngine):
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 
-    def _infer_stream(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+    def _infer_stream(self, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
                       adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
@@ -232,15 +225,15 @@ class TransformersEngine(InferEngine):
         def _model_generate(**kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
-            template.generate(self.model, **kwargs)
+            self.template.generate(self.model, **kwargs)
 
-        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
         all_is_finished = False
         is_finished = [False] * batch_size
-        infer_streamers = [InferStreamer(template) for _ in range(batch_size)]
+        infer_streamers = [InferStreamer(self.template) for _ in range(batch_size)]
         request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
         token_idxs = [0] * batch_size
 
@@ -259,7 +252,7 @@ class TransformersEngine(InferEngine):
             except StopIteration:
                 all_is_finished = True
 
-            batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
+            batched_generate_ids = self.template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
                                           request_config.top_logprobs)
 
@@ -290,7 +283,7 @@ class TransformersEngine(InferEngine):
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = None
                 if is_finished[i]:
-                    toolcall = self._get_toolcall(template.decode(generate_ids), template)
+                    toolcall = self._get_toolcall(self.template.decode(generate_ids))
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
 
@@ -318,7 +311,7 @@ class TransformersEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
-    def _infer_forward(self, template: Template, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
+    def _infer_forward(self, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
                        request_config: RequestConfig, **kwargs):
         call_kwargs = {}
         top_logprobs = request_config.top_logprobs or 20
@@ -335,22 +328,22 @@ class TransformersEngine(InferEngine):
             logits = output['last_hidden_state']
         else:
             raise NotImplementedError('Only support `logits` or `hidden_state` in output.')
-
-        if template.task_type == 'seq_cls':
-            preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
-        elif template.task_type == 'prm':
-            preds = template.decode_prm(inputs['input_ids'], logits)
+        task_type = self.template.task_type
+        if task_type == 'seq_cls':
+            preds, logprobs = self.template.decode_seq_cls(logits, top_logprobs)
+        elif task_type == 'prm':
+            preds = self.template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
-        elif template.task_type == 'embedding':
+        elif task_type == 'embedding':
             preds = logits
             logprobs = [None] * len(preds)
-        elif template.task_type in ('reranker', 'generative_reranker'):
-            if template.task_type == 'generative_reranker':
+        elif task_type in ('reranker', 'generative_reranker'):
+            if task_type == 'generative_reranker':
                 # Qwen3-reranker like
                 positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
                 negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-                token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
-                token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
+                token_false_id = self.template.tokenizer.convert_tokens_to_ids(negative_token)
+                token_true_id = self.template.tokenizer.convert_tokens_to_ids(positive_token)
                 batch_scores = logits[:, -1, :]
                 true_vector = batch_scores[:, token_true_id]
                 false_vector = batch_scores[:, token_false_id]
@@ -364,12 +357,12 @@ class TransformersEngine(InferEngine):
             preds = preds.tolist()
             logprobs = [None] * len(preds)
         else:
-            raise ValueError(f'Unsupported task_type: {template.task_type}')
+            raise ValueError(f'Unsupported task_type: {task_type}')
 
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
-            if template.task_type == 'embedding':
+            if task_type == 'embedding':
                 res.append(
                     EmbeddingResponse(
                         model=self.model_name, usage=usage_info, data=[EmbeddingResponseData(embedding=pred.tolist())]))
@@ -384,7 +377,7 @@ class TransformersEngine(InferEngine):
                 res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
-    def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+    def _infer_full(self, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
                     adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
                     template_inputs) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
@@ -393,12 +386,12 @@ class TransformersEngine(InferEngine):
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
-        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
-        output = dict(template.generate(self.model, **generate_kwargs))
+        generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        output = dict(self.template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
-        batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
-        template.debug_logger({'generate_ids': batched_generate_ids})  # debug
+        batched_generate_ids = self.template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
+        self.template.debug_logger({'generate_ids': batched_generate_ids})  # debug
         batched_logprobs = self.preprocess_logits(
             output.get('logits'), batched_generate_ids, request_config.top_logprobs)
 
@@ -422,9 +415,9 @@ class TransformersEngine(InferEngine):
 
                 logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
-                response = template.decode(generate_ids, template_inputs=template_inputs[i])
+                response = self.template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
-                toolcall = self._get_toolcall(response, template)
+                toolcall = self._get_toolcall(response)
                 token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
@@ -457,7 +450,6 @@ class TransformersEngine(InferEngine):
         infer_request: InferRequest,
         request_config: Optional[RequestConfig] = None,
         *,
-        template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
@@ -466,7 +458,6 @@ class TransformersEngine(InferEngine):
         queue = asyncio.Queue()
         self._queue.put((infer_request, {
             'request_config': request_config,
-            'template': template,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
         }, (queue, asyncio.get_event_loop())))
@@ -494,37 +485,32 @@ class TransformersEngine(InferEngine):
         infer_requests: List[InferRequest],
         request_config: RequestConfig,
         *,
-        template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
-        if template is None:
-            template = self.default_template
-        if template.use_model:
-            template.model = self.model
+        if self.template.use_model:
+            self.template.model = self.model
 
         if self.model_info.task_type == 'causal_lm':
-            template.set_mode('pt')
+            self.template.set_mode('pt')
 
-        batched_inputs, error_list = self._batch_encode(
-            infer_requests, template=template, strict=getattr(self, 'strict', True))
+        batched_inputs, error_list = self._batch_encode(infer_requests, strict=getattr(self, 'strict', True))
         if len(batched_inputs) > 0:
             template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
-            inputs = to_device(template.data_collator(batched_inputs), self.model.device)
-            template.debug_logger(inputs)  # debug
+            inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+            self.template.debug_logger(inputs)  # debug
             if self.model.model_meta.is_multimodal:
-                _, inputs = template.pre_forward_hook(self.model, None, inputs)
+                _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
             if self.model_info.task_type == 'causal_lm':
                 self.set_default_max_tokens(request_config, inputs)
                 generation_config = self._prepare_generation_config(request_config)
-                self._add_stop_words(generation_config, request_config, template.template_meta)
+                self._add_stop_words(generation_config, request_config)
             else:
                 generation_config = request_config
 
             kwargs = {
-                'template': template,
                 'inputs': inputs,
                 'generation_config': generation_config,
                 'adapter_request': adapter_request,
@@ -547,7 +533,7 @@ class TransformersEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in {
+                infer_func = self._infer_forward if self.template.task_type in {
                     'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
                 } else self._infer_full
                 res = infer_func(**kwargs)
@@ -561,7 +547,6 @@ class TransformersEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
@@ -569,12 +554,7 @@ class TransformersEngine(InferEngine):
             request_config = RequestConfig()
         if request_config.stream:
             return super().infer(
-                infer_requests,
-                request_config,
-                metrics,
-                template=template,
-                use_tqdm=use_tqdm,
-                adapter_request=adapter_request)
+                infer_requests, request_config, metrics, use_tqdm=use_tqdm, adapter_request=adapter_request)
         # Has higher stability than calling super().infer
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
@@ -587,8 +567,7 @@ class TransformersEngine(InferEngine):
         i = 0
         while i < len(infer_requests):
             infer_requests_samples = infer_requests[i:i + max_batch_size]
-            res += self._infer(
-                infer_requests_samples, request_config, template=template, adapter_request=adapter_request)
+            res += self._infer(infer_requests_samples, request_config, adapter_request=adapter_request)
             i += max_batch_size
             prog_bar.update(len(infer_requests_samples))
         prog_bar.close()

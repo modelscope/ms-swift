@@ -33,16 +33,15 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_tokens_offset = 0
         if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
-            logger.info('Create the default_template for the infer_engine')
+            logger.info('Create the template for the infer_engine')
             if ckpt_dir:
                 from swift.arguments import BaseArguments
                 args = BaseArguments.from_pretrained(ckpt_dir)
-                self.default_template = args.get_template(self.processor)
+                self.template = args.get_template(self.processor)
             else:
-                self.default_template = get_template(self.model_meta.template, self.processor)
+                self.template = get_template(self.processor)
         else:
-            self.default_template = template
-            self.default_template.init_processor(self.processor)
+            self.template = template
 
         self._adapters_pool = {}
 
@@ -188,10 +187,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    @staticmethod
-    def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = template.agent_template.get_toolcall(response)
+            functions = self.template.agent_template.get_toolcall(response)
         except Exception:
             functions = None
         if functions:
@@ -289,13 +287,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
-    @staticmethod
-    def _batch_encode(infer_requests: List[InferRequest], template: Template, strict: bool):
+    def _batch_encode(infer_requests: List[InferRequest], strict: bool):
         max_workers = max(min(32, os.cpu_count(), len(infer_requests)), 1)
         error_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
-                executor.submit(template.encode, infer_request, return_template_inputs=True)
+                executor.submit(self.template.encode, infer_request, return_template_inputs=True)
                 for infer_request in infer_requests
             ]
             concurrent.futures.wait(futures)

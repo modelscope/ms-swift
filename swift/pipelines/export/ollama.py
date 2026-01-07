@@ -57,7 +57,7 @@ def export_to_ollama(args: ExportArguments):
             top_p=args.top_p,
             repetition_penalty=args.repetition_penalty)
         generation_config = engine._prepare_generation_config(request_config)
-        engine._add_stop_words(generation_config, request_config, template.template_meta)
+        engine._add_stop_words(generation_config, request_config)
         for stop_word in generation_config.stop_words:
             f.write(f'PARAMETER stop "{stop_word}"\n')
         f.write(f'PARAMETER temperature {generation_config.temperature}\n')
