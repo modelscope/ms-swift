@@ -147,7 +147,7 @@ class Qwen3RerankerTemplate(Template):
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
-    'Note that the answer can only be \"yes\" or \"no\".')
+    'Note that the answer can only be "yes" or "no".')
 
 register_template(
     Qwen3MixedTemplateMeta(
@@ -554,6 +554,32 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
+
+
+class Qwen3VLEmbTemplate(Qwen3VLTemplate, Qwen3EmbTemplate):
+    pass
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.qwen3_vl_emb,
+        template_cls=Qwen3VLEmbTemplate,
+        suffix=['<|endoftext|>'],
+        prefix=[],
+        chat_sep=[],
+        default_system="Represent the user's input.",
+        prompt=['{{QUERY}}']))
+
+
+class Qwen3VLRerankerTemplate(Qwen3VLTemplate, Qwen3RerankerTemplate):
+
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        return {}
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3VLRerankerTemplate))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
