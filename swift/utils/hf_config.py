@@ -70,7 +70,7 @@ class HfConfigFactory:
         else:
             keys = []
         keys = set(keys)
-        for key in (HfConfigFactory.llm_keys + HfConfigFactory.vision_keys):
+        for key in (HfConfigFactory.llm_keys + HfConfigFactory.vision_keys + ['thinker_config']):
             if key in keys:
                 return True
         return False

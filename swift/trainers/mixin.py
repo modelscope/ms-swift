@@ -854,7 +854,7 @@ class SwiftMixin:
         self.args.gradient_checkpointing = False
 
     def train(self, *args, **kwargs):
-        if self.model_meta.is_multimodal:
+        if self.model_info.is_multimodal:
             models = []
             for model_name in ['model', 'ref_model', 'value_model', 'teacher_model']:
                 model = getattr(self, model_name, None)

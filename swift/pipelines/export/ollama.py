@@ -35,11 +35,11 @@ def export_to_ollama(args: ExportArguments):
     logger.info('Exporting to ollama:')
     os.makedirs(args.output_dir, exist_ok=True)
     model, template = prepare_model_template(args)
-    pt_engine = TransformersEngine.from_model_template(model, template)
-    logger.info(f'Using model_dir: {pt_engine.model_dir}')
+    engine = TransformersEngine.from_model_template(model, template)
+    logger.info(f'Using model_dir: {engine.model_dir}')
     template_meta = template.template_meta
     with open(os.path.join(args.output_dir, 'Modelfile'), 'w', encoding='utf-8') as f:
-        f.write(f'FROM {pt_engine.model_dir}\n')
+        f.write(f'FROM {engine.model_dir}\n')
         f.write(f'TEMPLATE """{{{{ if .System }}}}'
                 f'{replace_and_concat(template, template_meta.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'
                 f'{{{{ else }}}}{replace_and_concat(template, template_meta.prefix, "", "")}'
@@ -56,8 +56,8 @@ def export_to_ollama(args: ExportArguments):
             top_k=args.top_k,
             top_p=args.top_p,
             repetition_penalty=args.repetition_penalty)
-        generation_config = pt_engine._prepare_generation_config(request_config)
-        pt_engine._add_stop_words(generation_config, request_config, template.template_meta)
+        generation_config = engine._prepare_generation_config(request_config)
+        engine._add_stop_words(generation_config, request_config, template.template_meta)
         for stop_word in generation_config.stop_words:
             f.write(f'PARAMETER stop "{stop_word}"\n')
         f.write(f'PARAMETER temperature {generation_config.temperature}\n')

@@ -143,18 +143,17 @@ class Template(ProcessorMixin):
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
-        self.processor = self.get_processor()
+
+        if processor is not None:
+            self.init_processor(processor)
 
     def init_env_args(self):
-        if self.model_meta.is_multimodal:
+        if self.model_info.is_multimodal:
             self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
         else:
             self.root_image_dir = None
 
-    def _postprocess_processor(self, processor):
-        pass
-
-    def get_processor(self) -> None:
+    def init_processor(self, processor: Processor) -> None:
         if processor is None or self._processor_inited:
             return
         self._processor_inited = True
@@ -168,7 +167,7 @@ class Template(ProcessorMixin):
         logger.info(f'max_length: {self.max_length}')
         logger.info(f'response_prefix: {repr(self.response_prefix)}')
         logger.info(f'agent_template: {self._agent_template}')
-        if self.model_meta.is_multimodal:
+        if self.model_info.is_multimodal:
             logger.info(f'norm_bbox: {self.norm_bbox}')
         tokenizer = self.tokenizer
 
@@ -271,7 +270,7 @@ class Template(ProcessorMixin):
         inputs: StdTemplateInputs,
     ) -> None:
         self._preprocess_function_call(inputs)
-        if self.model_meta.is_multimodal:
+        if self.model_info.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
 
