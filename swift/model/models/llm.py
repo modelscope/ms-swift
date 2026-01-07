@@ -382,3 +382,17 @@ register_model(
         requires=['transformers==4.52.4'],
         architectures=['IQuestCoderForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.youtu_llm,
+        [
+            ModelGroup([
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B', 'tencent/Youtu-LLM-2B'),
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B-Base', 'tencent/Youtu-LLM-2B-Base'),
+            ])
+        ],
+        template=TemplateType.youtu_llm,
+        architectures=['YoutuForCausalLM'],
+        requires=['transformers>=4.56'],
+    ))

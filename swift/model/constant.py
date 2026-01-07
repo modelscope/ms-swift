@@ -127,6 +127,7 @@ class LLMModelType:
     gemma_emb = 'gemma_emb'
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
+    youtu_llm = 'youtu_llm'
 
 
 class BertModelType:
