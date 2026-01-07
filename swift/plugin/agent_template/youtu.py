@@ -1,11 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
 from .hermes import HermesAgentTemplate
 
-if True:
+if TYPE_CHECKING:
     from swift.llm.template import Prompt
 
 
