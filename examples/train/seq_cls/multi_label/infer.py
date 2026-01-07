@@ -27,7 +27,7 @@ engine = TransformersEngine(
     num_labels=args.num_labels,
     problem_type=args.problem_type)
 template = get_template(args.template, engine.processor, args.system, use_chat_template=args.use_chat_template)
-engine.default_template = template
+engine.template = template
 
 resp_list = engine.infer([infer_request])
 response: List[int] = resp_list[0].choices[0].message.content

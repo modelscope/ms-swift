@@ -214,7 +214,7 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
 
         kwargs = {}
         if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
-            kwargs['tokenizer'] = engine.default_template.tokenizer
+            kwargs['tokenizer'] = engine.template.tokenizer
         # gym kwargs
         if args.use_gym_env:
             kwargs.update({

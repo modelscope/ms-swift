@@ -70,7 +70,7 @@ def _infer(engine, num_tools: int = 1, agent_tools=None, tool_messages=None, que
                 'role': 'tool',
                 'content': '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
             })
-    stop = [engine.default_template.agent_template.keyword.observation]
+    stop = [engine.template.agent_template.keyword.observation]
     query = query or "How's the weather in Beijing today?"
     infer_request = InferRequest([{'role': 'user', 'content': query}], tools=agent_tools)
     request_config = RequestConfig(max_tokens=512, stop=stop, temperature=0)
@@ -94,7 +94,7 @@ def test_react_en():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1144
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine)
     assert messages[-1]['content'] == (
@@ -121,7 +121,7 @@ def test_react_zh():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 712
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     _infer(engine)
 
@@ -131,7 +131,7 @@ def test_qwen_en():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 879
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine)
     assert messages[-1]['content'] == (
@@ -157,7 +157,7 @@ def test_qwen_zh():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 577
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     _infer(engine)
 
@@ -167,7 +167,7 @@ def test_qwen_en_parallel():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1012
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine, num_tools=2)
     assert messages[-1]['content'] == (
@@ -193,7 +193,7 @@ def test_qwen_zh_parallel():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 688
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     _infer(engine, num_tools=2)
 
@@ -203,7 +203,7 @@ def test_hermes():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 875
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine, num_tools=2)
     template.template_backend = 'jinja'
@@ -236,7 +236,7 @@ def test_toolbench():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 1833
     engine = TransformersEngine('Qwen/Qwen2.5-7B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     _infer(engine)
 
@@ -246,7 +246,7 @@ def test_chatglm4():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 846
     engine = TransformersEngine('ZhipuAI/glm-4-9b-chat')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     _infer(engine, agent_tools=glm4_tools, tool_messages=glm4_tool_messasges, query=glm4_query)
 
@@ -256,7 +256,7 @@ def test_glm4():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 769
     engine = TransformersEngine('ZhipuAI/GLM-4-9B-0414')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine, agent_tools=glm4_tools, tool_messages=glm4_tool_messasges, query=glm4_query)
     assert messages[-1]['content'] == '根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。'
@@ -278,7 +278,7 @@ def test_glm4():
 def test_llama3():
     agent_template = agent_template_map['llama3']()
     engine = TransformersEngine('LLM-Research/Llama-3.2-3B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine)
 
@@ -300,7 +300,7 @@ def test_llama3():
 def test_llama4():
     agent_template = agent_template_map['llama4']()
     engine = TransformersEngine('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     messages = _infer(engine)
     template.set_mode('train')
@@ -311,7 +311,7 @@ def test_llama4():
 
 def test_hunyuan():
     engine = TransformersEngine('Tencent-Hunyuan/Hunyuan-1.8B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.template_backend = 'jinja'
     _infer(engine, num_tools=2)
 
@@ -333,7 +333,7 @@ def test_hunyuan():
 
 def test_glm4_5():
     engine = TransformersEngine('ZhipuAI/GLM-4.5-Air')
-    template = engine.default_template
+    template = engine.template
     template.template_backend = 'jinja'
     _infer(engine, num_tools=2)
 
@@ -355,7 +355,7 @@ def test_glm4_5():
 
 def test_glm4_7():
     engine = TransformersEngine('ZhipuAI/GLM-4.7-FP8', load_model=False, download_model=False)
-    template = engine.default_template
+    template = engine.template
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -376,7 +376,7 @@ def test_glm4_7():
 def test_qwen3_coder():
     agent_template = agent_template_map['qwen3_coder']()
     engine = TransformersEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
     template.template_backend = 'jinja'
     _infer(engine, num_tools=2)
@@ -401,7 +401,7 @@ def test_deepseek_v3_1():
     agent_template = agent_template_map['deepseek_v3_1']()
 
     engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False, download_model=False)
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
@@ -467,7 +467,7 @@ def test_youtu():
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 883
     engine = TransformersEngine('Tencent-YouTu-Research/Youtu-LLM-2B')
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
 
     stop = [template.agent_template.keyword.observation]
@@ -518,7 +518,7 @@ def test_seed_oss():
 
     engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False, download_model=False)
 
-    template = engine.default_template
+    template = engine.template
     template.agent_template = agent_template
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]

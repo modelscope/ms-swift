@@ -57,7 +57,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         torch_dtype: Optional[torch.dtype] = None,
-        adapters: List[str] = None,
+        adapters: Optional[List[str]] = None,
         use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,

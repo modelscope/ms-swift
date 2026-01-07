@@ -6,7 +6,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
-    stop = [engine.default_template.agent_template.keyword.observation]  # compat react_en
+    stop = [engine.template.agent_template.keyword.observation]  # compat react_en
     request_config = RequestConfig(max_tokens=512, temperature=0, stop=stop)
     resp_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
@@ -24,7 +24,7 @@ def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
 
 
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
-    stop = [engine.default_template.agent_template.keyword.observation]
+    stop = [engine.template.agent_template.keyword.observation]
     request_config = RequestConfig(max_tokens=512, temperature=0, stream=True, stop=stop)
     gen_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     engine = TransformersEngine(model, adapters=adapters, max_batch_size=8)
 
     # agent_template = agent_template_map['hermes']()  # react_en/qwen_en/qwen_en_parallel
-    # engine.default_template.agent_template = agent_template
+    # engine.template.agent_template = agent_template
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())

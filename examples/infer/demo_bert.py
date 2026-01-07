@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # engine = TransformersEngine(args.model, adapters=[adapter_path], max_batch_size=64,
     #                   task_type=args.task_type, num_labels=args.num_labels)
     # template = args.get_template(engine.processor)
-    # engine.default_template = template
+    # engine.template = template
 
     # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
     dataset = load_dataset(['DAMO_NLP/jd:cls#1000'], seed=42)[0]

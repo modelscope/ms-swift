@@ -35,7 +35,7 @@ def test_qwen2_vl():
     os.environ['VIDEO_MAX_PIXELS'] = str(100352 // 4)
     engine = TransformersEngine('Qwen/Qwen2-VL-2B-Instruct')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -43,7 +43,7 @@ def test_qwen2_vl():
 def test_internvl2_5():
     engine = TransformersEngine('OpenGVLab/InternVL2_5-2B')
     _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
@@ -60,7 +60,7 @@ def test_xcomposer2_5():
     messages_with_system = messages.copy()
     messages_with_system.insert(0, {'role': 'system', 'content': ''})
     response = _infer_model(engine, messages=messages_with_system)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, system='')
     assert response == response2
 
@@ -81,14 +81,14 @@ def test_mplug3():
     engine = TransformersEngine('iic/mPLUG-Owl3-7B-240728')
     # engine = TransformersEngine('iic/mPLUG-Owl3-7B-241101')
     _infer_model(engine, system='')
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine, system='')
 
 
 def test_minicpmv():
     engine = TransformersEngine('OpenBMB/MiniCPM-V-2_6')
     _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine)
 
 
@@ -97,7 +97,7 @@ def test_minicpmo():
     engine = TransformersEngine('OpenBMB/MiniCPM-o-2_6')
     messages = [{'role': 'user', 'content': '<video>Describe the video'}]
     response = _infer_model(engine, messages=messages)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages)
     assert response == response2 == (
         'The video features a young child sitting on a bed, deeply engrossed in reading a large book. The child, '
@@ -138,7 +138,7 @@ def test_qwen2_5_vl():
     messages = [{'role': 'user', 'content': query}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     messages = [
         {
@@ -155,7 +155,7 @@ def test_qwen2_5_vl():
             ],
         },
     ]
-    response3 = _run_qwen2_5_vl_hf(messages, engine.model, engine.default_template)
+    response3 = _run_qwen2_5_vl_hf(messages, engine.model, engine.template)
     assert response == response2 == response3
 
 
@@ -168,7 +168,7 @@ def test_qwen2_5_omni():
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
     videos = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.mp4']
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     if USE_AUDIO_IN_VIDEO:
         ground_truth = ("Oh, that's a really cool drawing! It looks like a guitar. You've got the body "
@@ -231,7 +231,7 @@ def test_glm4_1v():
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     engine = TransformersEngine('ZhipuAI/GLM-4.1V-9B-Thinking')
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     assert response == response2
 
@@ -241,7 +241,7 @@ def test_glm4_5v():
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     engine = TransformersEngine('ZhipuAI/GLM-4.5V')
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     assert response == response2
 
@@ -251,7 +251,7 @@ def test_keye_vl():
     messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     assert response == response2
 
@@ -289,7 +289,7 @@ def test_interns1():
     messages = [{'role': 'user', 'content': f'<video>{query}'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     messages = [{
         'role': 'user',
@@ -319,7 +319,7 @@ def test_internvl3_5():
         messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
         videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
         response = _infer_model(engine, messages=messages, videos=videos)
-        engine.default_template.template_backend = 'jinja'
+        engine.template.template_backend = 'jinja'
         response2 = _infer_model(engine, messages=messages, videos=videos)
         assert response == response2
 
@@ -329,7 +329,7 @@ def test_minicpmv4_5():
     messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     assert response == response2
 
@@ -368,7 +368,7 @@ def test_qwen3_vl():
     query = 'describe this video.'
     messages = [{'role': 'user', 'content': query}]
     response = _infer_model(engine, messages=messages, videos=videos)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, videos=videos)
     messages = [{
         'role': 'user',
@@ -383,14 +383,14 @@ def test_qwen3_vl():
             },
         ],
     }]
-    response3 = _run_qwen3_vl_hf(messages, engine.model, engine.default_template)
+    response3 = _run_qwen3_vl_hf(messages, engine.model, engine.template)
     assert response == response2 == response3
 
 
 def test_qwen3_moe_vl():
     engine = TransformersEngine('Qwen/Qwen3-VL-30B-A3B-Instruct')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 

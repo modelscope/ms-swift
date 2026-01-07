@@ -46,7 +46,7 @@ def load_and_tokenize(ms_model_id, template):
                 output = template_ins.encode(row)
                 input_ids = output.get('input_ids')
                 # output = EncodePreprocessor(template_ins)(load_ds('swift/OK-VQA_train'))
-                if model_ins is not None and model_ins.model_meta.is_multimodal:
+                if model_ins is not None and model_ins.model_info.is_multimodal:
                     inputs = template_ins.pre_data_collator([output], model=model_ins)
                     _, output = template_ins.pre_forward_hook(model_ins, None, inputs)
         else:

@@ -162,7 +162,7 @@ class TransformersEngine(InferEngine):
         generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
-    def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfiga) -> None:
+    def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig) -> None:
         template_meta = self.template.template_meta
         stop_words = (request_config.stop or []) + template_meta.stop_words
         generation_config.stop_words = self._get_stop_words(stop_words)
@@ -501,7 +501,7 @@ class TransformersEngine(InferEngine):
             template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
             inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
             self.template.debug_logger(inputs)  # debug
-            if self.model.model_meta.is_multimodal:
+            if self.model.model_info.is_multimodal:
                 _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
             if self.model_info.task_type == 'causal_lm':
                 self.set_default_max_tokens(request_config, inputs)

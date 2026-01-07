@@ -32,7 +32,7 @@ def _infer_model(engine, system=None, messages=None, images=None, **kwargs):
 def test_qwen2_vl():
     engine = TransformersEngine('Qwen/Qwen2-VL-2B-Instruct')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
@@ -57,7 +57,7 @@ def test_qwen2_5_vl_batch_infer():
                         request_config=request_config)
     response_list = [resp[0].choices[0].message.content, resp[1].choices[0].message.content]
     model = engine.model
-    template = engine.default_template
+    template = engine.template
     processor = template.processor
     messages1 = [{
         'role':
@@ -112,7 +112,7 @@ def test_qwen2_5_vl_batch_infer():
 def test_qwen2_5_omni():
     engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -182,7 +182,7 @@ def test_qwen3_omni_audio():
 def test_qvq():
     engine = TransformersEngine('Qwen/QVQ-72B-Preview')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -190,7 +190,7 @@ def test_qvq():
 def test_internvl2():
     engine = TransformersEngine('OpenGVLab/InternVL2-2B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -198,14 +198,14 @@ def test_internvl2():
 def test_internvl2_phi3():
     engine = TransformersEngine('OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
     _infer_model(engine, system='')
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine, system='')
 
 
 def test_internvl3_8b():
     engine = TransformersEngine('OpenGVLab/InternVL3-8B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
     assert response == response2
 
@@ -213,7 +213,7 @@ def test_internvl3_8b():
 def test_internvl3_9b():
     engine = TransformersEngine('OpenGVLab/InternVL3-9B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
     assert response == response2
 
@@ -233,7 +233,7 @@ def test_glm4v():
     engine = TransformersEngine('ZhipuAI/glm-4v-9b')
     messages = [{'role': 'user', 'content': '描述这张图片'}]
     response = _infer_model(engine, messages=messages)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages)
     assert response == ('这张图片是一只小猫的特写，它有着非常醒目的蓝色眼睛和混合了灰色、白色和棕色毛发的皮毛。小猫的耳朵竖立着，胡须清晰可见。它的眼神看起来既好奇又警觉，整体上显得非常可爱。')
     assert response2 == ('这是一张特写照片，展示了一只毛茸茸的小猫。小猫的眼睛大而圆，呈深蓝色，眼珠呈金黄色，非常明亮。它的鼻子短而小巧，'
@@ -254,7 +254,7 @@ History steps:
     }]
     images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2 == (
         """Action: Click on the 'Adobe Photoshop 2023' icon located in the middle of the screen to open the application.
@@ -284,7 +284,7 @@ def test_minicpmo():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2 == (
         'The main difference between image 1 and image 2 is the subject matter. '
@@ -323,7 +323,7 @@ def test_got_ocr_hf():
 def test_llama_vision():
     engine = TransformersEngine('LLM-Research/Llama-3.2-11B-Vision-Instruct')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -331,7 +331,7 @@ def test_llama_vision():
 def test_llava_hf():
     engine = TransformersEngine('llava-hf/llava-v1.6-mistral-7b-hf')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -354,7 +354,7 @@ def test_phi3_vision():
     # engine = TransformersEngine('LLM-Research/Phi-3-vision-128k-instruct')
     engine = TransformersEngine('LLM-Research/Phi-3.5-vision-instruct')
     _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine)
 
 
@@ -366,7 +366,7 @@ def test_qwen_vl():
 def test_llava_onevision_hf():
     engine = TransformersEngine('llava-hf/llava-onevision-qwen2-0.5b-ov-hf')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -375,7 +375,7 @@ def test_xcomposer2_5():
     engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
     # engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
     response = _infer_model(engine, system='')
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -412,7 +412,7 @@ def test_mplug_owl3():
     # engine = TransformersEngine('iic/mPLUG-Owl3-7B-240728')
     engine = TransformersEngine('iic/mPLUG-Owl3-7B-241101')
     response = _infer_model(engine, system='')
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, system='')
     assert response == response2
 
@@ -421,7 +421,7 @@ def test_ovis1_6():
     engine = TransformersEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
     # engine = TransformersEngine('AIDC-AI/Ovis1.6-Gemma2-27B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -431,7 +431,7 @@ def test_ovis1_6_llama3():
     messages = [{'role': 'user', 'content': '这是什么'}]
     # llama3
     response = _infer_model(engine, messages=messages)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     # llama3_2
     _infer_model(engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
     assert response == '这是一只小猫。从图中可见的特征如大眼睛、细长的白色鼻毛和毛发的图案，表明它可能属于常见的猫种。猫的表情和毛发的质感显示出它年轻，可能是幼猫。'
@@ -481,7 +481,7 @@ def test_glm_edge_v():
 def test_internvl2_5():
     engine = TransformersEngine('OpenGVLab/InternVL2_5-26B')
     _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
@@ -615,7 +615,7 @@ call_user() # Submit the task and call the user when the task is unsolvable, or 
     ]
     images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -642,7 +642,7 @@ def test_phi4_vision():
 def test_gemma3_vision():
     engine = TransformersEngine('LLM-Research/gemma-3-4b-it')
     response = _infer_model(engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
     assert response[:80] == response2[:80] == (
         "Here's a detailed description of the image:\n\n**Overall Impression:**\n\nThe image ")
@@ -705,7 +705,7 @@ def test_glm4_1v():
     for model in models:
         engine = TransformersEngine(model)
         response = _infer_model(engine, messages=messages, images=images)
-        engine.default_template.template_backend = 'jinja'
+        engine.template.template_backend = 'jinja'
         response2 = _infer_model(engine, messages=messages, images=images)
         assert response == response2
 
@@ -718,7 +718,7 @@ def test_glyph():
     ]
     engine = TransformersEngine('ZhipuAI/Glyph')
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -748,9 +748,9 @@ def test_keye_vl():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
-    engine.default_template.template_backend = 'swift'
+    engine.template.template_backend = 'swift'
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -761,7 +761,7 @@ def test_keye_vl_1_5():
     images = [
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
     ]
-    engine.default_template.template_backend = 'swift'
+    engine.template.template_backend = 'swift'
     response = _infer_model(engine, messages=messages, images=images)
     assert response[:200] == ('<analysis>This question is straightforward and asks for a description of the image. '
                               'Therefore, /no_think mode is more appropriate.</analysis>'
@@ -774,7 +774,7 @@ def test_dots_ocr():
     messages = [{'role': 'user', 'content': '<image>Extract the text content from this image.'}]
     images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -787,7 +787,7 @@ def test_glm4_5v():
     ]
     engine = TransformersEngine('ZhipuAI/GLM-4.5V')
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -807,7 +807,7 @@ def test_interns1():
     query = 'Please describe the image explicitly.'
     messages = [{'role': 'user', 'content': query}]
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     messages = [{
         'role': 'user',
@@ -837,7 +837,7 @@ def test_internvl3_5():
         images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
         messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
         response = _infer_model(engine, messages=messages, images=images)
-        engine.default_template.template_backend = 'jinja'
+        engine.template.template_backend = 'jinja'
         response2 = _infer_model(engine, messages=messages, images=images)
         assert response == response2
 
@@ -916,7 +916,7 @@ def test_minicpmv4_5():
     images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
     messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -942,7 +942,7 @@ def test_qwen3_vl():
     query = 'describe this image.'
     messages = [{'role': 'user', 'content': query}]
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     messages = [{
         'role': 'user',
@@ -999,7 +999,7 @@ def test_llava_onevision1_5():
     messages = [{'role': 'user', 'content': query}]
     images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -1029,7 +1029,7 @@ def test_ernie_vl():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
     response = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response == response2
 
@@ -1088,7 +1088,7 @@ def test_ernie_vl_thinking():
             },
         ]
     }]
-    response2 = _infer_ernie_vl_thinking_hf(engine.model, engine.default_template.processor, messages)
+    response2 = _infer_ernie_vl_thinking_hf(engine.model, engine.template.processor, messages)
     assert response == '\n<think>\n' + response2
 
 
@@ -1104,7 +1104,7 @@ def test_mistral_2506():
 def test_sensenova_si():
     engine = TransformersEngine('SenseNova/SenseNova-SI-1.1-InternVL3-8B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
     assert response == response2
 
@@ -1122,7 +1122,7 @@ def test_mistral_2512():
 def test_mistral_2512_thinking():
     engine = TransformersEngine('mistralai/Ministral-3-8B-Reasoning-2512')
     response1 = _infer_model(engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
     assert response1[:256] == response2[:256]
 
@@ -1140,7 +1140,7 @@ def test_hunyuan_ocr():
                     'organized according to the reading order.')
     }]
     response1 = _infer_model(engine, messages=messages, images=images)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images)
     assert response1 == response2
 
@@ -1154,7 +1154,7 @@ def test_medgemma3_vision():
         'content': 'Describe this image',
     }]
     response = _infer_model(engine, messages=messages, images=images, system=system)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, images=images, system=system)
     assert response == response2
 
@@ -1225,7 +1225,7 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    # test_qwen3_vl()
+    test_qwen3_vl()
     # test_keye_vl_1_5()
     # test_internvl3_hf()
     # test_internvl3_5_hf()
@@ -1241,4 +1241,4 @@ if __name__ == '__main__':
     # test_mistral_2512()
     # test_mistral_2512_thinking()
     # test_hunyuan_ocr()
-    test_medgemma3_vision()
+    # test_medgemma3_vision()

@@ -503,7 +503,7 @@ def test_my_qwen2_5_omni():
         images=["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"],
     )
     request_config = RequestConfig(temperature=0, max_tokens=512)
-    input_ids = engine.default_template.encode(infer_request)['input_ids']
+    input_ids = engine.template.encode(infer_request)['input_ids']
     resp_list = engine.infer([infer_request], request_config)
     resp = resp_list[0].choices[0].message.content
     return input_ids, resp

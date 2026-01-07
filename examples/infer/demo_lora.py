@@ -40,7 +40,7 @@ def infer_lora(infer_request: 'InferRequest'):
     # method1
     # engine = TransformersEngine(args.model, adapters=[adapter_path])
     # template = get_template(args.template, engine.processor, args.system)
-    # engine.default_template = template
+    # engine.template = template
 
     # method2
     # model, processor = args.get_model_processor()

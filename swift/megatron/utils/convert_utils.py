@@ -150,7 +150,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     template.set_mode('train')
     _test_params_sum(mg_model)
 
-    is_multimodal = template.model_meta.is_multimodal
+    is_multimodal = template.model_info.is_multimodal
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     if mg_language_model.config.fp8 is not None:
         raise ValueError('fp8 models currently do not support testing convert_precision. '

@@ -40,7 +40,7 @@ class TestTemplate(unittest.TestCase):
     def test_template(self):
         engine = TransformersEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
         response = _infer_model(engine)
-        engine.default_template.template_backend = 'jinja'
+        engine.template.template_backend = 'jinja'
         response2 = _infer_model(engine)
         assert response == response2
 

@@ -37,7 +37,7 @@ def test_qwen2_audio():
     messages = [{'role': 'user', 'content': '<audio>'}]
     audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
     response = _infer_model(engine, messages=messages, audios=audios)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, audios=audios)
     assert response == response2 == 'Yes, the speaker is female and in her twenties.'
 
@@ -45,7 +45,7 @@ def test_qwen2_audio():
 def test_xcomposer2d5_ol():
     engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:audio')
     _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     _infer_model(engine)
 
 
@@ -60,7 +60,7 @@ def test_qwen2_5_omni():
     os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
     engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B')
     response = _infer_model(engine)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine)
     assert response == response2
 
@@ -70,7 +70,7 @@ def test_gemma3n():
     messages = [{'role': 'user', 'content': '<audio>Transcribe this audio and complete the statement'}]
     audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
     response = _infer_model(engine, messages=messages, audios=audios)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages, audios=audios)
     assert response == response2
 
@@ -79,7 +79,7 @@ def test_midashenglm():
     engine = TransformersEngine('mispeech/midashenglm-7b')
     messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
     response = _infer_model(engine, messages=messages)
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response2 = _infer_model(engine, messages=messages)
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 

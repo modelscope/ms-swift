@@ -287,7 +287,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
-    def _batch_encode(infer_requests: List[InferRequest], strict: bool):
+    def _batch_encode(self, infer_requests: List[InferRequest], strict: bool):
         max_workers = max(min(32, os.cpu_count(), len(infer_requests)), 1)
         error_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:

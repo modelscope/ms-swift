@@ -526,7 +526,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         if not hasattr(self.infer_engine, 'default_template'):
             return False
 
-        template = self.infer_engine.default_template
+        template = self.infer_engine.template
         return template.template_meta.is_thinking
 
     def _build_messages(self, original_messages: Messages) -> Messages:
@@ -552,7 +552,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
             mock_inputs = MockInputs(original_messages)
 
             # Set up the template for inference mode
-            template = self.infer_engine.default_template
+            template = self.infer_engine.template
             # _swift_prepare_inputs will remove historical thinking content when in train mode, patch the mode here
             original_mode = template.mode
             template.mode = 'train'
