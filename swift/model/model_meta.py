@@ -86,11 +86,11 @@ class ModelMeta:
             self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
-        self.available_templates = set([self.template])
+        self.candidate_templates = set([self.template])
         for model_group in self.model_groups:
-            self.available_templates.add(model_group.template)
-        self.available_templates.discard(None)
-        self.available_templates = list(self.available_templates)
+            self.candidate_templates.add(model_group.template)
+        self.candidate_templates.discard(None)
+        self.candidate_templates = list(self.candidate_templates)
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
         if self.model_type in RerankerModelType.__dict__:
@@ -198,7 +198,7 @@ def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
 def _read_args_json_model_type(model_dir):
     if not os.path.exists(os.path.join(model_dir, 'args.json')):
         return
-    from swift.pipelines import BaseArguments
+    from swift.arguments import BaseArguments
     args = BaseArguments.from_pretrained(model_dir)
     return args.model_type
 
@@ -223,9 +223,10 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         architectures = HfConfigFactory.get_config_attr(config, 'architectures')
         model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
-            raise ValueError('Failed to automatically match `model_type`. '
-                             f'Please explicitly pass the `model_type` for `{model_dir}`. '
-                             f'Recommended `model_types` include: {model_types}.')
+            raise ValueError(f'Failed to automatically match `model_type` for `{model_dir}`. '
+                             f'Multiple possible types found: {model_types}. '
+                             'Please specify `model_type` manually. See documentation: '
+                             'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
         elif len(model_types) == 1:
             model_type = model_types[0]
     elif model_type not in MODEL_MAPPING:
@@ -276,9 +277,9 @@ def get_model_info_meta(
     if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
-    if model_meta is None and model_type is not None:
+    if model_type is not None and (model_meta is None or model_meta.model_type != model_type):
         model_meta = MODEL_MAPPING[model_type]
-    if model_meta is None:
+    if model_meta is None:  # not found
         if model_info.is_multimodal:
             raise ValueError(f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
                              'Please refer to the documentation and specify an appropriate `model_type` manually: '

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import os
 from typing import Dict, Literal, Optional
 
 from transformers import AutoConfig, PretrainedConfig
@@ -17,6 +18,14 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     TEMPLATE_MAPPING[template_type] = template_meta
+
+
+def _read_args_json_template_type(model_dir):
+    if not os.path.exists(os.path.join(model_dir, 'args.json')):
+        return
+    from swift.arguments import BaseArguments
+    args = BaseArguments.from_pretrained(model_dir)
+    return args.template_type
 
 
 def get_template(
@@ -47,7 +56,23 @@ def get_template(
     hub_token: Optional[str] = None,
     revision: Optional[str] = None,
 ) -> 'Template':
-    template_type = processor.model_meta.template
+    model_info = processor.model_info
+    model_meta = processor.model_meta
+    template_type = template_type or model_meta.template
+    if template_type is None:
+        template_type = _read_args_json_template_type(model_info.model_dir)
+    if template_type is None:
+        candidates = model_meta.candidate_templates
+        if len(candidates) > 1 or len(candidates) == 0:
+            candidates_str = ''
+            if len(candidates) > 1:
+                candidates_str = f'Multiple possible types found: {candidates}. '
+            raise ValueError(
+                f'Failed to automatically match `template_type` for `{model_info.model_dir}`. {candidates_str}'
+                'Please specify `template_type` manually. See documentation: '
+                'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
+        elif len(candidates) == 1:
+            template_type = candidates[0]
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
