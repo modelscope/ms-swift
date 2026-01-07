@@ -1699,7 +1699,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_vl_reranker, [
+        RerankerModelType.qwen3_vl_reranker, [
             ModelGroup([
                 Model('Qwen/Qwen3-VL-Reranker-2B', 'Qwen/Qwen3-VL-Reranker-2B'),
                 Model('Qwen/Qwen3-VL-Reranker-8B', 'Qwen/Qwen3-VL-Reranker-8B'),

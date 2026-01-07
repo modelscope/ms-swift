@@ -1661,10 +1661,7 @@ class Template(ProcessorMixin):
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:
-            new_batch = []
-            for b in batch:
-                new_batch.append({key: val for key, val in b.items() if isinstance(val, list)})
-            res = self._data_collator(new_batch, padding_to=padding_to)
+            res = self._data_collator(batch, padding_to=padding_to)
         return res
 
     def _seq_cls_data_collator(self,

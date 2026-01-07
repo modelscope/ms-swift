@@ -556,25 +556,37 @@ register_template(
         MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
-class Qwen3VLEmbTemplate(Qwen3VLTemplate, Qwen3EmbTemplate):
-    pass
+class Qwen3VLEmbTemplate(Qwen3EmbTemplate, Qwen3VLTemplate):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        Qwen3VLTemplate._preprocess_inputs(self, inputs)
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
 
 
 register_template(
-    TemplateMeta(
+    QwenTemplateMeta(
         MLLMTemplateType.qwen3_vl_emb,
-        template_cls=Qwen3VLEmbTemplate,
-        suffix=['<|endoftext|>'],
-        prefix=[],
-        chat_sep=[],
         default_system="Represent the user's input.",
-        prompt=['{{QUERY}}']))
+        suffix=['<|endoftext|>'],
+        template_cls=Qwen3VLEmbTemplate,
+    ))
 
 
-class Qwen3VLRerankerTemplate(Qwen3VLTemplate, Qwen3RerankerTemplate):
+class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
+    instruction = 'Given a search query, retrieve relevant candidates that answer the query.'
 
-    def prepare_engine_kwargs(self) -> Dict[str, Any]:
-        return {}
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
+        else:
+            instruction = self.instruction
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '<Query>:' + query + '\n' + '<Document>:' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
+        return inputs
 
 
 register_template(
