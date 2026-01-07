@@ -194,6 +194,19 @@ class DatasetLoader:
         return interleave_datasets(datasets, *args, **kwargs)
 
     @staticmethod
+    def _add_dataset_source(dataset, source: str, streaming: bool = False):
+        """Add _dataset_source column for progress tracking."""
+        if streaming:
+            # For IterableDataset, add source via map
+            def add_source(example):
+                example['_dataset_source'] = source
+                return example
+            return dataset.map(add_source)
+        else:
+            # For regular Dataset, add column directly
+            return dataset.add_column('_dataset_source', [source] * len(dataset))
+
+    @staticmethod
     def _load_dataset_path(
         dataset_path: str,
         dataset_meta: DatasetMeta,
@@ -542,9 +555,13 @@ def load_dataset(
             shuffle=shuffle,
             random_state=seed,
         )
+        # Inject dataset source for progress tracking
+        dataset_source = dataset_syntax.get_raw()
         if train_dataset is not None:
+            train_dataset = DatasetLoader._add_dataset_source(train_dataset, dataset_source, streaming)
             train_datasets.append(train_dataset)
         if val_dataset is not None:
+            val_dataset = DatasetLoader._add_dataset_source(val_dataset, dataset_source, streaming)
             val_datasets.append(val_dataset)
 
     if interleave_prob is None:

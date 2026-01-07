@@ -183,6 +183,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
 
+        # Register DatasetProgressCallback if enabled
+        if args.track_dataset_progress and train_dataset is not None:
+            self._register_dataset_progress_callback(train_dataset)
+
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
             logger.info(f'args.problem_type: {args.problem_type}')
@@ -288,6 +292,46 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             logger.info('You are using the default early stop callback, this is a implementation of '
                         'stopping training when the best metric showing no improvement within {} steps, '
                         'you can write a new implementation in the plugin/callback.py.')
+
+    def _register_dataset_progress_callback(self, train_dataset):
+        """Register DatasetProgressCallback for tracking per-dataset progress."""
+        from swift.trainers.callback import DatasetProgressCallback
+        from swift.llm.dataset import LazyLLMDataset, PackingDataset
+
+        # Calculate dataset sizes from _dataset_source column
+        dataset_sizes = {}
+
+        # Get the underlying HfDataset
+        raw_dataset = train_dataset
+        if isinstance(train_dataset, LazyLLMDataset):
+            raw_dataset = train_dataset.dataset
+        elif isinstance(train_dataset, PackingDataset):
+            raw_dataset = train_dataset.dataset
+            if isinstance(raw_dataset, LazyLLMDataset):
+                raw_dataset = raw_dataset.dataset
+
+        # Count samples per source from raw dataset
+        if hasattr(raw_dataset, 'column_names') and '_dataset_source' in raw_dataset.column_names:
+            # Check if dataset has 'dataset_name' column
+            has_dataset_name = 'dataset_name' in raw_dataset.column_names
+
+            if has_dataset_name:
+                # Use dataset_name for grouping
+                dataset_names = raw_dataset['dataset_name']
+                for name in dataset_names:
+                    if name is not None:
+                        dataset_sizes[name] = dataset_sizes.get(name, 0) + 1
+            else:
+                # Use _dataset_source (file name) for grouping
+                sources = raw_dataset['_dataset_source']
+                for source in sources:
+                    dataset_sizes[source] = dataset_sizes.get(source, 0) + 1
+
+            logger.info(f'Dataset sizes for progress tracking: {dataset_sizes}')
+
+        callback = DatasetProgressCallback(self.template, dataset_sizes)
+        self.callbacks.append(callback)
+        logger.info('DatasetProgressCallback registered for tracking per-dataset training progress.')
 
     @staticmethod
     def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):

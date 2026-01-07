@@ -2,11 +2,14 @@
 import math
 import os
 import time
+from collections import defaultdict
+from typing import Dict, Optional
 
+import torch.distributed as dist
 from tqdm import tqdm
 from transformers import trainer
-from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
-                                           TrainerState)
+from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerCallback,
+                                           TrainerControl, TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.utils import append_to_jsonl, format_time, get_device_count, get_logger, is_mp, is_pai_training_job
@@ -111,6 +114,78 @@ class PrinterCallbackNew(PrinterCallback):
         _ = logs.pop('total_flos', None)
         if state.is_world_process_zero:
             print(logs, flush=True)
+
+
+class DatasetProgressCallback(TrainerCallback):
+    """Callback for tracking per-dataset training progress in multi-dataset training.
+
+    This callback tracks how many samples from each dataset have been consumed during training,
+    and reports the progress percentage to TensorBoard.
+
+    The callback reads progress counts from the template's `dataset_progress_counts` attribute,
+    which is updated during data collation.
+
+    Args:
+        template: The template instance that tracks dataset progress counts.
+        dataset_sizes: A dict mapping dataset source names to their total sample counts.
+                      If None, only sample counts (not percentages) will be reported.
+    """
+
+    def __init__(self, template, dataset_sizes: Optional[Dict[str, int]] = None):
+        self.template = template
+        self.dataset_sizes = dataset_sizes or {}
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        # Enable progress tracking in template
+        self.template.track_dataset_progress = True
+        self.template.dataset_progress_counts.clear()
+
+    def _gather_counts(self) -> Dict[str, int]:
+        """Gather counts from all processes in distributed training."""
+        local_counts = dict(self.template.dataset_progress_counts)
+
+        if not dist.is_initialized():
+            return local_counts
+
+        world_size = dist.get_world_size()
+        if world_size == 1:
+            return local_counts
+
+        # Gather all local counts to rank 0
+        gathered = [None] * world_size
+        dist.gather_object(local_counts, gathered if dist.get_rank() == 0 else None, dst=0)
+
+        if dist.get_rank() != 0:
+            return {}
+
+        # Aggregate counts from all processes
+        global_counts: Dict[str, int] = defaultdict(int)
+        for local in gathered:
+            if local:
+                for source, count in local.items():
+                    global_counts[source] += count
+
+        return dict(global_counts)
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is None:
+            return
+
+        # Only report on main process
+        if not state.is_world_process_zero:
+            return
+
+        global_counts = self._gather_counts()
+
+        # Calculate and log progress for each dataset
+        for source, count in global_counts.items():
+            total = self.dataset_sizes.get(source)
+            if total and total > 0:
+                progress = min(count / total * 100, 100.0)
+                logs[f'dataset_progress/{source}'] = round(progress, 2)
+            else:
+                # If total is unknown, just log the count
+                logs[f'dataset_samples/{source}'] = count
 
 
 # monkey patching
