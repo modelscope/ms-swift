@@ -1,4 +1,4 @@
-# 2*10G
+# 2*10GiB
 # losses: plugin/loss.py
 # data format: docs/source_en/BestPractices/Embedding.md
 # --dataloader_drop_last must be true or eval gather will throw error
