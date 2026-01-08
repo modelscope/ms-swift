@@ -8,6 +8,9 @@ SWIFT supports Reranker model training. Currently supported models include:
    - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)
    - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-4B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-8B)
+3. qwen3-vl-reranker model
+   - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
 
 ## Implementation Methods
 
