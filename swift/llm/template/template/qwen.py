@@ -121,6 +121,7 @@ class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
         if inputs.system is not None:
             instruction = inputs.system
             inputs.system = None
@@ -577,6 +578,7 @@ class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
     instruction = 'Given a search query, retrieve relevant candidates that answer the query.'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
         if inputs.system is not None:
             instruction = inputs.system
             inputs.system = None
