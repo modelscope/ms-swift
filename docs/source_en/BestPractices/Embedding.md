@@ -104,16 +104,17 @@ The evaluation of InfoNCE loss includes the following metrics:
 - mean_pos: The average of all positives
 - margin: The average of (positive - max hard negative)
 
-## Scaffolding
+## Training
 
-SWIFT provides two scaffold training scripts:
+Training scripts provided by ms-swift:
 
-- [Qwen3-Embedding model](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_emb.sh)
+- [Qwen3-Embedding/Qwen3-VL-Embedding model](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/qwen3)
 - [GME model](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train_gme.sh)
 
 ## Inference
 
 SWIFT has supported the deployment of GME、GTE、Qwen3-Embedding models，please check[here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/embedding/client.py).
+- For inference scripts, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py).
 
 You can also use the original model's code for inference:
 

@@ -84,12 +84,15 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ## 脚手架
 
-SWIFT提供了两个脚手架训练脚本：
+SWIFT提供的脚手架训练脚本：
 
+- [Qwen3-Reranker/Qwen3-VL-Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/qwen3)
 - [Pointwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
 - [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+推理脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py)。
 
 ## 高级功能
 
