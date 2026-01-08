@@ -89,6 +89,7 @@ def _patch_mla_attention():
         sequence_len_offset=None,
         *,
         inference_params=None,
+        **kwargs,
     ):
         """Forward pass for multi-latent attention"""
         assert attention_bias is None, 'Attention bias should not be passed into MLA.'

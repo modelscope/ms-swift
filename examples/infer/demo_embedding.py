@@ -18,7 +18,7 @@ if __name__ == '__main__':
         ]),
         InferRequest(messages=[
             {
-                'role': 'assistant',
+                'role': 'user',
                 'content': 'The capital of China is Beijing.'
             },
         ])
