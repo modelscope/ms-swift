@@ -30,10 +30,7 @@ def run_qwen3_reranker():
 
 def run_qwen3_vl_reranker():
     os.environ['MAX_PIXELS'] = str(1280 * 32 * 32)
-    engine = PtEngine(
-        'Qwen/Qwen3-VL-Reranker-2B',
-        task_type='generative_reranker',
-        attn_impl='flash_attention_2')
+    engine = PtEngine('Qwen/Qwen3-VL-Reranker-2B', task_type='generative_reranker', attn_impl='flash_attention_2')
 
     infer_request = InferRequest(
         messages=[{
