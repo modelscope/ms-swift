@@ -1312,12 +1312,12 @@ class Template(ProcessorMixin):
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
-        if self.task_type == 'causal_lm':
-            encoded['labels'] = labels
-            encoded['loss_scale'] = loss_scale
-        else:
+        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
             encoded.pop('labels', None)
             encoded.pop('loss_scale', None)
+        else:
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
