@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '6,7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 os.environ['MAX_PIXELS'] = '602112'
 
 if __name__ == '__main__':
@@ -14,7 +14,7 @@ if __name__ == '__main__':
             context_parallel_size=1,
             train_type='lora',
             tensor_model_parallel_size=2,
-            dataset='AI-ModelScope/clevr_cogen_a_train#10000',
+            dataset=['AI-ModelScope/clevr_cogen_a_train#10000'],
             max_epochs=1,
             global_batch_size=128,
             micro_batch_size=4,
