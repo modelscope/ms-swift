@@ -157,15 +157,109 @@ register_template(Llama3TemplateMeta(
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
+    support_padding_free = True
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """重写 _data_collator 以正确处理 packing 场景。
+        
+        MiniCPMV 的多模态数据格式特殊：
+        - pixel_values: list[list[Tensor]] - 双层嵌套，外层对应图像数量，内层对应 slice
+        - image_bound: list[Tensor[1, 2]] - 单层列表
+        - tgt_sizes: list[Tensor[1, 2]] - 单层列表
+        
+        这些不能用 torch.concat，需要用 gather_list 保持列表格式。
+        """
+        if self.padding_free:
+            # packing 场景：完全自己处理，避免调用父类的 _data_collator_mm_data
+            self._update_dataset_progress(batch)
+            
+            # 1. 调用 packing_row 合并多个样本
+            packed = self.packing_row(batch)
+            batch[:] = [packed]
+            
+            # 2. 构建返回结果
+            # 格式要求（与非 packing 一致，只是 batch_size=1）：
+            # - input_ids: Tensor[1, seq_len] - 2D
+            # - pixel_values: list[list[Tensor]] - 外层 len=1
+            # - image_bound: list[Tensor] - 外层 len=1，Tensor 形状 [num_images, 2]
+            # - tgt_sizes: list[Tensor] - 总 slice 数
+            res = {}
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
+                v = packed.get(k)
+                if v is not None:
+                    # 转换成 2D Tensor [1, seq_len]
+                    t = torch.tensor(v) if isinstance(v, list) else v
+                    res[k] = t.unsqueeze(0)
+            
+            # channel 保持原样
+            if packed.get('channel') is not None:
+                res['channel'] = packed['channel']
+            
+            # 3. 多模态数据：包装成 batch_size=1 的格式
+            # pixel_values: [内层slices列表] -> [[内层slices列表]]
+            pv = packed.get('pixel_values')
+            if pv is not None:
+                res['pixel_values'] = [pv]  # 外层包一层，len=1
+            
+            # image_bound: [Tensor1, Tensor2, ...] -> [cat后的单个Tensor]
+            ib = packed.get('image_bound')
+            if ib is not None and len(ib) > 0:
+                res['image_bound'] = [torch.cat(ib, dim=0)]  # 合并成 [N, 2]，外层包一层
+            else:
+                res['image_bound'] = [torch.empty(0, 2)]
+            
+            # tgt_sizes: 保持不变（总 slice 数）
+            ts = packed.get('tgt_sizes')
+            if ts is not None:
+                res['tgt_sizes'] = ts
+            
+            return res
+        else:
+            # 非 packing 场景，使用原有逻辑
+            return super()._data_collator(batch, padding_to=padding_to)
+
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         """处理 packing 时的多模态数据合并。
 
-        主要处理 image_bound 的偏移调整和 pixel_values、tgt_sizes 的拼接。
+        数据格式（单个样本）：
+        - input_ids: list[int]
+        - labels: list[int]  
+        - image_bound: list[Tensor[1, 2]] len=1
+        - pixel_values: list[list[Tensor[3, 14, X]]] len=1  # 双层嵌套！
+        - tgt_sizes: list[Tensor[1, 2]] len=1
+        - length: int
+        
+        Packing 后需要：
+        - 拼接 input_ids, labels
+        - 调整 image_bound 的偏移量
+        - 合并 pixel_values, tgt_sizes 的外层列表
         """
-        # 1. 调用父类方法处理 input_ids, labels, loss_scale, position_ids 等
-        packed = super().packing_row(row)
+        packed = {}
+        length = []
+        for r in row:
+            length.append(r['length'])
+
+        # 1. 处理文本相关字段
+        for key in ['input_ids', 'labels', 'loss_scale']:
+            values = [x.get(key) or [] for x in row]
+            if any(values):
+                packed[key] = sum(values, start=[])
+
+        packed['length'] = sum(length)
+
+        channels = [x.get('channel') for x in row]
+        if any(c is not None for c in channels):
+            packed['channel'] = channels
+
+        sources = [x.get('_dataset_source') for x in row]
+        if any(s is not None for s in sources):
+            packed['_dataset_source'] = sources
+
+        packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
         # 2. 处理 image_bound - 需要根据累积的 token offset 调整索引
+        # 输入格式：每个样本 image_bound = [Tensor[1, 2]]，长度为 1
+        # 输出格式：合并后 image_bound = [Tensor[1, 2], Tensor[1, 2], ...]
         image_bounds = []
         offset = 0
         for r in row:
@@ -173,22 +267,28 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             if bounds is not None:
                 for bound in bounds:
                     if isinstance(bound, torch.Tensor) and bound.numel() > 0:
-                        adjusted = bound + offset
-                        image_bounds.append(adjusted)
+                        image_bounds.append(bound + offset)
                     elif isinstance(bound, (list, tuple)) and len(bound) > 0:
-                        adjusted = torch.tensor(bound) + offset
-                        image_bounds.append(adjusted)
+                        image_bounds.append(torch.tensor(bound) + offset)
             offset += r['length']
         packed['image_bound'] = image_bounds
 
-        # 3. 拼接 pixel_values 和 tgt_sizes
+        # 3. 拼接 pixel_values
+        # 输入格式：每个样本 pixel_values = [[Tensor[3, 14, X]]]，双层嵌套，外层len=1
+        # 输出格式：合并后 pixel_values = [Tensor1, Tensor2, ...]（扁平列表）
+        # 然后在 _data_collator 中包装成 [[T1, T2, ...]]
         pixel_values = []
         for r in row:
             pv = r.get('pixel_values')
             if pv is not None:
-                pixel_values.extend(pv)
+                # pv 是 [[Tensor, ...]]，需要展开两层收集所有 Tensor
+                for inner_list in pv:
+                    pixel_values.extend(inner_list)
         packed['pixel_values'] = pixel_values
 
+        # 4. 拼接 tgt_sizes  
+        # 输入格式：每个样本 tgt_sizes = [Tensor[1, 2]]
+        # 输出格式：合并后 tgt_sizes = [Tensor, Tensor, ...]
         tgt_sizes = []
         for r in row:
             ts = r.get('tgt_sizes')

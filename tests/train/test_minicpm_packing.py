@@ -34,12 +34,16 @@ class MockMiniCPMV2_6Template:
             offset += r['length']
         packed['image_bound'] = image_bounds
 
-        # 拼接 pixel_values 和 tgt_sizes
+        # 拼接 pixel_values（与 minicpm.py 保持一致）
+        # 输入格式：每个样本 pixel_values = [[Tensor]]，双层嵌套
+        # 输出格式：合并后 pixel_values = [Tensor1, Tensor2, ...]（扁平列表）
         pixel_values = []
         for r in row:
             pv = r.get('pixel_values')
             if pv is not None:
-                pixel_values.extend(pv)
+                # pv 是 [[Tensor, ...]]，需要展开两层收集所有 Tensor
+                for inner_list in pv:
+                    pixel_values.extend(inner_list)
         packed['pixel_values'] = pixel_values
 
         tgt_sizes = []
@@ -100,7 +104,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
             'labels': [-100, -100, 3, 4, 5],
             'length': 5,
             'image_bound': [torch.tensor([[1, 3]])],
-            'pixel_values': [torch.randn(3, 224, 224)],
+            'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
             'tgt_sizes': [torch.tensor([224, 224])],
         }]
 
@@ -116,7 +120,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
         self.assertEqual(len(packed['image_bound']), 1)
         self.assertTrue(torch.equal(packed['image_bound'][0], torch.tensor([[1, 3]])))
 
-        # 验证 pixel_values 和 tgt_sizes
+        # 验证 pixel_values（packing后是扁平列表）和 tgt_sizes
         self.assertEqual(len(packed['pixel_values']), 1)
         self.assertEqual(len(packed['tgt_sizes']), 1)
 
@@ -128,7 +132,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': [-100, 2, 3],
                 'length': 3,
                 'image_bound': [torch.tensor([[0, 2]])],  # 图像在位置 0-2
-                'pixel_values': [torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224])],
             },
             {
@@ -136,7 +140,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': [4, 5, 6, 7],
                 'length': 4,
                 'image_bound': [torch.tensor([[1, 3]])],  # 图像在位置 1-3
-                'pixel_values': [torch.randn(3, 336, 336)],
+                'pixel_values': [[torch.randn(3, 336, 336)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([336, 336])],
             },
         ]
@@ -156,7 +160,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
         self.assertTrue(torch.equal(packed['image_bound'][0], torch.tensor([[0, 2]])))
         self.assertTrue(torch.equal(packed['image_bound'][1], torch.tensor([[4, 6]])))
 
-        # 验证 pixel_values 和 tgt_sizes 拼接
+        # 验证 pixel_values（packing后是扁平列表）和 tgt_sizes 拼接
         self.assertEqual(len(packed['pixel_values']), 2)
         self.assertEqual(len(packed['tgt_sizes']), 2)
 
@@ -168,7 +172,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': list(range(10)),
                 'length': 10,
                 'image_bound': [torch.tensor([[2, 4], [6, 8]])],  # 两个图像区间
-                'pixel_values': [torch.randn(3, 224, 224), torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224), torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224]), torch.tensor([224, 224])],
             },
             {
@@ -176,7 +180,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': list(range(5)),
                 'length': 5,
                 'image_bound': [torch.tensor([[1, 3]])],
-                'pixel_values': [torch.randn(3, 336, 336)],
+                'pixel_values': [[torch.randn(3, 336, 336)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([336, 336])],
             },
             {
@@ -184,7 +188,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': list(range(8)),
                 'length': 8,
                 'image_bound': [torch.tensor([[0, 2], [4, 6]])],
-                'pixel_values': [torch.randn(3, 448, 448), torch.randn(3, 448, 448)],
+                'pixel_values': [[torch.randn(3, 448, 448), torch.randn(3, 448, 448)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([448, 448]), torch.tensor([448, 448])],
             },
         ]
@@ -204,7 +208,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
         self.assertTrue(torch.equal(packed['image_bound'][1], torch.tensor([[11, 13]])))
         self.assertTrue(torch.equal(packed['image_bound'][2], torch.tensor([[15, 17], [19, 21]])))
 
-        # 验证 pixel_values 和 tgt_sizes 数量
+        # 验证 pixel_values（packing后是扁平列表）和 tgt_sizes 数量
         self.assertEqual(len(packed['pixel_values']), 5)
         self.assertEqual(len(packed['tgt_sizes']), 5)
 
@@ -216,7 +220,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': [1, 2, 3],
                 'length': 3,
                 'image_bound': [torch.tensor([[1, 2]])],
-                'pixel_values': [torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224])],
             },
             {
@@ -224,7 +228,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': [4, 5],
                 'length': 2,
                 'image_bound': [],  # 空列表
-                'pixel_values': [],
+                'pixel_values': [],  # 空列表
                 'tgt_sizes': [],
             },
         ]
@@ -251,7 +255,7 @@ class TestMiniCPMV2_6Packing(unittest.TestCase):
                 'labels': [4, 5, 6],
                 'length': 3,
                 'image_bound': [torch.tensor([[0, 2]])],
-                'pixel_values': [torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224])],
             },
         ]
@@ -277,7 +281,7 @@ class TestMiniCPMV4_5Packing(unittest.TestCase):
                 'labels': [1, 2, 3],
                 'length': 3,
                 'image_bound': [torch.tensor([[0, 2]])],
-                'pixel_values': [torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224])],
                 'temporal_ids': [torch.tensor([0, 0, 1])],
             },
@@ -286,7 +290,7 @@ class TestMiniCPMV4_5Packing(unittest.TestCase):
                 'labels': [4, 5],
                 'length': 2,
                 'image_bound': [torch.tensor([[0, 1]])],
-                'pixel_values': [torch.randn(3, 336, 336)],
+                'pixel_values': [[torch.randn(3, 336, 336)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([336, 336])],
                 'temporal_ids': [torch.tensor([0, 1])],
             },
@@ -310,7 +314,7 @@ class TestMiniCPMV4_5Packing(unittest.TestCase):
                 'labels': [1, 2],
                 'length': 2,
                 'image_bound': [torch.tensor([[0, 1]])],
-                'pixel_values': [torch.randn(3, 224, 224)],
+                'pixel_values': [[torch.randn(3, 224, 224)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([224, 224])],
                 'temporal_ids': None,  # 图像，无 temporal_ids
             },
@@ -319,7 +323,7 @@ class TestMiniCPMV4_5Packing(unittest.TestCase):
                 'labels': [3, 4, 5],
                 'length': 3,
                 'image_bound': [torch.tensor([[0, 2]])],
-                'pixel_values': [torch.randn(3, 336, 336)],
+                'pixel_values': [[torch.randn(3, 336, 336)]],  # 双层嵌套！
                 'tgt_sizes': [torch.tensor([336, 336])],
                 'temporal_ids': [torch.tensor([0, 0, 1])],  # 视频，有 temporal_ids
             },
