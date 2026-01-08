@@ -21,6 +21,7 @@ from transformers.utils import is_torch_npu_available
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, safe_snapshot_download, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
+from swift.utils import get_last_valid_indices
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
@@ -349,7 +350,13 @@ class PtEngine(InferEngine):
                 negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
                 token_false_id = template.tokenizer.convert_tokens_to_ids(negative_token)
                 token_true_id = template.tokenizer.convert_tokens_to_ids(positive_token)
-                batch_scores = logits[:, -1, :]
+                attention_mask = inputs.get('attention_mask')
+                if attention_mask is None:
+                    batch_scores = logits[:, -1, :]
+                else:
+                    last_valid_indices = get_last_valid_indices(attention_mask)
+                    batch_indices = torch.arange(attention_mask.shape[0], device=logits.device)
+                    batch_scores = logits[batch_indices, last_valid_indices, :]
                 true_vector = batch_scores[:, token_true_id]
                 false_vector = batch_scores[:, token_false_id]
                 batch_scores = torch.stack([false_vector, true_vector], dim=1).float()
