@@ -33,7 +33,6 @@ def run_qwen3_emb():
 
 
 def run_qwen3_vl_emb():
-    os.environ['MAX_PIXELS'] = str(1800 * 32 * 32)
     engine = PtEngine(
         'Qwen/Qwen3-VL-Embedding-2B', task_type='embedding', max_batch_size=2, attn_impl='flash_attention_2')
 
