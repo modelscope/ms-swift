@@ -1,4 +1,4 @@
-# 2*40G
+# 2*70G
 # losses: plugin/loss.py
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
