@@ -800,7 +800,7 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
   - 提示：ms-swift只对thinker部分进行微调，建议设置为False以降低显存占用（只创建thinker部分的模型结构）。
 
 ### qwen3_vl
-参数含义与`qwen_vl_utils>=0.0.14`库中的含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。通过传入以下环境变量，可以修改该库的全局变量默认值。
+参数含义与`qwen_vl_utils>=0.0.14`库中的含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。通过传入以下环境变量，可以修改该库的全局变量默认值。（也兼容使用`qwen2_5_vl`的环境变量，例如：`MAX_PIXELS`、`VIDEO_MAX_PIXELS`，会做自动转换。）
 
 - SPATIAL_MERGE_SIZE: 默认为2。
 - IMAGE_MIN_TOKEN_NUM: 默认为`4`，代表一张图片最小图像tokens的个数。
