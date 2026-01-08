@@ -96,7 +96,6 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         sequence_lengths = get_last_valid_indices(attention_mask)
         embeddings = hidden_states[torch.arange(hidden_states.shape[0], device=hidden_states.device), sequence_lengths]
         embeddings = F.normalize(embeddings, p=2, dim=1)
-
         return {
             'last_hidden_state': embeddings.contiguous(),
         }
