@@ -4,10 +4,7 @@ from swift.llm import InferRequest, PtEngine
 
 if __name__ == '__main__':
     engine = PtEngine(
-        'Qwen/Qwen3-Embedding-4B',
-        task_type='embedding',
-        torch_dtype=torch.float16,
-        attn_implementation='flash_attention_2')
+        'Qwen/Qwen3-Embedding-4B', task_type='embedding', torch_dtype=torch.float16, attn_impl='flash_attention_2')
 
     infer_requests = [
         InferRequest(messages=[

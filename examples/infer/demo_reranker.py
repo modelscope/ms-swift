@@ -7,7 +7,7 @@ if __name__ == '__main__':
         'Qwen/Qwen3-Reranker-4B',
         task_type='generative_reranker',
         torch_dtype=torch.float16,
-        attn_implementation='flash_attention_2')
+        attn_impl='flash_attention_2')
 
     infer_request = InferRequest(
         messages=[{
