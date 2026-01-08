@@ -1682,6 +1682,14 @@ register_model(
         architectures=['Qwen3ForCausalLM'],
     ))
 
+
+def get_model_tokenizer_qwen3_vl_emb(*args, **kwargs):
+    os.environ['IMAGE_MAX_TOKEN_NUM'] = os.getenv('IMAGE_MAX_TOKEN_NUM') or '1800'
+    os.environ['FPS'] = os.getenv('FPS') or '1'
+    os.environ['FPS_MAX_FRAMES'] = os.getenv('FPS_MAX_FRAMES') or '64'
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
 register_model(
     ModelMeta(
         MLLMModelType.qwen3_vl_emb, [
@@ -1691,22 +1699,30 @@ register_model(
             ])
         ],
         TemplateType.qwen3_vl_emb,
-        get_model_tokenizer_qwen3_vl,
+        get_model_tokenizer_qwen3_vl_emb,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
+
+def get_model_tokenizer_qwen3_vl_reranker(*args, **kwargs):
+    os.environ['IMAGE_MAX_TOKEN_NUM'] = os.getenv('IMAGE_MAX_TOKEN_NUM') or '1280'
+    os.environ['FPS'] = os.getenv('FPS') or '1'
+    os.environ['FPS_MAX_FRAMES'] = os.getenv('FPS_MAX_FRAMES') or '64'
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
 register_model(
     ModelMeta(
-        RerankerModelType.qwen3_vl_reranker, [
+        MLLMModelType.qwen3_vl_reranker, [
             ModelGroup([
                 Model('Qwen/Qwen3-VL-Reranker-2B', 'Qwen/Qwen3-VL-Reranker-2B'),
                 Model('Qwen/Qwen3-VL-Reranker-8B', 'Qwen/Qwen3-VL-Reranker-8B'),
             ])
         ],
         TemplateType.qwen3_vl_reranker,
-        get_model_tokenizer_qwen3_vl,
+        get_model_tokenizer_qwen3_vl_reranker,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],

@@ -173,6 +173,7 @@ class MLLMModelType:
     qwen3_vl = 'qwen3_vl'
     qwen3_moe_vl = 'qwen3_moe_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
+    qwen3_vl_reranker = 'qwen3_vl_reranker'
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -292,7 +293,6 @@ class RerankerModelType:
     modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     jina_reranker_m0 = 'jina_reranker_m0'
     qwen3_reranker = 'qwen3_reranker'
-    qwen3_vl_reranker = 'qwen3_vl_reranker'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType):

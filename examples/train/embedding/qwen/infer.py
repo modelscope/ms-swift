@@ -2,6 +2,7 @@
 # https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py
 
 import os
+
 import torch
 
 from swift.llm import InferRequest, PtEngine
@@ -9,17 +10,16 @@ from swift.llm import InferRequest, PtEngine
 
 def run_qwen3_emb():
     engine = PtEngine(
-        'Qwen/Qwen3-Embedding-4B', task_type='embedding', attn_impl='flash_attention_2',
-        adapters=['output/vx-xxx/checkpoint-xxx']
-    )
+        'Qwen/Qwen3-Embedding-4B',
+        task_type='embedding',
+        attn_impl='flash_attention_2',
+        adapters=['output/vx-xxx/checkpoint-xxx'])
 
     infer_requests = [
         InferRequest(messages=[
             {
-                'role':
-                'user',
-                'content':
-                'A dog sleeping under a table.'
+                'role': 'user',
+                'content': 'A dog sleeping under a table.'
             },
         ]),
         InferRequest(messages=[
