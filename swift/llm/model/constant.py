@@ -144,6 +144,7 @@ class LLMModelType:
     longchat = 'longchat'
     minimind = 'minimind'
     iquestcoder = 'iquestcoder'
+    youtu_llm = 'youtu_llm'
 
 
 class BertModelType:

@@ -282,6 +282,10 @@ class GPTBridge:
                     hf_state_dict[k] = v
             elif hf_state_dict is None:
                 return {}
+            else:
+                if self._target_device is not None:
+                    for k, v in hf_state_dict.items():
+                        hf_state_dict[k] = v.to(self._target_device)
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):
@@ -1431,6 +1435,7 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
+        torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(

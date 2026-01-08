@@ -113,6 +113,7 @@ class LLMTemplateType:
     bert = 'bert'
     minimind = 'minimind'
     iquestcoder = 'iquestcoder'
+    youtu_llm = 'youtu_llm'
 
 
 class RMTemplateType:
