@@ -1,8 +1,4 @@
 # 2*30G
-# losses: plugin/loss.py
-# data format: docs/source_en/Customization/Custom-dataset.md
-# --dataloader_drop_last must be true or eval gather will throw error
-# --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
 CUDA_VISIBLE_DEVICES=0,1 \
 INFONCE_TEMPERATURE=0.1 \
 NPROC_PER_NODE=2 \
