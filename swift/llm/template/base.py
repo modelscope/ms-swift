@@ -484,7 +484,6 @@ class Template(ProcessorMixin):
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
-        encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
             problem_type = self.config.problem_type
@@ -1313,8 +1312,12 @@ class Template(ProcessorMixin):
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
-        encoded['loss_scale'] = loss_scale
+        if self.task_type == 'causal_lm':
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
+        else:
+            encoded.pop('labels', None)
+            encoded.pop('loss_scale', None)
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:

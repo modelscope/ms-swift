@@ -21,7 +21,7 @@ def run_qwen3_emb():
         ]),
         InferRequest(messages=[
             {
-                'role': 'assistant',
+                'role': 'user',
                 'content': 'The capital of China is Beijing.'
             },
         ])
