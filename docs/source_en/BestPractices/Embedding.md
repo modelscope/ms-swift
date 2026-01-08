@@ -116,7 +116,7 @@ Training scripts provided by ms-swift:
 
 ## Inference
 
-SWIFT has supported the deployment of GME、GTE、Qwen3-Embedding models，please check[here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/embedding/client.py).
+SWIFT has supported the deployment of GME, GTE, Qwen3-Embedding models, please check [here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/embedding/client.py).
 - For inference scripts, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py).
 
 You can also use the original model's code for inference:

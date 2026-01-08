@@ -1684,9 +1684,9 @@ register_model(
 
 
 def get_model_tokenizer_qwen3_vl_emb(*args, **kwargs):
-    os.environ['IMAGE_MAX_TOKEN_NUM'] = os.getenv('IMAGE_MAX_TOKEN_NUM') or '1800'
-    os.environ['FPS'] = os.getenv('FPS') or '1'
-    os.environ['FPS_MAX_FRAMES'] = os.getenv('FPS_MAX_FRAMES') or '64'
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1800')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
     return get_model_tokenizer_qwen3_vl(*args, **kwargs)
 
 
@@ -1707,9 +1707,9 @@ register_model(
 
 
 def get_model_tokenizer_qwen3_vl_reranker(*args, **kwargs):
-    os.environ['IMAGE_MAX_TOKEN_NUM'] = os.getenv('IMAGE_MAX_TOKEN_NUM') or '1280'
-    os.environ['FPS'] = os.getenv('FPS') or '1'
-    os.environ['FPS_MAX_FRAMES'] = os.getenv('FPS_MAX_FRAMES') or '64'
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1280')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
     return get_model_tokenizer_qwen3_vl(*args, **kwargs)
 
 
