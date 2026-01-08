@@ -1,20 +1,17 @@
 # 2*10G
 # losses: plugin/loss.py
-# data format: docs/source_en/Customization/Custom-dataset.md
-# --dataloader_drop_last must be true or eval gather will throw error
-# --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
 CUDA_VISIBLE_DEVICES=0,1 \
-INFONCE_TEMPERATURE=0.1 \
 NPROC_PER_NODE=2 \
 swift sft \
-    --model Qwen/Qwen3-Embedding-4B \
-    --task_type embedding \
+    --model Qwen/Qwen3-Reranker-4B \
+    --task_type generative_reranker \
+    --loss_type generative_reranker \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --learning_rate 5e-6 \
     --target_modules all-linear \
-    --dataset sentence-transformers/stsb:positive \
+    --dataset MTEB/scidocs-reranking \
     --attn_impl flash_attn \
     --padding_free true \
     --torch_dtype bfloat16 \
@@ -26,14 +23,13 @@ swift sft \
     --eval_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --num_train_epochs 5 \
-    --max_length 8192 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --gradient_accumulation_steps 1 \
+    --num_train_epochs 1 \
+    --max_length 4096 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 8 \
     --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
     --warmup_ratio 0.05 \
-    --save_only_model true \
-    --loss_type infonce \
     --dataloader_drop_last true \
     --deepspeed zero2

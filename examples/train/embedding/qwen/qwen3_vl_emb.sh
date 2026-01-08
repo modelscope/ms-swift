@@ -32,8 +32,8 @@ swift sft \
     --per_device_eval_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
     --warmup_ratio 0.05 \
-    --save_only_model true \
     --loss_type infonce \
     --dataloader_drop_last true \
     --deepspeed zero2
