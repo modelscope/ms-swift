@@ -171,10 +171,9 @@ class RerankerTrainer(Trainer):
             positive_logits = logits[:, :, positive_token_id]
             negative_logits = logits[:, :, negative_token_id]
             logits = positive_logits - negative_logits
-            return logits
-        else:
-            # Unexpected shape, return as-is
-            return logits
+        if self.template.padding_free:
+            logits = logits[:, -1]
+        return logits
 
     def evaluation_loop(self, *args, **kwargs):
         output = super().evaluation_loop(*args, **kwargs)
@@ -188,15 +187,12 @@ class RerankerTrainer(Trainer):
         logits = eval_prediction.predictions
         labels = eval_prediction.label_ids
 
-        if self.template.padding_free:
-            logits = logits[:, -1]
-        else:
-            if logits.ndim == 2 and logits.shape[1] > 1:
-                pad_token_id = self.tokenizer.pad_token_id
-                valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
-                last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
-                last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
-                logits = logits[np.arange(logits.shape[0]), last_valid_indices]
+        if not self.template.padding_free and logits.ndim == 2 and logits.shape[1] > 1:
+            pad_token_id = self.tokenizer.pad_token_id
+            valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
+            last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
+            last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
+            logits = logits[np.arange(logits.shape[0]), last_valid_indices]
         return calculate_reranker_metrics(logits, labels)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
