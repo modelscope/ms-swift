@@ -1,8 +1,6 @@
 # For full-parameter training, please refer to:
 # https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_embedding.py
 
-import os
-
 import torch
 
 from swift.llm import InferRequest, PtEngine
