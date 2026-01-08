@@ -814,6 +814,15 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - FPS_MIN_FRAMES: 默认为4。代表一段视频的最小抽帧数。
 - 🔥FPS_MAX_FRAMES: 默认为768，代表一段视频的最大抽帧数。（用于避免OOM）
 
+
+### qwen3_vl_emb, qwen3_vl_reranker
+参数含义与`qwen3_vl`相同，见上面的描述。以下为对默认值的覆盖：
+
+- IMAGE_MAX_TOKEN_NUM: qwen3_vl_emb默认为1800, qwen3_vl_reranker默认为1280。具体参考这里：[qwen3_vl_embedding](https://modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B/file/view/master/scripts%2Fqwen3_vl_embedding.py?status=1#L26), [qwen3_vl_reranker](https://modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B/file/view/master/scripts%2Fqwen3_vl_reranker.py?status=1#L16)。
+- FPS: 默认为1。
+- FPS_MAX_FRAMES: 默认为64。
+
+
 ### internvl, internvl_phi3
 参数含义可以查看[这里](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)。
 - MAX_NUM: 默认为12。

@@ -8,6 +8,9 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
    - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)
    - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-4B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-8B)
+3. qwen3-vl-reranker模型
+   - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
 
 ## 实现方式
 
@@ -84,12 +87,15 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ## 脚手架
 
-SWIFT提供了两个脚手架训练脚本：
+SWIFT提供的脚手架训练脚本：
 
+- [Qwen3-Reranker/Qwen3-VL-Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/qwen3)
 - [Pointwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
 - [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+推理脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py)。
 
 ## 高级功能
 
