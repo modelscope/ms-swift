@@ -208,12 +208,13 @@ class DatasetProgressCallback(TrainerCallback):
             return
 
         # Calculate and log progress for each dataset
+        # Progress is shown as epoch count (e.g., 0.5 = half epoch, 2.0 = 2 epochs)
         for source, count in global_counts.items():
             total = self.dataset_sizes.get(source)
             if total and total > 0:
-                progress = min(count / total * 100, 100.0)
+                progress = count / total  # epoch count, not percentage
                 metric_name = f'dataset_progress/{source}'
-                logs[metric_name] = round(progress, 2)
+                logs[metric_name] = round(progress, 4)
                 if self._tb_writer is not None:
                     self._tb_writer.add_scalar(metric_name, progress, state.global_step)
             else:
