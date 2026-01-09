@@ -2062,7 +2062,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for LLM, slice the inputs
         for key, val in inputs.items():
             if isinstance(val, torch.Tensor):
-                chunk_inputs[key] = val[start_idx:end_idx]
+                chunk_inputs[key] = val if val.ndim == 0 else val[start_idx:end_idx]
             else:
                 chunk_inputs[key] = val
         if self.is_multimodal:
