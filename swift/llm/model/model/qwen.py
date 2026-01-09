@@ -690,6 +690,26 @@ register_model(
     ))
 
 
+def _get_new_read_video_func(read_video_func, read_backend):
+    if read_backend == 'torchvision':
+
+        def _new_read_video(ele: dict):
+            try:
+                return read_video_func(ele)
+            except Exception:
+                from swift.llm import load_file  # base64
+                ele['video'] = load_file(ele['video'])
+                return read_video_func(ele)
+    else:
+
+        def _new_read_video(ele: dict):
+            from swift.llm import load_file
+            ele['video'] = load_file(ele['video'])
+            return read_video_func(ele)
+
+    return _new_read_video
+
+
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
@@ -725,32 +745,17 @@ def patch_qwen_vl_utils(vision_process):
         val = get_env_args(key, type_func, default_value)
         setattr(vision_process, key.upper(), val)
         res[key] = val
-    # Patch decord video reader if available
-    _read_video_decord = getattr(vision_process, '_read_video_decord', None)
-    if _read_video_decord is not None:
-
-        def _new_read_video_decord(ele: dict):
-            from swift.llm import load_file
-            ele['video'] = load_file(ele['video'])
-            return _read_video_decord(ele)
-
-        backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
-        if isinstance(backends, dict):
-            backends['decord'] = _new_read_video_decord
-            _read_video_torchvision = getattr(vision_process, '_read_video_torchvision', None)
-            if _read_video_torchvision is not None:
-
-                def _new_read_video_torchvision(ele: dict):
-                    try:
-                        return _read_video_torchvision(ele)
-                    except Exception:
-                        from swift.llm import load_file  # base64
-                        ele['video'] = load_file(ele['video'])
-                        return _read_video_torchvision(ele)
-
-                backends['torchvision'] = _new_read_video_torchvision
-        elif backends is None:  # keye_vl
-            vision_process._read_video_decord = _new_read_video_decord
+    # Patch video reader if available
+    backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
+    for read_backend in ['torchvision', 'decord', 'torchcodec']:
+        func_key = f'_read_video_{read_backend}'
+        _read_video = getattr(vision_process, func_key, None)
+        if _read_video is not None:
+            _new_read_video = _get_new_read_video_func(_read_video, read_backend)
+            if isinstance(backends, dict):
+                backends[read_backend] = _new_read_video
+            elif backends is None:  # keye_vl
+                setattr(vision_process, func_key, _new_read_video)
     vision_process._patch = True
     return res
 
