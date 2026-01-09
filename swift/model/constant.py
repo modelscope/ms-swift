@@ -118,7 +118,6 @@ class LLMModelType:
     moonlight = 'moonlight'
     kimi_k2 = 'kimi_k2'
     mimo = 'mimo'
-    mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
     hunyuan_v1_dense = 'hunyuan_v1_dense'

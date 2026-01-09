@@ -79,12 +79,12 @@ def get_model_info_table():
                 else:
                     support_megatron = cache_mapping.get(ms_model_id, '&#x2718;')
                 if support_megatron == '&#x2714;':
-                    if model_info.is_multimodal:
+                    if model_meta.is_multimodal:
                         mg_count_mllm += 1
                     else:
                         mg_count_llm += 1
                 r = f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n'
-                if model_info.is_multimodal:
+                if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
                     res_llm.append(r)

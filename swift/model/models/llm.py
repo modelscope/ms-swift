@@ -242,22 +242,15 @@ register_model(
                 Model('XiaomiMiMo/MiMo-7B-SFT', 'XiaomiMiMo/MiMo-7B-SFT'),
                 Model('XiaomiMiMo/MiMo-7B-RL-Zero', 'XiaomiMiMo/MiMo-7B-RL-Zero'),
                 Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
-            ])
+            ], TemplateType.qwen),
+            ModelGroup([
+            Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
+        ], TemplateType.mimo_rl),
         ],
-        template=TemplateType.qwen,
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
 
-register_model(
-    ModelMeta(
-        LLMModelType.mimo_rl, [ModelGroup([
-            Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
-        ])],
-        template=TemplateType.mimo_rl,
-        model_arch=ModelArch.llama,
-        architectures=['MiMoForCausalLM'],
-        requires=['transformers>=4.37']))
 
 register_model(
     ModelMeta(

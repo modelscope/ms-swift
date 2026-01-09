@@ -563,7 +563,6 @@ register_megatron_model(
         MegatronModelType.qwen3_next,
         [
             ModelType.qwen3_next,
-            ModelType.qwen3_next_thinking,
         ],
         get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
         get_mtp_block_spec=get_qwen3_next_mtp_block_spec,

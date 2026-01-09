@@ -69,6 +69,7 @@ class ModelMeta:
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
 
+    is_multimodal: bool = False
     is_reward: bool = False
     task_type: Optional[str] = None
 
@@ -79,7 +80,7 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from .constant import RMModelType, RerankerModelType
+        from .constant import RMModelType, RerankerModelType, MLLMModelType
         from .register import ModelLoader
         assert not isinstance(self.loader, str)  # check ms-swift4.0
         if self.loader is None:
@@ -91,6 +92,9 @@ class ModelMeta:
             self.candidate_templates.add(model_group.template)
         self.candidate_templates.discard(None)
         self.candidate_templates = list(self.candidate_templates)
+
+        if self.model_type in MLLMModelType.__dict__:
+            self.is_multimodal = True
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
         if self.model_type in RerankerModelType.__dict__:
@@ -321,5 +325,7 @@ def get_model_info_meta(
     model_info.task_type = task_type
     model_info.num_labels = num_labels
     model_info.problem_type = problem_type
+    if model_meta.is_multimodal:
+        model_info.is_multimodal = True
     model_meta.check_requires(model_info)
     return model_info, model_meta
