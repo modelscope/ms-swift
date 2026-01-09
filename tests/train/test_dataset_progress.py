@@ -129,14 +129,18 @@ class TestPackingRowPreserveSource(unittest.TestCase):
         self.assertEqual(packed['_dataset_source'], ['dataset_a.json', None])
 
 
-class TestUpdateDatasetProgress(unittest.TestCase):
-    """Test _update_dataset_progress method."""
+class TestProgressTrackingCollator(unittest.TestCase):
+    """Test ProgressTrackingCollator wrapper."""
 
-    def test_update_counts_single_source(self):
-        """Test counting samples with single source."""
-        # Simulate template behavior
-        track_dataset_progress = True
-        dataset_progress_counts = {}
+    def test_collects_single_sources(self):
+        """Test collecting sources from non-packed batch."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        # Mock original collator
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2], [3, 4], [5, 6]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator, track_progress=True)
 
         batch = [
             {'input_ids': [1, 2], '_dataset_source': 'ds_a'},
@@ -144,21 +148,24 @@ class TestUpdateDatasetProgress(unittest.TestCase):
             {'input_ids': [5, 6], '_dataset_source': 'ds_b'},
         ]
 
+        result = wrapper(batch)
+
+        # Verify _batch_sources is collected
+        self.assertIn('_batch_sources', result)
+        self.assertEqual(result['_batch_sources'], ['ds_a', 'ds_a', 'ds_b'])
+
+        # Verify _dataset_source is removed from batch
         for b in batch:
-            sources = b.pop('_dataset_source', None)
-            if sources is None:
-                continue
-            if isinstance(sources, str):
-                sources = [sources]
-            for source in sources:
-                if source is not None:
-                    dataset_progress_counts[source] = dataset_progress_counts.get(source, 0) + 1
+            self.assertNotIn('_dataset_source', b)
 
-        self.assertEqual(dataset_progress_counts, {'ds_a': 2, 'ds_b': 1})
+    def test_collects_packed_sources(self):
+        """Test collecting sources from packed batch (sources as list)."""
+        from swift.llm.dataset import ProgressTrackingCollator
 
-    def test_update_counts_packed_sources(self):
-        """Test counting samples from packed batch (sources as list)."""
-        dataset_progress_counts = {}
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2, 3, 4, 5]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator, track_progress=True)
 
         # After packing, _dataset_source is a list
         batch = [
@@ -168,30 +175,50 @@ class TestUpdateDatasetProgress(unittest.TestCase):
             },
         ]
 
-        for b in batch:
-            sources = b.pop('_dataset_source', None)
-            if sources is None:
-                continue
-            if isinstance(sources, str):
-                sources = [sources]
-            for source in sources:
-                if source is not None:
-                    dataset_progress_counts[source] = dataset_progress_counts.get(source, 0) + 1
+        result = wrapper(batch)
 
-        self.assertEqual(dataset_progress_counts, {'ds_a': 2, 'ds_b': 1})
+        self.assertIn('_batch_sources', result)
+        self.assertEqual(result['_batch_sources'], ['ds_a', 'ds_b', 'ds_a'])
 
-    def test_removes_dataset_source_from_batch(self):
-        """Test that _dataset_source is removed from batch after processing."""
+    def test_removes_source_when_not_tracking(self):
+        """Test that _dataset_source is removed even when not tracking."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator, track_progress=False)
+
         batch = [
             {'input_ids': [1, 2], '_dataset_source': 'ds_a'},
         ]
 
-        # Process batch
-        for b in batch:
-            b.pop('_dataset_source', None)
+        result = wrapper(batch)
 
-        # Verify _dataset_source is removed
+        # Should not have _batch_sources when not tracking
+        self.assertNotIn('_batch_sources', result)
+
+        # But _dataset_source should still be removed
         self.assertNotIn('_dataset_source', batch[0])
+
+    def test_handles_missing_source(self):
+        """Test handling samples without _dataset_source."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2], [3, 4]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator, track_progress=True)
+
+        batch = [
+            {'input_ids': [1, 2], '_dataset_source': 'ds_a'},
+            {'input_ids': [3, 4]},  # No _dataset_source
+        ]
+
+        result = wrapper(batch)
+
+        # Should only contain the one source that exists
+        self.assertEqual(result['_batch_sources'], ['ds_a'])
 
 
 class TestDatasetProgressCallback(unittest.TestCase):
@@ -288,6 +315,230 @@ class TestDistributedGather(unittest.TestCase):
         self.assertEqual(global_counts['ds_b'], 3)
 
 
+class TestDatasetProgressCallbackMethods(unittest.TestCase):
+    """Test DatasetProgressCallback actual methods."""
+
+    def test_set_trainer_wraps_training_step(self):
+        """Test that set_trainer correctly wraps training_step."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100})
+
+        # Create mock trainer
+        mock_trainer = MagicMock()
+        original_step_called = []
+
+        def original_training_step(model, inputs):
+            original_step_called.append(True)
+            return {'loss': 0.5}
+
+        mock_trainer.training_step = original_training_step
+
+        # Wrap trainer
+        callback.set_trainer(mock_trainer)
+
+        # Call wrapped training_step with _batch_sources
+        inputs = {'input_ids': torch.tensor([1, 2, 3]), '_batch_sources': ['ds_a', 'ds_a', 'ds_b']}
+        result = mock_trainer.training_step(None, inputs)
+
+        # Verify original was called
+        self.assertEqual(len(original_step_called), 1)
+
+        # Verify _batch_sources was extracted and counted
+        self.assertEqual(callback._dataset_progress_counts, {'ds_a': 2, 'ds_b': 1})
+
+        # Verify _batch_sources was removed from inputs
+        self.assertNotIn('_batch_sources', inputs)
+
+        # Verify original return value is preserved
+        self.assertEqual(result, {'loss': 0.5})
+
+    def test_set_trainer_handles_missing_batch_sources(self):
+        """Test wrapped training_step handles missing _batch_sources."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback()
+        mock_trainer = MagicMock()
+        mock_trainer.training_step = lambda model, inputs: {'loss': 0.5}
+
+        callback.set_trainer(mock_trainer)
+
+        # Call without _batch_sources
+        inputs = {'input_ids': torch.tensor([1, 2, 3])}
+        result = mock_trainer.training_step(None, inputs)
+
+        # Should work without errors
+        self.assertEqual(result, {'loss': 0.5})
+        self.assertEqual(callback._dataset_progress_counts, {})
+
+    def test_on_train_begin_clears_counts(self):
+        """Test on_train_begin clears previous counts."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100})
+        callback._dataset_progress_counts = {'ds_a': 50, 'ds_b': 30}
+
+        # Mock args and state
+        mock_args = MagicMock()
+        mock_args.report_to = []
+        mock_state = MagicMock()
+        mock_state.is_world_process_zero = True
+
+        callback.on_train_begin(mock_args, mock_state, None)
+
+        # Counts should be cleared
+        self.assertEqual(callback._dataset_progress_counts, {})
+
+    def test_on_log_updates_logs_dict(self):
+        """Test on_log adds progress metrics to logs."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100, 'ds_b': 200})
+        callback._dataset_progress_counts = {'ds_a': 50, 'ds_b': 100}
+
+        mock_args = MagicMock()
+        mock_state = MagicMock()
+        mock_state.is_world_process_zero = True
+        mock_state.global_step = 100
+
+        logs = {}
+        callback.on_log(mock_args, mock_state, None, logs=logs)
+
+        # Should have progress metrics
+        self.assertIn('dataset_progress/ds_a', logs)
+        self.assertIn('dataset_progress/ds_b', logs)
+        self.assertEqual(logs['dataset_progress/ds_a'], 50.0)
+        self.assertEqual(logs['dataset_progress/ds_b'], 50.0)
+
+    def test_on_log_skips_non_zero_rank(self):
+        """Test on_log does nothing on non-zero rank."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100})
+        callback._dataset_progress_counts = {'ds_a': 50}
+
+        mock_args = MagicMock()
+        mock_state = MagicMock()
+        mock_state.is_world_process_zero = False
+
+        logs = {}
+        callback.on_log(mock_args, mock_state, None, logs=logs)
+
+        # Should not add anything
+        self.assertEqual(logs, {})
+
+    def test_gather_counts_single_process(self):
+        """Test _gather_counts in non-distributed setting."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback()
+        callback._dataset_progress_counts = {'ds_a': 10, 'ds_b': 20}
+
+        # In non-distributed setting, should return local counts directly
+        with patch('torch.distributed.is_initialized', return_value=False):
+            result = callback._gather_counts()
+
+        self.assertEqual(result, {'ds_a': 10, 'ds_b': 20})
+
+    def test_on_train_end_closes_writer(self):
+        """Test on_train_end closes TensorBoard writer."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback()
+        mock_writer = MagicMock()
+        callback._tb_writer = mock_writer
+
+        callback.on_train_end(None, None, None)
+
+        mock_writer.close.assert_called_once()
+        self.assertIsNone(callback._tb_writer)
+
+
+class TestProgressTrackingCollatorEdgeCases(unittest.TestCase):
+    """Test edge cases for ProgressTrackingCollator."""
+
+    def test_empty_batch(self):
+        """Test handling empty batch."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {'input_ids': []}
+
+        wrapper = ProgressTrackingCollator(mock_collator)
+        result = wrapper([])
+
+        self.assertEqual(result, {'input_ids': []})
+        self.assertNotIn('_batch_sources', result)
+
+    def test_preserves_all_collator_output(self):
+        """Test that all original collator output is preserved."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {
+                'input_ids': [[1, 2], [3, 4]],
+                'attention_mask': [[1, 1], [1, 1]],
+                'labels': [[-100, 2], [-100, 4]],
+                'custom_field': 'preserved'
+            }
+
+        wrapper = ProgressTrackingCollator(mock_collator)
+        batch = [
+            {'input_ids': [1, 2], '_dataset_source': 'ds_a'},
+            {'input_ids': [3, 4], '_dataset_source': 'ds_b'},
+        ]
+        result = wrapper(batch)
+
+        # All original fields should be preserved
+        self.assertIn('input_ids', result)
+        self.assertIn('attention_mask', result)
+        self.assertIn('labels', result)
+        self.assertIn('custom_field', result)
+        self.assertEqual(result['custom_field'], 'preserved')
+
+        # Plus _batch_sources
+        self.assertIn('_batch_sources', result)
+        self.assertEqual(result['_batch_sources'], ['ds_a', 'ds_b'])
+
+    def test_handles_none_in_sources_list(self):
+        """Test handling None values in packed sources list."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2, 3, 4, 5]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator)
+
+        # Packed batch with some None sources
+        batch = [
+            {
+                'input_ids': [1, 2, 3, 4, 5],
+                '_dataset_source': ['ds_a', None, 'ds_b', None, 'ds_a']
+            },
+        ]
+        result = wrapper(batch)
+
+        # Should filter out None values
+        self.assertEqual(result['_batch_sources'], ['ds_a', 'ds_b', 'ds_a'])
+
+    def test_all_none_sources(self):
+        """Test handling when all sources are None."""
+        from swift.llm.dataset import ProgressTrackingCollator
+
+        def mock_collator(batch):
+            return {'input_ids': [[1, 2]]}
+
+        wrapper = ProgressTrackingCollator(mock_collator)
+
+        batch = [
+            {'input_ids': [1, 2], '_dataset_source': [None, None]},
+        ]
+        result = wrapper(batch)
+
+        # Should not have _batch_sources if all are None
+        self.assertNotIn('_batch_sources', result)
+
+
 class TestIntegration(unittest.TestCase):
     """Integration tests for the complete flow."""
 
@@ -296,12 +547,10 @@ class TestIntegration(unittest.TestCase):
         from swift.trainers.callback import DatasetProgressCallback
         self.assertTrue(callable(DatasetProgressCallback))
 
-    def test_import_template_base(self):
-        """Test that Template with progress tracking can be imported."""
-        from swift.llm.template.base import Template
-        # Check that _update_dataset_progress method exists
-        self.assertTrue(hasattr(Template, '_update_dataset_progress'))
-        self.assertTrue(callable(getattr(Template, '_update_dataset_progress')))
+    def test_import_collator(self):
+        """Test that ProgressTrackingCollator can be imported."""
+        from swift.llm.dataset import ProgressTrackingCollator
+        self.assertTrue(callable(ProgressTrackingCollator))
 
     def test_train_args_has_track_dataset_progress(self):
         """Test that TrainArguments has track_dataset_progress field."""
@@ -309,6 +558,48 @@ class TestIntegration(unittest.TestCase):
         import dataclasses
         field_names = [f.name for f in dataclasses.fields(TrainArguments)]
         self.assertIn('track_dataset_progress', field_names)
+
+    def test_callback_no_template_dependency(self):
+        """Test that DatasetProgressCallback doesn't require template."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        # Should be able to create callback without template
+        callback = DatasetProgressCallback({'ds_a': 100})
+        self.assertEqual(callback.dataset_sizes, {'ds_a': 100})
+
+    def test_collator_and_callback_integration(self):
+        """Test ProgressTrackingCollator and DatasetProgressCallback work together."""
+        from swift.llm.dataset import ProgressTrackingCollator
+        from swift.trainers.callback import DatasetProgressCallback
+
+        # Create collator wrapper
+        def mock_collator(batch):
+            return {'input_ids': [[b['input_ids']] for b in batch]}
+
+        wrapper = ProgressTrackingCollator(mock_collator)
+
+        # Create callback
+        callback = DatasetProgressCallback({'ds_a': 10, 'ds_b': 5})
+
+        # Create mock trainer
+        mock_trainer = MagicMock()
+        mock_trainer.training_step = lambda model, inputs: {'loss': 0.5}
+        callback.set_trainer(mock_trainer)
+
+        # Simulate training loop
+        for _ in range(3):
+            batch = [
+                {'input_ids': [1, 2], '_dataset_source': 'ds_a'},
+                {'input_ids': [3, 4], '_dataset_source': 'ds_b'},
+            ]
+            collated = wrapper(batch)
+
+            # Simulate training_step
+            mock_trainer.training_step(None, collated)
+
+        # Verify counts
+        self.assertEqual(callback._dataset_progress_counts['ds_a'], 3)
+        self.assertEqual(callback._dataset_progress_counts['ds_b'], 3)
 
 
 if __name__ == '__main__':

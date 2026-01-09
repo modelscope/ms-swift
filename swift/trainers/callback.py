@@ -122,27 +122,57 @@ class DatasetProgressCallback(TrainerCallback):
     This callback tracks how many samples from each dataset have been consumed during training,
     and reports the progress percentage to TensorBoard.
 
-    The callback reads progress counts from the template's `dataset_progress_counts` attribute,
-    which is updated during data collation.
+    The statistics are collected in the main process by extracting `_batch_sources` from each
+    batch in the training loop. This works correctly with multiple dataloader workers because
+    the source information travels with the batch data from workers to the main process.
+
+    Note: This callback works with ProgressTrackingCollator which extracts _dataset_source
+    from batch samples and passes them via _batch_sources field.
 
     Args:
-        template: The template instance that tracks dataset progress counts.
         dataset_sizes: A dict mapping dataset source names to their total sample counts.
                       If None, only sample counts (not percentages) will be reported.
     """
 
-    def __init__(self, template, dataset_sizes: Optional[Dict[str, int]] = None):
-        self.template = template
+    def __init__(self, dataset_sizes: Optional[Dict[str, int]] = None):
         self.dataset_sizes = dataset_sizes or {}
+        self._tb_writer = None
+        self._dataset_progress_counts: Dict[str, int] = {}
 
     def on_train_begin(self, args, state, control, **kwargs):
-        # Enable progress tracking in template
-        self.template.track_dataset_progress = True
-        self.template.dataset_progress_counts.clear()
+        self._dataset_progress_counts.clear()
+
+        # Initialize TensorBoard writer directly to ensure metrics are written
+        if state.is_world_process_zero and 'tensorboard' in getattr(args, 'report_to', []):
+            try:
+                from torch.utils.tensorboard import SummaryWriter
+                log_dir = args.logging_dir or os.path.join(args.output_dir, 'runs')
+                self._tb_writer = SummaryWriter(log_dir=log_dir)
+            except ImportError:
+                pass
+
+    def set_trainer(self, trainer):
+        """Wrap trainer's training_step to extract _batch_sources for progress tracking.
+        
+        This should be called after the trainer is created but before training starts.
+        """
+        original_training_step = trainer.training_step
+        callback = self
+
+        def wrapped_training_step(model, inputs, *args, **kwargs):
+            # Extract _batch_sources before passing to model
+            batch_sources = inputs.pop('_batch_sources', None)
+            if batch_sources:
+                for source in batch_sources:
+                    callback._dataset_progress_counts[source] = \
+                        callback._dataset_progress_counts.get(source, 0) + 1
+            return original_training_step(model, inputs, *args, **kwargs)
+
+        trainer.training_step = wrapped_training_step
 
     def _gather_counts(self) -> Dict[str, int]:
         """Gather counts from all processes in distributed training."""
-        local_counts = dict(self.template.dataset_progress_counts)
+        local_counts = dict(self._dataset_progress_counts)
 
         if not dist.is_initialized():
             return local_counts
@@ -168,24 +198,36 @@ class DatasetProgressCallback(TrainerCallback):
         return dict(global_counts)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        if logs is None:
-            return
-
-        # Only report on main process
-        if not state.is_world_process_zero:
+        if logs is None or not state.is_world_process_zero:
             return
 
         global_counts = self._gather_counts()
+        if not global_counts:
+            return
 
         # Calculate and log progress for each dataset
         for source, count in global_counts.items():
             total = self.dataset_sizes.get(source)
             if total and total > 0:
                 progress = min(count / total * 100, 100.0)
-                logs[f'dataset_progress/{source}'] = round(progress, 2)
+                metric_name = f'dataset_progress/{source}'
+                logs[metric_name] = round(progress, 2)
+                if self._tb_writer is not None:
+                    self._tb_writer.add_scalar(metric_name, progress, state.global_step)
             else:
-                # If total is unknown, just log the count
-                logs[f'dataset_samples/{source}'] = count
+                metric_name = f'dataset_samples/{source}'
+                logs[metric_name] = count
+                if self._tb_writer is not None:
+                    self._tb_writer.add_scalar(metric_name, count, state.global_step)
+
+        if self._tb_writer is not None:
+            self._tb_writer.flush()
+
+    def on_train_end(self, args, state, control, **kwargs):
+        """Close TensorBoard writer on training end."""
+        if self._tb_writer is not None:
+            self._tb_writer.close()
+            self._tb_writer = None
 
 
 # monkey patching

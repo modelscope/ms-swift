@@ -105,7 +105,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
-        return partial(template.data_collator, padding_to=padding_to)
+        collator = partial(template.data_collator, padding_to=padding_to)
+
+        # Wrap collator for dataset progress tracking if enabled
+        if args.track_dataset_progress:
+            from swift.llm.dataset import ProgressTrackingCollator
+            collator = ProgressTrackingCollator(collator)
+
+        return collator
 
     def _save_val_dataset(self, val_dataset):
         args = self.args
@@ -211,6 +218,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template=self.template,
             **self._get_trainer_kwargs(),
         )
+
+        # Set trainer reference for DatasetProgressCallback
+        from swift.trainers.callback import DatasetProgressCallback
+        for callback in self.callbacks:
+            if isinstance(callback, DatasetProgressCallback):
+                callback.set_trainer(trainer)
+                break
+
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
@@ -310,26 +325,23 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if isinstance(raw_dataset, LazyLLMDataset):
                 raw_dataset = raw_dataset.dataset
 
-        # Count samples per source from raw dataset
-        if hasattr(raw_dataset, 'column_names') and '_dataset_source' in raw_dataset.column_names:
-            # Check if dataset has 'dataset_name' column
-            has_dataset_name = 'dataset_name' in raw_dataset.column_names
+        column_names = getattr(raw_dataset, 'column_names', None)
 
+        # Count samples per source from raw dataset
+        if column_names is not None and '_dataset_source' in column_names:
+            has_dataset_name = 'dataset_name' in raw_dataset.column_names
             if has_dataset_name:
-                # Use dataset_name for grouping
                 dataset_names = raw_dataset['dataset_name']
                 for name in dataset_names:
                     if name is not None:
                         dataset_sizes[name] = dataset_sizes.get(name, 0) + 1
             else:
-                # Use _dataset_source (file name) for grouping
                 sources = raw_dataset['_dataset_source']
                 for source in sources:
                     dataset_sizes[source] = dataset_sizes.get(source, 0) + 1
-
             logger.info(f'Dataset sizes for progress tracking: {dataset_sizes}')
 
-        callback = DatasetProgressCallback(self.template, dataset_sizes)
+        callback = DatasetProgressCallback(dataset_sizes)
         self.callbacks.append(callback)
         logger.info('DatasetProgressCallback registered for tracking per-dataset training progress.')
 
