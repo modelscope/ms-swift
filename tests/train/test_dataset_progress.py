@@ -315,6 +315,125 @@ class TestDistributedGather(unittest.TestCase):
         self.assertEqual(global_counts['ds_b'], 3)
 
 
+class TestDistributedCollectiveSync(unittest.TestCase):
+    """Test that collective operations are called correctly for all ranks.
+
+    This is critical: dist.gather_object is a collective operation that requires
+    all ranks to participate. If only rank 0 calls it, other ranks will hang.
+    """
+
+    def test_on_log_calls_gather_for_all_ranks(self):
+        """Test that on_log calls _gather_counts for all ranks, not just rank 0.
+
+        This test verifies the fix for NCCL timeout issue where only rank 0
+        was calling gather_object while other ranks returned early.
+        """
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100})
+        callback._dataset_progress_counts = {'ds_a': 50}
+
+        mock_args = MagicMock()
+        mock_state = MagicMock()
+
+        # Test for non-zero rank (e.g., rank 1, 2, 3)
+        mock_state.is_world_process_zero = False
+
+        logs = {}
+
+        # Mock _gather_counts to track if it's called
+        gather_called = []
+
+        def mock_gather():
+            gather_called.append(True)
+            return {}  # Non-rank-0 returns empty after gather
+
+        with patch.object(callback, '_gather_counts', side_effect=mock_gather):
+            callback.on_log(mock_args, mock_state, None, logs=logs)
+
+        # CRITICAL: _gather_counts should be called even for non-zero rank
+        # This ensures all ranks participate in the collective operation
+        self.assertEqual(len(gather_called), 1, '_gather_counts must be called for all ranks')
+
+        # But logs should NOT be modified for non-zero rank
+        self.assertEqual(logs, {})
+
+    def test_on_log_rank_0_processes_results(self):
+        """Test that rank 0 calls gather AND processes results."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback({'ds_a': 100})
+
+        mock_args = MagicMock()
+        mock_state = MagicMock()
+        mock_state.is_world_process_zero = True
+        mock_state.global_step = 100
+
+        logs = {}
+
+        # Mock _gather_counts to return aggregated data
+        def mock_gather():
+            return {'ds_a': 50}  # Aggregated from all ranks
+
+        with patch.object(callback, '_gather_counts', side_effect=mock_gather):
+            callback.on_log(mock_args, mock_state, None, logs=logs)
+
+        # Rank 0 should process and add to logs
+        self.assertIn('dataset_progress/ds_a', logs)
+        self.assertEqual(logs['dataset_progress/ds_a'], 50.0)
+
+    def test_gather_counts_distributed_all_ranks_participate(self):
+        """Test _gather_counts requires all ranks to call gather_object."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback()
+        callback._dataset_progress_counts = {'ds_a': 10}
+
+        gather_object_calls = []
+
+        def mock_gather_object(obj, gather_list, dst):
+            gather_object_calls.append({
+                'obj': obj,
+                'gather_list': gather_list,
+                'dst': dst
+            })
+            # Simulate gather on rank 0
+            if gather_list is not None:
+                gather_list[0] = obj
+                gather_list[1] = {'ds_a': 15}
+                gather_list[2] = {'ds_a': 20}
+                gather_list[3] = {'ds_a': 5}
+
+        with patch('torch.distributed.is_initialized', return_value=True), \
+                patch('torch.distributed.get_world_size', return_value=4), \
+                patch('torch.distributed.get_rank', return_value=0), \
+                patch('torch.distributed.gather_object', side_effect=mock_gather_object):
+            result = callback._gather_counts()
+
+        # gather_object should be called
+        self.assertEqual(len(gather_object_calls), 1)
+        self.assertEqual(gather_object_calls[0]['dst'], 0)
+
+        # Result should aggregate all ranks: 10 + 15 + 20 + 5 = 50
+        self.assertEqual(result['ds_a'], 50)
+
+    def test_gather_counts_non_rank_0_returns_empty(self):
+        """Test _gather_counts returns empty dict for non-rank-0 after gather."""
+        from swift.trainers.callback import DatasetProgressCallback
+
+        callback = DatasetProgressCallback()
+        callback._dataset_progress_counts = {'ds_a': 10}
+
+        with patch('torch.distributed.is_initialized', return_value=True), \
+                patch('torch.distributed.get_world_size', return_value=4), \
+                patch('torch.distributed.get_rank', return_value=2), \
+                patch('torch.distributed.gather_object'):
+            result = callback._gather_counts()
+
+        # Non-rank-0 should return empty dict after participating in gather
+        self.assertEqual(result, {})
+
+
 class TestDatasetProgressCallbackMethods(unittest.TestCase):
     """Test DatasetProgressCallback actual methods."""
 
@@ -602,5 +721,51 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(callback._dataset_progress_counts['ds_b'], 3)
 
 
+class TestDistributedIntegration(unittest.TestCase):
+    """Instructions for real distributed testing.
+
+    The unit tests above use mocks to simulate distributed behavior.
+    To truly verify the fix works in multi-GPU environments, run:
+
+        torchrun --nproc_per_node=4 -m tests.train.test_dataset_progress TestDistributedIntegration.run_distributed_test
+
+    Or create a separate script and run:
+
+        torchrun --nproc_per_node=4 tests/train/test_dist_progress_real.py
+    """
+
+    @staticmethod
+    def run_distributed_test():
+        """Real distributed test - must be run with torchrun."""
+        import torch.distributed as dist
+
+        if not dist.is_initialized():
+            dist.init_process_group(backend='nccl')
+
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+
+        print(f'[Rank {rank}/{world_size}] Starting test', flush=True)
+
+        # Test 1: Basic gather
+        from swift.trainers.callback import DatasetProgressCallback
+        cb = DatasetProgressCallback({'ds_a': 100})
+        cb._dataset_progress_counts = {'ds_a': (rank + 1) * 10}
+
+        result = cb._gather_counts()
+        dist.barrier()
+
+        if rank == 0:
+            expected = sum((r + 1) * 10 for r in range(world_size))
+            assert result.get('ds_a') == expected, f'Expected {expected}, got {result}'
+            print(f'[Rank 0] Test passed! {result}', flush=True)
+
+        dist.destroy_process_group()
+
+
 if __name__ == '__main__':
-    unittest.main()
+    import sys
+    if len(sys.argv) > 1 and 'run_distributed_test' in sys.argv[1]:
+        TestDistributedIntegration.run_distributed_test()
+    else:
+        unittest.main()
