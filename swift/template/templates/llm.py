@@ -69,28 +69,6 @@ register_template(
         chat_sep=[],
         prompt=['{{QUERY}}']))
 
-
-class Qwen3EmbTemplate(Template):
-
-    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs(inputs)
-        if inputs.system is not None:
-            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
-            inputs.system = None
-        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
-            inputs.messages.append({'role': 'assistant', 'content': ''})
-        return inputs
-
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.qwen3_emb,
-        template_cls=Qwen3EmbTemplate,
-        suffix=['<|endoftext|>'],
-        prefix=[],
-        chat_sep=[],
-        prompt=['{{QUERY}}']))
-
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
 

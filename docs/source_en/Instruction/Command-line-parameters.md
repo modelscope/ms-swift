@@ -825,7 +825,8 @@ qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and q
 
 
 ### qwen3_vl
-The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values:
+The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values: (It is also compatible with environment variables used by `qwen2_5_vl`, such as: `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and will perform automatic conversion.)
+
 
 - SPATIAL_MERGE_SIZE: default 2.
 - IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
@@ -838,6 +839,15 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 - FPS: default 2.0.
 - FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
 - 🔥FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+
+
+### qwen3_vl_emb, qwen3_vl_reranker
+
+The parameter meanings are the same as `qwen3_vl`, see the description above. The following are overrides to the default values:
+
+- IMAGE_MAX_TOKEN_NUM: Default is 1800 for qwen3_vl_emb, and 1280 for qwen3_vl_reranker. For details, please refer to: [qwen3_vl_embedding](https://modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B/file/view/master/scripts%2Fqwen3_vl_embedding.py?status=1#L26), [qwen3_vl_reranker](https://modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B/file/view/master/scripts%2Fqwen3_vl_reranker.py?status=1#L16).
+- FPS: Default is 1.
+- FPS_MAX_FRAMES: Default is 64.
 
 
 ### internvl, internvl_phi3

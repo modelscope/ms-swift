@@ -1,6 +1,6 @@
 from .causal_lm import CustomCrossEntropyLoss
 from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
-from .reranker import GenerativeRerankerLoss, ListwiseGenerativeRerankerLoss, ListwiseRerankerLoss, RerankerLoss
+from .reranker import ListwiseRerankerLoss, RerankerLoss
 
 loss_map = {
     'cross_entropy': CustomCrossEntropyLoss,  # examples
@@ -11,7 +11,5 @@ loss_map = {
     'infonce': InfonceLoss,
     # # reranker
     'reranker': RerankerLoss,
-    'generative_reranker': GenerativeRerankerLoss,
     'listwise_reranker': ListwiseRerankerLoss,
-    'listwise_generative_reranker': ListwiseGenerativeRerankerLoss,
 }

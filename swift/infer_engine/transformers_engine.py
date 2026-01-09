@@ -2,7 +2,6 @@
 import asyncio
 import hashlib
 import inspect
-import os
 import pickle
 import time
 from copy import deepcopy
@@ -23,7 +22,7 @@ from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template, TemplateMeta
 from swift.tuners import Swift
-from swift.utils import safe_snapshot_download, to_device
+from swift.utils import get_generative_reranker_logits, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
@@ -340,20 +339,11 @@ class TransformersEngine(InferEngine):
         elif task_type in ('reranker', 'generative_reranker'):
             if task_type == 'generative_reranker':
                 # Qwen3-reranker like
-                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
-                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-                token_false_id = self.template.tokenizer.convert_tokens_to_ids(negative_token)
-                token_true_id = self.template.tokenizer.convert_tokens_to_ids(positive_token)
-                batch_scores = logits[:, -1, :]
-                true_vector = batch_scores[:, token_true_id]
-                false_vector = batch_scores[:, token_false_id]
-                batch_scores = torch.stack([false_vector, true_vector], dim=1).float()
-                batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
-                preds = batch_scores[:, 1].exp()
-            else:
-                preds = logits.float()
-                if self.reranker_use_activation:
-                    preds = F.sigmoid(preds)
+                logits = get_generative_reranker_logits(
+                    template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
+            preds = logits.float()
+            if self.reranker_use_activation:
+                preds = F.sigmoid(preds)
             preds = preds.tolist()
             logprobs = [None] * len(preds)
         else:

@@ -481,7 +481,6 @@ class Template(ProcessorMixin):
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
-        encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
             problem_type = self.config.problem_type
@@ -1311,8 +1310,12 @@ class Template(ProcessorMixin):
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
-        encoded['loss_scale'] = loss_scale
+        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
+            encoded.pop('labels', None)
+            encoded.pop('loss_scale', None)
+        else:
+            encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1659,10 +1662,7 @@ class Template(ProcessorMixin):
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:
-            new_batch = []
-            for b in batch:
-                new_batch.append({key: val for key, val in b.items() if isinstance(val, list)})
-            res = self._data_collator(new_batch, padding_to=padding_to)
+            res = self._data_collator(batch, padding_to=padding_to)
         return res
 
     def _seq_cls_data_collator(self,

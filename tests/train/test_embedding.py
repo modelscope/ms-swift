@@ -20,11 +20,69 @@ def test_llm():
             split_dataset_ratio=0.01,
             load_from_cache_file=False,
             loss_type='infonce',
+            attn_impl='flash_attn',
+            max_length=2048,
             **kwargs,
         ))
     last_model_checkpoint = result['last_model_checkpoint']
     print(f'last_model_checkpoint: {last_model_checkpoint}')
 
 
+def test_reranker():
+    from swift import sft_main, TrainArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen3-Reranker-4B',
+            train_type='lora',
+            load_from_cache_file=True,
+            task_type='generative_reranker',
+            dataset=['MTEB/scidocs-reranking#10000'],
+            split_dataset_ratio=0.05,
+            loss_type='generative_reranker',
+            dataloader_drop_last=True,
+            eval_strategy='steps',
+            eval_steps=10,
+            max_length=4096,
+            attn_impl='flash_attn',
+            num_train_epochs=1,
+            save_steps=200,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=8,
+            dataset_num_proc=2,
+        ))
+    last_model_checkpoint = result['last_model_checkpoint']
+    print(f'last_model_checkpoint: {last_model_checkpoint}')
+
+
+def test_reranker2():
+    from swift import sft_main, TrainArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2.5-VL-3B-Instruct',
+            train_type='lora',
+            load_from_cache_file=True,
+            task_type='reranker',
+            dataset=['MTEB/scidocs-reranking'],
+            split_dataset_ratio=0.05,
+            loss_type='listwise_reranker',
+            dataloader_drop_last=True,
+            eval_strategy='steps',
+            eval_steps=10,
+            max_length=4096,
+            attn_impl='flash_attn',
+            padding_side='right',
+            num_train_epochs=1,
+            save_steps=200,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=8,
+            dataset_num_proc=1,
+        ))
+    last_model_checkpoint = result['last_model_checkpoint']
+    print(f'last_model_checkpoint: {last_model_checkpoint}')
+
+
 if __name__ == '__main__':
-    test_llm()
+    # test_llm()
+    test_reranker()

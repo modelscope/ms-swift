@@ -136,7 +136,6 @@ def get_multimodal_target_regex(
 
 def get_target_modules(args, model) -> Union[str, List[str]]:
     """Replace all-linear to actual modules"""
-    model_meta = model.model_meta
     if isinstance(args.target_modules, str):
         return args.target_modules
     target_modules = args.target_modules.copy()

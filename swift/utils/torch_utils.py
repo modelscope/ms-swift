@@ -279,3 +279,25 @@ def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bo
         return data.to(device=device, non_blocking=non_blocking)
     else:
         return data
+
+
+def get_generative_reranker_logits(tokenizer, logits, attention_mask=None):
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
+    negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
+
+    # Handle right padding by finding the last valid token position
+    if attention_mask is not None:
+        # Extract logits at the last valid (non-padding) token position for each sample
+        batch_size = logits.shape[0]
+        last_valid_indices = get_last_valid_indices(attention_mask)
+        batch_indices = torch.arange(batch_size, device=logits.device)
+        last_valid_logits = logits[batch_indices, last_valid_indices, :]
+        positive_logits = last_valid_logits[:, positive_token_id]
+        negative_logits = last_valid_logits[:, negative_token_id]
+    else:
+        # Fallback to original behavior if attention_mask is not available
+        positive_logits = logits[:, -1, positive_token_id]
+        negative_logits = logits[:, -1, negative_token_id]
+    return (positive_logits - negative_logits)[:, None]

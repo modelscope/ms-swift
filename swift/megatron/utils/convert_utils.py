@@ -150,7 +150,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     template.set_mode('train')
     _test_params_sum(mg_model)
 
-    is_multimodal = template.model_info.is_multimodal
+    is_multimodal = template.model_meta.is_multimodal
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     if mg_language_model.config.fp8 is not None:
         raise ValueError('fp8 models currently do not support testing convert_precision. '
@@ -179,11 +179,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     inputs = template.encode(get_examples(is_multimodal))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
-    mg_torch_dtype = torch_dtype
     mg_model.eval()
     # thd
     # from ..trainers.utils import get_packed_seq_params
-    # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
     mg_language_model.config.fp8 = None  # compat fp8
@@ -191,14 +189,16 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
         mg_inputs.pop(key, None)
     mg_inputs.update({'packed_seq_params': packed_seq_params})
-    mg_device = next(mg_language_model.parameters()).device
+    _param = next(mg_language_model.parameters())
+    mg_dtype = _param.dtype
+    mg_device = _param.device
     # router to bfloat16
     for n, m in mg_language_model.named_modules():
         if n.endswith('router'):
-            m.to(hf_model.dtype)
+            m.to(mg_dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
-        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=mg_torch_dtype)
+            mg_modules, torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=torch_dtype)
         if args.tensor_model_parallel_size > 1:
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:

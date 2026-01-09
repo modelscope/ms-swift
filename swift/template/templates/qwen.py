@@ -92,10 +92,33 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template='qwen3_coder'))
 
 
+class Qwen3EmbTemplate(Template):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.system is not None:
+            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
+            inputs.system = None
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
+        return inputs
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.qwen3_emb,
+        template_cls=Qwen3EmbTemplate,
+        suffix=['<|endoftext|>'],
+        prefix=[],
+        chat_sep=[],
+        prompt=['{{QUERY}}']))
+
+
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
         if inputs.system is not None:
             instruction = inputs.system
             inputs.system = None
@@ -122,7 +145,7 @@ class Qwen3RerankerTemplate(Template):
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
-    'Note that the answer can only be \"yes\" or \"no\".')
+    'Note that the answer can only be "yes" or "no".')
 
 register_template(
     Qwen3MixedTemplateMeta(
@@ -529,6 +552,45 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
+
+
+class Qwen3VLEmbTemplate(Qwen3VLTemplate):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl_emb,
+        default_system="Represent the user's input.",
+        suffix=['<|endoftext|>'],
+        template_cls=Qwen3VLEmbTemplate,
+    ))
+
+
+class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
+    instruction = 'Given a search query, retrieve relevant candidates that answer the query.'
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
+        else:
+            instruction = self.instruction
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '<Query>:' + query + '\n' + '<Document>:' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
+        return inputs
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3VLRerankerTemplate))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
