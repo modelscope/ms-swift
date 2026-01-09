@@ -17,8 +17,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import (InferRequest, Template, TemplateMeta, get_model_tokenizer,
-                       safe_snapshot_download, to_device)
+from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, safe_snapshot_download, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_generative_reranker_logits
@@ -346,7 +345,8 @@ class PtEngine(InferEngine):
         elif template.task_type in ('reranker', 'generative_reranker'):
             if template.task_type == 'generative_reranker':
                 # Qwen3-reranker like
-                logits = get_generative_reranker_logits(template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
+                logits = get_generative_reranker_logits(
+                    template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
             preds = logits.float()
             if self.reranker_use_activation:
                 preds = F.sigmoid(preds)
