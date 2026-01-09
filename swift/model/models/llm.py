@@ -244,13 +244,12 @@ register_model(
                 Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
             ], TemplateType.qwen),
             ModelGroup([
-            Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
-        ], TemplateType.mimo_rl),
+                Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
+            ], TemplateType.mimo_rl),
         ],
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
-
 
 register_model(
     ModelMeta(

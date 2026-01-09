@@ -422,8 +422,7 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _patch_get_param_groups(self):
         # TODO: megatron_model_meta
-        if not self.args.model_info.is_multimodal or (self.args.vit_lr is None
-                                                               and self.args.aligner_lr is None):
+        if not self.args.model_info.is_multimodal or (self.args.vit_lr is None and self.args.aligner_lr is None):
             yield
             return
         from megatron.core import optimizer
