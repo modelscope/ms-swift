@@ -194,10 +194,16 @@ class DatasetProgressCallback(TrainerCallback):
         return dict(global_counts)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        if logs is None or not state.is_world_process_zero:
+        if logs is None:
             return
 
+        # All ranks must participate in gather_object (it's a collective operation)
         global_counts = self._gather_counts()
+
+        # Only rank 0 processes and logs the results
+        if not state.is_world_process_zero:
+            return
+
         if not global_counts:
             return
 
