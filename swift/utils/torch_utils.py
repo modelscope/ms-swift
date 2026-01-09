@@ -555,4 +555,4 @@ def get_generative_reranker_logits(tokenizer, logits, attention_mask=None):
         # Fallback to original behavior if attention_mask is not available
         positive_logits = logits[:, -1, positive_token_id]
         negative_logits = logits[:, -1, negative_token_id]
-    return positive_logits - negative_logits
+    return (positive_logits - negative_logits)[:, None]
