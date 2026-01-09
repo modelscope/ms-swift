@@ -1030,51 +1030,7 @@ class SwiftMixin:
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.template.is_encoder_decoder,
                 cu_seqlens=cu_seqlens)
-        elif task_type == 'generative_reranker':
-            tokenizer = getattr(self, 'processing_class', None)
-            if tokenizer is None and getattr(self, 'template', None) is not None:
-                tokenizer = self.template.tokenizer
-            if tokenizer is None:
-                raise RuntimeError('tokenizer not available for generative_reranker acc')
-
-            positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
-            negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-
-            try:
-                positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
-                negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
-            except Exception as e:
-                logger.warning(f'Failed to convert reranker tokens to ids: {e}')
-                positive_token_id = None
-                negative_token_id = None
-
-            if isinstance(positive_token_id, int) and isinstance(negative_token_id, int) \
-                    and positive_token_id >= 0 and negative_token_id >= 0:
-                # Handle right padding by finding the last valid token position
-                if attention_mask is not None:
-                    # Extract logits at the last valid (non-padding) token position for each sample
-                    batch_size = logits.shape[0]
-                    last_valid_indices = get_last_valid_indices(attention_mask)
-                    batch_indices = torch.arange(batch_size, device=logits.device)
-                    last_valid_logits = logits[batch_indices, last_valid_indices, :]
-                    positive_logits = last_valid_logits[:, positive_token_id]
-                    negative_logits = last_valid_logits[:, negative_token_id]
-                else:
-                    # Fallback to original behavior if attention_mask is not available
-                    positive_logits = logits[:, -1, positive_token_id]
-                    negative_logits = logits[:, -1, negative_token_id]
-                if args.loss_type == 'listwise_generative_reranker':
-                    logits = F.logsigmoid(positive_logits - negative_logits)
-                    preds, labels = self._get_listwise_reranker_preds(logits, labels)
-                else:
-                    preds = (positive_logits > negative_logits).long()
-                metrics = compute_acc(
-                    preds,
-                    labels.long(),
-                    acc_strategy=args.acc_strategy,
-                    is_encoder_decoder=self.template.is_encoder_decoder,
-                    cu_seqlens=cu_seqlens)
-        elif task_type == 'reranker':
+        elif task_type in {'generative_reranker', 'reranker'}:
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
             if args.loss_type == 'listwise_reranker':

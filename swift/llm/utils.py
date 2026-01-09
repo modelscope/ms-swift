@@ -14,7 +14,7 @@ from peft import PeftModel
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
-from swift.utils import deep_getattr, get_logger
+from swift.utils import deep_getattr, get_last_valid_indices, get_logger
 
 try:
     from transformers import BaseImageProcessor
