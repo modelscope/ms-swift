@@ -16,7 +16,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import (JsonlWriter, Serializer, gc_collect, get_generate_reranker_logits, get_logger,
+from swift.utils import (JsonlWriter, Serializer, gc_collect, get_generative_reranker_logits, get_logger,
                          unwrap_model_for_generation)
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -157,7 +157,7 @@ class RerankerTrainer(Trainer):
             labels = inputs.pop('labels', None)
             outputs = model(**inputs)
             if self.args.task_type == 'generative_reranker':
-                outputs.logits = get_generate_reranker_logits(
+                outputs.logits = get_generative_reranker_logits(
                     self.tokenizer, outputs.logits, attention_mask=inputs.get('attention_mask'))
 
             if labels is not None:

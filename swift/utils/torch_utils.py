@@ -536,7 +536,7 @@ def unwrap_model_for_generation(
         yield unwrapped_model
 
 
-def get_generate_reranker_logits(tokenizer, logits, attention_mask=None):
+def get_generative_reranker_logits(tokenizer, logits, attention_mask=None):
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
     negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
     positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)

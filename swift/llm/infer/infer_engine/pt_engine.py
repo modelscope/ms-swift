@@ -18,11 +18,11 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import (InferRequest, Template, TemplateMeta, get_generative_reranker_logits, get_model_tokenizer,
+from swift.llm import (InferRequest, Template, TemplateMeta, get_model_tokenizer,
                        safe_snapshot_download, to_device)
 from swift.plugin import Metric
 from swift.tuners import Swift
-from swift.utils import get_generate_reranker_logits, get_last_valid_indices
+from swift.utils import get_generative_reranker_logits
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
