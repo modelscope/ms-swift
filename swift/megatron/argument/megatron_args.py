@@ -19,7 +19,7 @@ logger = get_logger()
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gdpo', 'gkd', 'rm'] = None
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -176,16 +176,16 @@ class RLHFMegatronArgumentsMixin:
     def __post_init__(self):
         if self.rlhf_type is None:
             return
-        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
-        default_beta = {'gkd': 0.5, 'grpo': 0.04}
+        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo', 'gdpo': 'grpo'}
+        default_beta = {'gkd': 0.5, 'grpo': 0.04, 'gdpo': 0.04}
         if self.beta is None:
             self.beta = default_beta.get(self.rlhf_type, 0.1)
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
         if self.rlhf_type == 'kto':
             self._init_kto()
-        if self.rlhf_type == 'grpo':
-            assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
+        if self.rlhf_type in ('grpo', 'gdpo'):
+            assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO/GDPO'
             self._init_grpo()
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)

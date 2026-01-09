@@ -5,6 +5,7 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .dpo_trainer import MegatronDPOTrainer
+    from .gdpo_trainer import MegatronGDPOTrainer
     from .gkd_trainer import MegatronGKDTrainer
     from .grpo_trainer import MegatronGRPOTrainer
     from .kto_trainer import MegatronKTOTrainer
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 else:
     _import_structure = {
         'dpo_trainer': ['MegatronDPOTrainer'],
+        'gdpo_trainer': ['MegatronGDPOTrainer'],
         'gkd_trainer': ['MegatronGKDTrainer'],
         'grpo_trainer': ['MegatronGRPOTrainer'],
         'kto_trainer': ['MegatronKTOTrainer'],
