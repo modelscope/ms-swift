@@ -690,6 +690,15 @@ def test_medgemma3():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_youtu_llm():
+    pt_engine = PtEngine('Tencent-YouTu-Research/Youtu-LLM-2B')
+    messages = [{'role': 'user', 'content': '你好'}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -743,4 +752,5 @@ if __name__ == '__main__':
     # test_ring2()
     # test_ling2()
     # test_minimind()
-    test_medgemma3()
+    # test_medgemma3()
+    test_youtu_llm()

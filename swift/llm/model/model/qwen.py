@@ -1669,7 +1669,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        RerankerModelType.qwen3_reranker, [
+        RerankerModelType.qwen3_reranker,
+        [
             ModelGroup([
                 Model('Qwen/Qwen3-Reranker-0.6B', 'Qwen/Qwen3-Reranker-0.6B'),
                 Model('Qwen/Qwen3-Reranker-4B', 'Qwen/Qwen3-Reranker-4B'),
@@ -1679,4 +1680,50 @@ register_model(
         TemplateType.qwen3_reranker,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM'],
-        task_type='reranker'))
+    ))
+
+
+def get_model_tokenizer_qwen3_vl_emb(*args, **kwargs):
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1800')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl_emb, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-Embedding-2B', 'Qwen/Qwen3-VL-Embedding-2B'),
+                Model('Qwen/Qwen3-VL-Embedding-8B', 'Qwen/Qwen3-VL-Embedding-8B'),
+            ])
+        ],
+        TemplateType.qwen3_vl_emb,
+        get_model_tokenizer_qwen3_vl_emb,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_vl_reranker(*args, **kwargs):
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1280')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl_reranker, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-Reranker-2B', 'Qwen/Qwen3-VL-Reranker-2B'),
+                Model('Qwen/Qwen3-VL-Reranker-8B', 'Qwen/Qwen3-VL-Reranker-8B'),
+            ])
+        ],
+        TemplateType.qwen3_vl_reranker,
+        get_model_tokenizer_qwen3_vl_reranker,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
