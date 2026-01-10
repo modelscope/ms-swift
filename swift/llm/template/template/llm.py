@@ -302,39 +302,6 @@ register_template(
         default_system='You are a helpful assistant.',
     ))
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.hunyuan_moe,
-        prefix=['<|startoftext|>'],
-        system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
-        prompt=['{{QUERY}}<|extra_0|>'],
-        chat_sep=['<|eos|><|startoftext|>'],
-        suffix=['<|eos|>'],
-    ))
-
-
-class HunyuanTemplate(Template):
-
-    def _remove_thinking_content(self, content: str) -> str:
-        content = content.split('<answer>')[-1].rstrip()
-        if content.endswith('</answer>'):
-            content = content[:-len('</answer>')]
-        return self.template_meta.history_thinking_prefix + content.strip()
-
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.hunyuan,
-        prefix=['<｜hy_begin▁of▁sentence｜>'],
-        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}<｜hy_place▁holder▁no▁3｜>'],
-        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
-        chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
-        suffix=['<｜hy_place▁holder▁no▁2｜>'],
-        template_cls=HunyuanTemplate,
-        is_thinking=True,
-        non_thinking_prefix='<think>\n\n</think>\n',
-        agent_template='hunyuan_hermes'))
-
 
 class GptTemplate(Template):
     support_padding_free = False
