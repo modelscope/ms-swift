@@ -277,9 +277,12 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
 
 
 def find_node_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(('8.8.8.8', 80))
-    return s.getsockname()[0]
+    import psutil
+    for name, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            if addr.family.name == 'AF_INET' and not addr.address.startswith('127.'):
+                return addr.address
+    return None
 
 
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
