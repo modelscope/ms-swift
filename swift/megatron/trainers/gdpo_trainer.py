@@ -739,7 +739,7 @@ class MegatronGDPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         assert len(batch) == rewards_per_func.shape[0]
         total_rewards_per_func = gather(rewards_per_func)
-        
+
         # Use num_generations_eval in eval mode
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         K = num_generations
