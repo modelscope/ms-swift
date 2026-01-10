@@ -261,6 +261,8 @@ gradient_checkpointing: true
 - 🔥neftune_noise_alpha: neftune添加的噪声系数。默认为0，通常可以设置为5、10、15。
 - 🔥use_liger_kernel: 是否启用[Liger](https://github.com/linkedin/Liger-Kernel)内核加速训练并减少显存消耗。默认为False。示例shell参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger)。
   - 注意：liger_kernel不支持device_map，请使用DDP/DeepSpeed进行多卡训练。liger_kernel目前只支持`task_type='causal_lm'`。
+- use_tiled_mlp: 是否启用Tiled MLP进行内存高效的长序列训练。启用后，MLP层会被替换为分块实现，将序列分成多个shard进行计算以减少显存占用。默认为False。
+- tiled_mlp_num_shards: Tiled MLP计算时将序列分成的shard数量。默认为None，即设置为4。较大的值可以减少显存但可能增加计算时间。
 - average_tokens_across_devices: 是否在设备之间进行token数平均。如果设置为True，将使用all_reduce同步`num_tokens_in_batch`以进行精确的损失计算。默认为False。
 - max_grad_norm: 梯度裁剪。默认为1.。
   - 注意：日志中的grad_norm记录的是裁剪前的值。
