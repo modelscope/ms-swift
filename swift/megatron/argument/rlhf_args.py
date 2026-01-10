@@ -7,7 +7,7 @@ from .train_args import MegatronTrainArguments
 
 @dataclass
 class MegatronRLHFArguments(MegatronTrainArguments):
-    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = 'dpo'
+    rlhf_type: Literal['dpo', 'kto', 'grpo', 'gdpo', 'gkd', 'rm'] = 'dpo'
     loss_scale: str = 'last_round'
     truncation_strategy: Optional[Literal['delete', 'left', 'right', 'split', None]] = None
 
@@ -23,7 +23,7 @@ class MegatronRLHFArguments(MegatronTrainArguments):
     def _init_truncation_strategy(self):
         if self.truncation_strategy is not None:
             return
-        if self.rlhf_type == 'grpo':
+        if self.rlhf_type in ('grpo', 'gdpo'):
             self.truncation_strategy = 'left'
         else:
             self.truncation_strategy = 'delete'
