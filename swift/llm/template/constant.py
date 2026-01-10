@@ -102,6 +102,8 @@ class LLMTemplateType:
     dots1 = 'dots1'
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
+    hunyuan_mt1_5_1_8b = 'hunyuan_mt1_5_1_8b'
+    hunyuan_mt1_5_7b = 'hunyuan_mt1_5_7b'
     ernie = 'ernie'
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
