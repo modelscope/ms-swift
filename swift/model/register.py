@@ -15,8 +15,7 @@ from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.template import Processor
-from swift.utils import HfConfigFactory, get_logger, is_unsloth_available, patch_getattr
+from swift.utils import HfConfigFactory, Processor, get_logger, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,

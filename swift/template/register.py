@@ -5,10 +5,9 @@ from typing import Dict, Literal, Optional
 
 from transformers import AutoConfig, PretrainedConfig
 
-from swift.utils import HfConfigFactory, safe_snapshot_download
+from swift.utils import HfConfigFactory, Processor, safe_snapshot_download
 from .base import Template
 from .template_meta import TemplateMeta
-from .utils import Processor
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
 

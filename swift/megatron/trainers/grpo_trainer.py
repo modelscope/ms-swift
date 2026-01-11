@@ -29,9 +29,9 @@ from swift.plugins import MultiTurnScheduler, multi_turns, orms
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch,
                                        replace_assistant_response_with_ids, set_expandable_segments)
-from swift.template import Template, TemplateInputs, get_packed_seq_params
-from swift.utils import (get_logger, is_wandb_available, remove_response, shutdown_event_loop_in_daemon,
-                         start_event_loop_in_daemon, to_device)
+from swift.template import Template, TemplateInputs
+from swift.utils import (get_logger, get_packed_seq_params, is_wandb_available, remove_response,
+                         shutdown_event_loop_in_daemon, start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator

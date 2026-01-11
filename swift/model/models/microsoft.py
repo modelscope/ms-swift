@@ -4,8 +4,8 @@ from typing import Any, Dict
 
 from transformers import PretrainedConfig, PreTrainedModel
 
-from swift.template import Processor, TemplateType
-from swift.utils import get_device, get_env_args
+from swift.template import TemplateType
+from swift.utils import Processor, get_device, get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

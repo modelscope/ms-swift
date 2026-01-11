@@ -9,9 +9,9 @@ from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
 from swift.plugins import extra_tuners
 from swift.ray import RayArguments
-from swift.template import Processor, Template, get_template
-from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
-                         json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
+from swift.template import Template, get_template
+from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
+                         is_master, json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments

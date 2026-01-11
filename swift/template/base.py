@@ -23,10 +23,9 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
-from .utils import (Context, ContextType, Processor, StopWordsCriteria, fetch_one, findall, get_last_user_round,
-                    split_str_parts_by)
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()

@@ -4,7 +4,8 @@ from typing import Any, Dict
 
 from transformers import PretrainedConfig
 
-from swift.template import Processor, TemplateType
+from swift.template import TemplateType
+from swift.utils import Processor
 from ..constant import LLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

@@ -6,7 +6,7 @@ import torch
 
 from swift.dataset import DatasetMeta, ResponsePreprocessor, load_dataset, register_dataset
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
-from swift.model import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from swift.model import Model, ModelGroup, ModelMeta, register_model
 from swift.template import TemplateMeta, register_template
 
 
@@ -44,7 +44,6 @@ register_model(
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
         template='custom',
-        get_function=get_model_tokenizer_with_flash_attn,
         ignore_patterns=['nemo']))
 
 
@@ -53,7 +52,7 @@ class TestCustom(unittest.TestCase):
     def test_custom_model(self):
         infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
         request_config = RequestConfig(max_tokens=512, temperature=0)
-        engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch.float16)
+        engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch_dtype=torch.float16)
         response = engine.infer([infer_request], request_config)
         swift_response = response[0].choices[0].message.content
 

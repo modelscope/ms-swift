@@ -3,8 +3,8 @@ from typing import Any, Dict
 
 from transformers import AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
-from swift.template import Processor, TemplateType
-from swift.utils import safe_snapshot_download
+from swift.template import TemplateType
+from swift.utils import Processor, safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

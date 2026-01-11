@@ -4,8 +4,8 @@ from typing import Any, Dict
 
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 
-from swift.template import Processor, TemplateType
-from swift.utils import git_clone_github
+from swift.template import TemplateType
+from swift.utils import Processor, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

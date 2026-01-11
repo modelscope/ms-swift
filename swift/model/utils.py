@@ -15,7 +15,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_npu_available, strtobool)
 
-from swift.utils import HfConfigFactory, deep_getattr, get_dist_setting, get_logger, is_mp, to_device
+from swift.utils import HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_logger, is_mp, to_device
 
 logger = get_logger()
 
@@ -286,7 +286,7 @@ if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
 
 
 def save_checkpoint(model: Optional[PreTrainedModel],
-                    processor: 'Processor',
+                    processor: Processor,
                     output_dir: str,
                     *,
                     safe_serialization: bool = True,

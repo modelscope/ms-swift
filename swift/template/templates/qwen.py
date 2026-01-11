@@ -11,13 +11,13 @@ from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.utils import get_env_args, is_deepspeed_enabled, to_float_dtype
+from swift.utils import get_env_args, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Word, findall, get_packed_seq_params
+from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta

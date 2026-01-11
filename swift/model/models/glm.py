@@ -9,8 +9,8 @@ from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel, PreTr
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.template import Processor, TemplateType
-from swift.utils import get_device_count, get_dist_setting, get_logger, safe_snapshot_download
+from swift.template import TemplateType
+from swift.utils import Processor, get_device_count, get_dist_setting, get_logger, safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

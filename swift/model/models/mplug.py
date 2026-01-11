@@ -7,8 +7,8 @@ from typing import Any, Dict
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.template import Processor, TemplateType
-from swift.utils import get_logger, git_clone_github
+from swift.template import TemplateType
+from swift.utils import Processor, get_logger, git_clone_github
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

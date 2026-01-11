@@ -46,10 +46,11 @@ from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding
 from swift.optimizers import optimizers_map
 from swift.plugins import extra_tuners
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
-from swift.template import Template, get_packed_seq_params, update_generation_config_eos_token
+from swift.template import Template, update_generation_config_eos_token
 from swift.tuners import SwiftModel
 from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device,
-                         get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+                         get_last_valid_indices, get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker)
 from .arguments import TrainingArguments
 from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
 
