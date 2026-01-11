@@ -339,7 +339,9 @@ register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`registe
 以下介绍注册数据集的例子：
 
 ```python
-from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from swift.dataset import (
+    ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+)
 from typing import Dict, Any
 
 class CustomPreprocessor(ResponsePreprocessor):

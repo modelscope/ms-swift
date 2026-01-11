@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelMeta, RequestConfig, TemplateMeta,
-                                TransformersEngine, get_model_tokenizer_with_flash_attn, register_model,
-                                register_template)
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
+from swift.model import Model, ModelGroup, ModelMeta, register_model
+from swift.template import TemplateMeta, register_template
 
 register_template(
     TemplateMeta(
@@ -16,7 +16,6 @@ register_model(
         model_groups=[
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
-        get_function=get_model_tokenizer_with_flash_attn,
         template='custom',
         ignore_patterns=['nemo'],
         is_multimodal=False,
