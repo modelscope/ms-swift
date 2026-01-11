@@ -21,8 +21,9 @@ from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_contex
 from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
                                  find_layers, find_norm, find_sub_module, freeze_parameters,
                                  get_cu_seqlens_from_position_ids, get_model_parameter_info, get_modules_to_not_convert,
-                                 get_n_params_grads, get_packed_seq_params, get_position_ids_from_cu_seqlens,
-                                 seed_worker, show_layers, unwrap_model_for_generation)
+                                 get_multimodal_target_regex, get_n_params_grads, get_packed_seq_params,
+                                 get_position_ids_from_cu_seqlens, seed_worker, show_layers,
+                                 unwrap_model_for_generation)
 from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
                     find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
                     parse_args, patch_getattr, read_multi_line, remove_response, retry_decorator, seed_everything,

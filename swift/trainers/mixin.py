@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -21,7 +21,6 @@ import safetensors
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
@@ -48,9 +47,8 @@ from swift.plugins import extra_tuners
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device,
-                         get_last_valid_indices, get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp,
-                         ms_logger_context, seed_worker)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
+                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
 from .arguments import TrainingArguments
 from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
 
@@ -111,6 +109,7 @@ class SwiftMixin:
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
+        self.model_info = model.model_info
 
         kwargs.update(self.create_loss_and_metric(args))
         trainer_parameters = inspect.signature(Trainer.__init__).parameters

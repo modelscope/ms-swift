@@ -205,6 +205,53 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
     return find_layers(model, _cond, sub_module=sub_module)
 
 
+def get_multimodal_target_regex(
+    model,
+    *,
+    freeze_llm: bool = False,
+    freeze_vit: bool = True,
+    freeze_aligner: bool = True,
+    include_embedding: bool = False,
+    exclude_router: bool = False,
+) -> str:
+    model_arch = model.model_meta.model_arch
+    modules = []
+    if not freeze_llm:
+        modules += model_arch.language_model
+    if not freeze_vit:
+        modules += model_arch.vision_tower
+    if not freeze_aligner:
+        modules += model_arch.aligner
+    assert len(modules) > 0, f'modules: {modules}'
+
+    extra_layers = []
+    if include_embedding:
+        extra_layers.append(nn.Embedding)
+    res = []
+    for module in modules:
+        rejected_modules = []
+        if not freeze_vit or not freeze_llm:
+            for aligner in model_arch.aligner:
+                if aligner.startswith(f'{module}.'):
+                    rejected_modules.append(aligner)
+
+        sub_module = deep_getattr(model, module)
+        if isinstance(sub_module, nn.Linear) and module.endswith('lm_head'):
+            target_modules = []
+        else:
+            target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        if exclude_router and model.model_info.is_moe_model:
+            target_modules = [tm for tm in target_modules if tm not in {'gate'}]
+        if not target_modules:
+            continue
+        target_modules = [tm for tm in target_modules if tm]
+        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+
+    return rf'^({"|".join(res)})$'
+
+
 def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
     position_ids = position_ids[0]
     seq_start_indices = torch.where(position_ids == 0)[0]

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .app import app_main
-    from .train import sft_main, pretrain_main, rlhf_main, get_multimodal_target_regex, SwiftSft
+    from .train import sft_main, pretrain_main, rlhf_main, SwiftSft
     from .sampling import sampling_main
     from .base import SwiftPipeline
     from .utils import prepare_model_template
@@ -24,7 +24,7 @@ else:
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'app': ['app_main'],
         'eval': ['eval_main'],
-        'train': ['sft_main', 'pretrain_main', 'rlhf_main', 'get_multimodal_target_regex', 'SwiftSft'],
+        'train': ['sft_main', 'pretrain_main', 'rlhf_main', 'SwiftSft'],
         'sampling': ['sampling_main'],
         'base': ['SwiftPipeline'],
         'utils': ['prepare_model_template'],
