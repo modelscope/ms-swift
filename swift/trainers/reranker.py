@@ -45,3 +45,8 @@ class RerankerTrainer(Trainer):
             return (loss, outputs) if return_outputs else loss
         else:
             return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
+
+    def evaluation_loop(self, *args, **kwargs):
+        output = super().evaluation_loop(*args, **kwargs)
+        self.gather_function = gather_for_unpadded_tensors
+        return output

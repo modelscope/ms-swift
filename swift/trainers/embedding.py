@@ -15,3 +15,8 @@ class EmbeddingTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gather_function = gather_for_unpadded_tensors
+
+    def evaluation_loop(self, *args, **kwargs):
+        output = super().evaluation_loop(*args, **kwargs)
+        self.gather_function = gather_for_unpadded_tensors
+        return output
