@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
+from transformers import GenerationMixin
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
@@ -138,6 +138,16 @@ def get_model_tokenizer_internvl(model_dir: str,
     if model is not None:
         use_submodel_func(model, 'language_model')
         patch_output_clone(model.language_model.get_input_embeddings())
+
+    if model is not None:
+            # fix missing generate method for InternVL-2.5 models when using transformers >= 4.50
+            llm_part = getattr(model, 'language_model', model)  
+            if not hasattr(llm_part, 'generate'): 
+                print("Detected missing 'generate' method (transformers >= 4.50). Injecting GenerationMixin...")
+                
+                cls = llm_part.__class__
+                if GenerationMixin not in cls.__bases__:
+                    cls.__bases__ = cls.__bases__ + (GenerationMixin,)
 
     return model, tokenizer
 
