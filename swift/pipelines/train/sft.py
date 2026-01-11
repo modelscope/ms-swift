@@ -133,8 +133,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 train_datasets.append(train_dataset)
             if val_dataset is not None:
                 val_datasets.append(val_dataset)
-        train_dataset = DatasetLoader._concat_datasets(train_datasets)
-        val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        train_dataset = DatasetLoader.concat_datasets(train_datasets)
+        val_dataset = DatasetLoader.concat_datasets(val_datasets)
         if args.truncation_strategy != 'split':
             logger.info(f'train_dataset: {train_dataset}')
             logger.info(f'val_dataset: {val_dataset}')

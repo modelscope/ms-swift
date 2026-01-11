@@ -200,7 +200,7 @@ class SwiftRLHF(SwiftSft):
             args.chord_sft_dataset, split_dataset_ratio=0, shuffle=args.dataset_shuffle, **dataset_kwargs)
         chord_sft_dataset, _ = self._encode_dataset(chord_sft_dataset, None, pre_process=True)
         chord_sft_datasets.append(chord_sft_dataset)
-        chord_sft_dataset = DatasetLoader._concat_datasets(chord_sft_datasets)
+        chord_sft_dataset = DatasetLoader.concat_datasets(chord_sft_datasets)
         datasets = [chord_sft_dataset, None]
         datasets = self._post_process_datasets(datasets)
         return datasets

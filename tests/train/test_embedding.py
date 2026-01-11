@@ -29,9 +29,9 @@ def test_llm():
 
 
 def test_reranker():
-    from swift import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen3-Reranker-4B',
             train_type='lora',
             load_from_cache_file=True,
@@ -56,9 +56,9 @@ def test_reranker():
 
 
 def test_reranker2():
-    from swift import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-VL-3B-Instruct',
             train_type='lora',
             load_from_cache_file=True,

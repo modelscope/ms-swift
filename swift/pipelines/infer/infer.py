@@ -197,7 +197,7 @@ class SwiftInfer(SwiftPipeline):
                 **dataset_kwargs)
             val_datasets.append(val_dataset)
         assert len(val_datasets) > 0
-        val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        val_dataset = DatasetLoader.concat_datasets(val_datasets)
         val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, args.dataset_shuffle, self.random_state)
         return val_dataset
 

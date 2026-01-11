@@ -835,9 +835,8 @@ class SwiftMixin:
             model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
-        model_meta = model.model_meta
-        model_arch = model_meta.model_arch
-        if model_info.is_multimodal and model_arch:
+        model_arch = self.model_meta.model_arch
+        if self.model_info.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
