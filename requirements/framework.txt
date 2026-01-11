@@ -39,3 +39,4 @@ transformers_stream_generator
 trl>=0.15,<0.25
 uvicorn
 zstandard
+setproctitle
