@@ -14,7 +14,7 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     elif infer_backend == 'vllm':
         from swift.infer_engine import VllmEngine
         engine = VllmEngine(args.model, enable_lora=True, max_loras=1, max_lora_rank=16)
-    template = get_template(args.template, engine.processor, args.system)
+    template = get_template(engine.processor, template_type=args.template, default_system=args.system)
     request_config = RequestConfig(max_tokens=512, temperature=0)
     adapter_request = AdapterRequest('lora1', adapter_path)
     adapter_request2 = AdapterRequest('lora2', adapter_path2)
@@ -39,7 +39,7 @@ def infer_lora(infer_request: 'InferRequest'):
     args = BaseArguments.from_pretrained(adapter_path)
     # method1
     # engine = TransformersEngine(args.model, adapters=[adapter_path])
-    # template = get_template(args.template, engine.processor, args.system)
+    # template = get_template(engine.processor, args.system, template_type=args.template)
     # engine.template = template
 
     # method2
@@ -51,7 +51,7 @@ def infer_lora(infer_request: 'InferRequest'):
     # method3
     model, tokenizer = get_model_processor(args.model)
     model = Swift.from_pretrained(model, adapter_path)
-    template = get_template(args.template, tokenizer, args.system)
+    template = get_template(tokenizer, args.system, template_type=args.template)
     engine = TransformersEngine.from_model_template(model, template)
 
     resp_list = engine.infer([infer_request], request_config)

@@ -172,9 +172,9 @@ Example of Inference on LoRA-Trained Model Using Python:
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.infer_engine import (
-    TransformersEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
-)
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
+from swift import get_model_processor, get_template
+from swift.utils import safe_snapshot_download
 from swift.tuners import Swift
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-7B-Instruct'
@@ -183,11 +183,11 @@ template_type = None  # None: use the default template_type of the corresponding
 default_system = "You are a helpful assistant."  # None: use the default system prompt of the corresponding model
 
 # Load model and dialogue template
-model, tokenizer = get_model_tokenizer(model)
+model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
-template = get_template(template_type, tokenizer, default_system=default_system)
+template = get_template(tokenizer, template_type=template_type, default_system=default_system)
 engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
@@ -210,9 +210,9 @@ Example of LoRA Inference for Multi-Modal Model:
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.infer_engine import (
-    TransformersEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
-)
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
+from swift import get_model_processor, get_template
+from swift.utils import safe_snapshot_download
 from swift.tuners import Swift
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-VL-7B-Instruct'
@@ -221,11 +221,11 @@ template_type = None  # None: use the default template_type of the corresponding
 default_system = None  # None: use the default system prompt of the corresponding model
 
 # Load model and dialogue template
-model, tokenizer = get_model_tokenizer(model)
+model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
-template = get_template(template_type, tokenizer, default_system=default_system)
+template = get_template(tokenizer, template_type=template_type, default_system=default_system)
 engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 

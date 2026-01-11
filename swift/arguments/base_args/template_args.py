@@ -168,6 +168,7 @@ class TemplateArguments:
         if not isinstance(self, SftArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
             remove_unused_columns = True
         return {
+            'template_type': self.template,
             'default_system': self.system,
             'max_length': self.max_length,
             'truncation_strategy': truncation_strategy,

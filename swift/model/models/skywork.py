@@ -21,16 +21,6 @@ class SkyworkLoader(ModelLoader):
         return tokenizer
 
 
-def get_skywork_model_tokenizer(model_dir: str,
-                                model_info,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.skywork,

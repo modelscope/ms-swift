@@ -18,7 +18,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     elif infer_backend == 'vllm':
         from swift.infer_engine import VllmEngine
         engine = VllmEngine('Qwen/Qwen2-VL-7B-Instruct')
-    template = get_template(engine.model_meta.template, engine.processor)
+    template = get_template(engine.processor)
     infer_requests = [
         InferRequest([{
             'role': 'user',

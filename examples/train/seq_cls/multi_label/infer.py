@@ -26,7 +26,7 @@ engine = TransformersEngine(
     task_type='seq_cls',
     num_labels=args.num_labels,
     problem_type=args.problem_type)
-template = get_template(args.template, engine.processor, args.system, use_chat_template=args.use_chat_template)
+template = get_template(engine.processor, args.system, template_type=args.template, use_chat_template=args.use_chat_template)
 engine.template = template
 
 resp_list = engine.infer([infer_request])

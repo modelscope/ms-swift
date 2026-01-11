@@ -247,7 +247,7 @@ Training:
 ```python
 # Retrieve the model and template, and add a trainable LoRA module
 model, tokenizer = get_model_processor(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
+template = get_template(tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens

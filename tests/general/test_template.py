@@ -7,7 +7,7 @@ from swift.template import TemplateInputs, get_template
 
 def test_template():
     _, tokenizer = get_model_processor('Qwen/Qwen2-7B-Instruct', load_model=False)
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    template = get_template(tokenizer)
     template_inputs = TemplateInputs.from_dict({
         'messages': [{
             'role': 'system',
@@ -30,7 +30,7 @@ def test_template():
 
 def test_mllm():
     _, tokenizer = get_model_processor('Qwen/Qwen2-VL-7B-Instruct', load_model=False)
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    template = get_template(tokenizer)
     template_inputs = TemplateInputs(
         chosen={
             'messages': [{
@@ -55,7 +55,7 @@ def test_mllm():
 
 def _test_dataset_map(model_id: str, dataset_id: str):
     _, tokenizer = get_model_processor(model_id, load_model=False)
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    template = get_template(tokenizer)
     dataset = load_dataset([dataset_id], num_proc=2)[0]
 
     # 1: 1500
