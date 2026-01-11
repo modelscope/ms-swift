@@ -1,23 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import FeatureExtractionMixin, PreTrainedTokenizerBase
-from transformers import ProcessorMixin as HfProcessorMixin
-from transformers import StoppingCriteria
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.utils import get_logger
-
-try:
-    from transformers import BaseImageProcessor
-    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
-except ImportError:
-    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
-
-if 'TOKENIZERS_PARALLELISM' not in os.environ:
-    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 logger = get_logger()
 
@@ -234,25 +222,6 @@ def messages_to_history(messages: 'Messages') -> Dict[str, Any]:
         'query_role': query_role,
         'response': response,
         'system': system,
-    }
-
-
-def get_packed_seq_params(position_ids: torch.Tensor):
-    assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
-    position_ids_f = position_ids.flatten()
-    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
-
-    cu_seqlens = torch.cat([
-        indices_q[position_ids_f == 0],
-        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
-    ])
-
-    max_length = cu_seqlens.diff().max()  # position_ids_f.max() + 1
-    return {
-        'cu_seq_lens_q': cu_seqlens,
-        'cu_seq_lens_k': cu_seqlens,
-        'max_length_q': max_length,
-        'max_length_k': max_length,
     }
 
 

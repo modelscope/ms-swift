@@ -2,18 +2,19 @@ from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_processor, register_model,
+from swift.model import (Model, ModelGroup, ModelLoader, ModelMeta, MultiModelKeys, get_model_processor, register_model,
                          register_model_arch)
 from swift.model.models.qwen import patch_qwen_vl_utils
 from swift.model.patcher import patch_get_input_embeddings
 from swift.model.utils import use_submodel_func
-from swift.template import Template, TemplateMeta, get_packed_seq_params, get_template, register_template
+from swift.template import Template, TemplateMeta, get_template, register_template
 from swift.template.template_inputs import StdTemplateInputs
 from swift.template.utils import Context, findall
 from swift.template.vision_utils import load_audio
-from swift.utils import get_env_args, get_logger, is_deepspeed_enabled, to_float_dtype
+from swift.utils import Processor, get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
 
 register_model_arch(
     MultiModelKeys(
@@ -27,42 +28,49 @@ register_model_arch(
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         # Generator parts will never be trained or remain frozen.
+        # If you want `thinker.audio_tower` and `thinker.audio_tower.proj` to never be trained,
+        # you can place them in the generator and remove them from vision_tower and aligner.
         generator=['talker', 'token2wav'],
     ))
 
 
-def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
-    from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
-    from qwen_omni_utils import vision_process
-    print('Run my_qwen2_5_omni...')
-    kwargs['auto_model_cls'] = kwargs['auto_model_cls'] or Qwen2_5OmniForConditionalGeneration
-    # Customize how to get tokenizer and config in `get_model_tokenizer_with_flash_attn`
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
-    if enable_audio_output is not None:
-        kwargs['model_config'].enable_audio_output = enable_audio_output
-    # Control constants in qwen_omni_utils library via environment variables,
-    # e.g., `MAX_PIXELS`, etc.
-    patch_qwen_vl_utils(vision_process)
-    # Recommended: Use this function to get model and tokenizer.
-    # Avoid using AutoModelForCausalLM directly (may cause incompatibility).
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    if model:
+class Qwen2_5OmniLoader(ModelLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        from transformers import Qwen2_5OmniConfig
+        config = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+        enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+        if enable_audio_output is not None:
+            config.enable_audio_output = enable_audio_output
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import Qwen2_5OmniProcessor
+        from qwen_omni_utils import vision_process
+        processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        # Control constants in qwen_omni_utils library via environment variables,
+        # e.g., `MAX_PIXELS`, etc.
+        patch_qwen_vl_utils(vision_process)
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2_5OmniForConditionalGeneration
+        print('Run my_qwen2_5_omni...')
+        self.auto_model_cls = self.auto_model_cls or Qwen2_5OmniForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
         # For multimodal model consistency, we replace the model's forward/generate functions
         # with those of its language_model.
         # Handle additional parts separately.
         use_submodel_func(model, 'thinker')
+        # Avoid inplace operations on leaf_variable during training
+        # (replacing parts of input_embeds with images_embeds)
+        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
         # Some custom settings for model/config (usually not needed; configure based on
         # specific model if errors occur during training/inference)
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
-        # Avoid inplace operations on leaf_variable during training
-        # (replacing parts of input_embeds with images_embeds)
-        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
-    # Must return model and processor (multimodal) / tokenizer (text-only)
-    return model, processor
+        return model
 
 
 register_model(
@@ -75,7 +83,7 @@ register_model(
             ]),
         ],
         # Function to get model and processor.
-        get_function=get_model_tokenizer_qwen2_5_omni,
+        Qwen2_5OmniLoader,
         template='my_qwen2_5_omni',
         is_multimodal=True,  # Whether it's a multimodal model
         model_arch='my_qwen2_5_omni',  # Usually set only for multimodal models
@@ -417,7 +425,7 @@ register_template(
 if __name__ == '__main__':
     # Test and debug
     model, processor = get_model_processor('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
-    template = get_template('my_qwen2_5_omni', processor)
+    template = get_template(processor, template_type='my_qwen2_5_omni')
     data = {
         'messages': [
             {

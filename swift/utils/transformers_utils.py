@@ -286,3 +286,22 @@ def get_modules_to_not_convert(model):
                                                          or any(n.startswith(prefix) for prefix in prefix_list)):
             res.append(n)
     return res if res else None
+
+
+def get_packed_seq_params(position_ids: torch.Tensor):
+    assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+    position_ids_f = position_ids.flatten()
+    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
+
+    cu_seqlens = torch.cat([
+        indices_q[position_ids_f == 0],
+        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
+    ])
+
+    max_length = cu_seqlens.diff().max()  # position_ids_f.max() + 1
+    return {
+        'cu_seq_lens_q': cu_seqlens,
+        'cu_seq_lens_k': cu_seqlens,
+        'max_length_q': max_length,
+        'max_length_k': max_length,
+    }
