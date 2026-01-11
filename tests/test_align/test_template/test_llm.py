@@ -680,6 +680,25 @@ def test_minimind():
     assert swift_response == jinja_response
 
 
+def test_medgemma3():
+    pt_engine = PtEngine('google/medgemma-27b-text-it')
+    system = 'You are a helpful medical assistant.'
+    messages = [{'role': 'user', 'content': 'How do you differentiate bacterial from viral pneumonia?'}]
+    res = _infer_model(pt_engine, system=system, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, system=system, messages=messages)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_youtu_llm():
+    pt_engine = PtEngine('Tencent-YouTu-Research/Youtu-LLM-2B')
+    messages = [{'role': 'user', 'content': '你好'}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -732,4 +751,6 @@ if __name__ == '__main__':
     # test_ernie_thinking()
     # test_ring2()
     # test_ling2()
-    test_minimind()
+    # test_minimind()
+    # test_medgemma3()
+    test_youtu_llm()

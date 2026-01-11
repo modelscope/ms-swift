@@ -31,8 +31,8 @@ class DeployArguments(InferArguments):
             to 20.
         log_level (Literal['critical', 'error', 'warning', 'info', 'debug', 'trace']): Log level. Defaults to 'info'.
         max_logprobs (int): The maximum number of logprobs to return to the client. Defaults to 20.
-        vllm_use_async_engine (bool): Whether to use an async engine under the vLLM backend. It defaults to True in
-            deployment scenarios (Swift deploy), and False in other scenarios.
+        vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM.If not set, it defaults to `True`
+            for deployment scenarios.
     """
     host: str = '0.0.0.0'
     port: int = 8000
@@ -47,9 +47,12 @@ class DeployArguments(InferArguments):
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     max_logprobs: int = 20
-    vllm_use_async_engine: bool = True
+    vllm_use_async_engine: Optional[bool] = None
 
     def __post_init__(self):
+        # default to True for deployment scenarios
+        if self.vllm_use_async_engine is None:
+            self.vllm_use_async_engine = True
         super().__post_init__()
         self.port = find_free_port(self.port)
 
@@ -113,8 +116,8 @@ class RolloutArguments(DeployArguments):
 
     def __post_init__(self):
         self._check_trl_version()
-        super().__post_init__()
         self._set_default_engine_type()
+        super().__post_init__()
         self._check_args()
         self._check_device_count()
 

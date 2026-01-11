@@ -200,5 +200,32 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
+        self._init_vllm_async_engine()
+        # Default to False for swift infer (non-encode tasks)
+        if self.vllm_use_async_engine is None:
+            self.vllm_use_async_engine = False
         self._init_result_path('infer_result')
         self._init_ddp()
+
+    def _init_vllm_async_engine(self):
+        """Initialize vllm_use_async_engine based on task_type.
+
+        Encode tasks (embedding, seq_cls, reranker, generative_reranker) require
+        async engine because vLLM's synchronous LLMEngine does not have the `encode` method.
+
+        Note: This method only handles encode tasks. For non-encode tasks, the default value
+        should be set by subclasses (DeployArguments sets True, RolloutArguments uses
+        _set_default_engine_type, InferArguments defaults to False).
+        """
+        # Task types that require vLLM's encode() method, which is only available in AsyncLLMEngine
+        encode_task_types = ('embedding', 'seq_cls', 'reranker', 'generative_reranker')
+        is_vllm_encode_task = self.infer_backend == 'vllm' and self.task_type in encode_task_types
+
+        if is_vllm_encode_task:
+            if self.vllm_use_async_engine is None:
+                self.vllm_use_async_engine = True
+            elif not self.vllm_use_async_engine:
+                raise ValueError(
+                    f'task_type={self.task_type} requires vllm_use_async_engine=True. '
+                    f'The synchronous vLLM LLMEngine does not support the `encode` method for encode tasks. '
+                    f'Please set --vllm_use_async_engine true or remove the explicit false setting.')

@@ -143,6 +143,8 @@ class LLMModelType:
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
     minimind = 'minimind'
+    iquestcoder = 'iquestcoder'
+    youtu_llm = 'youtu_llm'
 
 
 class BertModelType:
@@ -170,6 +172,8 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qwen3_vl = 'qwen3_vl'
     qwen3_moe_vl = 'qwen3_moe_vl'
+    qwen3_vl_emb = 'qwen3_vl_emb'
+    qwen3_vl_reranker = 'qwen3_vl_reranker'
     qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'

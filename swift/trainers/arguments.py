@@ -286,7 +286,9 @@ class VllmArguments:
         vllm_limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
         vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
-        vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
+        vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM. Default is None,
+            which will be set to True for encode tasks (embedding, seq_cls, reranker, generative_reranker),
+            deployment scenarios (swift deploy) and False otherwise.
         vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
         vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
         vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
@@ -309,7 +311,7 @@ class VllmArguments:
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     vllm_enable_prefix_caching: Optional[bool] = None
-    vllm_use_async_engine: bool = False
+    vllm_use_async_engine: Optional[bool] = None
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False

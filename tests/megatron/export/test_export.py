@@ -1,4 +1,8 @@
+import os
+
 from swift.megatron import MegatronExportArguments, megatron_export_main
+
+os.environ['SWIFT_TEST_CONVERT_PRECISION'] = '1'
 
 
 def test_to_mcore():

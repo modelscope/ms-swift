@@ -163,9 +163,14 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_call = self._parse_tool_call(message['content'])
             tool_calls.append(f"<tool_call>{tool_call['name']}")
             for arg_key, arg_value in tool_call['arguments'].items():
-                tool_calls.append(f'<arg_key>{arg_key}</arg_key>\n<arg_value>{arg_value}</arg_value>')
+                tool_calls.append(f'<arg_key>{arg_key}</arg_key>')
+                tool_calls.append(f'<arg_value>{arg_value}</arg_value>')
             tool_calls.append('</tool_call>')
-        return '\n'.join(tool_calls) + '<|observation|>'
+        if self.model_type == 'glm4_5':
+            sep = '\n'
+        elif self.model_type == 'glm4_7':
+            sep = ''
+        return sep.join(tool_calls) + '<|observation|>'
 
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):

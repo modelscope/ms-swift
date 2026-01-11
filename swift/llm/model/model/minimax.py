@@ -164,8 +164,10 @@ register_model(
         LLMModelType.minimax_m2, [
             ModelGroup([
                 Model('MiniMax/MiniMax-M2', 'MiniMaxAI/MiniMax-M2'),
+                Model('MiniMax/MiniMax-M2.1', 'MiniMaxAI/MiniMax-M2.1')
             ]),
         ],
         TemplateType.minimax_m2,
         get_model_tokenizer_with_flash_attn,
+        requires=['transformers==4.57.1'],
         architectures=['MiniMaxM2ForCausalLM']))

@@ -588,57 +588,40 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         return merged
 
-    def _get_merged_state_dict_for_vllm(self, parameter_group=None, parameter_group_no_lora=None):
-        """Get merged state dict ready for vLLM synchronization.
+    def _collect_state_dict_for_vllm(self, parameter_group=None, parameter_group_no_lora=None):
+        """Collect state dict for vLLM synchronization.
 
-        1. Gather parameters if needed (DeepSpeed Zero3)
-        2. Merge adapters in-place
-        3. Collect param.data (with full_tensor for FSDP2)
-        4. Unmerge adapters
+        This method only collects parameters without merge/unmerge.
+        Caller is responsible for merge/unmerge and gather context.
 
         Args:
             parameter_group: Optional parameter group to filter
             parameter_group_no_lora: Optional parameter group without LoRA names
 
         Returns:
-            State dict with LoRA merged, ready for vLLM
+            State dict ready for vLLM
         """
         is_peft = is_peft_model(self.model)
-        gather_if_zero3 = get_gather_if_zero3_context(self)
-
-        # Prepare parameters for gather (DeepSpeed Zero3 only)
-        parameters = [] if self._is_fsdp2 else list(self.model.parameters())
 
         raw_state_dict = {}
-        with gather_if_zero3(parameters):
-            # DeepSpeed: use merge_adapter() + param.data (works correctly)
-            # FSDP2: skip merge_adapter() (unmerge doesn't work correctly with DTensor)
-            if is_peft and not self._is_fsdp2:
-                with patch_lora_merge(self.model, parameter_group):
-                    self.model.merge_adapter()
-
-            try:
-                if self._is_fsdp2:
-                    # FSDP2: must use state_dict() (named_parameters returns sharded values)
-                    # Keep LoRA weights for tensor-level merge later
-                    for name, param in self.model.state_dict().items():
-                        if parameter_group and name not in parameter_group:
-                            continue
-                        if hasattr(param, 'full_tensor'):
-                            if param.is_cpu:
-                                param = param.to(torch.device('cuda'))
-                            param = param.full_tensor()
-                        raw_state_dict[name] = param.clone()
-                else:
-                    # DeepSpeed: use named_parameters + param.data
-                    for name, param in self.model.named_parameters():
-                        if parameter_group and name not in parameter_group:
-                            continue
-                        raw_state_dict[name] = param.data.clone()
-            finally:
-                if is_peft and not self._is_fsdp2:
-                    with patch_lora_unmerge(self.model):
-                        self.model.unmerge_adapter()
+        if self._is_fsdp2:
+            # FSDP2: must use state_dict() (named_parameters returns sharded values)
+            # Keep LoRA weights for tensor-level merge later
+            for name, param in self.model.state_dict().items():
+                if parameter_group and name not in parameter_group:
+                    continue
+                if hasattr(param, 'full_tensor'):
+                    if param.is_cpu:
+                        param = param.to(torch.device('cuda'))
+                    param = param.full_tensor()
+                raw_state_dict[name] = param
+        else:
+            # DeepSpeed: use named_parameters + param.data
+            # No clone needed: unmerge happens after _load_state_dict_to_vllm completes
+            for name, param in self.model.named_parameters():
+                if parameter_group and name not in parameter_group:
+                    continue
+                raw_state_dict[name] = param.data
 
         # Process: clean names, filter adapters (keep LoRA for FSDP2 to merge at tensor level)
         state_dict = self._process_state_dict_for_vllm(
@@ -660,13 +643,38 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         return state_dict
 
     def _move_full_model_to_vllm(self):
-        """Transfer full model weights to vLLM engine."""
-        is_peft = is_peft_model(self.model)
+        """Transfer full model weights to vLLM engine.
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            state_dict = self._get_merged_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-            self._load_state_dict_to_vllm(state_dict)
+        Manages the lifecycle of gather and merge/unmerge:
+        - gather_if_zero3: once for the entire sync (DeepSpeed Zero3)
+        - merge/unmerge: per parameter_group (must be within gather context)
+        - No clone needed: unmerge happens after load completes
+        """
+        is_peft = is_peft_model(self.model)
+        # For DeepSpeed, merge within gather context; FSDP2 uses tensor-level merge
+        should_merge = is_peft and not self._is_fsdp2
+
+        gather_if_zero3 = get_gather_if_zero3_context(self)
+        parameters = [] if self._is_fsdp2 else list(self.model.parameters())
+
+        with gather_if_zero3(parameters):
+            for i, parameter_group in enumerate(self.parameter_groups):
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+
+                # Merge must be within gather context (needs full parameters)
+                if should_merge:
+                    with patch_lora_merge(self.model, parameter_group):
+                        self.model.merge_adapter()
+
+                try:
+                    # Collect without clone - unmerge happens after load
+                    state_dict = self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
+                    # Data is copied here (FlattenedTensorBucket.copy_ or vLLM load_weights)
+                    self._load_state_dict_to_vllm(state_dict)
+                finally:
+                    if should_merge:
+                        with patch_lora_unmerge(self.model):
+                            self.model.unmerge_adapter()
 
         if is_peft:
             self.base_sync_done = True

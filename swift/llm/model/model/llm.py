@@ -397,3 +397,34 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.iquestcoder,
+        [
+            ModelGroup([
+                Model('IQuestLab/IQuest-Coder-V1-40B-Base-Stage1', 'IQuestLab/IQuest-Coder-V1-40B-Base-Stage1'),
+                Model('IQuestLab/IQuest-Coder-V1-40B-Base', 'IQuestLab/IQuest-Coder-V1-40B-Base'),
+                Model('IQuestLab/IQuest-Coder-V1-40B-Instruct', 'IQuestLab/IQuest-Coder-V1-40B-Instruct'),
+            ])
+        ],
+        TemplateType.iquestcoder,
+        get_model_tokenizer_with_flash_attn,
+        requires=['transformers==4.52.4'],
+        architectures=['IQuestCoderForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.youtu_llm,
+        [
+            ModelGroup([
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B', 'tencent/Youtu-LLM-2B'),
+                Model('Tencent-YouTu-Research/Youtu-LLM-2B-Base', 'tencent/Youtu-LLM-2B-Base'),
+            ])
+        ],
+        TemplateType.youtu_llm,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['YoutuForCausalLM'],
+        requires=['transformers>=4.56'],
+    ))

@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
+import atexit
 import base64
 import gc
 import inspect
@@ -30,12 +32,13 @@ from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive
                                                nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
                                                set_expandable_segments)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
-                         remove_response)
+                         remove_response, shutdown_event_loop_in_daemon, start_event_loop_in_daemon)
 from ..argument import MegatronArguments, MegatronRLHFArguments
 from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
+from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 if is_wandb_available():
     import wandb
@@ -100,7 +103,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
 
-        # Entropy mask settings, TODO
         self.log_entropy = args.log_entropy
         self.compute_entropy = self.log_entropy or self.top_entropy_quantile < 1.0
 
@@ -184,6 +186,22 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
         assert self.reward_funcs, 'reward_funcs is not set'
+
+        # Pre-compute which reward functions are async to avoid repeated checks during computation
+        # _async_reward_func_indices stores the index of each async reward function
+        self._async_reward_func_indices = []
+        for i, func in enumerate(self.reward_funcs):
+            if not isinstance(func, nn.Module):
+                if asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None)):
+                    self._async_reward_func_indices.append(i)
+
+        # Initialize event loop for async reward functions if needed
+        if self._async_reward_func_indices:
+            self.async_reward_loop_thread, self.async_reward_loop, self.async_reward_loop_ready_event = (
+                start_event_loop_in_daemon(name='MegatronGRPOTrainer-AsyncRewardLoop'))
+            # Wait until the event loop is running in the daemon thread
+            self.async_reward_loop_ready_event.wait()
+            atexit.register(shutdown_event_loop_in_daemon, self.async_reward_loop_thread, self.async_reward_loop)
 
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
@@ -633,26 +651,58 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         rewards_per_func = torch.zeros((len(batch), len(self.reward_funcs)), device=device)
         completions = [inp['messages'][-1]['content'] for inp in batch]
 
+        # Common reward kwargs
         reward_kwargs = {'trainer_state': self.get_trainer_state()}
+        reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
+
+        # Use pre-computed indices for async reward functions
+        async_indices_set = set(self._async_reward_func_indices)
+
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with profiling_context(self, reward_func_name):
-                # reward model
+                # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=batch, **reward_kwargs)
-                # reward function
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                # Async reward function - skip here, will be executed in parallel later
+                elif i in async_indices_set:
+                    pass
+                # Synchronous reward function
                 else:
-                    # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                    reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
                     output_reward_func = reward_func(completions, **reward_kwargs)
-                output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+
+        # Execute async reward functions in parallel using asyncio.gather
+        # Process in original order to maintain correspondence with reward_func_names
+        if self._async_reward_func_indices:
+
+            async def _invoke_async_reward(index):
+                func = self.reward_funcs[index]
+                func_name = self.reward_func_names[index]
+                with profiling_context(self, func_name):
+                    output = await func(completions, **reward_kwargs)
+                    output = [r if r is not None else torch.nan for r in output]
+                    return index, output
+
+            async def _run_async_funcs():
+                # Maintain order by processing indices in sequence
+                coros = [_invoke_async_reward(idx) for idx in self._async_reward_func_indices]
+                return await asyncio.gather(*coros)
+
+            async_results = asyncio.run_coroutine_threadsafe(_run_async_funcs(), self.async_reward_loop).result()
+            for idx, output_reward_func in async_results:
+                rewards_per_func[:, idx] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
-            reward_kwargs.pop('trainer_state')
-            row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
+            row_reward_kwargs = {
+                key: value[nan_row_idx]
+                for key, value in reward_kwargs.items() if key != 'trainer_state'
+            }
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
                            'Please ensure that at least one reward function returns a valid reward.')
@@ -882,7 +932,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return rollout_batch, rewards_per_func
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO: entropy
         seq_lengths = batch['seq_lengths']
         batch_size = batch['num_samples']
         max_seq_len = batch['completion_mask'].shape[1]
@@ -910,15 +959,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         old_per_token_logps_raw = self.model_forward(
             self.unwrapped_models[0], iter([deepcopy(inputs)]), no_grad=True, per_token=True)['logps']
         if self.template.padding_free:
-            # In padding_free mode, logps are in rmpad format [1, total_tokens]
-            # Pad to batch format [batch_size, max_seq_len]
             old_per_token_logps, _ = pad_logps_back_to_batch(
                 logps_rmpad=old_per_token_logps_raw,
                 logits_to_keep=max_seq_len,
                 batch_size=batch_size,
                 seq_lengths=seq_lengths)
         else:
-            # In non-padding_free mode, logps are already in batch format [batch_size, seq_len]
             old_per_token_logps = old_per_token_logps_raw
         batch['old_per_token_logps'] = old_per_token_logps
 
@@ -1014,8 +1060,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     @profiling_decorator
     def forward_step(self, data_iterator, model):
-        # train_batch_size
-        # return: output_tensor, loss_func
+        args = get_args()
         data = next(data_iterator)
         advantages = data.pop('advantages')
         truncated_mask = data.pop('truncated_mask')
@@ -1029,8 +1074,79 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         inputs = self._prepare_model_inputs(data)
 
-        with self.stimer:
-            output_tensor = model(**inputs)
+        labels = data['labels']
+        packed_seq_params = data.get('packed_seq_params')
+        max_seq_len = data['completion_mask'].shape[1]
+        micro_batch_size = self.micro_batch_size
+
+        # Check if this is the PP last stage (only last stage has labels and computes loss)
+        is_pp_last_stage = mpu.is_pipeline_last_stage()
+
+        if self.compute_entropy:
+            # Forward without labels to get logits, then compute logps and entropy
+            inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
+            with self.stimer:
+                output_tensor = model(**inputs_for_logits)
+
+            # Compute per_token_logps and per_token_entropy from logits on PP last stage
+            if is_pp_last_stage and output_tensor is not None:
+                # output_tensor is logits [batch/1, seq, partition_vocab_size]
+                per_token_logps_raw, per_token_entropy_raw = compute_logps_and_entropy_from_logits(
+                    output_tensor, labels, compute_entropy=True)
+
+                # In CP mode, all_gather and reconstruct full sequence
+                if args.context_parallel_size > 1:
+                    num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
+                    per_token_logps_raw = self._postprocess_packed_tensor_cp(per_token_logps_raw, packed_seq_params,
+                                                                             num_samples)
+                    per_token_entropy_raw = self._postprocess_packed_tensor_cp(per_token_entropy_raw, packed_seq_params,
+                                                                               num_samples)
+
+                if args.padding_free:
+                    # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]
+                    per_token_logps, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_logps_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths)
+                    per_token_entropy, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_entropy_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths,
+                        pad_value=float('nan'))
+                else:
+                    per_token_logps = per_token_logps_raw
+                    per_token_entropy = per_token_entropy_raw
+
+                data['per_token_logps'] = per_token_logps
+                data['per_token_entropy'] = per_token_entropy
+        else:
+            # Standard forward with labels, returns per-token loss (more efficient)
+            with self.stimer:
+                output_tensor = model(**inputs)
+
+            # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
+            if is_pp_last_stage and output_tensor is not None:
+                per_token_logps_raw = self.get_logps(
+                    output_tensor,
+                    labels,
+                    packed_seq_params,
+                    packed_seq_params.num_samples if args.padding_free else micro_batch_size,
+                    per_token=True)
+
+                if args.padding_free:
+                    per_token_logps, _ = pad_logps_back_to_batch(
+                        logps_rmpad=per_token_logps_raw,
+                        logits_to_keep=max_seq_len,
+                        batch_size=micro_batch_size,
+                        seq_lengths=seq_lengths)
+                else:
+                    per_token_logps = per_token_logps_raw
+
+                data['per_token_logps'] = per_token_logps
+                data['per_token_entropy'] = None
+
         return output_tensor, partial(self.loss_func, data=data)
 
     @profiling_decorator
@@ -1038,33 +1154,22 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = get_args()
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
-        labels = data['labels']
         completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
         packed_seq_params = data.get('packed_seq_params')
         truncated_mask = data['truncated_mask']  # [batch_size]
         seq_lengths = data['seq_lengths']  # [batch_size]
-        max_seq_len = completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
 
+        # Get pre-computed per_token_logps and per_token_entropy from forward_step
+        # These are already in batch format [batch_size, max_seq_len]
+        per_token_logps = data.get('per_token_logps')
+        per_token_entropy = data.get('per_token_entropy')
+
         if args.padding_free:
-            # Use full sequence lengths directly (get_logps returns full sequences in CP mode)
             lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
                                                      + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
-
-            # get_logps with per_token=True returns rmpad format [1, total_tokens]
-            # Pad to batch format [batch_size, max_seq_len]
-            per_token_logps_rmpad = self.get_logps(
-                output_tensor, labels, packed_seq_params, packed_seq_params.num_samples, per_token=True)
-            per_token_logps, _ = pad_logps_back_to_batch(
-                logps_rmpad=per_token_logps_rmpad,
-                logits_to_keep=max_seq_len,
-                batch_size=micro_batch_size,
-                seq_lengths=seq_lengths)
         else:
-            # In non-padding_free mode, get_logps with per_token=True returns [batch_size, seq_len]
-            # No need to pad, already in batch format
             lengths = seq_lengths
-            per_token_logps = self.get_logps(output_tensor, labels, packed_seq_params, micro_batch_size, per_token=True)
 
         # Get pre-padded ref/old/rollout logps from data
         ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
@@ -1161,6 +1266,41 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.beta != 0.0 and per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
+        # Compute and apply entropy mask if enabled
+        # entropy_mask zeros out gradients for low-entropy (confident) tokens
+        entropy_mask = None
+        entropy_metrics = {}
+        if self.compute_entropy and per_token_entropy is not None:
+            # Fill padded tokens with NaN for correct quantile computation
+            entropies = per_token_entropy.masked_fill(completion_mask == 0, float('nan'))
+
+            if self.log_entropy:
+                # Log entropy statistics
+                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                global_entropies_mean = gather(
+                    per_completion_entropies_mean, group=mpu.get_data_parallel_group(with_context_parallel=True))
+                valid_mask = ~torch.isnan(global_entropies_mean)
+                entropy_metrics = {
+                    'entropy_mean':
+                    global_entropies_mean.nanmean(),
+                    'entropy_max':
+                    global_entropies_mean[valid_mask].max() if valid_mask.any() else torch.tensor(
+                        float('nan'), device=global_entropies_mean.device),
+                    'entropy_min':
+                    global_entropies_mean[valid_mask].min() if valid_mask.any() else torch.tensor(
+                        float('nan'), device=global_entropies_mean.device),
+                }
+
+            # Compute entropy threshold and mask for top_entropy_quantile
+            if self.top_entropy_quantile < 1.0:
+                # Compute threshold across all completion tokens in the batch
+                entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
+                entropy_metrics['entropy_threshold'] = entropy_threshold
+                # Only keep tokens with entropy >= threshold (high uncertainty tokens)
+                entropy_mask = entropies >= entropy_threshold
+                # Apply entropy mask to per_token_loss
+                per_token_loss = per_token_loss * entropy_mask
+
         # Apply off-policy sequence masking if enabled
         # Mask out sequences where delta > threshold AND advantage < 0
         if self.off_policy_sequence_mask_delta is not None:
@@ -1199,6 +1339,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'completions/min_length': total_lengths.float().min(),
         }
 
+        # Add entropy metrics to custom_metrics
+        if entropy_metrics:
+            for key, value in entropy_metrics.items():
+                if isinstance(value, torch.Tensor):
+                    custom_metrics[f'entropy/{key}'] = value.clone().detach()
+                else:
+                    custom_metrics[f'entropy/{key}'] = torch.tensor(value, device=loss.device)
+
         if self.beta != 0.0 and per_token_kl is not None:
             kl_value = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
             avg_metric['kl'] = kl_value.clone().detach()
@@ -1236,9 +1384,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 high_clip.unsqueeze(0), group=mpu.get_data_parallel_group(with_context_parallel=True))
 
             # Store local values for mean (will be averaged by _all_reduce_metric)
-            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip)
-            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip)
-            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio)
+            self._metrics[mode]['clip_ratio/low_mean'].append(low_clip.item())
+            self._metrics[mode]['clip_ratio/high_mean'].append(high_clip.item())
+            self._metrics[mode]['clip_ratio/region_mean'].append(clip_ratio.item())
             # Store global min/max in custom_metrics (not through _all_reduce_metric to avoid incorrect averaging)
             custom_metrics['clip_ratio/low_min'] = gathered_low_clip.min()
             custom_metrics['clip_ratio/high_max'] = gathered_high_clip.max()
@@ -1299,6 +1447,17 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return loss, reporting_metric
 
     def model_forward(self, model, data_iterator, no_grad=True, per_token=False):
+        """Forward pass through model to compute logps.
+
+        Args:
+            model: The model to forward
+            data_iterator: Iterator providing batch data
+            no_grad: Whether to use torch.no_grad() context
+            per_token: Whether to return per-token logps
+
+        Returns:
+            data dict containing 'logps'
+        """
         # used to calculate model forward (logps) in GRPO
         with self.stimer(bdata=True):
             data = self.get_batch(data_iterator)
@@ -1306,8 +1465,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         input_ids = data.get('input_ids')
         labels = data.get('labels')
         context = torch.no_grad() if no_grad else nullcontext()
+
         with context:
             output_tensor = forward_step_helper(model, data)
+
         # packed_seq_params only exists in padding_free mode
         packed_seq_params = data.get('packed_seq_params')
         if packed_seq_params is not None:

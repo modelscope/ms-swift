@@ -462,6 +462,57 @@ def test_deepseek_v3_1():
     assert encoded['input_ids'][-122:] == encoded2['input_ids'][1:]
 
 
+def test_youtu():
+    agent_template = agent_templates['youtu']()
+    new_system = agent_template._format_tools(tools, system)
+    assert len(new_system) == 883
+    engine = PtEngine('Tencent-YouTu-Research/Youtu-LLM-2B')
+    template = engine.default_template
+    template.agent_template = agent_template
+
+    stop = [template.agent_template.keyword.observation]
+    query = "How's the weather in Beijing today?"
+    tool_messages = [{'role': 'tool', 'content': '{"temperature": 32, "condition": "Sunny", "humidity": 50}'}]
+    infer_request = InferRequest([{'role': 'user', 'content': query}], tools=tools)
+    request_config = RequestConfig(max_tokens=2048, stop=stop, temperature=0)
+
+    # First inference: get tool call
+    resp_list = engine.infer([infer_request], request_config=request_config)
+    response = resp_list[0].choices[0].message.content
+    toolcall = resp_list[0].choices[0].message.tool_calls
+    print(f'response: {response}')
+    print(f'toolcall: {toolcall}')
+    assert toolcall is not None, 'No tool_call generated'
+    infer_request.messages.append({'role': 'assistant', 'content': response})
+    infer_request.messages += tool_messages
+
+    # Second inference: get final response
+    resp_list = engine.infer([infer_request], request_config=request_config)
+    response2 = resp_list[0].choices[0].message.content
+    print(f'response2: {response2}')
+    infer_request.messages.append({'role': 'assistant', 'content': response2})
+    messages = infer_request.messages
+
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert encoded['input_ids'] == encoded2['input_ids']
+
+
 def test_seed_oss():
     agent_template = agent_templates['seed_oss']()
 
@@ -548,7 +599,8 @@ if __name__ == '__main__':
     # test_llama4()
     # test_hunyuan()
     # test_glm4_5()
-    test_glm4_7()
+    # test_glm4_7()
     # test_qwen3_coder()
     # test_deepseek_v3_1()
     # test_seed_oss()
+    test_youtu()

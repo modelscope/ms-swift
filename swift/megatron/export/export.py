@@ -8,6 +8,7 @@ from megatron.core import mpu
 from megatron.training import initialize_megatron
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
+from transformers.utils import strtobool
 
 from swift.llm import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
@@ -115,6 +116,14 @@ class MegatronExport(SwiftPipeline):
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
         logger.info('Successfully transferred HF model weights to MG model.')
+        _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
+        if not _test_convert_precision:
+            args.save_args(args.save)
+            logger.info('Saving the model...')
+            save_peft_format = args.train_type == 'lora' and not args.merge_lora
+            with adapter_state_dict_context(is_peft_format=save_peft_format):
+                mg_save_checkpoint(1, [mg_model], None, None, 0)
+            logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
         # hf_model does not support loading args.adapter_load, so test_convert_precision cannot be performed
         support_convert_precision = args.adapter_load is None
         if args.test_convert_precision:
@@ -127,12 +136,6 @@ class MegatronExport(SwiftPipeline):
                 dist.barrier()
             else:
                 logger.warning('Skip test_convert_precision because `--adapter_load` is specified.')
-        args.save_args(args.save)
-        logger.info('Saving the model...')
-        save_peft_format = args.train_type == 'lora' and not args.merge_lora
-        with adapter_state_dict_context(is_peft_format=save_peft_format):
-            mg_save_checkpoint(1, [mg_model], None, None, 0)
-        logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
 
 
 def megatron_export_main(args: Optional[Union[List[str], MegatronExportArguments]] = None):

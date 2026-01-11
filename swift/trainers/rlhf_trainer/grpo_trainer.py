@@ -15,6 +15,8 @@ except ImportError:
     pass
 # fmt: on
 
+import asyncio
+import atexit
 import concurrent.futures
 import inspect
 import os
@@ -43,7 +45,8 @@ from swift.llm import RowPreprocessor, Template, disable_gradient_checkpointing,
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import orms, rm_plugins
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
-                         seed_worker, unwrap_model_for_generation)
+                         seed_worker, shutdown_event_loop_in_daemon, start_event_loop_in_daemon,
+                         unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
@@ -327,31 +330,64 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [inp['messages'][-1]['content'] for inp in inputs]
+
+        # Common reward kwargs
+        reward_kwargs = {'trainer_state': self.state}
+        reward_inputs = [{k: v for k, v in inp.items() if k != 'add_eos'} for inp in inputs]
+        if self.enable_server_multi_turn:
+            trajectory_inputs = self._get_trajectory_inputs(inputs)
+            reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
+        reward_kwargs.update(RowPreprocessor.rows_to_batched(reward_inputs))
+
+        # Use pre-computed indices for async reward functions
+        async_indices_set = set(self._async_reward_func_indices)
+
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             template = None if not hasattr(reward_model_plugin, 'template') else reward_model_plugin.template
             with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
-                # reward model
-                reward_kwargs = {'trainer_state': self.state}
-                reward_inputs = [{k: v for k, v in inp.items() if k != 'add_eos'} for inp in inputs]
-                if self.enable_server_multi_turn:
-                    trajectory_inputs = self._get_trajectory_inputs(inputs)
-                    reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
+                # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=reward_inputs, **reward_kwargs)
-                # reward function
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                # Async reward function - skip here, will be executed in parallel later
+                elif i in async_indices_set:
+                    pass
+                # Synchronous reward function
                 else:
-                    # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                    reward_kwargs.update(RowPreprocessor.rows_to_batched(reward_inputs))
                     output_reward_func = reward_func(completions, **reward_kwargs)
-                output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
+                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+
+        # Execute async reward functions in parallel using asyncio.gather
+        # Process in original order to maintain correspondence with reward_func_names
+        if self._async_reward_func_indices:
+
+            async def _invoke_async_reward(index):
+                func = self.reward_funcs[index]
+                func_name = self.reward_func_names[index]
+                with patch_profiling_context(self, func_name):
+                    output = await func(completions, **reward_kwargs)
+                    output = [r if r is not None else torch.nan for r in output]
+                    return index, output
+
+            async def _run_async_funcs():
+                # Maintain order by processing indices in sequence
+                coros = [_invoke_async_reward(idx) for idx in self._async_reward_func_indices]
+                return await asyncio.gather(*coros)
+
+            async_results = asyncio.run_coroutine_threadsafe(_run_async_funcs(), self.async_reward_loop).result()
+            for idx, output_reward_func in async_results:
+                rewards_per_func[:, idx] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # If all reward functions return None for a given row, issue a detailed warning
         if torch.isnan(rewards_per_func).all(dim=1).any():
             nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
-            reward_kwargs.pop('trainer_state')
-            row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
+            row_reward_kwargs = {
+                key: value[nan_row_idx]
+                for key, value in reward_kwargs.items() if key != 'trainer_state'
+            }
             row_reward_kwargs['completion'] = completions[nan_row_idx]
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
                            'Please ensure that at least one reward function returns a valid reward.')
@@ -2026,7 +2062,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for LLM, slice the inputs
         for key, val in inputs.items():
             if isinstance(val, torch.Tensor):
-                chunk_inputs[key] = val[start_idx:end_idx]
+                chunk_inputs[key] = val if val.ndim == 0 else val[start_idx:end_idx]
             else:
                 chunk_inputs[key] = val
         if self.is_multimodal:
@@ -2204,6 +2240,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     self.reward_funcs[i] = self.accelerator.prepare_model(
                         reward_func, evaluation_mode=True, device_placement=True)
+
+        self._async_reward_func_indices = []
+        for i, func in enumerate(self.reward_funcs):
+            if not isinstance(func, PreTrainedModel):
+                if asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None)):
+                    self._async_reward_func_indices.append(i)
+
+        # Initialize event loop for async reward functions if needed
+        if self._async_reward_func_indices:
+            self.async_reward_loop_thread, self.async_reward_loop, self.async_reward_loop_ready_event = (
+                start_event_loop_in_daemon(name='GRPOTrainer-AsyncRewardLoop'))
+            # Wait until the event loop is running in the daemon thread
+            self.async_reward_loop_ready_event.wait()
+            atexit.register(shutdown_event_loop_in_daemon, self.async_reward_loop_thread, self.async_reward_loop)
 
     def _prepare_resample_data_iterator(self):
 

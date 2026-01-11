@@ -9,8 +9,49 @@ if TYPE_CHECKING:
 
 
 class ORM:
+    """Base class for synchronous outcome reward models (ORM).
+
+    Subclasses should implement the __call__ method to compute rewards.
+
+    Example:
+        class MyReward(ORM):
+            def __call__(self, completions, **kwargs) -> List[float]:
+                return [1.0 if len(c) > 100 else 0.0 for c in completions]
+    """
 
     def __call__(self, **kwargs) -> List[float]:
+        raise NotImplementedError
+
+
+class AsyncORM:
+    """Base class for asynchronous outcome reward models (ORM).
+
+    Use this for reward functions that involve I/O operations (e.g., API calls,
+    database queries) that can benefit from async execution.
+
+    Async reward functions are executed in parallel using asyncio.gather,
+    which can significantly speed up reward computation when multiple async
+    reward functions are used or when the reward function involves network calls.
+
+    Example:
+        class MyAsyncReward(AsyncORM):
+            async def __call__(self, completions, **kwargs) -> List[float]:
+                # Use asyncio.gather for parallel execution of all API calls
+                import asyncio
+                import aiohttp
+
+                async def score_single(session, text):
+                    async with session.post(api_url, json={'text': text}) as resp:
+                        result = await resp.json()
+                        return result['score']
+
+                async with aiohttp.ClientSession() as session:
+                    tasks = [score_single(session, c) for c in completions]
+                    rewards = await asyncio.gather(*tasks)
+                    return list(rewards)
+    """
+
+    async def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
 
 

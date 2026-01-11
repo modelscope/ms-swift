@@ -418,7 +418,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - vllm_quantization: vllm可以在内部量化模型，参数支持的值详见[这里](https://docs.vllm.ai/en/latest/serving/engine_args.html)。
 - 🔥vllm_enable_prefix_caching: 开启vllm的自动前缀缓存，节约重复查询前缀的处理时间，加快推理效率。默认为`None`，跟随vLLM行为。
   - 该参数在"ms-swift<3.9.1"的默认值为`False`。
-- vllm_use_async_engine: vLLM backend下是否使用async engine。部署情况（swift deploy）默认为True，其他情况默认为False。
+- vllm_use_async_engine: vLLM backend下是否使用async engine。默认为None，会根据场景自动设置：encode任务（embedding、seq_cls、reranker、generative_reranker）默认为True，部署场景（swift deploy）默认为True，其他情况默认为False。注意：encode任务需使用async engine。
 - vllm_reasoning_parser: 推理解析器类型，用于思考模型的思维链内容解析。默认为`None`。仅用于 `swift deploy` 命令。可选的种类参考[vLLM文档](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)。
 - vllm_engine_kwargs: vllm的额外参数，格式为json字符串。默认为None。
 
@@ -800,7 +800,7 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
   - 提示：ms-swift只对thinker部分进行微调，建议设置为False以降低显存占用（只创建thinker部分的模型结构）。
 
 ### qwen3_vl
-参数含义与`qwen_vl_utils>=0.0.14`库中的含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。通过传入以下环境变量，可以修改该库的全局变量默认值。
+参数含义与`qwen_vl_utils>=0.0.14`库中的含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。通过传入以下环境变量，可以修改该库的全局变量默认值。（也兼容使用`qwen2_5_vl`的环境变量，例如：`MAX_PIXELS`、`VIDEO_MAX_PIXELS`，会做自动转换。）
 
 - SPATIAL_MERGE_SIZE: 默认为2。
 - IMAGE_MIN_TOKEN_NUM: 默认为`4`，代表一张图片最小图像tokens的个数。
@@ -813,6 +813,15 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - FPS: 默认为2.0。
 - FPS_MIN_FRAMES: 默认为4。代表一段视频的最小抽帧数。
 - 🔥FPS_MAX_FRAMES: 默认为768，代表一段视频的最大抽帧数。（用于避免OOM）
+
+
+### qwen3_vl_emb, qwen3_vl_reranker
+参数含义与`qwen3_vl`相同，见上面的描述。以下为对默认值的覆盖：
+
+- IMAGE_MAX_TOKEN_NUM: qwen3_vl_emb默认为1800, qwen3_vl_reranker默认为1280。具体参考这里：[qwen3_vl_embedding](https://modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B/file/view/master/scripts%2Fqwen3_vl_embedding.py?status=1#L26), [qwen3_vl_reranker](https://modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B/file/view/master/scripts%2Fqwen3_vl_reranker.py?status=1#L16)。
+- FPS: 默认为1。
+- FPS_MAX_FRAMES: 默认为64。
+
 
 ### internvl, internvl_phi3
 参数含义可以查看[这里](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)。

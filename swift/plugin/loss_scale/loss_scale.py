@@ -77,6 +77,7 @@ class LossScale:
                         new_context, loss_scale = [context], [0.]
             res_context_list += new_context
             res_loss_scale += loss_scale
+        # The values in loss_scale_list correspond one-to-one with the values in context_list.
         return res_context_list, res_loss_scale
 
     @property

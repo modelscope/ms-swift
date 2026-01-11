@@ -69,28 +69,6 @@ register_template(
         chat_sep=[],
         prompt=['{{QUERY}}']))
 
-
-class Qwen3EmbTemplate(Template):
-
-    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs(inputs)
-        if inputs.system is not None:
-            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
-            inputs.system = None
-        if len(inputs.messages) % 2 == 1 and inputs.messages[-1]['role'] != 'assistant':
-            inputs.messages.append({'role': 'assistant', 'content': ''})
-        return inputs
-
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.qwen3_emb,
-        template_cls=Qwen3EmbTemplate,
-        suffix=['<|endoftext|>'],
-        prefix=[],
-        chat_sep=[],
-        prompt=['{{QUERY}}']))
-
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
 
@@ -423,4 +401,63 @@ register_template(
         suffix=['<|endoftext|>'],
         is_thinking=True,
         thinking_prefix='<think>\n',
+    ))
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.iquestcoder,
+        default_system='You are LoopCoder, a helpful assistant developed by IQuest.',
+    ))
+
+
+class YoutuLLMTemplate(Template):
+
+    def _remove_thinking_content(self, content: str) -> str:
+        if '</think>' in content:
+            content = content.rsplit('</think>', 1)[-1].lstrip('\n')
+        return self.template_meta.history_thinking_prefix + content.strip()
+
+    def _add_non_thinking_prefix(self, inputs) -> None:
+        messages = inputs.messages
+        non_thinking_prefix = self.template_meta.non_thinking_prefix
+        if non_thinking_prefix and messages:
+            # Find the last assistant message
+            for i in range(len(messages) - 1, -1, -1):
+                message = messages[i]
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if '<think>' not in message['content'] and '</think>' not in message['content']:
+                        message['content'] = non_thinking_prefix + message['content']
+                    break
+
+    def _remove_history_thinking(self, inputs) -> None:
+        if self.is_training and self.loss_scale.base_strategy != 'last_round':
+            return
+        messages = inputs.messages
+        first_tool_index = len(messages)
+        for i, message in enumerate(messages):
+            if message['role'] == 'tool' or (message['role'] == 'user' and isinstance(message.get('content'), str)
+                                             and message['content'].startswith('<tool_response>')
+                                             and message['content'].endswith('</tool_response>')):
+                first_tool_index = i
+                break
+        # Only remove thinking content for assistant messages before first_tool_index - 1
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                is_last = (i == len(messages) - 1)
+                if not is_last and i < first_tool_index - 1:
+                    message['content'] = self._remove_thinking_content(message['content'])
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.youtu_llm,
+        template_cls=YoutuLLMTemplate,
+        prefix=[['bos_token_id']],
+        system_prefix=[['bos_token_id'], '{{SYSTEM}}'],
+        prompt=['<|User|>{{QUERY}}<|Assistant|>'],
+        chat_sep=['<|end_of_text|>'],
+        suffix=['<|end_of_text|>'],
+        is_thinking=True,
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='youtu',
     ))

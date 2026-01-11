@@ -166,6 +166,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
             for i in range(num_layers)
         ]
+    elif llm_architectures == 'MiniMaxM2ForCausalLM':
+        res['add_qkv_bias'] = False
     elif llm_architectures == 'Llama4ForConditionalGeneration':
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:

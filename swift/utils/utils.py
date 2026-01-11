@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import datetime as dt
 import fnmatch
 import glob
@@ -10,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from functools import wraps
@@ -276,10 +278,20 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     return value
 
 
-def find_node_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(('8.8.8.8', 80))
-    return s.getsockname()[0]
+def find_node_ip() -> Optional[str]:
+    import psutil
+    main_ip, virtual_ip = None, None
+    for name, addrs in sorted(psutil.net_if_addrs().items()):
+        for addr in addrs:
+            if addr.family.name == 'AF_INET' and not addr.address.startswith('127.'):
+                # Heuristic to prefer non-virtual interfaces
+                if any(s in name for s in ['lo', 'docker', 'veth', 'vmnet']):
+                    if virtual_ip is None:
+                        virtual_ip = addr.address
+                else:
+                    if main_ip is None:
+                        main_ip = addr.address
+    return main_ip or virtual_ip
 
 
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
@@ -492,3 +504,43 @@ def retry_decorator(retry=3):
         return new_func
 
     return _retry
+
+
+def start_event_loop_in_daemon(name: str = None) -> Tuple[threading.Thread, asyncio.AbstractEventLoop, threading.Event]:
+    """Create a new daemon thread that runs an asyncio event loop.
+
+    Args:
+        name: Name of the thread. If None, the default thread naming will be used.
+
+    Returns:
+        tuple: (thread, loop, loop_ready_event)
+            - thread: The thread running the event loop.
+            - loop: The event loop being run in the thread.
+            - loop_ready_event: An event that is set when the loop is ready.
+    """
+    loop = asyncio.new_event_loop()
+    loop_ready_event = threading.Event()
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        loop_ready_event.set()
+        loop.run_forever()
+
+    thread = threading.Thread(target=run_loop, name=name, daemon=True)
+    thread.start()
+    return thread, loop, loop_ready_event
+
+
+def shutdown_event_loop_in_daemon(thread: threading.Thread = None, loop: asyncio.AbstractEventLoop = None) -> None:
+    """Shutdown an asyncio event loop running in a separate thread.
+
+    This function stops the event loop and waits for the associated thread to finish execution.
+
+    Args:
+        thread: The thread running the event loop.
+        loop: The asyncio event loop to shut down.
+    """
+    if loop is None or thread is None:
+        return
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)

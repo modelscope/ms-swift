@@ -21,6 +21,7 @@ from ..utils import convert_hf_config, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import get_swift_datasets_provider, load_megatron_model_to_gpu, offload_megatron_model_to_cpu
+from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 
 logger = get_logger()
 
@@ -76,6 +77,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.truncation_strategy == 'delete':
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
+
         super().train(train_dataset, val_dataset, data_collator)
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
@@ -123,7 +125,38 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Store original student model config from Megatron global args
         # We need to override these with teacher's config temporarily
         essential_keys = {'hf_model_type', 'model_dir'}
-        keys_to_override = set(teacher_megatron_config.keys()) | essential_keys
+
+        # MoE-related keys that must be explicitly handled for Dense/MoE compatibility.
+        # When student is MoE and teacher is Dense (or vice versa), these keys need to be
+        # properly reset to ensure correct model architecture creation.
+        moe_related_keys = {
+            'num_experts',
+            'moe_ffn_hidden_size',
+            'moe_shared_expert_intermediate_size',
+            'moe_router_topk',
+            'moe_router_num_groups',
+            'moe_router_group_topk',
+            'moe_router_pre_softmax',
+            'moe_router_score_function',
+            'moe_router_bias_update_rate',
+            'moe_router_topk_scaling_factor',
+            'moe_router_load_balancing_type',
+            'moe_router_enable_expert_bias',
+            'moe_apply_probs_on_input',
+            'moe_layer_freq',
+            'moe_grouped_gemm',
+            'moe_use_legacy_grouped_gemm',
+            'use_shared_expert_gate',
+        }
+
+        # EP-related keys that need special handling for Dense/MoE compatibility.
+        # Dense models cannot use expert parallelism (EP > 1).
+        ep_related_keys = {
+            'expert_model_parallel_size',
+            'expert_tensor_parallel_size',
+        }
+
+        keys_to_override = (set(teacher_megatron_config.keys()) | essential_keys | moe_related_keys | ep_related_keys)
 
         original_config = {}
         for key in keys_to_override:
@@ -136,6 +169,31 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         megatron_args.hf_model_type = teacher_model_type
         megatron_args.model_dir = teacher_model_info.model_dir
 
+        # Reset MoE-related keys that are not in teacher config to None.
+        # This ensures Dense teacher doesn't inherit MoE settings from MoE student,
+        # and MoE teacher gets its own settings without interference from Dense student.
+        teacher_is_moe = teacher_megatron_config.get('num_experts') is not None
+        for key in moe_related_keys:
+            if key not in teacher_megatron_config and hasattr(megatron_args, key):
+                setattr(megatron_args, key, None)
+
+        if teacher_is_moe:
+            MegatronArguments._set_moe_default(megatron_args)
+            # Ensure moe_grouped_gemm is True for MoE models to use GroupedMLP,
+            # which is required by gpt_bridge weight loading logic.
+            if megatron_args.moe_grouped_gemm is None:
+                megatron_args.moe_grouped_gemm = True
+
+            # Restore original EP settings if student is Dense.
+            # This allows MoE teacher to use EP > 1 even when student is Dense.
+            if not self.student_is_moe:
+                megatron_args.expert_model_parallel_size = self._original_ep_size
+                megatron_args.expert_tensor_parallel_size = self._original_etp_size
+        else:
+            # Dense teacher cannot use expert parallelism.
+            # Reset EP to 1 to avoid "num_moe_experts must be non None to use expert-parallel" error.
+            megatron_args.expert_model_parallel_size = 1
+            megatron_args.expert_tensor_parallel_size = 1
         try:
             # Use get_model() to create teacher with same parallel config (PP/TP/CP/EP) as student
             # but with teacher's model architecture (hidden_size, num_layers, etc.)
@@ -465,64 +523,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return student_logits, teacher_logits
 
-    def _vocab_parallel_log_softmax(self, logits: torch.Tensor) -> torch.Tensor:
-        """Compute log_softmax across vocab-parallel sharded logits.
-
-        When using Tensor Parallelism, vocab is sharded across TP ranks.
-        This function correctly computes log_softmax by:
-        1. Finding global max via all_reduce
-        2. Computing sum of exp via all_reduce
-        3. Computing log_softmax using the global statistics
-
-        Args:
-            logits: Logits tensor [..., partition_vocab_size]
-
-        Returns:
-            log_softmax tensor [..., partition_vocab_size]
-        """
-        tp_group = mpu.get_tensor_model_parallel_group()
-
-        # Step 1: Find global max for numerical stability
-        logits_max = logits.max(dim=-1, keepdim=True)[0]
-        torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=tp_group)
-
-        # Step 2: Compute exp(logits - max) and sum across all TP ranks
-        exp_logits = torch.exp(logits - logits_max)
-        sum_exp = exp_logits.sum(dim=-1, keepdim=True)
-        torch.distributed.all_reduce(sum_exp, op=torch.distributed.ReduceOp.SUM, group=tp_group)
-
-        # Step 3: Compute log_softmax
-        log_softmax = logits - logits_max - torch.log(sum_exp)
-
-        return log_softmax
-
-    def _vocab_parallel_kl_div(self, input_log_probs: torch.Tensor, target_log_probs: torch.Tensor) -> torch.Tensor:
-        """Compute KL divergence for vocab-parallel sharded log probabilities.
-
-        KL(target || input) = sum(target_prob * (target_log_prob - input_log_prob))
-                            = sum(exp(target_log_prob) * (target_log_prob - input_log_prob))
-
-        Since both log_probs are sharded across TP, we compute the partial sum
-        on each rank and then all_reduce to get the global sum.
-
-        Args:
-            input_log_probs: Input log probabilities [..., partition_vocab_size]
-            target_log_probs: Target log probabilities [..., partition_vocab_size]
-
-        Returns:
-            KL divergence per position [...], already reduced across TP
-        """
-        tp_group = mpu.get_tensor_model_parallel_group()
-
-        # Compute partial KL on this rank's vocab partition
-        target_probs = torch.exp(target_log_probs)
-        partial_kl = (target_probs * (target_log_probs - input_log_probs)).sum(dim=-1)
-
-        # All-reduce to get global KL
-        torch.distributed.all_reduce(partial_kl, op=torch.distributed.ReduceOp.SUM, group=tp_group)
-
-        return partial_kl
-
     def generalized_jsd_loss(
         self,
         student_logits: torch.Tensor,
@@ -570,16 +570,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             t_chunk = teacher_logits_masked[start_idx:end_idx]
 
             # Compute log_softmax with vocab-parallel support
-            s_log_probs = self._vocab_parallel_log_softmax(s_chunk)
-            t_log_probs = self._vocab_parallel_log_softmax(t_chunk)
+            s_log_probs = vocab_parallel_log_softmax(s_chunk)
+            t_log_probs = vocab_parallel_log_softmax(t_chunk)
             del s_chunk, t_chunk
 
             if beta == 0:
                 # JSD = KL(teacher || student)
-                jsd_chunk = self._vocab_parallel_kl_div(s_log_probs, t_log_probs)
+                jsd_chunk = vocab_parallel_kl_div(s_log_probs, t_log_probs)
             elif beta == 1:
                 # JSD = KL(student || teacher)
-                jsd_chunk = self._vocab_parallel_kl_div(t_log_probs, s_log_probs)
+                jsd_chunk = vocab_parallel_kl_div(t_log_probs, s_log_probs)
             else:
                 # Compute mixture log probabilities: m = beta * teacher + (1-beta) * student
                 # log(m) = logsumexp(log(student) + log(1-beta), log(teacher) + log(beta))
@@ -588,8 +588,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     dim=0,
                 )
 
-                kl_teacher = self._vocab_parallel_kl_div(mixture_log_probs, t_log_probs)
-                kl_student = self._vocab_parallel_kl_div(mixture_log_probs, s_log_probs)
+                kl_teacher = vocab_parallel_kl_div(mixture_log_probs, t_log_probs)
+                kl_student = vocab_parallel_kl_div(mixture_log_probs, s_log_probs)
                 del mixture_log_probs
 
                 jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
@@ -692,3 +692,19 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return student_output, partial(
             self.loss_func, labels=labels, teacher_logits=teacher_logits, data_source=data_source)
+
+    def patched_validate_args(self, args, *_args, **kwargs):
+        """Override patched_validate_args to adjust EP parameters for Dense student.
+
+        This is called before Megatron's validate_args, allowing us to reset EP to 1
+        when student is Dense but EP > 1 was configured (for MoE teacher).
+        """
+        student_is_moe = getattr(args, 'num_experts', None) is not None
+        if not student_is_moe:
+            # Reset EP to 1 in Megatron args for Dense student
+            self._original_ep_size = args.expert_model_parallel_size
+            self._original_etp_size = args.expert_tensor_parallel_size
+            args.expert_model_parallel_size = 1
+            args.expert_tensor_parallel_size = 1
+        self.student_is_moe = student_is_moe
+        return self._origin_validate_args(args, *_args, **kwargs)

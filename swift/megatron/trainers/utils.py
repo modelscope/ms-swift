@@ -15,6 +15,7 @@ from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.training import get_args, get_wandb_writer
 from packaging import version
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
 from swift.llm import to_device
@@ -77,12 +78,18 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
 
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
-    return PackedSeqParams(
+    packed = PackedSeqParams(
         cu_seqlens_q=params['cu_seq_lens_q'],
         cu_seqlens_kv=params['cu_seq_lens_k'],
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
+
+    if is_torch_npu_available():
+        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
+        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
+
+    return packed
 
 
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], dim: int):

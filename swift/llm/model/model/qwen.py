@@ -592,6 +592,9 @@ register_model(
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ]),
+            ModelGroup([
+                Model('iic/QwenLong-L1.5-30B-A3B', 'Tongyi-Zhiwen/QwenLong-L1.5-30B-A3B'),
+            ]),
         ],
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
@@ -687,6 +690,26 @@ register_model(
     ))
 
 
+def _get_new_read_video_func(read_video_func, read_backend):
+    if read_backend == 'torchvision':
+
+        def _new_read_video(ele: dict):
+            try:
+                return read_video_func(ele)
+            except Exception:
+                from swift.llm import load_file  # base64
+                ele['video'] = load_file(ele['video'])
+                return read_video_func(ele)
+    else:
+
+        def _new_read_video(ele: dict):
+            from swift.llm import load_file
+            ele['video'] = load_file(ele['video'])
+            return read_video_func(ele)
+
+    return _new_read_video
+
+
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
@@ -722,32 +745,17 @@ def patch_qwen_vl_utils(vision_process):
         val = get_env_args(key, type_func, default_value)
         setattr(vision_process, key.upper(), val)
         res[key] = val
-    # Patch decord video reader if available
-    _read_video_decord = getattr(vision_process, '_read_video_decord', None)
-    if _read_video_decord is not None:
-
-        def _new_read_video_decord(ele: dict):
-            from swift.llm import load_file
-            ele['video'] = load_file(ele['video'])
-            return _read_video_decord(ele)
-
-        backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
-        if isinstance(backends, dict):
-            backends['decord'] = _new_read_video_decord
-            _read_video_torchvision = getattr(vision_process, '_read_video_torchvision', None)
-            if _read_video_torchvision is not None:
-
-                def _new_read_video_torchvision(ele: dict):
-                    try:
-                        return _read_video_torchvision(ele)
-                    except Exception:
-                        from swift.llm import load_file  # base64
-                        ele['video'] = load_file(ele['video'])
-                        return _read_video_torchvision(ele)
-
-                backends['torchvision'] = _new_read_video_torchvision
-        elif backends is None:  # keye_vl
-            vision_process._read_video_decord = _new_read_video_decord
+    # Patch video reader if available
+    backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
+    for read_backend in ['torchvision', 'decord', 'torchcodec']:
+        func_key = f'_read_video_{read_backend}'
+        _read_video = getattr(vision_process, func_key, None)
+        if _read_video is not None:
+            _new_read_video = _get_new_read_video_func(_read_video, read_backend)
+            if isinstance(backends, dict):
+                backends[read_backend] = _new_read_video
+            elif backends is None:  # keye_vl
+                setattr(vision_process, func_key, _new_read_video)
     vision_process._patch = True
     return res
 
@@ -1666,7 +1674,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        RerankerModelType.qwen3_reranker, [
+        RerankerModelType.qwen3_reranker,
+        [
             ModelGroup([
                 Model('Qwen/Qwen3-Reranker-0.6B', 'Qwen/Qwen3-Reranker-0.6B'),
                 Model('Qwen/Qwen3-Reranker-4B', 'Qwen/Qwen3-Reranker-4B'),
@@ -1676,4 +1685,50 @@ register_model(
         TemplateType.qwen3_reranker,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM'],
-        task_type='reranker'))
+    ))
+
+
+def get_model_tokenizer_qwen3_vl_emb(*args, **kwargs):
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1800')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl_emb, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-Embedding-2B', 'Qwen/Qwen3-VL-Embedding-2B'),
+                Model('Qwen/Qwen3-VL-Embedding-8B', 'Qwen/Qwen3-VL-Embedding-8B'),
+            ])
+        ],
+        TemplateType.qwen3_vl_emb,
+        get_model_tokenizer_qwen3_vl_emb,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen3_vl_reranker(*args, **kwargs):
+    os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1280')
+    os.environ.setdefault('FPS', '1')
+    os.environ.setdefault('FPS_MAX_FRAMES', '64')
+    return get_model_tokenizer_qwen3_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl_reranker, [
+            ModelGroup([
+                Model('Qwen/Qwen3-VL-Reranker-2B', 'Qwen/Qwen3-VL-Reranker-2B'),
+                Model('Qwen/Qwen3-VL-Reranker-8B', 'Qwen/Qwen3-VL-Reranker-8B'),
+            ])
+        ],
+        TemplateType.qwen3_vl_reranker,
+        get_model_tokenizer_qwen3_vl_reranker,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))

@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
+from packaging import version
 from torch import nn
 from transformers import PretrainedConfig
 from transformers.utils import strtobool
@@ -549,6 +550,8 @@ def _patch_conv3d():
         nn.Conv3d._original_forward = nn.Conv3d.forward
 
     def forward(self, x):
+        if version.parse(torch.__version__) < version.parse('2.9.0'):
+            return self._original_forward(x)
         if any(s != k for s, k in zip(self.stride, self.kernel_size)) or any(p != 0 for p in self.padding) or any(
                 d != 1 for d in self.dilation) or self.groups != 1:
             raise NotImplementedError(

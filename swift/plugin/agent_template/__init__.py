@@ -11,6 +11,7 @@ from .qwen3_coder import Qwen3CoderAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .seed_oss import SeedAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
+from .youtu import YoutuAgentTemplate
 
 agent_templates = {
     # ref: https://qwen.readthedocs.io/zh-cn/latest/framework/function_call.html#function-calling-templates
@@ -36,5 +37,6 @@ agent_templates = {
     'seed_oss': SeedAgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
-    'mistral': MistralAgentTemplate
+    'mistral': MistralAgentTemplate,
+    'youtu': YoutuAgentTemplate,
 }
