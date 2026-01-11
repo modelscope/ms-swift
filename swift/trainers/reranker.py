@@ -4,7 +4,7 @@ from typing import Dict
 
 from transformers import EvalPrediction
 
-from swift.utils import get_logger
+from swift.utils import get_generative_reranker_logits, get_logger
 from .trainer import Trainer
 from .utils import gather_for_unpadded_tensors
 
@@ -15,20 +15,7 @@ class RerankerTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.args.include_for_metrics = ['inputs']
-        self.compute_metrics = self.calculate_metric
-        self.label_names = ['labels']
-
-        self.preprocess_logits_for_metrics = None
         self.gather_function = gather_for_unpadded_tensors
-
-    def evaluation_loop(self, *args, **kwargs):
-        output = super().evaluation_loop(*args, **kwargs)
-        self.gather_function = gather_for_unpadded_tensors
-        return output
-
-    def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if inputs.get('attention_mask') is None and self.template.padding_side != 'left':

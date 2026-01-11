@@ -38,7 +38,7 @@ def test_reranker():
             task_type='generative_reranker',
             dataset=['MTEB/scidocs-reranking#10000'],
             split_dataset_ratio=0.05,
-            loss_type='generative_reranker',
+            loss_type='pointwise_reranker',
             dataloader_drop_last=True,
             eval_strategy='steps',
             eval_steps=10,

@@ -39,6 +39,7 @@ from transformers.trainer_utils import IntervalStrategy
 
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
+from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
@@ -955,9 +956,11 @@ class SwiftMixin:
     def create_loss_and_metric(self, args):
         res = {}
         if args.metric is not None:
-            res['compute_metrics'], res['preprocess_logits_for_metrics'] = get_metric(args.metric)
+            metric = metrics_map[args.metric](args, self)
+            res['compute_metrics'], res['preprocess_logits_for_metrics'] = (metric.compute_metrics,
+                                                                            metric.preprocess_logits_for_metrics)
         if args.loss_type is not None:
-            res['compute_loss_func'] = get_loss_func(args.loss_type)
+            res['compute_loss_func'] = loss_map[args.loss_type](args, self)
         return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):

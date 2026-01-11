@@ -17,65 +17,6 @@ logger = get_logger()
 
 
 @dataclass
-class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArguments):
-    """Overrides default values in `Seq2SeqTrainingArguments`.
-
-    Args:
-        output_dir (Optional[str]): The directory to save model outputs. Defaults to 'output/<model_name>'.
-        learning_rate (Optional[float]): The learning rate. Defaults to 1e-5 for full-parameter training and 1e-4 for
-            tuners like LoRA.
-            Note: To set a minimum learning rate (min_lr), you can pass the arguments
-            --lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'.
-        eval_strategy (Optional[str]): The evaluation strategy. By default, it aligns with `save_strategy`. It will
-            default to 'no' if no validation dataset is provided (i.e., `val_dataset` and `eval_dataset` are not used,
-            and `split_dataset_ratio` is 0).
-        fp16 (Optional[bool]): Defaults to None.
-        bf16 (Optional[bool]): Defaults to None.
-    """
-    output_dir: Optional[str] = None
-    learning_rate: Optional[float] = None
-    eval_strategy: Optional[str] = None  # steps, epoch
-    fp16: Optional[bool] = None
-    bf16: Optional[bool] = None
-
-    def _init_output_dir(self):
-        if self.output_dir is None:
-            self.output_dir = f'output/{self.model_suffix}'
-        self.output_dir = to_abspath(self.output_dir)
-
-    def _init_eval_strategy(self):
-        if self.eval_strategy is None:
-            self.eval_strategy = self.save_strategy
-        if self.eval_strategy == 'no':
-            self.eval_steps = None
-            if self.split_dataset_ratio > 0:
-                self.split_dataset_ratio = 0.
-                logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
-        elif self.eval_strategy == 'steps' and self.eval_steps is None:
-            self.eval_steps = self.save_steps
-        self.evaluation_strategy = self.eval_strategy
-
-    def _init_metric(self):
-        if self.metric is None and self.predict_with_generate:
-            self.metric = 'nlg'
-        if self.metric_for_best_model is None:
-            self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
-        if self.greater_is_better is None and self.metric_for_best_model is not None:
-            self.greater_is_better = 'loss' not in self.metric_for_best_model
-
-    def __post_init__(self):
-        self._init_output_dir()
-        self._init_metric()
-
-        if self.learning_rate is None:
-            if self.train_type == 'full':
-                self.learning_rate = 1e-5
-            else:
-                self.learning_rate = 1e-4
-        self._init_eval_strategy()
-
-
-@dataclass
 class SwanlabArguments:
     """Arguments for configuring Swanlab for experiment result logging.
 
@@ -154,11 +95,11 @@ class SwanlabArguments:
 
 
 @dataclass
-class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
+class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments):
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
-    BaseArguments, Seq2SeqTrainingOverrideArguments.
+    BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments.
 
     Args:
         add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
@@ -166,6 +107,16 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         create_checkpoint_symlink (bool): Whether to create additional symbolic links for checkpoints, which can be
             useful for automated training scripts. The symlinks for the best and last models will be created at
             `f'{output_dir}/best'` and `f'{output_dir}/last'`, respectively. Defaults to False.
+        output_dir (Optional[str]): The directory to save model outputs. Defaults to 'output/<model_name>'.
+        learning_rate (Optional[float]): The learning rate. Defaults to 1e-5 for full-parameter training and 1e-4 for
+            tuners like LoRA.
+            Note: To set a minimum learning rate (min_lr), you can pass the arguments
+            --lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'.
+        eval_strategy (Optional[str]): The evaluation strategy. By default, it aligns with `save_strategy`. It will
+            default to 'no' if no validation dataset is provided (i.e., `val_dataset` and `eval_dataset` are not used,
+            and `split_dataset_ratio` is 0).
+        fp16 (Optional[bool]): Defaults to None.
+        bf16 (Optional[bool]): Defaults to None.
         max_new_tokens (int): Overrides generation parameters. The maximum number of new tokens to generate when
             `predict_with_generate` is True. Defaults to 64.
         temperature (float): Overrides generation parameters. The temperature for sampling when `predict_with_generate`
@@ -188,6 +139,13 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
+
+    # override
+    output_dir: Optional[str] = None
+    learning_rate: Optional[float] = None
+    eval_strategy: Optional[str] = None  # steps, epoch
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
 
     # extra
     max_new_tokens: int = 64
@@ -227,7 +185,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
-        Seq2SeqTrainingOverrideArguments.__post_init__(self)
+        self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.optimizer is None:
@@ -256,6 +214,17 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
+
+    def _init_override(self):
+        self._init_output_dir()
+        self._init_metric()
+
+        if self.learning_rate is None:
+            if self.train_type == 'full':
+                self.learning_rate = 1e-5
+            else:
+                self.learning_rate = 1e-4
+        self._init_eval_strategy()
 
     def _init_deepspeed(self):
         if self.deepspeed:
@@ -396,3 +365,33 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self.training_args.output_dir = self.output_dir
         self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir
+
+    def _init_output_dir(self):
+        if self.output_dir is None:
+            self.output_dir = f'output/{self.model_suffix}'
+        self.output_dir = to_abspath(self.output_dir)
+
+    def _init_eval_strategy(self):
+        if self.eval_strategy is None:
+            self.eval_strategy = self.save_strategy
+        if self.eval_strategy == 'no':
+            self.eval_steps = None
+            if self.split_dataset_ratio > 0:
+                self.split_dataset_ratio = 0.
+                logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
+        elif self.eval_strategy == 'steps' and self.eval_steps is None:
+            self.eval_steps = self.save_steps
+        self.evaluation_strategy = self.eval_strategy
+
+    def _init_metric(self):
+        if self.metric is None:
+            if self.task_type == 'causal_lm' and self.predict_with_generate:
+                self.metric = 'nlg'
+            elif self.task_type == 'embedding':
+                self.metric = 'paired' if self.loss_type == 'infonce' else 'infonce'
+            elif self.task_type in {'reranker', 'generative_reranker'}:
+                self.metric = 'reranker'
+        if self.metric_for_best_model is None:
+            self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
+            self.greater_is_better = 'loss' not in self.metric_for_best_model

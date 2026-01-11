@@ -10,6 +10,6 @@ loss_map = {
     'online_contrastive': OnlineContrastiveLoss,
     'infonce': InfonceLoss,
     # # reranker
-    'reranker': RerankerLoss,
+    'pointwise_reranker': RerankerLoss,
     'listwise_reranker': ListwiseRerankerLoss,
 }
