@@ -254,10 +254,10 @@ Testing the final format of the grounding data in ms-swift format:
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift.llm import get_model_tokenizer, get_template
+from swift import get_model_processor, get_template
 
-_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer)
+_, processor = get_model_processor('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
+template = get_template(processor)
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data, return_template_inputs=True)
@@ -358,7 +358,9 @@ The following parameters are supported:
 Below are examples of registering datasets:
 
 ```python
-from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from swift.dataset import (
+    ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+)
 from typing import Dict, Any
 
 class CustomPreprocessor(ResponsePreprocessor):

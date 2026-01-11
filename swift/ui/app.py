@@ -8,15 +8,16 @@ from packaging import version
 from transformers.utils import strtobool
 
 import swift
-from swift.llm import (DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SamplingArguments, SwiftPipeline,
-                       WebUIArguments)
-from swift.ui.llm_eval.llm_eval import LLMEval
-from swift.ui.llm_export.llm_export import LLMExport
-from swift.ui.llm_grpo.llm_grpo import LLMGRPO
-from swift.ui.llm_infer.llm_infer import LLMInfer
-from swift.ui.llm_rlhf.llm_rlhf import LLMRLHF
-from swift.ui.llm_sample.llm_sample import LLMSample
-from swift.ui.llm_train.llm_train import LLMTrain
+from swift.arguments import (DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SamplingArguments,
+                             WebUIArguments)
+from swift.pipelines import SwiftPipeline
+from .llm_eval import LLMEval
+from .llm_export import LLMExport
+from .llm_grpo import LLMGRPO
+from .llm_infer import LLMInfer
+from .llm_rlhf import LLMRLHF
+from .llm_sample import LLMSample
+from .llm_train import LLMTrain
 
 locale_dict = {
     'title': {

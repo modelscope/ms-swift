@@ -238,10 +238,10 @@ ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift.llm import get_model_tokenizer, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer)
+processor = get_processor('Qwen/Qwen2.5-VL-7B-Instruct')
+template = get_template(processor)
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data, return_template_inputs=True)
@@ -339,7 +339,9 @@ register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`registe
 以下介绍注册数据集的例子：
 
 ```python
-from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from swift.dataset import (
+    ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+)
 from typing import Dict, Any
 
 class CustomPreprocessor(ResponsePreprocessor):

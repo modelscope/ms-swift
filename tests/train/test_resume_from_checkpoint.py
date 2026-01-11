@@ -26,11 +26,11 @@ kwargs = {
 
 
 def test_resume_from_checkpoint():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
-    result = sft_main(TrainArguments(**kwargs))
+    from swift import sft_main, SftArguments, infer_main, InferArguments
+    result = sft_main(SftArguments(**kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     last_model_checkpoint = last_model_checkpoint.replace('checkpoint-10', 'checkpoint-5')
-    result2 = sft_main(TrainArguments(**kwargs, resume_from_checkpoint=last_model_checkpoint))
+    result2 = sft_main(SftArguments(**kwargs, resume_from_checkpoint=last_model_checkpoint))
     diff = abs(result['log_history'][6]['loss'] - result2['log_history'][6]['loss'])
     print(f'diff: {diff}')
     assert diff < 0.01

@@ -15,7 +15,9 @@ import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm import TEMPLATE_MAPPING, BaseArguments, get_matched_model_meta
+from swift.arguments import BaseArguments
+from swift.model import get_matched_model_meta
+from swift.template import TEMPLATE_MAPPING
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None

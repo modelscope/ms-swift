@@ -2,7 +2,7 @@ import unittest
 
 from modelscope import Model
 
-from swift.utils.torch_utils import find_sub_module
+from swift.utils import find_sub_module
 
 
 class TestTorchUtils(unittest.TestCase):

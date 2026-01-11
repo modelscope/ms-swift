@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -21,7 +21,6 @@ import safetensors
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
@@ -38,17 +37,21 @@ from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDUL
                                   ParallelMode, Trainer, TrainerCallback, reissue_pt_warnings)
 from transformers.trainer_utils import IntervalStrategy
 
+from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template, get_llm_model
-from swift.llm.utils import update_generation_config_eos_token
-from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
+from swift.loss import loss_map
+from swift.metrics import MeanMetric, compute_acc, metrics_map
+from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
+from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
+from swift.optimizers import optimizers_map
+from swift.plugins import extra_tuners
+from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
+from swift.template import Template, update_generation_config_eos_token
 from swift.tuners import SwiftModel
-from swift.utils import (get_current_device, get_last_valid_indices, get_logger, is_dist, is_mp, is_mp_ddp,
-                         ms_logger_context, seed_worker)
-from ..llm.model.patcher import (gather_sequence_parallel_outputs, get_lm_head_model, revert_padding_free,
-                                 transformers_seq_cls_forward)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
+                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
 from .arguments import TrainingArguments
-from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -77,6 +80,8 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
         self.template = template
+        self.is_encoder_decoder = self.template.is_encoder_decoder
+        self.padding_free = self.template.padding_free
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
@@ -105,6 +110,7 @@ class SwiftMixin:
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
+        self.model_info = model.model_info
 
         kwargs.update(self.create_loss_and_metric(args))
         trainer_parameters = inspect.signature(Trainer.__init__).parameters
@@ -208,7 +214,7 @@ class SwiftMixin:
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_meta.is_multimodal
+            use_logits_to_keep = (not self.model.model_info.is_multimodal
                                   and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
                                   and default_value)
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
@@ -382,7 +388,6 @@ class SwiftMixin:
                     else:
                         self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
                         # copy sentencetransformers files
-                    from swift.utils import copy_files_by_pattern
                     copy_files_by_pattern(
                         self.model.model_dir, output_dir, '*.py', exclude_patterns=['model.safetensors.index.json'])
                     copy_files_by_pattern(
@@ -409,7 +414,6 @@ class SwiftMixin:
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer
         if not is_adapter:
-            from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(
                 None,
@@ -730,7 +734,6 @@ class SwiftMixin:
 
                         def revert_padding_free_hook(module, args, input, output):
                             # Use full packed position ids cached by sequence_parallel.prepare_inputs
-                            from swift.trainers.sequence_parallel import sequence_parallel
                             position_ids = sequence_parallel.real_position_ids
                             tmp_input = {'position_ids': position_ids}
                             return revert_padding_free(output, tmp_input, padding_side)
@@ -821,7 +824,6 @@ class SwiftMixin:
             pass
 
     def _prepare_gradient_checkpointing(self, model) -> None:
-        from swift.llm import HfConfigFactory, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
@@ -834,9 +836,8 @@ class SwiftMixin:
             model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
-        model_meta = model.model_meta
-        model_arch = model_meta.model_arch
-        if model_meta.is_multimodal and model_arch:
+        model_arch = self.model_meta.model_arch
+        if self.model_info.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
@@ -853,7 +854,7 @@ class SwiftMixin:
         self.args.gradient_checkpointing = False
 
     def train(self, *args, **kwargs):
-        if self.model_meta.is_multimodal:
+        if self.model_info.is_multimodal:
             models = []
             for model_name in ['model', 'ref_model', 'value_model', 'teacher_model']:
                 model = getattr(self, model_name, None)
@@ -955,20 +956,20 @@ class SwiftMixin:
     def create_loss_and_metric(self, args):
         res = {}
         if args.metric is not None:
-            res['compute_metrics'], res['preprocess_logits_for_metrics'] = get_metric(args.metric)
+            metric = metrics_map[args.metric](args, self)
+            res['compute_metrics'], res['preprocess_logits_for_metrics'] = (metric.compute_metrics,
+                                                                            metric.preprocess_logits_for_metrics)
         if args.loss_type is not None:
-            res['compute_loss_func'] = get_loss_func(args.loss_type)
+            res['compute_loss_func'] = loss_map[args.loss_type](args, self)
         return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:
-            from swift.plugin import optimizers_map
-            optimizer_callback = optimizers_map[self.args.optimizer]
-            self.optimizer, self.lr_scheduler = optimizer_callback(self.args, self.model, self.train_dataset)
+            create_optimizer_func = optimizers_map[self.args.optimizer]
+            self.optimizer = create_optimizer_func(self.args, self.model, self.train_dataset)
             if self.optimizer is None:
                 self.create_optimizer()
-            if self.lr_scheduler is None:
-                self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
@@ -1004,7 +1005,6 @@ class SwiftMixin:
         elif task_type == 'causal_lm':
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
                 # Gather preds and labels across the sp group
                 if isinstance(preds, np.ndarray):
                     preds = torch.from_numpy(preds).to(get_current_device())
@@ -1103,7 +1103,6 @@ class SwiftMixin:
         inputs['logits_to_keep'] = logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
-        from swift.llm import get_packed_seq_params
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
         res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
@@ -1136,9 +1135,7 @@ class SwiftMixin:
 class DataLoaderMixin:
 
     def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
-        from swift.trainers.sequence_parallel import sequence_parallel
-        from swift.trainers.sequence_parallel.utils import SequenceParallelSampler
-        from swift.trainers.sequence_parallel.utils import SequenceParallelDispatcher
+
         data_collator = self.data_collator
         if isinstance(dataset, datasets.Dataset):
             dataset = self._remove_unused_columns(dataset, description='training')

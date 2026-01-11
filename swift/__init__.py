@@ -5,41 +5,33 @@ from .utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
-    from .tuners import (Adapter, AdapterConfig, AdapterModule, SwiftModel, LoRA, LoRAConfig, SWIFT_MAPPING,
-                         AdaLoraConfig, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, PeftConfig,
-                         PeftModel, PeftModelForCausalLM, ResTuningConfig, SideConfig, PeftModelForSeq2SeqLM,
-                         PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
-                         PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, get_peft_config, get_peft_model,
-                         get_peft_model_state_dict, Prompt, PromptConfig, PromptModule, SwiftConfig, SwiftOutput, Swift,
-                         SwiftTuners, LongLoRAConfig, LongLoRA, LongLoRAModelType, SCETuning, SCETuningConfig)
-    from .trainers import (FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType, ShardedDDPOption,
-                           TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer)
-    from .utils import get_logger
+    from .tuners import Swift
+    from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
+    from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
+                            AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
+    from .pipelines import (sft_main, pretrain_main, infer_main, rlhf_main, export_main, app_main, eval_main,
+                            sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
+    from .model import get_model_processor
+    from .template import get_template
+    from .dataset import load_dataset
+    from .utils import get_logger, safe_snapshot_download
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],
-        'tuners': [
-            'Adapter', 'AdapterConfig', 'AdapterModule', 'SwiftModel', 'LoRA', 'LoRAConfig', 'SWIFT_MAPPING',
-            'LoraConfig', 'AdaLoraConfig', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig', 'OFTConfig', 'PeftConfig',
-            'ResTuningConfig', 'SideConfig', 'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
-            'PeftModelForSequenceClassification', 'PeftModelForTokenClassification', 'PrefixTuningConfig',
-            'PromptEncoderConfig', 'PromptLearningConfig', 'PromptTuningConfig', 'get_peft_config', 'get_peft_model',
-            'get_peft_model_state_dict', 'Prompt', 'PromptConfig', 'PromptModule', 'SwiftConfig', 'SwiftOutput',
-            'Swift', 'SwiftTuners', 'LongLoRAConfig', 'LongLoRA', 'LongLoRAModelType', 'SCETuning', 'SCETuningConfig'
+        'tuners': ['Swift'],
+        'trainers': ['TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer'],
+        'arguments': [
+            'PretrainArguments', 'SftArguments', 'RLHFArguments', 'ExportArguments', 'InferArguments', 'AppArguments',
+            'EvalArguments', 'SamplingArguments', 'RolloutArguments', 'DeployArguments'
         ],
-        'trainers': [
-            'FSDPOption',
-            'HPSearchBackend',
-            'HubStrategy',
-            'IntervalStrategy',
-            'SchedulerType',
-            'ShardedDDPOption',
-            'TrainingArguments',
-            'Seq2SeqTrainingArguments',
-            'Trainer',
-            'Seq2SeqTrainer',
+        'pipelines': [
+            'sft_main', 'pretrain_main', 'infer_main', 'rlhf_main', 'export_main', 'app_main', 'eval_main',
+            'sampling_main', 'rollout_main', 'deploy_main', 'merge_lora', 'run_deploy'
         ],
-        'utils': ['get_logger']
+        'model': ['get_model_processor'],
+        'template': ['get_template'],
+        'dataset': ['load_dataset'],
+        'utils': ['get_logger', 'safe_snapshot_download'],
     }
 
     import sys

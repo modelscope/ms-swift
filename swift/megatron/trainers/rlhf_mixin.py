@@ -2,12 +2,11 @@
 from contextlib import contextmanager
 
 import torch
-import torch.distributed as dist
 from megatron.core import mpu
 from megatron.training import get_args, get_model
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
-from torch.distributed.nn import all_gather, all_reduce
+from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.utils import get_logger

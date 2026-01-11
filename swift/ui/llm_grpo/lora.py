@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.lora import LoRA
+from ..llm_train import LoRA
 
 
 class GRPOLoRA(LoRA):

@@ -1,10 +1,10 @@
 import torch
 
-from swift.llm import InferRequest, PtEngine
+from swift.infer_engine import InferRequest, TransformersEngine
 
 
 def run_qwen3_reranker():
-    engine = PtEngine(
+    engine = TransformersEngine(
         'Qwen/Qwen3-Reranker-4B',
         task_type='generative_reranker',
         torch_dtype=torch.float16,
@@ -27,7 +27,8 @@ def run_qwen3_reranker():
 
 
 def run_qwen3_vl_reranker():
-    engine = PtEngine('Qwen/Qwen3-VL-Reranker-2B', task_type='generative_reranker', attn_impl='flash_attention_2')
+    engine = TransformersEngine(
+        'Qwen/Qwen3-VL-Reranker-2B', task_type='generative_reranker', attn_impl='flash_attention_2')
 
     infer_request = InferRequest(
         messages=[{

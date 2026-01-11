@@ -6,9 +6,9 @@ from typing import List, Tuple, Union
 
 import torch.nn as nn
 
-from swift.tuners.lora import lora_state_dict, mark_lora_as_trainable
-from swift.tuners.lora_layers import LoraModel
-from .. import LoRA, LoRAConfig, SwiftOutput
+from ..lora import LoRA, LoRAConfig, lora_state_dict, mark_lora_as_trainable
+from ..lora_layers import LoraModel
+from ..utils import SwiftOutput
 
 
 class LongLoRAModelType:

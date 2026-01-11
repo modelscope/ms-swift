@@ -1,5 +1,6 @@
 # mcore>=0.15
 # 2 * 40GiB
+# dataset format: https://github.com/modelscope/ms-swift/pull/5277
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \

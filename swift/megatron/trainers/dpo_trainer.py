@@ -7,7 +7,7 @@ from megatron.core import mpu
 from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 
-from swift.trainers import DPOTrainer
+from swift.rlhf_trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 

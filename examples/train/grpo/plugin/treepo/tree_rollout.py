@@ -7,7 +7,7 @@ from typing import List
 import torch
 from modelscope.preprocessors.templates.utils import Messages
 
-from swift.llm.infer.protocol import ChatCompletionResponseChoice
+from swift.infer_engine.protocol import ChatCompletionResponseChoice
 
 
 class SampleStatus(Enum):

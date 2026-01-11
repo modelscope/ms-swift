@@ -1,6 +1,7 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
+from swift.model import MODEL_MAPPING, ModelType
+from swift.template import TEMPLATE_MAPPING, TemplateType
 from swift.utils import is_megatron_available
 
 

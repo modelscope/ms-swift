@@ -4,7 +4,7 @@ Example of using reasoning_parser
 This example demonstrates how to use reasoning_parser in Swift's VllmEngine to support reasoning models.
 """
 
-from swift.llm import InferRequest, RequestConfig, VllmEngine
+from swift.infer_engine import InferRequest, RequestConfig, VllmEngine
 
 
 def main(engine: VllmEngine):

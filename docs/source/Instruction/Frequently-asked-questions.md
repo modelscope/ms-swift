@@ -776,7 +776,7 @@ topk设置成1就可以了。
 只有权重。
 
 ### Q42: 请问用ms-swift推理时pt engine和vllm engine，推理结果差了很多，这个是什么原因呢？
-看看参数有没有对齐。此外，vllmengine和ptengine是有差异的，pt engine和transformers推理是对齐的。
+看看参数有没有对齐。此外，VllmEngine和TransformersEngine是有差异的，TransformersEngine和transformers推理是对齐的。
 
 ### Q43: 请问用swift做qwen2audio的推理，推理结果出现混乱，可能是啥原因呢？
 使用transformers4.48。

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.target import Target
+from ..llm_train import Target
 
 
 class GRPOTarget(Target):

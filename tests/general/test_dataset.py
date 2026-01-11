@@ -1,6 +1,6 @@
 from typing import List
 
-from swift.llm import load_dataset
+from swift.dataset import load_dataset
 
 
 def _test_dataset(datasets: List[str], num_proc: int = 1, strict: bool = False, **kwargs):

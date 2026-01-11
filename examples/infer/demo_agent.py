@@ -6,7 +6,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
-    stop = [engine.default_template.agent_template.keyword.observation]  # compat react_en
+    stop = [engine.template.agent_template.keyword.observation]  # compat react_en
     request_config = RequestConfig(max_tokens=512, temperature=0, stop=stop)
     resp_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
@@ -24,7 +24,7 @@ def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
 
 
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
-    stop = [engine.default_template.agent_template.keyword.observation]
+    stop = [engine.template.agent_template.keyword.observation]
     request_config = RequestConfig(max_tokens=512, temperature=0, stream=True, stop=stop)
     gen_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
@@ -95,22 +95,22 @@ def infer_continue_generate(engine):
 
 
 if __name__ == '__main__':
-    from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig
-    from swift.plugin import agent_templates
+    from swift.infer_engine import InferEngine, InferRequest, TransformersEngine, RequestConfig
+    from swift.agent_template import agent_template_map
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
     infer_backend = 'pt'
 
     if infer_backend == 'pt':
-        engine = PtEngine(model, max_batch_size=64)
+        engine = TransformersEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
-        from swift.llm import VllmEngine
+        from swift.infer_engine import VllmEngine
         engine = VllmEngine(model, max_model_len=8192)
     elif infer_backend == 'lmdeploy':
-        from swift.llm import LmdeployEngine
+        from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    # agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
-    # engine.default_template.agent_template = agent_template
+    # agent_template = agent_template_map['hermes']()  # react_en/qwen_en/qwen_en_parallel
+    # engine.template.agent_template = agent_template
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())

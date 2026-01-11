@@ -20,7 +20,7 @@ def test_dpo():
 
 
 def test_hf():
-    from swift.llm import rlhf_main, RLHFArguments
+    from swift import rlhf_main, RLHFArguments
     rlhf_main(
         RLHFArguments(
             model='Qwen/Qwen2.5-3B-Instruct',

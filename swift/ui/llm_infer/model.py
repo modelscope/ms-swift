@@ -4,10 +4,11 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, DeployArguments, ModelType
-from swift.llm.model.register import get_all_models
-from swift.ui.base import BaseUI
-from swift.ui.llm_infer.generate import Generate
+from swift.arguments import DeployArguments
+from swift.model import ModelType, get_model_list
+from swift.template import TEMPLATE_MAPPING
+from ..base import BaseUI
+from .generate import Generate
 
 
 class Model(BaseUI):
@@ -103,7 +104,7 @@ class Model(BaseUI):
             gr.Dropdown(
                 elem_id='model',
                 scale=20,
-                choices=get_all_models(),
+                choices=get_model_list(),
                 value='Qwen/Qwen2.5-7B-Instruct',
                 allow_custom_value=True)
             gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)

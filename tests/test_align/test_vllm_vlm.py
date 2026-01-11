@@ -12,7 +12,7 @@ def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, syst
         limit_mm_per_prompt=limit_mm_per_prompt,
         enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     audios = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
     messages = []
     if system is not None:
@@ -32,7 +32,7 @@ def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, syst
         limit_mm_per_prompt=limit_mm_per_prompt,
         enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     messages = []
     if system is not None:
@@ -52,7 +52,7 @@ def _infer_video(model, use_chat_template: bool = True, max_model_len=8192, syst
         gpu_memory_utilization=0.6,
         enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     messages = []
     if system is not None:
@@ -186,7 +186,7 @@ def test_deepseek_ocr():
 
 
 if __name__ == '__main__':
-    from swift.llm import VllmEngine, InferRequest, RequestConfig
+    from swift.infer_engine import VllmEngine, InferRequest, RequestConfig
     # test_qwen2_vl()
     # test_qwen2_5_vl()
     # test_deepseek_vl_v2()

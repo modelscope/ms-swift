@@ -11,7 +11,7 @@ kwargs = {
 
 
 def test_rm():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='rm',
@@ -24,7 +24,7 @@ def test_rm():
 
 
 def test_ppo():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='ppo',

@@ -9,8 +9,8 @@ from typing import Any, Dict
 
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from swift.llm import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, PtEngine, RequestConfig, TemplateMeta,
-                       register_model, register_template)
+from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, RequestConfig, TemplateMeta,
+                                TransformersEngine, register_model, register_template)
 
 register_template(
     TemplateMeta(
@@ -42,8 +42,8 @@ register_model(
         model_groups=[
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
-        template='custom',
         get_function=get_function,
+        template='custom',
         ignore_patterns=['nemo'],
         is_multimodal=False,
     ))
@@ -51,11 +51,11 @@ register_model(
 if __name__ == '__main__':
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
+    engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
     response = engine.infer([infer_request], request_config)
     swift_response = response[0].choices[0].message.content
 
-    engine.default_template.template_backend = 'jinja'
+    engine.template.template_backend = 'jinja'
     response = engine.infer([infer_request], request_config)
     jinja_response = response[0].choices[0].message.content
     assert swift_response == jinja_response, f'swift_response: {swift_response}\njinja_response: {jinja_response}'

@@ -13,9 +13,10 @@ from megatron.training import get_args, get_model, get_timers
 from megatron.training.utils import unwrap_model
 from transformers import AutoConfig
 
-from swift.llm import Template, get_model_info_meta, to_device
-from swift.utils import get_logger
-from ..argument import MegatronArguments
+from swift.megatron.arguments import MegatronArguments
+from swift.model import get_model_info_meta
+from swift.template import Template
+from swift.utils import get_logger, to_device
 from ..model import get_megatron_model_meta
 from ..utils import convert_hf_config, forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer

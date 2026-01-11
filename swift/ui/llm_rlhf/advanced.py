@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.advanced import Advanced
+from ..llm_train import Advanced
 
 
 class RLHFAdvanced(Advanced):

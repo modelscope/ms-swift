@@ -3,9 +3,9 @@ from typing import Type
 
 import gradio as gr
 
-from swift.ui.base import BaseUI
-from swift.ui.llm_train.lora import LoRA
-from swift.ui.llm_train.target import Target
+from ..base import BaseUI
+from .lora import LoRA
+from .target import Target
 
 
 class Tuner(BaseUI):

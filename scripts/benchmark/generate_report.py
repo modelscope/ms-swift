@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import json
 import numpy as np
 
-from swift.llm.template import split_str_parts_by
+from swift.template import split_str_parts_by
 
 
 @dataclass

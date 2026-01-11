@@ -16,5 +16,5 @@ if __name__ == '__main__':
     try_init_unsloth()
     from swift.ray import try_init_ray
     try_init_ray()
-    from swift.llm import sft_main
+    from swift.pipelines import sft_main
     sft_main()
