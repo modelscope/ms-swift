@@ -2,11 +2,12 @@
 
 from typing import Optional
 
-from .base import ConfigLossScale, LossScale
+from .base import ConfigLossScale
 from .utils import calculate_loss_scale
 
 
-class AgentFlanLossScale(LossScale):
+class AgentFlanLossScale(ConfigLossScale):
+    is_binary = False
     loss_scale_config = 'agentflan.json'
 
     def get_loss_scale(self, context: str, *, query: Optional[str] = None):

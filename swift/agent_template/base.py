@@ -1,4 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+"""
+Agent template module for handling tool calling and function execution.
+
+This module provides base classes and utilities for creating agent templates
+that support tool calling in conversational AI systems. It includes support
+for various agent formats like ReAct, function calling, and parallel execution.
+"""
 import ast
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
@@ -27,6 +34,12 @@ class ToolDesc:
 
 
 class ReactCompatMixin:
+    """
+    Mixin class providing ReAct-style agent compatibility.
+
+    This mixin handles parsing and formatting of tool calls in the ReAct format,
+    where actions and inputs are marked with specific keywords in the text.
+    """
     keyword = AgentKeyword()
 
     @staticmethod
@@ -46,6 +59,15 @@ class ReactCompatMixin:
         return functions
 
     def get_toolcall(self, response: str) -> List[Function]:
+        """
+        Extract tool calls from an agent response.
+
+        Args:
+            response: The agent's response text.
+
+        Returns:
+            List of Function objects representing tool calls.
+        """
         functions = self._split_action_action_input(response, self.keyword)
         if len(functions) == 0 and self.keyword != ReactCompatMixin.keyword:
             # compat react
@@ -57,6 +79,16 @@ class ReactCompatMixin:
         assistant_content: str,
         tool_messages,
     ) -> Tuple[str, 'Prompt']:
+        """
+        Format tool execution results into the conversation.
+
+        Args:
+            assistant_content: The assistant's message containing tool calls.
+            tool_messages: List of tool execution result messages.
+
+        Returns:
+            Tuple of (formatted assistant content, formatted tool responses).
+        """
         assert len(tool_messages) > 0
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
@@ -90,6 +122,15 @@ class ReactCompatMixin:
         return {'name': name, 'arguments': arguments}
 
     def _format_tool_calls(self, tool_call_messages) -> str:
+        """
+        Format tool call messages into ReAct format.
+
+        Args:
+            tool_call_messages: List of messages containing tool call information.
+
+        Returns:
+            Formatted string with Action, Action Input, and Observation markers.
+        """
         # -> assistant_content
         tool_calls = []
         for message in tool_call_messages:
@@ -101,6 +142,17 @@ class ReactCompatMixin:
 
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
+    """
+    Abstract base class for agent templates.
+
+    This class provides common functionality for parsing and formatting tools,
+    as well as handling tool calls in different formats. Subclasses must
+    implement the following methods to define their specific behavior:
+    - `_format_tools`: Format tool definitions for the prompt
+    - `_format_tool_calls`: Format tool call messages
+    - `_format_tool_responses`: Format tool execution results
+    - `get_toolcall`: Extract tool calls from agent responses
+    """
 
     @staticmethod
     def _get_tool_name(tool):
@@ -143,6 +195,15 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
 
     @staticmethod
     def _parse_json(json_str: str) -> Optional[Any]:
+        """
+        Parse a JSON string with fallback to ast.literal_eval.
+
+        Args:
+            json_str: String to parse, or already parsed object.
+
+        Returns:
+            Parsed object, or None if parsing fails.
+        """
         if not isinstance(json_str, str):
             return json_str
         try:
@@ -155,5 +216,19 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         return res
 
     @abstractmethod
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self,
+                      tools: List[Union[str, dict]],
+                      system: Optional[str] = None,
+                      user_message: Optional[dict] = None) -> str:
+        """
+        Format tools for inclusion in the agent prompt.
+
+        Args:
+            tools: List of tool definitions (strings or dictionaries).
+            system: System prompt text.
+            user_message: Optional user message to incorporate.
+
+        Returns:
+            Formatted string to include in the prompt.
+        """
         pass

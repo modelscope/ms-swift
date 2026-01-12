@@ -253,7 +253,7 @@ def read_multi_line(addi_prompt: str = '') -> str:
 
 
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
-    # stdoutm stderr: e.g. subprocess.PIPE.
+    # stdout stderr: e.g. subprocess.PIPE.
     import shlex
     command_str = ' '.join(shlex.quote(a) for a in command)
     logger.info_if(f'Run the command: `{command_str}`', is_master())
