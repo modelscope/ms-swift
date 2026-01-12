@@ -419,7 +419,7 @@ class ModelLoader(BaseModelLoader):
     def load(self) -> Tuple[Optional[PreTrainedModel], Processor]:
         patch_offload_context = patch_attach_align_device_hook_on_blocks() if self.patch_offload else nullcontext()
         model_dir = self.model_info.model_dir
-        with patch_get_dynamic_module(), patch_tp_plan(True), patch_offload_context:
+        with patch_get_dynamic_module(), patch_tp_plan(self.load_model), patch_offload_context:
             config = self.get_config(model_dir)
             self._postprocess_config(config)
             model, processor = self._get_model_processor(model_dir, config)
@@ -479,31 +479,64 @@ def get_model_processor(
     max_model_len: Optional[int] = None,
     auto_model_cls=None,
     new_special_tokens: Optional[List[str]] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     return_dummy_model: bool = False,
     model_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> Tuple[Optional[PreTrainedModel], Processor]:
+    """Load a pretrained model and its processor from a model hub or local path.
+
+    Args:
+        model_id_or_path: The model identifier from a hub (HuggingFace/ModelScope) or local path.
+        torch_dtype: Data type for model parameters. If None, uses the dtype from config.json.
+        device_map: Device mapping strategy for model loading. If None, uses default device map.
+            Can be a string (e.g., 'auto', 'cuda:0') or a dictionary mapping layers to devices.
+        load_model: Whether to load the model weights. If False, only returns the processor.
+
+        # Hub parameters
+        use_hf: If True, use HuggingFace Hub; if False, use ModelScope.
+        hub_token: Authentication token for accessing private models on the hub.
+        revision: Specific model version to use.
+        download_model: Whether to download model files. If None, determined by load_model value.
+
+        # Model configuration
+        model_type: Explicit model type when it cannot be uniquely determined from model_id_or_path/config.json.
+        quantization_config: Configuration for model quantization.
+        max_memory: Maximum memory allocation per device.
+        attn_impl: Attention implementation. 'flash_attn' for Flash Attention, None for auto-select (sdpa/eager).
+        rope_scaling: RoPE (Rotary Position Embedding) scaling configuration dictionary.
+        max_model_len: Maximum sequence length the model can handle.
+        auto_model_cls: Custom AutoModel class to use for loading (e.g., AutoModelForCausalLM).
+        new_special_tokens: List of new special tokens to add to the tokenizer.
+        task_type: Task type for the model. Options: 'causal_lm', 'seq_cls', 'embedding', 'reranker',
+            'generative_reranker'.
+        num_labels: Number of labels for classification tasks.
+        problem_type: Type of classification problem: 'regression', 'single_label_classification',
+            or 'multi_label_classification'.
+        return_dummy_model: If True, returns a dummy model (without loading weights).
+        model_kwargs: Additional keyword arguments passed to the model's from_pretrained method.
+        **kwargs: Additional keyword arguments passed to the loader.
+
+    Returns:
+        A tuple of (model, processor) where:
+            - model: The loaded PreTrainedModel instance, or None if load_model=False.
+            - processor: The Processor (tokenizer, processor, etc.) for the model.
+
+    Examples:
+        >>> # Load model and processor with default settings
+        >>> model, processor = get_model_processor('Qwen/Qwen2.5-7B-Instruct')
+
+        >>> # Load only processor without model
+        >>> _, processor = get_model_processor('Qwen/Qwen2.5-7B-Instruct', load_model=False)
     """
-    model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
-    torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
-    model_kwargs: Passed to `auto_model_cls.from_pretrained`.
-    load_model: Whether to load the model. If set to False, the model will return `None`.
-    use_hf: Indicates whether the model download hub is modelscope or huggingface.
-    model_type: If it is not possible to uniquely determine the model_type from the architecture in config.json,
-        it needs to be provided.
-    attn_impl: If set to 'flash_attn': It will automatically convert names based on the model.
-        If set to None : It will be automatically selected between sdpa and eager.
-    download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
-    """
-    # TODO: docstring
+    if load_model:
+        patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
-        download_model = not return_dummy_model
-    patch_mp_ddp()
+        download_model = load_model and not return_dummy_model
     model_info, model_meta = get_model_info_meta(
         model_id_or_path,
         torch_dtype=torch_dtype,
@@ -553,6 +586,11 @@ def get_processor(
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     **kwargs,
 ) -> Processor:
+    """Load only the processor for a pretrained model.
+
+        This is a convenience function that wraps `get_model_processor` with `load_model=False`,
+        returning only the processor without loading the model weights.
+    """
     return get_model_processor(
         model_id_or_path,
         use_hf=use_hf,
