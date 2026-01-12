@@ -30,7 +30,10 @@ else:
         'pipelines': ['megatron_sft_main', 'megatron_pretrain_main', 'megatron_rlhf_main', 'megatron_export_main'],
         'convert': ['convert_hf2mcore', 'convert_mcore2hf'],
         'utils': ['prepare_mcore_model', 'adapter_state_dict_context', 'convert_hf_config'],
-        'argument': ['MegatronTrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments', 'MegatronArguments'],
+        'argument': [
+            'MegatronSftArguments', 'MegatronPretrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments',
+            'MegatronArguments'
+        ],
         'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
         'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
         'tuners': ['LoraParallelLinear'],
