@@ -583,7 +583,7 @@ swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
     --model_type my_qwen2_5_omni \
     --template my_qwen2_5_omni \
-    --custom_register_path 'examples/custom/my_qwen2_5_omni/my_register.py' \
+    --external_plugins 'examples/custom/my_qwen2_5_omni/my_register.py' \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \

@@ -82,8 +82,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         packing_length (Optional[int]): Length of packing. Default is None.
         packing_num_proc (int): Number of processes used for packing, Default is 1.
         lazy_tokenize (Optional[bool]): Whether to enable lazy tokenization. Default is None.
-        custom_register_path (List[str]): A list of paths to custom `.py` files for registering custom models,
-            dialogue templates, and datasets. These files will be imported. Default is [].
         use_hf (bool): Whether to use Hugging Face for downloading/uploading models and datasets. If False,
             ModelScope is used. Default is False.
         hub_token (Optional[str]): The authentication token for ModelScope or Hugging Face Hub. Default is None.
@@ -108,7 +106,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     packing_length: Optional[int] = None
     packing_num_proc: int = 1
     lazy_tokenize: Optional[bool] = None
-    custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
@@ -141,16 +138,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             if self.streaming:
                 raise ValueError('Streaming and lazy_tokenize are incompatible.')
 
-    def _init_custom_register(self) -> None:
-        """Register custom .py file to datasets"""
-        if isinstance(self.custom_register_path, str):
-            self.custom_register_path = [self.custom_register_path]
-        if not self.custom_register_path:
-            return
-        for path in self.custom_register_path:
-            import_external_file(path)
-        logger.info(f'Successfully registered {self.custom_register_path}.')
-
     def _import_external_plugins(self):
         if isinstance(self.external_plugins, str):
             self.external_plugins = [self.external_plugins]
@@ -182,7 +169,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         CompatArguments.__post_init__(self)
         self._init_adapters()
         self._init_ckpt_dir()
-        self._init_custom_register()
         self._import_external_plugins()
         self._init_model_kwargs()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
@@ -266,7 +252,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ]
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
-            'custom_register_path',
             'external_plugins',
             # model_args
             'model',
@@ -317,7 +302,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         if is_dist():
             set_device()
 
-    def get_template(self, processor: Processor, template_type: Optional[str] = None) -> Template:
+    def get_template(self, processor: Optional[Processor], template_type: Optional[str] = None) -> Template:
+        if processor is None:
+            processor = self.get_model_processor(load_model=False)[1]
         template_kwargs = self.get_template_kwargs()
         template_type = template_type or self.template
         template = get_template(processor, **template_kwargs)
