@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from .template import get_template
     from .dataset import load_dataset, EncodePreprocessor
     from .utils import get_logger, safe_snapshot_download
+    from .agent_template import agent_template_map, BaseAgentTemplate
+    from .loss import loss_map, BaseLoss
+    from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],
@@ -38,6 +41,9 @@ else:
         'template': ['get_template'],
         'dataset': ['load_dataset', 'EncodePreprocessor'],
         'utils': ['get_logger', 'safe_snapshot_download'],
+        'agent_template': ['agent_template_map', 'BaseAgentTemplate'],
+        'loss': ['loss_map', 'BaseLoss'],
+        'loss_scale': ['loss_scale_map', 'LossScale', 'get_loss_scale', 'ALL_BASE_STRATEGY', 'ConfigLossScale'],
     }
 
     import sys
