@@ -162,6 +162,8 @@ class Template(ProcessorMixin):
         self.task_type = self.model_info.task_type
 
         self.model_meta = processor.model_meta
+        if self.max_length is None:
+            self.max_length = self.model_info.max_model_len
         logger.info(f'default_system: {repr(self.template_meta.default_system)}')
         logger.info(f'max_length: {self.max_length}')
         logger.info(f'response_prefix: {repr(self.response_prefix)}')

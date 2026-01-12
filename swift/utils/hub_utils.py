@@ -22,16 +22,47 @@ def safe_snapshot_download(model_id_or_path: str,
                            ignore_patterns: Optional[List[str]] = None,
                            check_local: bool = False,
                            **kwargs) -> str:
-    """Download model protected by DDP context
+    """Download model snapshot safely with DDP context protection.
+
+    This function attempts to download a model from HuggingFace or ModelScope hub,
+    with support for local paths, subfolder specification, and distributed training
+    context protection. It handles various path formats and provides flexible
+    file filtering options.
 
     Args:
-        model_id_or_path: The model id or model path
-        revision: The model revision
-        download_model: Download model bin/safetensors files or not
-        use_hf: use huggingface or modelscope
+        model_id_or_path (str): The model identifier on the hub (e.g., 'Qwen/Qwen2.5-7B-Instruct')
+            or a local path to the model directory. Supports subfolder specification
+            using colon syntax (e.g., 'model_id:subfolder').
+        revision (Optional[str], optional): Specific model version/revision to download
+            (branch name, tag, or commit hash). Defaults to None (latest version).
+        download_model (bool, optional): Whether to download model weight files
+            (.bin, .safetensors). If False, only config and tokenizer files are
+            downloaded. Defaults to True.
+        use_hf (Optional[bool], optional): Force using HuggingFace Hub (True) or ModelScope (False).
+            If None, it is controlled by the environment variable `USE_HF`, which defaults to '0'.
+            Default: None.
+        hub_token (Optional[str], optional): Authentication token for accessing private
+            or gated models. Defaults to None.
+        ignore_patterns (Optional[List[str]], optional): List of glob patterns for files
+            to exclude from download. If None, uses default patterns to exclude zip,
+            gguf, pth, pt, and other auxiliary files. Defaults to None.
+        check_local (bool, optional): Whether to check for a local directory matching
+            the last component of model_id_or_path before attempting download.
+            Defaults to False.
+        **kwargs: Additional keyword arguments passed to the underlying hub download function.
 
     Returns:
-        model_dir
+        str: Absolute path to the model directory where files are stored.
+
+    Raises:
+        ValueError: If model_id_or_path starts with '/' (absolute path) and the path
+            does not exist.
+    Examples:
+        >>> # Download from hub
+        >>> model_dir = safe_snapshot_download('Qwen/Qwen2.5-7B-Instruct')
+
+        >>> # Download config only (no weights)
+        >>> model_dir = safe_snapshot_download('Qwen/Qwen2.5-7B-Instruct', download_model=False)
     """
     from swift.hub import get_hub
     if check_local:
