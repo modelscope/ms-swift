@@ -2,8 +2,8 @@
 
 自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加。例如，方案一最为方便，但对预处理函数的控制能力最弱，需要预先对数据集进行转换，传入特定格式的数据集：
 1. 【推荐】直接使用命令行传参的方式接入，即`--dataset <dataset_path1> <dataset_path2>`。这将使用AutoPreprocessor将数据集转换为标准格式（支持4种数据集格式，具体查看下面对AutoPreprocessor的介绍）。你可以使用`--columns`进行列名转换。支持传入csv、json、jsonl、txt、文件夹（例如git clone开源数据集）。该方案不需要修改dataset_info.json，适合刚接触ms-swift的用户，下面两种方案适合对ms-swift进行拓展的开发者。
-2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
-3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--custom_register_path xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
+2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
+3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--custom_register_path xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
    - 方案一和二在实现中借助了方案三，只是注册的过程为自动发生。
 
 以下将对`AutoPreprocessor`可以处理的数据集格式进行介绍：
@@ -174,7 +174,7 @@ ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
 
 ### 多模态
 
-对于多模态数据集，和上述任务的格式相同。区别在于增加了`images`, `videos`, `audios`几个key，分别代表多模态资源的url或者path（推荐使用绝对路径），`<image>` `<video>` `<audio>`标签代表了插入图片/视频/音频的位置，ms-swift支持多图片/视频/音频的情况。这些特殊tokens将在预处理的时候进行替换，参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198)。下面给出的四条示例分别展示了纯文本，以及包含图像、视频和音频数据的数据格式。
+对于多模态数据集，和上述任务的格式相同。区别在于增加了`images`, `videos`, `audios`几个key，分别代表多模态资源的url或者path（推荐使用绝对路径），`<image>` `<video>` `<audio>`标签代表了插入图片/视频/音频的位置，ms-swift支持多图片/视频/音频的情况。这些特殊tokens将在预处理的时候进行替换，参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/template/templates/qwen.py#L198)。下面给出的四条示例分别展示了纯文本，以及包含图像、视频和音频数据的数据格式。
 
 预训练：
 ```
@@ -273,7 +273,7 @@ print(f'images: {encoded["template_inputs"].images}')
 
 ## dataset_info.json
 
-可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案使用AutoPreprocessor预处理函数将数据集转换为标准格式。dataset_info.json文件中包含了数据集元信息的list，以下为一些例子：
+可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。该方案使用AutoPreprocessor预处理函数将数据集转换为标准格式。dataset_info.json文件中包含了数据集元信息的list，以下为一些例子：
 
 ```json
 [

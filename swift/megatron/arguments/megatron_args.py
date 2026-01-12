@@ -99,7 +99,7 @@ class RLHFMegatronArgumentsMixin:
 
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
-    # see details in swift/plugin/orm.py
+    # see details in swift/plugins/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
     cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
     cosine_max_len_value_wrong: float = 0.0  # r^w_L in paper, Reward for wrong answers with max completion length.

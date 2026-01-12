@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, Optional
 import safetensors.torch
 import torch
 
-from swift.pipelines import get_multimodal_target_regex
 from swift.plugins import Tuner, extra_tuners
 from swift.tuners import LoraConfig, Swift
-from swift.utils import deep_getattr, get_logger
+from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
 
 logger = get_logger()
 if TYPE_CHECKING:

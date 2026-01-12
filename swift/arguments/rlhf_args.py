@@ -117,7 +117,7 @@ class GRPOArguments(GRPOArgumentsMixin):
             `num_generations`. Defaults to None.
         reward_funcs (List[str]): A list of reward function names to use for the GRPO algorithm. Available built-in
             options include 'accuracy', 'format', 'cosine', 'repetition', and 'soft_overlong'
-            (see swift/plugin/orm.py). Custom reward functions can also be defined. Defaults to an empty list.
+            (see swift/plugins/orm.py). Custom reward functions can also be defined. Defaults to an empty list.
         reward_weights (List[float]): A list of weights for each reward source. The length must match the total number
             of reward functions (from `reward_funcs`) plus any external reward models. If `None`, all rewards are
             weighted equally with a value of 1.0. Note: If an external `--reward_model` is used, it is treated as the

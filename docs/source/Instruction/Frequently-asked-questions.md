@@ -469,7 +469,7 @@ TypeError: __init__() got an unexpected keyword argument 'corda_config'
 加个环境变量`PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'`。
 
 ### Q135: 如何在训练时使用focal loss？当前支持的loss种类哪里有？
-可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)。
+可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/loss)。
 
 ### Q136: rollout设置了pipeline parallel size，貌似trl和vllm里获取不到word size这个值。
 rollout应该是不兼容pipeline parallel。
@@ -668,7 +668,7 @@ KeyError: 'architectures'
 尝试transformers==4.44.*版本。
 
 ### Q20: swift infer如何将评估的结果保存到指定文件呢 每次都不知道保存到哪里了
-设置`--result_path your_path`，详见[InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/llm/argument/infer_args.py)。
+设置`--result_path your_path`，详见[InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/infer_args.py)。
 
 ### Q21: AWQ量化yi-vl-6b出错如下：
 ```text

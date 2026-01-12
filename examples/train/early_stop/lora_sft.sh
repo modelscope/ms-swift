@@ -1,5 +1,5 @@
 # 22GB
-# Change: https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py
+# Change: https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py
 # If you have custom implementations
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \

@@ -63,7 +63,7 @@ Environment variable configuration:
 - **Pointwise:** Independent relevance judgment, simple training, but ignores relative relationships between documents
 - **Listwise:** Learning relative ranking, better performance, more suitable for the essential needs of ranking tasks
 
-The loss function source code can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+The loss function source code can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss).
 
 ## Dataset Format
 

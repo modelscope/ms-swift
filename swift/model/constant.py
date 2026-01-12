@@ -7,7 +7,6 @@ from typing import List
 class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
-    qwen2_5 = 'qwen2_5'
     qwen2_moe = 'qwen2_moe'
     qwen3 = 'qwen3'
     qwen3_moe = 'qwen3_moe'
@@ -18,23 +17,13 @@ class LLMModelType:
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
-    marco_o1 = 'marco_o1'
 
     llama = 'llama'
-    llama3 = 'llama3'
-    llama3_1 = 'llama3_1'
-    llama3_2 = 'llama3_2'
-    reflection = 'reflection'
-    megrez = 'megrez'
     yi = 'yi'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
 
     codefuse_codellama = 'codefuse_codellama'
-    mengzi3 = 'mengzi3'
-    ziya = 'ziya'
-    numina = 'numina'
-    atom = 'atom'
 
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -53,12 +42,9 @@ class LLMModelType:
     deepseek = 'deepseek'
     deepseek_v2 = 'deepseek_v2'
     deepseek_v3 = 'deepseek_v3'
-    deepseek_r1 = 'deepseek_r1'
-    deepseek_r1_distill = 'deepseek_r1_distill'
     deepseek_v3_2 = 'deepseek_v3_2'
 
     openbuddy_llama = 'openbuddy_llama'
-    openbuddy_llama3 = 'openbuddy_llama3'
     openbuddy_mistral = 'openbuddy_mistral'
     openbuddy_mixtral = 'openbuddy_mixtral'
 
@@ -98,7 +84,6 @@ class LLMModelType:
     gemma3_text = 'gemma3_text'
 
     skywork = 'skywork'
-    skywork_o1 = 'skywork_o1'
 
     ling = 'ling'
     ling2 = 'ling2'
@@ -115,8 +100,6 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
-    moonlight = 'moonlight'
-    kimi_k2 = 'kimi_k2'
     mimo = 'mimo'
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
@@ -155,13 +138,10 @@ class MLLMModelType:
     qwen3_vl_moe = 'qwen3_vl_moe'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
-    qvq = 'qvq'
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
-    ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
     ovis2_5 = 'ovis2_5'
-    mimo_vl = 'mimo_vl'
     midashenglm = 'midashenglm'
 
     chatglm4v = 'chatglm4v'

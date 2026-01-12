@@ -146,7 +146,7 @@ Action Input: {'city': 'Shanghai'}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py).
+The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py).
 
 ```python
 from swift import get_model_processor, get_template
@@ -194,7 +194,7 @@ The `loss_scale` parameter can be used to adjust the loss weights for different 
 
 1. String Matching Example: ReACT Format
 
-Take the ReACT format as an example. You can enable the corresponding `loss_scale` configuration via `--loss_scale react` (see configuration file [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)). This method relies on exact string matching. The dictionary mapping in the configuration must provide a list of two elements, representing:
+Take the ReACT format as an example. You can enable the corresponding `loss_scale` configuration via `--loss_scale react` (see configuration file [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/config/react.json)). This method relies on exact string matching. The dictionary mapping in the configuration must provide a list of two elements, representing:
 
 - The loss weight for the matched string itself,
 - The loss weight for content following the matched string, up to (but not including) the next specified string.
@@ -210,7 +210,7 @@ The specific effects of this configuration are as follows:
 
 When training reasoning models, it may be necessary to exclude loss computation for empty thought blocks in the dataset, such as sequences like `'<think>\n\n</think>\n\n'`.
 
-In such cases, use `--loss_scale ignore_empty_think` (see configuration file [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)). This configuration uses regular expression matching, where the dictionary mapping only needs to specify a single value—the loss weight for the matched content.
+In such cases, use `--loss_scale ignore_empty_think` (see configuration file [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/config/ignore_empty_think.json)). This configuration uses regular expression matching, where the dictionary mapping only needs to specify a single value—the loss weight for the matched content.
 
 The specific effect of this setting is:
 - Any string matching the regular expression `<think>\\s*</think>\\s*` is assigned a `loss_scale` of 0, meaning no loss is computed for these segments.

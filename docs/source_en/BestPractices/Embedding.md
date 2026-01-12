@@ -44,7 +44,7 @@ The Embedding models supported by SWIFT currently can use the following loss fun
 - **online_contrastive**: Contrastive loss considering hard negatives and hard positives. Labels are only supported as 0 and 1.
 - **infonce**: Computes pairwise cosine similarities between different rows within the same batch, maximizing similarity within rows and minimizing similarity between different rows. No labels are required.
 
-The source code for the loss functions can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+The source code for the loss functions can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss).
 
 ## Dataset Format
 

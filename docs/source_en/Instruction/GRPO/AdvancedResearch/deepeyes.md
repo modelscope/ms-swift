@@ -21,7 +21,7 @@ modelscope download --dataset Lixiang/ChenShawn-DeepEyes-Datasets-47k
 huggingface-cli download ChenShawn/DeepEyes-Datasets-47k --repo-type=dataset
 ```
 
-There are three parquet files in the dataset. Register them in the `swift/swift/llm/dataset/data/dataset_info.json` file. For each, rename the `prompt` column to `messages`:
+There are three parquet files in the dataset. Register them in the `swift/dataset/data/dataset_info.json` file. For each, rename the `prompt` column to `messages`:
 
 ```json
     {

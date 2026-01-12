@@ -16,9 +16,8 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.model import get_model_processor, save_checkpoint
-from swift.pipelines import get_multimodal_target_regex
 from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, get_logger,
-                         get_modules_to_not_convert, is_last_rank, safe_snapshot_download)
+                         get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank, safe_snapshot_download)
 from ..tuners import LoraParallelLinear
 
 logger = get_logger()

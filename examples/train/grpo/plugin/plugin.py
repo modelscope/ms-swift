@@ -38,7 +38,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 """
 
 
-# For additional reward functions, refer to swift/plugin/orm.py.
+# For additional reward functions, refer to swift/plugins/orm.py.
 class CountdownORM(ORM):
 
     def __call__(self, completions, target, nums, **kwargs) -> List[float]:
@@ -902,7 +902,7 @@ TO CUSTOMIZE REWARD MODEL:
         --external_plugins /path/to/plugin.py \
         --reward_model_plugin my_rm_plugin
 
-For GenRM you can refer to swift/llm/plugin/rm_plugin/GenRMPlugin
+For GenRM you can refer to swift/plugins/rm_plugin/GenRMPlugin
 """
 
 
