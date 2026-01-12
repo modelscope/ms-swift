@@ -1,5 +1,3 @@
-from datasets import Dataset
-
 from swift.dataset import EncodePreprocessor, load_dataset
 from swift.model import get_processor
 from swift.template import TemplateInputs, get_template

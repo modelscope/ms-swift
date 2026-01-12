@@ -17,8 +17,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
 from swift import (InferArguments, RLHFArguments, SftArguments, Trainer, TrainingArguments, get_logger, infer_main,
-                   merge_lora, rlhf_main, sft_main)
-from swift.model import ModelType
+                   rlhf_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
