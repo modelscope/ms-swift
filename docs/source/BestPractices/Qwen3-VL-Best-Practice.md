@@ -81,7 +81,7 @@ os.environ['FPS_MAX_FRAMES'] = '16'
 
 
 from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
-engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
+engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct')  # attn_impl='flash_attention_2'
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',
