@@ -496,7 +496,9 @@ def get_model_processor(
         load_model: Whether to load the model weights. If False, only returns the processor.
 
         # Hub parameters
-        use_hf: If True, use HuggingFace Hub; if False, use ModelScope.
+        use_hf: Force using HuggingFace Hub (True) or ModelScope (False). If None,
+            it is controlled by the environment variable `USE_HF`, which defaults to '0'.
+            Default: None.
         hub_token: Authentication token for accessing private models on the hub.
         revision: Specific model version to use.
         download_model: Whether to download model files. If None, determined by load_model value.

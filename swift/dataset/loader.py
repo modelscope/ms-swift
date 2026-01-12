@@ -226,26 +226,68 @@ def load_dataset(
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
-    """The interface to load any registered dataset
+    """Load and preprocess datasets.
+
+    This function provides a unified interface to load datasets from various sources (HuggingFace,
+    ModelScope, or local paths), with support for splitting, shuffling, streaming, and interleaving
+    multiple datasets. It also handles self-cognition dataset preprocessing for model training.
 
     Args:
-        datasets: The dataset name list
+        datasets: Single dataset name or list of dataset names to load. Can use special syntax
+            for advanced configurations (e.g., 'dataset_name#1000' for sampling).
+        split_dataset_ratio: Ratio for splitting dataset into train/validation sets.
+            Value between 0 and 1. If 0, no validation split is created. Default: 0.
+        seed: Random seed for reproducibility. Can be an integer or numpy RandomState object.
+            If None, results will be non-deterministic. Default: 42.
+        num_proc: Number of processes to use for dataset preprocessing. Set to None for
+            streaming mode. Default: 1.
+        load_from_cache_file: Whether to load preprocessed data from cache if available.
+            Default: True.
+        shuffle: Whether to shuffle the dataset(s) after loading. Default: False.
+        streaming: Enable streaming mode for large datasets that don't fit in memory.
+            When True, num_proc is automatically set to None. Default: False.
+        interleave_prob: Probability weights for interleaving multiple datasets. Must have
+            same length as datasets list. If None, datasets are concatenated instead. Default: None.
+        stopping_strategy: Strategy when interleaving datasets of different lengths:
+            - 'first_exhausted': Stop when shortest dataset is exhausted
+            - 'all_exhausted': Continue until all datasets are exhausted
+            Default: 'first_exhausted'.
+        shuffle_buffer_size: Buffer size for shuffling in streaming mode. Larger values
+            provide better randomization but use more memory. Default: 1000.
+        use_hf: Force using HuggingFace Hub (True) or ModelScope (False). If None,
+            it is controlled by the environment variable `USE_HF`, which defaults to '0'.
+            Default: None.
+        hub_token: Authentication token for accessing private datasets on the hub. Default: None.
+        strict: If True, raise exceptions when encountering malformed data rows.
+            If False, skip invalid rows with warnings. Default: False.
+        download_mode: How to handle existing cached datasets:
+            - 'reuse_dataset_if_exists': Use cached version if available
+            - 'force_redownload': Always download fresh copy
+            Default: 'reuse_dataset_if_exists'.
+        columns: Manual column name mapping for datasets. Dictionary mapping source column
+            names to target column names (e.g., {'text': 'content'}). Default: None.
+        remove_unused_columns: Whether to remove columns not used in preprocessing.
+            Helps reduce memory usage. Default: True.
+        model_name: Model name for self-cognition task preprocessing. Can be a tuple of
+            (Chinese_name, English_name) or list of names. Default: None.
+        model_author: Model author for self-cognition task preprocessing. Can be a tuple of
+            (Chinese_author, English_author) or list of authors. Default: None.
 
-        split_dataset_ratio: The dataset split ratio
-        seed: The dataset random seed
-        num_proc: Proc number to use when preprocess the dataset.
-        shuffle: Whether to shuffle the dataset.
-        streaming: Streaming mode or not
-        use_hf: Use hf dataset or ms dataset.
-        hub_token: The token of the hub.
-        strict: Raise if any row is not correct.
-        download_mode: Download mode, default is `reuse_dataset_if_exists`.
-        columns: Used for manual column mapping of datasets.
-
-        model_name: Model name in self-cognition task.
-        model_author: Model author in self-cognition task
     Returns:
-        The train dataset and val dataset
+        A tuple of (train_dataset, val_dataset):
+            - train_dataset: The training dataset
+            - val_dataset: The validation dataset if split_dataset_ratio > 0, otherwise None
+
+    Examples:
+        >>> # Load single dataset
+        >>> train_ds, val_ds = load_dataset('AI-ModelScope/alpaca-gpt4-data-zh', split_dataset_ratio=0.1)
+
+        >>> # Load multiple datasets
+        >>> train_ds, _ = load_dataset(
+        ...     ['AI-ModelScope/alpaca-gpt4-data-zh#500', 'swift/self-cognition#500'],
+        ...     model_name=('我的模型', 'MyModel'),
+        ...     model_author=('作者', 'Author')
+        ... )
     """
     init_self_cognition_preprocessor(DATASET_MAPPING.get('self-cognition'), model_name, model_author)
     if isinstance(datasets, str):
