@@ -35,14 +35,14 @@ class TunerArguments:
             ensuring they are trainable regardless of the freezing rules.
 
         freeze_llm (bool): For multi-modal models only. If `True`, it affects the Large Language Model (LLM) part.
-            In full fine-tuning, this freezes the LLM weights. In LoRA training with `target_modules='all-linear'`,
+            In full fine-tuning, this freezes the LLM weights. In LoRA training with `target_modules=['all-linear']`,
             this prevents adding LoRA modules to the LLM. Defaults to `False`.
         freeze_vit (bool): For multi-modal models only. If `True`, it affects the Vision/Audio Transformer (ViT) part.
-            In full fine-tuning, this freezes the ViT weights. In LoRA training with `target_modules='all-linear'`,
+            In full fine-tuning, this freezes the ViT weights. In LoRA training with `target_modules=['all-linear']`,
             this prevents adding LoRA modules to the ViT. Note: 'vit' can refer to `vision_tower` and `audio_tower`.
             Defaults to `True`.
         freeze_aligner (bool): For multi-modal models only. If `True`, it affects the aligner (projector) part.
-            In full fine-tuning, this freezes the aligner weights. In LoRA training with `target_modules='all-linear'`,
+            In full fine-tuning, this freezes the aligner weights. In LoRA training with `target_modules=['all-linear']`,
             this prevents adding LoRA modules to the aligner. Defaults to `True`.
 
         target_modules (List[str]): List of target modules for tuning. Default is ['all-linear'].

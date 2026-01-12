@@ -11,7 +11,7 @@ if __name__ == '__main__':
     sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-Omni-7B',
-            dataset='AI-ModelScope/LaTeX_OCR#5000',
+            dataset=['AI-ModelScope/LaTeX_OCR#5000'],
             model_type='my_qwen2_5_omni',
             template='my_qwen2_5_omni',
             load_from_cache_file=True,
@@ -26,7 +26,7 @@ if __name__ == '__main__':
             learning_rate=1e-4,
             lora_rank=8,
             lora_alpha=32,
-            target_modules='all-linear',
+            target_modules=['all-linear'],
             freeze_vit=True,
             freeze_aligner=True,
             gradient_accumulation_steps=1,
