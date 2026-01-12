@@ -354,7 +354,7 @@ def test_glm4_5():
 
 
 def test_glm4_7():
-    engine = TransformersEngine('ZhipuAI/GLM-4.7-FP8', load_model=False, download_model=False)
+    engine = TransformersEngine('ZhipuAI/GLM-4.7-FP8', load_model=False)
     template = engine.template
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
@@ -400,7 +400,7 @@ def test_qwen3_coder():
 def test_deepseek_v3_1():
     agent_template = agent_template_map['deepseek_v3_1']()
 
-    engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False, download_model=False)
+    engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False)
     template = engine.template
     template.agent_template = agent_template
 
@@ -463,7 +463,7 @@ def test_deepseek_v3_1():
 
 
 def test_youtu():
-    agent_template = agent_templates['youtu']()
+    agent_template = agent_template_map['youtu']()
     new_system = agent_template._format_tools(tools, system)
     assert len(new_system) == 883
     engine = TransformersEngine('Tencent-YouTu-Research/Youtu-LLM-2B')
@@ -516,7 +516,7 @@ def test_youtu():
 def test_seed_oss():
     agent_template = agent_template_map['seed_oss']()
 
-    engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False, download_model=False)
+    engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False)
 
     template = engine.template
     template.agent_template = agent_template
@@ -583,8 +583,7 @@ def test_seed_oss():
 
 
 if __name__ == '__main__':
-    from swift.agent_template import agent_template_map
-    from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig, load_dataset
+    from swift import load_dataset, TransformersEngine, InferRequest, RequestConfig, agent_template_map
     # test_react_en()
     # test_react_zh()
     # test_qwen_en()

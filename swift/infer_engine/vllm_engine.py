@@ -14,7 +14,7 @@ from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 
 from swift.metrics import Metric
-from swift.model import get_model_processor
+from swift.model import get_processor
 from swift.template import Template, TemplateMeta
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
 from .infer_engine import InferEngine
@@ -106,17 +106,16 @@ class VllmEngine(InferEngine):
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.reranker_use_activation = reranker_use_activation
-        self.processor = get_model_processor(
+        self.processor = get_processor(
             model_id_or_path,
             torch_dtype=torch_dtype,
-            load_model=False,
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
             num_labels=num_labels,
-            task_type=task_type)[1]
+            task_type=task_type)
         self._post_init(template)
 
         self._prepare_engine_kwargs(

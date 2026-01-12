@@ -12,7 +12,7 @@ from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
 
 from swift.metrics import Metric
-from swift.model import get_model_processor
+from swift.model import get_processor
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger
 from .infer_engine import InferEngine
@@ -59,16 +59,15 @@ class SglangEngine(InferEngine):
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
-        self.processor = get_model_processor(
+        self.processor = get_processor(
             model_id_or_path,
             torch_dtype=torch_dtype,
-            load_model=False,
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision,
-            task_type=task_type)[1]
+            task_type=task_type)
         self._post_init(template)
         if context_length is not None:
             self.max_model_len = context_length

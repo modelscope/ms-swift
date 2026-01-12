@@ -254,9 +254,9 @@ Testing the final format of the grounding data in ms-swift format:
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift import get_model_processor, get_template
+from swift import get_processor, get_template
 
-_, processor = get_model_processor('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
+processor = get_processor('Qwen/Qwen2.5-VL-7B-Instruct')
 template = get_template(processor)
 data = {...}
 template.set_mode('train')

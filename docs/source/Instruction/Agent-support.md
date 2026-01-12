@@ -145,9 +145,9 @@ Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指
 
 更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py)。
 ```python
-from swift import get_model_processor, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_processor('ZhipuAI/GLM-4-9B-0414', load_model=False)
+tokenizer = get_processor('ZhipuAI/GLM-4-9B-0414')
 template = get_template(tokenizer, agent_template='hermes')
 data = {...}
 template.set_mode('train')

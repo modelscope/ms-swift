@@ -18,7 +18,7 @@ from transformers import GenerationConfig
 from transformers.utils.versions import require_version
 
 from swift.metrics import Metric
-from swift.model import get_model_processor
+from swift.model import get_processor
 from swift.template import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from .infer_engine import InferEngine
@@ -59,15 +59,14 @@ class LmdeployEngine(InferEngine):
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
-        self.processor = get_model_processor(
+        self.processor = get_processor(
             model_id_or_path,
             torch_dtype=torch_dtype,
-            load_model=False,
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
-            revision=revision)[1]
+            revision=revision)
         self._post_init(template)
 
         if self.max_model_len is not None:

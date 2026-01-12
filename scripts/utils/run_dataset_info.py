@@ -4,7 +4,7 @@ import re
 import numpy as np
 
 from swift.dataset import DATASET_MAPPING, EncodePreprocessor, load_dataset
-from swift.model import get_model_processor
+from swift.model import get_processor
 from swift.template import get_template
 from swift.utils import stat_array
 
@@ -89,7 +89,7 @@ def write_dataset_info() -> None:
 
     all_keys = list(DATASET_MAPPING.keys())
     all_keys = sorted(all_keys, key=lambda x: get_dataset_id(x))
-    _, tokenizer = get_model_processor('Qwen/Qwen2.5-7B-Instruct', load_model=False)
+    tokenizer = get_processor('Qwen/Qwen2.5-7B-Instruct')
     template = get_template(tokenizer)
     try:
         for i, key in enumerate(all_keys):

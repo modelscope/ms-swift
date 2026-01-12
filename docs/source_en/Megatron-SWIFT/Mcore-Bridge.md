@@ -298,11 +298,11 @@ You need to create the following file (test.py), then run `CUDA_VISIBLE_DEVICES=
 import torch
 
 from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
-from swift.model import get_model_processor
+from swift.model import get_processor
 from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-4B-Instruct-2507'
-_, processor = get_model_processor(model_id, load_model=False, download_model=True)
+_, processor = get_processor(model_id, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
@@ -343,11 +343,11 @@ import torch
 from swift.megatron import (
     MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
 )
-from swift.model import get_model_processor
+from swift.model import get_processor
 from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
-_, processor = get_model_processor(model_id, load_model=False, download_model=True)
+_, processor = get_processor(model_id, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)

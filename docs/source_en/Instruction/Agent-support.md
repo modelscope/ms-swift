@@ -149,9 +149,9 @@ Observation:[-100 * 45]According to the weather forecast tool, the air quality i
 The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py).
 
 ```python
-from swift import get_model_processor, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_processor('ZhipuAI/GLM-4-9B-0414', load_model=False)
+tokenizer = get_processor('ZhipuAI/GLM-4-9B-0414')
 template = get_template(tokenizer, agent_template='hermes')
 data = {...}
 template.set_mode('train')
