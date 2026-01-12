@@ -34,7 +34,6 @@ class SwiftInfer(SwiftPipeline):
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
             self.infer_engine = TransformersEngine(model, template=self.template, max_batch_size=args.max_batch_size)
-            self.infer_engine.reranker_use_activation = args.reranker_use_activation
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.template = args.get_template(None)

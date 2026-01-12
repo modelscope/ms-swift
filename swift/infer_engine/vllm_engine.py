@@ -103,7 +103,7 @@ class VllmEngine(InferEngine):
             assert len(adapters) == 1, 'Only one adapter is supported for now.'
             enable_lora = True
             self.default_adapter_request = AdapterRequest('default', adapters[0])
-        self.adapters = adapters
+        self.adapters = adapters or []
         self.use_async_engine = use_async_engine
         self.model_type = model_type
         self.use_hf = use_hf

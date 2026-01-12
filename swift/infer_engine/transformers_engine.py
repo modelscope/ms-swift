@@ -68,7 +68,6 @@ class TransformersEngine(InferEngine):
         if isinstance(adapters, str):
             adapters = [adapters]
         self.adapters = adapters or []
-        self.adapters = adapters
         self.max_batch_size = max_batch_size
         self.reranker_use_activation = reranker_use_activation
 

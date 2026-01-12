@@ -627,7 +627,7 @@ MAX_PIXELS=1003520 \
 swift infer \
    --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
-    --max_new_tokens 2048 \
+    --max_new_tokens 512 \
     --load_data_args true
 ```
 

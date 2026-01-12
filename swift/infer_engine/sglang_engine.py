@@ -105,6 +105,8 @@ class SglangEngine(InferEngine):
             task_type=self.task_type)
 
     def _prepare_server_args(self, engine_kwargs):
+        if engine_kwargs is None:
+            engine_kwargs = {}
         if self.context_length is not None:
             self.max_model_len = self.context_length
             logger.info(f'Setting max_model_len: {self.context_length}')

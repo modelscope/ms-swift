@@ -42,8 +42,7 @@ def test_infer(engine, template, infer_requests):
     request_config = RequestConfig(temperature=0)
     infer_stats = InferStats()
 
-    response_list = engine.infer(
-        infer_requests, request_config=request_config, metrics=[infer_stats])
+    response_list = engine.infer(infer_requests, request_config=request_config, metrics=[infer_stats])
 
     for response in response_list[:2]:
         print(response.choices[0].message.content)
@@ -65,8 +64,7 @@ def test_stream(engine, template, infer_requests):
     print()
     print(infer_stats.compute())
 
-    gen_list = engine.infer(
-        infer_requests, request_config=request_config, use_tqdm=True, metrics=[infer_stats])
+    gen_list = engine.infer(infer_requests, request_config=request_config, use_tqdm=True, metrics=[infer_stats])
 
     for response in gen_list[0]:
         pass
