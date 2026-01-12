@@ -464,7 +464,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            # Patch MoE weight_loader if needed (idempotent)
+            # Patch MoE weight_loader if needed
             patch_vllm_moe_model_weight_loader(llm_model)
             llm_model.load_weights(state_dict.items())
         del state_dict

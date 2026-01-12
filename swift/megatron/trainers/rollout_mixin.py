@@ -311,7 +311,7 @@ class MegatronRolloutMixin:
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            # Patch MoE weight_loader if needed (idempotent)
+            # Patch MoE weight_loader if needed
             patch_vllm_moe_model_weight_loader(llm_model)
             llm_model.load_weights(weight_iterator)
         elif self.vllm_mode == 'server':

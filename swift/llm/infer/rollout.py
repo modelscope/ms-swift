@@ -98,7 +98,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         self._comm.broadcast(weight, src=self.client_rank)
         self._comm.group.barrier()
 
-        # Patch MoE weight_loader if needed (idempotent)
+        # Patch MoE weight_loader if needed
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
 
         # Load the received weights into the model.
@@ -180,7 +180,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
 
-        # Patch MoE weight_loader if needed (idempotent)
+        # Patch MoE weight_loader if needed
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
         # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
