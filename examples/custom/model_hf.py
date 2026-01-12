@@ -7,10 +7,12 @@ The get_function just needs to return the model + tokenizer/processor.
 
 from typing import Any, Dict
 
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
-from swift.infer_engine import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, RequestConfig, TemplateMeta,
-                                TransformersEngine, register_model, register_template)
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
+from swift.model import Model, ModelGroup, ModelInfo, ModelLoader, ModelMeta, register_model
+from swift.template import TemplateMeta, register_template
+from swift.utils import Processor
 
 register_template(
     TemplateMeta(
@@ -20,20 +22,18 @@ register_template(
         chat_sep=['\n']))
 
 
-def get_function(model_dir: str,
-                 model_info: ModelInfo,
-                 model_kwargs: Dict[str, Any],
-                 load_model: bool = True,
-                 **kwargs):
-    # ref: https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/register.py#L182
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-    model = None
-    if load_model:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_dir, config=model_config, torch_dtype=model_info.torch_dtype, trust_remote_code=True, **model_kwargs)
-    return model, tokenizer
+class MyModelLoader(ModelLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        return AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        return AutoModelForCausalLM.from_pretrained(
+            model_dir, config=config, torch_dtype=self.torch_dtype, trust_remote_code=True, **model_kwargs)
 
 
 register_model(
@@ -42,7 +42,7 @@ register_model(
         model_groups=[
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
-        get_function=get_function,
+        loader=MyModelLoader,
         template='custom',
         ignore_patterns=['nemo'],
         is_multimodal=False,
