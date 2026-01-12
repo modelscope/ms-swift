@@ -65,7 +65,7 @@ def load_by_unsloth(args):
         compiler.distributed_function = _origin_distributed_function
 
     with _patch_distributed_function():
-        if model_info.is_multimodal:
+        if model_meta.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
         elif model_info.is_moe_model:
             from unsloth import FastModel as UnslothModel
@@ -351,7 +351,7 @@ class ModelLoader(BaseModelLoader):
         tokenizer.model_meta = self.model_meta
 
     def _compat_transformers5(self, model):
-        if self.model_info.is_multimodal:
+        if self.model_meta.is_multimodal:
             for key in ['language_model', 'vision_tower', 'multi_modal_projector', 'visual', 'vision_model']:
                 _set_property(model, key)
 

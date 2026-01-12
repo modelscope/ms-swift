@@ -124,7 +124,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if 'use_model_defaults' in parameters:
             kwargs['use_model_defaults'] = False
         with self.template.generate_context():
-            if self.model.model_info.is_multimodal:
+            if self.model.model_meta.is_multimodal:
                 _, model_inputs = self.template.pre_forward_hook(model, None, model_inputs)
             generated_outputs = model.generate(
                 **model_inputs, generation_config=generation_config, return_dict_in_generate=True, **kwargs)

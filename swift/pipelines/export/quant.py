@@ -77,7 +77,7 @@ class QuantEngine(ProcessorMixin):
         for start in tqdm(range(0, len(examples), batch_size)):
             batched_inputs = examples[start:start + batch_size]
             inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
-            if self.model.model_info.is_multimodal:
+            if self.model.model_meta.is_multimodal:
                 _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
             res.append(to_device(inputs, 'cpu'))
         return res
@@ -99,7 +99,7 @@ class QuantEngine(ProcessorMixin):
         samples = []
         i = 0
         prog_bar = tqdm(total=n_samples, dynamic_ncols=True)
-        is_multimodal = self.model.model_info.is_multimodal
+        is_multimodal = self.model.model_meta.is_multimodal
         for data in dataset:
             try:
                 inputs = template.encode(data)

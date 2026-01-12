@@ -92,7 +92,7 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if model.model_info.is_multimodal:
+        if model.model_meta.is_multimodal:
             return get_multimodal_target_regex(
                 model,
                 freeze_llm=args.freeze_llm,
@@ -201,7 +201,7 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
             if args.resume_from_checkpoint is None:
-                if args.model_info.is_multimodal:
+                if args.model_meta.is_multimodal:
                     from unsloth import FastVisionModel as UnslothModel
                 else:
                     from unsloth import FastLanguageModel as UnslothModel

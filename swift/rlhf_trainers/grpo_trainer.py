@@ -87,7 +87,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.args = args
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
         self.model_adapter_name = None
-        self.is_multimodal = model.model_info.is_multimodal
+        self.is_multimodal = model.model_meta.is_multimodal
 
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = identity_data_collator  # No data collation is needed in GRPO

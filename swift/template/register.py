@@ -31,7 +31,7 @@ def _read_args_json_template_type(model_dir):
 def get_template_meta(model_info: 'ModelInfo',
                       model_meta: 'ModelMeta',
                       template_type: Optional[str] = None) -> TemplateMeta:
-    if template_type is None:
+    if template_type is None and model_info is not None:
         template_type = _read_args_json_template_type(model_info.model_dir)
     template_type = template_type or model_meta.template
     if template_type is None:

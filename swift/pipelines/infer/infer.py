@@ -150,7 +150,7 @@ class SwiftInfer(SwiftPipeline):
             if query is None:
                 continue
             infer_state.add_query(query)
-            if args.model_info.is_multimodal:
+            if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
             if args.model_meta.is_reward or args.task_type == 'prm':
                 # reward model

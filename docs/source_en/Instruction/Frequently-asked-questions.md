@@ -775,8 +775,8 @@ Setting top_k=1 is sufficient.
 ### Q41: When using Swift for quantization, which components—activations or weights—are quantized by the GPTQ, AWQ, and FP8 methods respectively?
 Only the weights.
 
-### Q42: When using ms-swift for inference, I'm seeing a large discrepancy in the results between the PT engine and the vLLM engine. What could be the reason?
-Check if the parameters are aligned. Also, note that there are inherent differences between the vLLM engine and the PT engine. The PT engine's inference is aligned with the standard Transformers library.
+### Q42: When using ms-swift for inference, I'm seeing a large discrepancy in the results between the Transformers engine and the vLLM engine. What could be the reason?
+Check if the parameters are aligned. Also, note that there are inherent differences between the vLLM engine and the Transformers engine. The Transformers engine's inference is aligned with the standard Transformers library.
 
 ### Q43: When using Swift for Qwen2-Audio inference, the output is garbled/chaotic. What could be the potential cause?
 Use transformers==4.48.
@@ -882,7 +882,7 @@ The transformers versions used for training and inference must be consistent.
 ### Q21: Regarding the system prompt, you can specify it via the --system parameter, prepend it to each data entry in the dataset, or define it in the template. Is it sufficient to use just one of these methods? And are they all treated the same way by the model?
 System prompt priority: The one in the dataset > The one from the command line > The default one in the template.
 
-### Q22: After deploying a model using the Swift PT engine, inference is not parallelized, and data is not distributed to other GPUs. Everything is running on the first GPU.
+### Q22: After deploying a model using the Swift Transformers engine, inference is not parallelized, and data is not distributed to other GPUs. Everything is running on the first GPU.
 Try using swift infer. The deploy command does not support DDP.
 
 ### Q23: For a model deployed with swift deploy, how can I disable the "thinking" status on the client side? Adding it to the extra_body of the request doesn't work.

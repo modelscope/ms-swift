@@ -43,7 +43,7 @@ class MegatronSft(SwiftSft):
             megatron_args = asdict(self.args)
             repatch(megatron_args)
         template_cls = TEMPLATE_MAPPING[args.template].template_cls
-        if args.model_info.is_multimodal and template_cls and template_cls.use_model:
+        if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
         else:
             kwargs = {'load_model': False}

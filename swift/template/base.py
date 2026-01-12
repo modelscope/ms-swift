@@ -161,7 +161,7 @@ class Template(ProcessorMixin):
             self.init_processor(processor)
 
     def init_env_args(self):
-        if self.model_info.is_multimodal:
+        if self.model_meta.is_multimodal:
             self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
         else:
             self.root_image_dir = None
@@ -182,7 +182,7 @@ class Template(ProcessorMixin):
         logger.info(f'max_length: {self.max_length}')
         logger.info(f'response_prefix: {repr(self.response_prefix)}')
         logger.info(f'agent_template: {self._agent_template}')
-        if self.model_info.is_multimodal:
+        if self.model_meta.is_multimodal:
             logger.info(f'norm_bbox: {self.norm_bbox}')
         tokenizer = self.tokenizer
 
@@ -285,7 +285,7 @@ class Template(ProcessorMixin):
         inputs: StdTemplateInputs,
     ) -> None:
         self._preprocess_function_call(inputs)
-        if self.model_info.is_multimodal:
+        if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
 
@@ -658,7 +658,7 @@ class Template(ProcessorMixin):
         origin_mode = self.mode
         if self.mode in {'train', 'rlhf', 'kto'}:
             self.set_mode('pt')
-        is_multimodal = self.model_info.is_multimodal
+        is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
             models = self.remove_post_encode_hook()
         try:

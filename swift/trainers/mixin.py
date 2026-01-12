@@ -214,7 +214,7 @@ class SwiftMixin:
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_info.is_multimodal
+            use_logits_to_keep = (not self.model.model_meta.is_multimodal
                                   and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
                                   and default_value)
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
@@ -837,7 +837,7 @@ class SwiftMixin:
             model.enable_input_require_grads()
 
         model_arch = self.model_meta.model_arch
-        if self.model_info.is_multimodal and model_arch:
+        if self.model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
@@ -854,7 +854,7 @@ class SwiftMixin:
         self.args.gradient_checkpointing = False
 
     def train(self, *args, **kwargs):
-        if self.model_info.is_multimodal:
+        if self.model_meta.is_multimodal:
             models = []
             for model_name in ['model', 'ref_model', 'value_model', 'teacher_model']:
                 model = getattr(self, model_name, None)

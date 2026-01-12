@@ -771,7 +771,7 @@ class MegatronArguments(ExtraMegatronArguments):
         args_dict = asdict(self)
         extra_args = {}
         extra_args['model_dir'] = self.model_info.model_dir
-        extra_args['is_multimodal'] = self.model_info.is_multimodal
+        extra_args['is_multimodal'] = self.model_meta.is_multimodal
         # model_type may be overridden by megatron
         extra_args['hf_model_type'] = self.model_type
         megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')

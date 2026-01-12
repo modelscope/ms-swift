@@ -15,7 +15,7 @@ logger = get_logger()
 
 def prepare_adapter(args, model, adapters=None):
     if args.tuner_backend == 'unsloth':
-        if args.model_info.is_multimodal:
+        if args.model_meta.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
         else:
             from unsloth import FastLanguageModel as UnslothModel

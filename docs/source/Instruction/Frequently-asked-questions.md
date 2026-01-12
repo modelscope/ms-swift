@@ -775,7 +775,7 @@ topk设置成1就可以了。
 ### Q41: 请问下，swift做量化时，gptq/awq/fp8三种方法分别是针对activation和weight中的哪个做的量化呢？
 只有权重。
 
-### Q42: 请问用ms-swift推理时pt engine和vllm engine，推理结果差了很多，这个是什么原因呢？
+### Q42: 请问用ms-swift推理时transformers engine和vllm engine，推理结果差了很多，这个是什么原因呢？
 看看参数有没有对齐。此外，VllmEngine和TransformersEngine是有差异的，TransformersEngine和transformers推理是对齐的。
 
 ### Q43: 请问用swift做qwen2audio的推理，推理结果出现混乱，可能是啥原因呢？
@@ -882,7 +882,7 @@ main分支应该默认使用V1 engine了，加一个`VLLM_USE_V1=1`试试，还�
 ### Q21: 通过--system参数指定system prompt与数据集中每个数据前加system prompt以及template的system prompt是不是有一个就行？这些方式对模型来说，是不是一样的？
 system优先级：数据集中的>命令行的>template中默认的。
 
-### Q22: swift pt engine部署模型后，推理无法并行，数据也没办法分配到其他显卡上，用的全是第一张卡。
+### Q22: swift transformers engine部署模型后，推理无法并行，数据也没办法分配到其他显卡上，用的全是第一张卡。
 尝试swift infer，deploy不支持DDP。
 
 ### Q23: swift deploy部署的模型，怎么在客户端禁止thinking？我在请求的时候加了extra body也不行。

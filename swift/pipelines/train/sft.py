@@ -74,7 +74,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template.model = self.model
         support_padding_free = template.support_padding_free
         if support_padding_free is None:
-            support_padding_free = not args.model_info.is_multimodal
+            support_padding_free = not args.model_meta.is_multimodal
         if (args.padding_free or args.packing) and not support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
@@ -332,7 +332,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template.model = None  # Avoid serializing the model.
         if args.truncation_strategy == 'split':
             if (args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template
-                    or args.model_info.is_multimodal):
+                    or args.model_meta.is_multimodal):
                 raise ValueError(
                     '`--truncation_strategy split` is currently only supported for plain text model pretraining')
             assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
@@ -347,7 +347,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 # Compatible with cached_dataset, only additionally write length here.
                 preprocessor_cls = EncodePreprocessor if args.truncation_strategy == 'split' else AddLengthPreprocessor
                 preprocessor = preprocessor_cls(template=template)
-                batch_size = 100 if args.model_info.is_multimodal else 1000
+                batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
                     num_proc=args.dataset_num_proc,

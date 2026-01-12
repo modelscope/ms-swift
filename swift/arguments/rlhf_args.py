@@ -258,7 +258,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._check_gkd()
 
         if self.loss_scale is None:
-            if self.rlhf_type == 'orpo' and not self.model_info.is_multimodal:
+            if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
                 # Avoid padding labels during the model's forward pass in multimodal models.
                 # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'

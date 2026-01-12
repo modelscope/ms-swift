@@ -50,7 +50,7 @@ class AppArguments(WebUIArguments, DeployArguments):
         if self.model_meta:
             if self.system is None:
                 self.system = get_template_meta(self.model_info, self.model_meta).default_system
-        if self.is_multimodal is None and self.model_info:
-            self.is_multimodal = self.model_info.is_multimodal
+            if self.is_multimodal is None:
+                self.is_multimodal = self.model_meta.is_multimodal
         if self.is_multimodal is None:
             self.is_multimodal = False

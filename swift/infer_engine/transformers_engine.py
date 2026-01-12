@@ -506,7 +506,7 @@ class TransformersEngine(InferEngine):
             template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
             inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
             self.template.debug_logger(inputs)  # debug
-            if self.model.model_info.is_multimodal:
+            if self.model_meta.is_multimodal:
                 _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
             if self.model_info.task_type == 'causal_lm':
                 self.set_default_max_tokens(request_config, inputs)

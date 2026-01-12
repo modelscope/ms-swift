@@ -172,7 +172,7 @@ def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     if isinstance(model, PeftModel):
         model = model.model
     model_meta: ModelMeta = getattr(model, 'model_meta', None)
-    if model_meta is not None and model.model_info.is_multimodal and model_meta.model_arch:
+    if model_meta is not None and model_meta.is_multimodal and model_meta.model_arch:
         tower_names = model_meta.model_arch.language_model.copy()
         if including_vit:
             tower_names += model_meta.model_arch.vision_tower
