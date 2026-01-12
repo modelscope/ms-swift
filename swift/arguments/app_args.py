@@ -41,6 +41,7 @@ class AppArguments(WebUIArguments, DeployArguments):
     def _init_torch_dtype(self) -> None:
         if self.base_url:
             self.model_meta = get_matched_model_meta(self.model)
+            self.model_info = None
             return
         super()._init_torch_dtype()
 

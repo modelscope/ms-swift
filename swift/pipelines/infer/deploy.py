@@ -195,7 +195,7 @@ class SwiftDeploy(SwiftInfer):
 
         infer_kwargs['pre_infer_hook'] = pre_infer_hook
         try:
-            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
+            res_or_gen = await self.infer_async(infer_request, request_config, **infer_kwargs)
         except Exception as e:
             import traceback
             logger.info(traceback.format_exc())

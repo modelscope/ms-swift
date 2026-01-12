@@ -81,7 +81,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 data_list,
                 RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
                 use_tqdm=False,
-                template=self.template)
+            )
 
         response_list = []
         jsonl_cache = []

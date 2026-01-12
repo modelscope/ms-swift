@@ -523,7 +523,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         return {'infer_request': infer_request}
 
     def _is_thinking_template(self) -> bool:
-        if not hasattr(self.infer_engine, 'default_template'):
+        if not hasattr(self.infer_engine, 'template'):
             return False
 
         template = self.infer_engine.template

@@ -19,7 +19,6 @@ from torch import nn
 from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
-from swift.template import Template
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 
@@ -124,7 +123,6 @@ class VLLMClient:
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ):
@@ -152,7 +150,6 @@ class VLLMClient:
                         'infer_requests': chunk,
                         'request_config': request_config,
                         'metrics': metrics,
-                        'template': template,
                         'use_tqdm': use_tqdm,
                         'adapter_request': adapter_request,
                     },

@@ -1,5 +1,8 @@
 # Frequently-asked-questions
 
+> [!WARNING]
+> This document is pending update to ms-swift 4.0
+
 Here are some common questions encountered during the use of Swift.
 
 ## Training
