@@ -848,7 +848,7 @@ def patch_vllm_moe_model_weight_loader(model):
                     model_class = getattr(module, class_name)
                     supported_moe_models.append(model_class)
                     mlp_attr_mapping[model_class] = mlp_attr
-        except ImportError:
+        except (ImportError, AttributeError):
             pass
 
     # Early return if no MoE models are supported
