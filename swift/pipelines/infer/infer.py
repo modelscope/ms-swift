@@ -112,7 +112,6 @@ class SwiftInfer(SwiftPipeline):
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request],
                                 request_config,
-                                template=self.template,
                                 use_tqdm=False,
                                 **self.infer_kwargs)[0]
         if request_config and request_config.stream:
@@ -295,7 +294,7 @@ class SwiftInfer(SwiftPipeline):
                 labels = data.pop('label', None)
             labels_list.append(labels)
 
-        resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
+        resp_list = self.infer(val_dataset, request_config, use_tqdm=True, **self.infer_kwargs)
         if not (args.infer_backend == 'vllm' and rank >= 0
                 and args.rank % args.vllm_tensor_parallel_size != 0):  # DP & TP
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):

@@ -525,7 +525,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             return
 
         # Get the same ds_config_folder as main model
-        ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
+        ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
         deepspeed_mapping = {
             name: f'{name}.json'
             for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']

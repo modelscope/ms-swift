@@ -176,6 +176,7 @@ class ModelLoader(BaseModelLoader):
         self.model_info = model_info
         self.model_meta = model_meta
         self.load_model = load_model
+        attn_impl = attn_impl or kwargs.get('attn_implementation')
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         self.rope_scaling = rope_scaling

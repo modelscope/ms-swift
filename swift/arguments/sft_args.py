@@ -234,7 +234,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
                                  f'n_gpu: {get_device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
 
-            ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
+            ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
             deepspeed_mapping = {
                 name: f'{name}.json'
                 for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
@@ -269,7 +269,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
         if self.deepspeed:
             raise ValueError('FSDP2 is not compatible with DeepSpeed.')
 
-        fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fsdp_config'))
+        fsdp_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
 
         # FSDP2 preset configurations
         fsdp_mapping = {
