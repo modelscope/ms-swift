@@ -13,7 +13,7 @@ if TYPE_CHECKING:
                             AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
     from .pipelines import (sft_main, pretrain_main, infer_main, rlhf_main, export_main, app_main, eval_main,
                             sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
-    from .model import get_model_processor
+    from .model import get_model_processor, get_processor
     from .template import get_template
     from .dataset import load_dataset, EncodePreprocessor
     from .utils import get_logger, safe_snapshot_download
@@ -34,7 +34,7 @@ else:
             'sft_main', 'pretrain_main', 'infer_main', 'rlhf_main', 'export_main', 'app_main', 'eval_main',
             'sampling_main', 'rollout_main', 'deploy_main', 'merge_lora', 'run_deploy'
         ],
-        'model': ['get_model_processor'],
+        'model': ['get_model_processor', 'get_processor'],
         'template': ['get_template'],
         'dataset': ['load_dataset', 'EncodePreprocessor'],
         'utils': ['get_logger', 'safe_snapshot_download'],

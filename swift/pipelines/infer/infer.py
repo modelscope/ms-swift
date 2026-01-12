@@ -110,10 +110,7 @@ class SwiftInfer(SwiftPipeline):
             return f'Embedding(shape: [1, {shape}]): {sample}'
 
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
-        res_or_gen = self.infer([infer_request],
-                                request_config,
-                                use_tqdm=False,
-                                **self.infer_kwargs)[0]
+        res_or_gen = self.infer([infer_request], request_config, use_tqdm=False, **self.infer_kwargs)[0]
         if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
