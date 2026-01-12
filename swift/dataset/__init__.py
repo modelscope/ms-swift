@@ -2,7 +2,7 @@
 import datasets.fingerprint
 from datasets import Dataset as HfDataset
 
-from . import datasets as _datasets
+from . import dataset
 from .loader import DATASET_TYPE, DatasetLoader, DatasetSyntax, load_dataset
 from .media import MediaResource
 from .packing import IterablePackingDataset, PackingDataset

@@ -182,7 +182,7 @@ def init_self_cognition_preprocessor(
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
 ) -> None:
-    from .datasets.llm import SelfCognitionPreprocessor
+    from .dataset.llm import SelfCognitionPreprocessor
     if dataset_meta is None or model_name is None and model_author is None:
         return
     kwargs = {}
