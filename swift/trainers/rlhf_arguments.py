@@ -56,14 +56,7 @@ class GKDConfig(RolloutTrainerArgumentsMixin, SwiftArgumentsMixin, HfGKDConfig):
 
 @dataclass
 class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
-    scale_rewards: str = field(
-        default='group',
-        metadata={
-            'help': 'The scaling method for the rewards. Choices: [none, group, batch, gdpo]. '
-                    'If "gdpo", rewards are normalized per group per function before summation, '
-                    'then batch-normalized.'
-        },
-    )
+    
     def __post_init__(self):
         GRPOArgumentsMixin.__post_init__(self)
         SwiftArgumentsMixin.__post_init__(self)
