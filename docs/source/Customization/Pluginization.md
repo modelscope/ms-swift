@@ -84,7 +84,7 @@ def get_metric(metric: str):
 
 ## 定制化optimizer
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
 - 对模型不同部分采用不同的学习率，例如：ViT和LLM分别使用不同的学习率，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py)。
 
 用户可以在这里增加自己的optimizer和lr_scheduler实现：

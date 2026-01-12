@@ -328,7 +328,7 @@ print(f'images: {encoded["template_inputs"].images}')
 register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`register_dataset(dataset_meta)`即可完成数据集注册，其中dataset_meta将存储模型的元信息。DatasetMeta的参数列表如下：
 - ms_dataset_id: ModelScope的dataset_id，默认为None。
 - hf_dataset_id: HuggingFace的dataset_id，默认为None。
-- dataset_path: 数据集文件/文件夹的本地路径（推荐使用绝对路径）。默认为None。
+- dataset_path: 数据集**文件/文件夹**的本地路径（推荐使用绝对路径）。默认为None。
 - dataset_name: 数据集别名，可以通过`--dataset <dataset_name>`指定数据集，这在dataset_path很长时很方便。默认为None。
 - subsets: 子数据集的名字列表或者`SubsetDataset`对象的列表，默认为`['default']`。（只有dataset_id或者dataset_dir（git clone开源数据集）有子数据集和split的概念）。
 - split: 默认为`['train']`。

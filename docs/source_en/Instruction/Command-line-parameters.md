@@ -485,7 +485,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
-- optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers).
+- optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
 - loss_type: Custom loss function name defined in the plugin. Default is `None`, using the model's built-in loss function.
 - metric: Custom metric name defined in the plugin. Default is `None`. When `predict_with_generate=True`, it defaults to `'nlg'`.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.

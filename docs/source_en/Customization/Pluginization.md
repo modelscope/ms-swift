@@ -95,7 +95,7 @@ In the above definition, we added a new `custom` metric. Its value consists of t
 
 ## Customizing Optimizers
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
 - Apply different learning rates to different parts of the model. For example, use separate learning rates for ViT and LLM, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py).
 
 Users can add their own optimizers and learning rate schedulers here:
