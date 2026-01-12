@@ -107,7 +107,7 @@ optimizers_map = {
 
 ## 定制化agent template
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py).
 
 ## 定制化tuner
 

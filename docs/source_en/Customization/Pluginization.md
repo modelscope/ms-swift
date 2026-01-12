@@ -122,7 +122,7 @@ This will invoke the custom optimizer.
 
 ## Customizing Agent Template
 
-The example is [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template).
+The example is [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py).
 
 ## Customizing Tuners
 
