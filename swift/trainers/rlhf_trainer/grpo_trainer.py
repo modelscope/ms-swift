@@ -21,6 +21,7 @@ import concurrent.futures
 import inspect
 import os
 import time
+import numpy as np
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -425,6 +426,52 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return advantages / (rewards_std + 1e-4)
             return advantages
 
+        def _compute_step_advantages(inputs, trajectory_advantages):
+            # Extract step-level reward information from inputs
+            # Store (prompt_id, step) -> [rewards] mapping
+            step_rewards_dict = {}
+            for idx, input_data in enumerate(inputs):
+                prompt_id = input_data['prompt_id']
+                rollout_info = input_data['rollout_infos']
+
+                # Collect all step rewards for current trajectory
+                for traj_info in rollout_info.get('trajectory_info', []):
+                    step = traj_info.get('step', 0)
+                    reward = traj_info.get('reward', 0.0)
+
+                    # Group rewards by prompt_id and step
+                    key = (prompt_id, step)
+                    if key not in step_rewards_dict:
+                        step_rewards_dict[key] = []
+                    step_rewards_dict[key].append(reward)
+            # Calculate step-level advantage and aggregate
+            aggregated_step_advantages = torch.zeros_like(trajectory_advantages)
+            for idx, input_data in enumerate(inputs):
+                prompt_id = input_data['prompt_id']
+                rollout_info = input_data['rollout_infos']
+
+                # Calculate aggregated step-level advantage for current trajectory
+                step_advantages = []
+                for traj_info in rollout_info.get('trajectory_info', []):
+                    step = traj_info.get('step', 0)
+                    reward = traj_info.get('reward', 0.0)
+
+                    # Get all rewards for same prompt and step
+                    key = (prompt_id, step)
+                    all_rewards = step_rewards_dict.get(key, [reward])
+
+                    # Calculate step advantage (compared to group average)
+                    mean_reward = np.mean(all_rewards)
+                    step_advantage = reward - mean_reward
+                    step_advantages.append(step_advantage)
+
+                # Aggregate step-level advantage for current trajectory (use mean of valid steps)
+                if step_advantages:
+                    aggregated_step_advantages[idx] = np.mean(step_advantages)
+                else:
+                    aggregated_step_advantages[idx] = 0.0
+            return aggregated_step_advantages
+
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
             # rewards: [prompt_batch_size, num_generations]
@@ -506,6 +553,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
                 else:
                     advantages = rewards - group_rewards_mean
+            elif self.advantage_estimator == 'gigpo' and self.use_gym_env:
+                # Get trajectory-level advantage (original GRPO advantage)
+                trajectory_advantages = rewards - group_rewards_mean
+                aggregated_step_advantages = _compute_step_advantages(inputs, trajectory_advantages)
+                # Weighted sum of trajectory-level advantage and aggregated step-level advantage
+                advantages = trajectory_advantages + self.step_advantage_w * aggregated_step_advantages
             else:  # 'grpo' or 'reinforce_plus_plus'
                 # Both use group mean as baseline
                 advantages = rewards - group_rewards_mean
@@ -653,6 +706,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
             indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
             advantages = request_advantages[indices_in_unique]
+
+            if self.advantage_estimator == 'gigpo' and self.use_gym_env:
+                # Get trajectory-level advantage (original GRPO advantage)
+                trajectory_advantages = advantages
+                aggregated_step_advantages = _compute_step_advantages(inputs, trajectory_advantages)
+                # Weighted sum of trajectory-level advantage and aggregated step-level advantage
+                advantages = trajectory_advantages + self.step_advantage_w * aggregated_step_advantages
 
             # Step 5. Log metrics for unique request_ids
             log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
@@ -2154,6 +2214,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
 
+        # GiGPO, https://arxiv.org/abs/2405.06708
+        self.step_advantage_w = args.step_advantage_w
+
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
         self.rollout_importance_sampling_threshold = args.rollout_importance_sampling_threshold
@@ -2227,7 +2290,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                  f'functions ({len(reward_funcs)})')
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32).to(device)
         else:
-            self.reward_weights = torch.ones(len(self.reward_func_names), dtype=torch.float32).to(device)
+            if self.use_gym_env:
+                self.reward_weights = torch.ones(1, dtype=torch.float32).to(device)
+            else:
+                self.reward_weights = torch.ones(len(self.reward_func_names), dtype=torch.float32).to(device)
 
         # after init trainer
         for i, reward_func in enumerate(self.reward_funcs):
