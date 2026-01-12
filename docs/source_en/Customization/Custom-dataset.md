@@ -347,7 +347,7 @@ The following parameters are supported:
 
 - ms_dataset_id: The dataset_id for ModelScope, default is None.
 - hf_dataset_id: The dataset_id for HuggingFace, default is None.
-- dataset_path: Local path to the dataset file/folder (absolute path recommended). Default is None.
+- dataset_path: Local path to the **dataset file/folder** (absolute path recommended). Default is None.
 - dataset_name: The alias of the dataset, which can be specified via `--dataset <dataset_name>`. This is very convenient when the dataset_path is long. The default value is None.
 - subsets: A list of subdataset names or a list of `SubsetDataset` objects, default is `['default']`. (The concepts of subdatasets and splits only exist for dataset_id or dataset_dir (open source datasets cloned via git)).
 - split: Defaults to `['train']`.

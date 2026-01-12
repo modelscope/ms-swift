@@ -475,7 +475,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
 - temperature: 覆盖生成参数。predict_with_generate=True时的temperature，默认0。
-- optimizer: plugin的自定义optimizer名称，默认为None。可选optimizer参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers)。
+- optimizer: plugin的自定义optimizer名称，默认为None。可选optimizer参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py)。
 - loss_type: plugin的自定义loss_type名称。默认为None，使用模型自带损失函数。
 - metric: plugin的自定义metric名称。默认为None，在predict_with_generate=True的情况下默认设置为'nlg'。
 - eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/Evaluation.md#训练中评测)。
