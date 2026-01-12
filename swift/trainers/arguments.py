@@ -497,11 +497,13 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             Defaults to `max_completion_length`.
         soft_cache_length (Optional[int]): Controls the length penalty interval (L_cache in the paper).
             The interval is `[soft_max_length - soft_cache_length, soft_max_length]`. Defaults to None.
-        scale_rewards (Optional[Literal['group', 'batch', 'none']]): Specifies the reward scaling strategy.
+        scale_rewards (Optional[Literal['group', 'batch', 'none', 'gdpo']]): Specifies the reward scaling strategy.
             Options are 'group' (scale by intra-group standard deviation), 'batch' (scale by the entire batch's
-            standard deviation), or 'none' (no scaling). The default value is tied to `advantage_estimator`: 'group'
-            for 'grpo', 'none' for 'rloo', and 'batch' for 'reinforce_plus_plus'. In ms-swift < 3.10, this was a
-            boolean where `True` corresponded to 'group' and `False` to 'none'.
+            standard deviation), 'none' (no scaling), or 'gdpo' (normalize each reward function separately before
+            weighted aggregation; reward_weights serve as weights for each reward's advantage term). The default
+            value is tied to `advantage_estimator`: 'group' for 'grpo', 'none' for 'rloo', and 'batch' for
+            'reinforce_plus_plus'. In ms-swift < 3.10, this was a boolean where `True` corresponded to 'group'
+            and `False` to 'none'. Note: GDPO mode does not support kl_in_reward=True.
         log_entropy (bool): Log the dynamics of entropy values during training. See documentation for
             details. Defaults to False.
         top_entropy_quantile (float): Only tokens with entropy in the top specified quantile participate in
@@ -581,7 +583,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     soft_cache_length: Optional[int] = None
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: Optional[Literal['group', 'batch', 'none']] = None
+    # GDPO: normalize each reward function separately
+    scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
 
     # entropy
     log_entropy: bool = False

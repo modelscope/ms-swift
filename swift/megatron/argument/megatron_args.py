@@ -117,7 +117,8 @@ class RLHFMegatronArgumentsMixin:
     overlong_filter: bool = False
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: Literal['none', 'group', 'batch'] = 'group'
+    # GDPO: normalize each reward function separately
+    scale_rewards: Literal['none', 'group', 'batch', 'gdpo'] = 'group'
 
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
