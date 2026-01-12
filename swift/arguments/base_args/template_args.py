@@ -67,7 +67,7 @@ class TemplateArguments:
             loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies:
             'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
             For available options, refer to
-            [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale).
+            [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
             ms-swift>=3.12 supports mixing basic strategies with other strategies,
             for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
             If no basic strategy is specified, it defaults to 'default',

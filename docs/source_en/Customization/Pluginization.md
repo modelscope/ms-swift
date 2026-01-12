@@ -30,7 +30,7 @@ Developers can add new callbacks in `plugin/callback.py` and customize their tra
 
 ## Customizing Loss
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 SWIFT supports customizing the loss function in a plugin. If you don’t use this capability, cross-entropy loss (CE Loss) will be used by default. You can write your code in this file, register it, and then enable your custom loss during training by setting `--loss_type custom_loss` to use your customized loss method.
 
@@ -48,7 +48,7 @@ It is important to note that the loss function is strongly related to the traini
 
 ## Customizing Loss Scale
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
 
 The `loss_scale` mechanism is one of the crucial features in SWIFT. In PT and SFT tasks, the loss for trainable tokens is uniform, meaning each token is equally involved in backpropagation. However, in certain situations, some tokens require higher weights and extra attention. In such cases, `loss_scale` allows developers to define custom token weights.
 

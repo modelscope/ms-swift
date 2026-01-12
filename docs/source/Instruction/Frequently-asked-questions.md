@@ -469,7 +469,7 @@ TypeError: __init__() got an unexpected keyword argument 'corda_config'
 加个环境变量`PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'`。
 
 ### Q135: 如何在训练时使用focal loss？当前支持的loss种类哪里有？
-可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/loss)。
+可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)。
 
 ### Q136: rollout设置了pipeline parallel size，貌似trl和vllm里获取不到word size这个值。
 rollout应该是不兼容pipeline parallel。

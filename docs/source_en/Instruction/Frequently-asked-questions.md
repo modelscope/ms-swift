@@ -469,7 +469,7 @@ No, it does not contribute to the loss. You can verify this by checking the prin
 Add the environment variable `PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'`.
 
 ### Q135: How can I use focal loss during training? Where can I find the list of currently supported loss types?
-You can add new losses [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss).
+You can add new losses [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 ### Q136: When pipeline_parallel_size is set for rollout, it seems that the world_size value cannot be retrieved in TRL and vLLM.
 Rollout is likely incompatible with pipeline parallelism.

@@ -45,7 +45,7 @@ SWIFT已经支持Embedding模型的训练，包括纯文本和多模态两个类
 - online_contrastive: 考虑hard negative和hard positive部分的contrastive loss，label仅支持0和1两个值
 - infonce: 在同一个batch中不同row两两计算cosine相似度，并使row内部相似度最大，不同row相似度最小，不需要label
 
-loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss)找到。
+loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)找到。
 
 ## 数据集格式
 

@@ -27,7 +27,7 @@ extra_callbacks = [CustomCallback()]
 
 ## 定制化loss
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后在训练时设置`--loss_type custom_loss`使用你定制的loss方法。
 例如在plugin/loss.py中添加下面的代码：
@@ -42,7 +42,7 @@ loss_map['custom_loss'] = custom_loss_func
 
 ## 定制化loss_scale
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
 
 loss_scale机制在SWIFT中是非常重要的机制之一。在pt和sft任务中，可训练token的loss是均匀的，即每个token平等的进行bp。但在某些情况下，某些token的权重比较大，需要被额外关注，
 在这种情况下就需要更高的权重。loss_scale可以让开发者自由地定义自己的token权重。

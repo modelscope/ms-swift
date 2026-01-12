@@ -110,7 +110,7 @@
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。
-- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale模块](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'last_round+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
+- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale模块](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'last_round+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
   - 'default': 所有response（含history）以权重1计算交叉熵损失（**messages中的system/user/多模态tokens以及Agent训练中`tool_response`部分不计算损失**）。（**SFT默认为该值**）
   - 'last_round': 只计算最后一轮response的损失。在"ms-swift>=3.12"，最后一轮含义为最后一个"user"之后的所有内容，之前的含义只包含最后一个"assistant"。（**RLHF默认为该值**）
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
