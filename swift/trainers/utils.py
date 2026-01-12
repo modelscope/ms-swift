@@ -80,13 +80,20 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, enable_eaft_l
         loss *= target_probs
     if enable_eaft_loss:
         with torch.no_grad():
-            topk_logits, topk_indices = torch.topk(logits_detach, k=20, dim=-1)
+            logits_detach = logits.detach()
+            valid_mask = labels != -100
+            logits_valid = logits_detach[valid_mask]
+            
+            topk_logits, topk_indices = torch.topk(logits_valid, k=20, dim=-1)
             logsumexp_topk = torch.logsumexp(topk_logits, dim=-1, keepdim=True)
             log_probs_topk = topk_logits - logsumexp_topk
             probs_topk = torch.exp(log_probs_topk)
             entropy_approx = -(probs_topk * log_probs_topk).sum(dim=-1)
             normalized_entropy = entropy_approx / 3.0
-            eaft_weight = torch.pow(normalized_entropy, eaft_alpha)
+            eaft_weight_valid = torch.pow(normalized_entropy, eaft_alpha)
+            
+            eaft_weight = torch.ones_like(loss)
+            eaft_weight[valid_mask] = eaft_weight_valid
             
         loss *= eaft_weight
     from swift.trainers.sequence_parallel import sequence_parallel

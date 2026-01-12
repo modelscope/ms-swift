@@ -67,18 +67,23 @@ class MegatronTrainer(BaseMegatronTrainer):
                 
                 batch_size = labels.shape[0]
                 seq_length = labels.shape[1]
-                logits_reshaped = logits_float.view(batch_size * seq_length, vocab_size)
-
-                topk_logits, topk_indices = torch.topk(logits_reshaped, k=20, dim=-1)
+                
+                logits_transposed = logits_float.transpose(0, 1)
+                logits_reshaped = logits_transposed.view(batch_size * seq_length, vocab_size)
+                
+                logits_valid = logits_reshaped[loss_mask.view(-1)]
+                
+                topk_logits, topk_indices = torch.topk(logits_valid, k=20, dim=-1)
                 logsumexp_topk = torch.logsumexp(topk_logits, dim=-1, keepdim=True)
                 log_probs_topk = topk_logits - logsumexp_topk
                 probs_topk = torch.exp(log_probs_topk)
                 entropy_approx = -(probs_topk * log_probs_topk).sum(dim=-1)
                 normalized_entropy = entropy_approx / 3.0
-                eaft_weight = torch.pow(normalized_entropy, args.eaft_alpha)
-                eaft_weight = eaft_weight.view(batch_size, seq_length)
-                eaft_weight = torch.where(loss_mask, eaft_weight, torch.ones_like(eaft_weight))
+                eaft_weight_valid = torch.pow(normalized_entropy, args.eaft_alpha)
                 
+                eaft_weight = torch.ones(batch_size * seq_length, device=logits_float.device)
+                eaft_weight[loss_mask.view(-1)] = eaft_weight_valid
+                eaft_weight = eaft_weight.view(batch_size, seq_length)
 
             losses = losses * eaft_weight
         
