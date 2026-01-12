@@ -128,8 +128,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1
-            self.engine = TransformersEngine.from_model_template(
-                self.model, infer_template, max_batch_size=0)  # 0: no limit
+            self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set

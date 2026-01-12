@@ -935,7 +935,7 @@ class QwenLongPlugin(DefaultRMPlugin):
     def __init__(self, model, template, accuracy_orm=None):
         super().__init__(model, template)
         # initialize TransformersEngine to infer
-        self.engine = TransformersEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig(temperature=0)  # customise your request config here
         self.system = textwrap.dedent("""
             You are an expert in verifying if two answers are the same.

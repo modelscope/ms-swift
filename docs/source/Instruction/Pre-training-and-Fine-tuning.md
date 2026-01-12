@@ -178,7 +178,7 @@ if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(tokenizer, template_type=template_type, default_system=default_system)
-engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
+engine = TransformersEngine(model, template=template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理
@@ -215,7 +215,7 @@ if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(tokenizer, template_type=template_type, default_system=default_system)
-engine = TransformersEngine.from_model_template(model, template, max_batch_size=2)
+engine = TransformersEngine(model, template=template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理

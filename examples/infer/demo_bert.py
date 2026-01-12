@@ -29,7 +29,7 @@ if __name__ == '__main__':
     model, processor = args.get_model_processor()
     model = Swift.from_pretrained(model, adapter_path)
     template = args.get_template(processor)
-    engine = TransformersEngine.from_model_template(model, template, max_batch_size=64)
+    engine = TransformersEngine(model, template=template, max_batch_size=64)
 
     # method2
     # engine = TransformersEngine(args.model, adapters=[adapter_path], max_batch_size=64,

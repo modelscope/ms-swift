@@ -50,7 +50,7 @@ class GenRMPlugin(DefaultRMPlugin):
 
         super().__init__(model, template)
         # initilize TransformersEngine to infer
-        self.engine = TransformersEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig()  # customise your request config here
         self.system = textwrap.dedent("""
             Based on the dialogue history, analyze in detail whether the model's response is accurate, complete, and relevant.

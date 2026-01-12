@@ -56,7 +56,7 @@ class RMPlugin(DefaultRMPlugin):
 
         super().__init__(model, template)
         # initilize TransformersEngine to infer
-        self.engine = TransformersEngine.from_model_template(self.model, self.template, max_batch_size=0)
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)
 
     def __call__(self, inputs):
         system_prompt = ...

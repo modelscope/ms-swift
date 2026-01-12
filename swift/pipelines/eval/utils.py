@@ -101,8 +101,7 @@ class EvalModel(ModelAPI):
         self.max_batch_size = collect_model_arg('max_batch_size')  # maximum batch size
 
         # Initialize the inference engine with batch support
-        self.engine = TransformersEngine.from_model_template(
-            self.model, self.template, max_batch_size=self.max_batch_size)
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=self.max_batch_size)
 
     def generate(
         self,

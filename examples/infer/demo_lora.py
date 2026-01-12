@@ -46,13 +46,13 @@ def infer_lora(infer_request: 'InferRequest'):
     # model, processor = args.get_model_processor()
     # model = Swift.from_pretrained(model, adapter_path)
     # template = args.get_template(processor)
-    # engine = TransformersEngine.from_model_template(model, template)
+    # engine = TransformersEngine(model, template=template)
 
     # method3
     model, tokenizer = get_model_processor(args.model)
     model = Swift.from_pretrained(model, adapter_path)
     template = get_template(tokenizer, args.system, template_type=args.template)
-    engine = TransformersEngine.from_model_template(model, template)
+    engine = TransformersEngine(model, template=template)
 
     resp_list = engine.infer([infer_request], request_config)
     response = resp_list[0].choices[0].message.content

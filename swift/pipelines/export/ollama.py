@@ -35,7 +35,7 @@ def export_to_ollama(args: ExportArguments):
     logger.info('Exporting to ollama:')
     os.makedirs(args.output_dir, exist_ok=True)
     model, template = prepare_model_template(args)
-    engine = TransformersEngine.from_model_template(model, template)
+    engine = TransformersEngine(model, template=template)
     logger.info(f'Using model_dir: {engine.model_dir}')
     template_meta = template.template_meta
     with open(os.path.join(args.output_dir, 'Modelfile'), 'w', encoding='utf-8') as f:

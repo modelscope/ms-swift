@@ -40,7 +40,7 @@ def infer_swift():
     model, tokenizer = get_model_processor(model_dir, device_map='auto')
     model = Swift.from_pretrained(model, adapter_dir)
     template = get_template(tokenizer)
-    engine = TransformersEngine.from_model_template(model, template)
+    engine = TransformersEngine(model, template=template)
 
     messages = [{
         'role': 'system',

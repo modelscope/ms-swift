@@ -30,8 +30,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         if self.args.predict_with_generate:
-            self.infer_engine = TransformersEngine.from_model_template(
-                self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
+            self.infer_engine = TransformersEngine(
+                self.model, template=self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
 
     @staticmethod
