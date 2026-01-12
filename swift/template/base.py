@@ -39,6 +39,20 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
+    """Base template class for formatting and processing model inputs/outputs.
+
+    This class serves as the foundation for all template implementations in the Swift framework.
+    It handles the conversion between conversation formats and token sequences, manages multimodal
+    inputs (images, videos, audio), supports various training modes (standard, RLHF, KTO), and
+    provides utilities for tokenization, padding, and data collation.
+
+    The Template class is designed to be flexible and extensible, supporting:
+    - Multiple chat formats (user/assistant conversations, system prompts, tool calls)
+    - Multimodal data processing (images, videos, audio, bounding boxes)
+    - Different training strategies (causal language modeling, sequence classification, embedding, etc.)
+    - Various inference engines (Transformers, vLLM, LMDeploy, SGLang)
+    - Advanced features like padding-free training, sequence parallelism, and loss scaling
+    """
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
     special_keys = ['images', 'videos', 'audios', 'objects']
 
