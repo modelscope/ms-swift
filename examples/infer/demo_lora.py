@@ -15,12 +15,13 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
         from swift.infer_engine import VllmEngine
         engine = VllmEngine(args.model, enable_lora=True, max_loras=1, max_lora_rank=16)
     template = get_template(engine.processor, template_type=args.template, default_system=args.system)
+    engine.template = template
     request_config = RequestConfig(max_tokens=512, temperature=0)
     adapter_request = AdapterRequest('lora1', adapter_path)
     adapter_request2 = AdapterRequest('lora2', adapter_path2)
 
     # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request)
+    resp_list = engine.infer([infer_request], request_config, adapter_request=adapter_request)
     response = resp_list[0].choices[0].message.content
     print(f'lora1-response: {response}')
     # origin model
@@ -28,7 +29,7 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     response = resp_list[0].choices[0].message.content
     print(f'response: {response}')
     # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request2)
+    resp_list = engine.infer([infer_request], request_config, adapter_request=adapter_request2)
     response = resp_list[0].choices[0].message.content
     print(f'lora2-response: {response}')
 
@@ -62,10 +63,7 @@ def infer_lora(infer_request: 'InferRequest'):
 if __name__ == '__main__':
     from swift.infer_engine import TransformersEngine, RequestConfig, AdapterRequest, InferRequest
     from swift.arguments import BaseArguments
-    from swift.template import get_template
-    from swift.model import get_model_processor
-    from swift.utils import safe_snapshot_download
-    from swift.tuners import Swift
+    from swift import get_model_processor, safe_snapshot_download, Swift, get_template
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'pt')

@@ -13,7 +13,7 @@ from transformers import GenerationConfig
 
 from swift.metrics import Metric
 from swift.model import get_processor
-from swift.template import Template, TemplateMeta
+from swift.template import Template
 from swift.utils import get_logger
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -57,57 +57,88 @@ class SglangEngine(InferEngine):
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        if engine_kwargs is None:
-            engine_kwargs = {}
-        self.processor = get_processor(
-            model_id_or_path,
-            torch_dtype=torch_dtype,
-            download_model=True,
-            model_type=model_type,
-            use_hf=use_hf,
-            hub_token=hub_token,
-            revision=revision,
-            task_type=task_type)
-        self._post_init(template)
-        if context_length is not None:
-            self.max_model_len = context_length
-            logger.info(f'Setting max_model_len: {context_length}')
-        if self.max_model_len is not None:
-            self.max_model_len -= 1
-        parameters = inspect.signature(ServerArgs).parameters
-        if 'pp_size' in parameters:
-            engine_kwargs['pp_size'] = pp_size
-        if 'enable_ep_moe' in parameters:
-            engine_kwargs['enable_ep_moe'] = enable_ep_moe
-        self.server_args = ServerArgs(
-            model_path=self.model_dir,
-            dtype=self.model_info.torch_dtype,
-            tp_size=tp_size,
-            dp_size=dp_size,
-            ep_size=ep_size,
-            mem_fraction_static=mem_fraction_static,
-            context_length=context_length,
-            disable_cuda_graph=disable_cuda_graph,
-            quantization=quantization,
-            kv_cache_dtype=kv_cache_dtype,
-            enable_dp_attention=enable_dp_attention,
-            disable_custom_all_reduce=disable_custom_all_reduce,
-            speculative_algorithm=speculative_algorithm,
-            speculative_num_steps=speculative_num_steps,
-            speculative_eagle_topk=speculative_eagle_topk,
-            speculative_num_draft_tokens=speculative_num_draft_tokens,
-            log_level=log_level,
-            skip_tokenizer_init=True,
-            trust_remote_code=True,
-            **engine_kwargs,
-        )
+        self.model_id_or_path = model_id_or_path
+        self.torch_dtype = torch_dtype
+        self.model_type = model_type
+        self.use_hf = use_hf
+        self.hub_token = hub_token
+        self.revision = revision
+        self.tp_size = tp_size
+        self.pp_size = pp_size
+        self.dp_size = dp_size
+        self.ep_size = ep_size
+        self.enable_ep_moe = enable_ep_moe
+        self.mem_fraction_static = mem_fraction_static
+        self.context_length = context_length
+        self.disable_cuda_graph = disable_cuda_graph
+        self.quantization = quantization
         self.task_type = task_type
-        if task_type == 'embedding':
-            self.server_args.is_embedding = True
+        self.kv_cache_dtype = kv_cache_dtype
+        self.enable_dp_attention = enable_dp_attention
+        self.disable_custom_all_reduce = disable_custom_all_reduce
+        self.speculative_algorithm = speculative_algorithm
+        self.speculative_num_steps = speculative_num_steps
+        self.speculative_eagle_topk = speculative_eagle_topk
+        self.speculative_num_draft_tokens = speculative_num_draft_tokens
+        self.log_level = log_level
+        if template is None:
+            processor = self._get_processor()
+        else:
+            processor = template.processor
+            self.template = template
+        super().__init__(processor)
+        self._prepare_server_args(engine_kwargs)
         self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
         if speculative_num_draft_tokens is not None:
             self.max_tokens_offset = -speculative_num_draft_tokens
+
+    def _get_processor(self):
+        return get_processor(
+            self.model_id_or_path,
+            torch_dtype=self.torch_dtype,
+            download_model=True,
+            model_type=self.model_type,
+            use_hf=self.use_hf,
+            hub_token=self.hub_token,
+            revision=self.revision,
+            task_type=self.task_type)
+
+    def _prepare_server_args(self, engine_kwargs):
+        if self.context_length is not None:
+            self.max_model_len = self.context_length
+            logger.info(f'Setting max_model_len: {self.context_length}')
+        if self.max_model_len is not None:
+            self.max_model_len -= 1
+        parameters = inspect.signature(ServerArgs).parameters
+        if 'pp_size' in parameters:
+            engine_kwargs['pp_size'] = self.pp_size
+        if 'enable_ep_moe' in parameters:
+            engine_kwargs['enable_ep_moe'] = self.enable_ep_moe
+        self.server_args = ServerArgs(
+            model_path=self.model_dir,
+            dtype=self.model_info.torch_dtype,
+            tp_size=self.tp_size,
+            dp_size=self.dp_size,
+            ep_size=self.ep_size,
+            mem_fraction_static=self.mem_fraction_static,
+            context_length=self.context_length,
+            disable_cuda_graph=self.disable_cuda_graph,
+            quantization=self.quantization,
+            kv_cache_dtype=self.kv_cache_dtype,
+            enable_dp_attention=self.enable_dp_attention,
+            disable_custom_all_reduce=self.disable_custom_all_reduce,
+            speculative_algorithm=self.speculative_algorithm,
+            speculative_num_steps=self.speculative_num_steps,
+            speculative_eagle_topk=self.speculative_eagle_topk,
+            speculative_num_draft_tokens=self.speculative_num_draft_tokens,
+            log_level=self.log_level,
+            skip_tokenizer_init=True,
+            trust_remote_code=True,
+            **engine_kwargs,
+        )
+        if self.task_type == 'embedding':
+            self.server_args.is_embedding = True
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')

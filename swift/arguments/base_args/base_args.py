@@ -307,7 +307,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             processor = self.get_model_processor(load_model=False)[1]
         template_kwargs = self.get_template_kwargs()
         template_type = template_type or self.template
-        template = get_template(processor, **template_kwargs)
+        template = get_template(processor, template_type=template_type, **template_kwargs)
         return template
 
     def get_model_processor(self,

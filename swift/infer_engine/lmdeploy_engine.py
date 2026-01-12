@@ -19,7 +19,7 @@ from transformers.utils.versions import require_version
 
 from swift.metrics import Metric
 from swift.model import get_processor
-from swift.template import Template, TemplateMeta
+from swift.template import Template
 from swift.utils import get_logger, get_seed
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
@@ -57,48 +57,51 @@ class LmdeployEngine(InferEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         devices: Optional[List[int]] = None,
     ) -> None:
-        if engine_kwargs is None:
-            engine_kwargs = {}
-        self.processor = get_processor(
-            model_id_or_path,
-            torch_dtype=torch_dtype,
-            download_model=True,
-            model_type=model_type,
-            use_hf=use_hf,
-            hub_token=hub_token,
-            revision=revision)
-        self._post_init(template)
+        self.model_id_or_path = model_id_or_path
+        self.torch_dtype = torch_dtype
+        self.model_type = model_type
+        self.use_hf = use_hf
+        self.hub_token = hub_token
+        self.revision = revision
+        self.tp = tp
+        self.session_len = session_len
+        self.cache_max_entry_count = cache_max_entry_count
+        self.quant_policy = quant_policy
+        self.vision_batch_size = vision_batch_size
+        self.devices = devices
+        if template is None:
+            processor = self._get_processor()
+        else:
+            processor = template.processor
+            self.template = template
+        super().__init__(processor)
 
         if self.max_model_len is not None:
             self.max_model_len -= 1
-        self._prepare_engine_kwargs(
-            tp=tp,
-            session_len=session_len,
-            cache_max_entry_count=cache_max_entry_count,
-            quant_policy=quant_policy,
-            vision_batch_size=vision_batch_size,
-            devices=devices,
-            **engine_kwargs)
-
-        self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
-
+        self._prepare_engine_kwargs(engine_kwargs)
+        self.config.torch_dtype = self.torch_dtype = self.torch_dtype or self.model_info.torch_dtype
         self._prepare_engine()
         self._load_generation_config()
 
-    def _prepare_engine_kwargs(self,
-                               tp: int = 1,
-                               session_len: Optional[int] = None,
-                               cache_max_entry_count: float = 0.8,
-                               quant_policy: int = 0,
-                               vision_batch_size: int = 1,
-                               devices: Optional[List[int]] = None,
-                               **engine_kwargs):
-        engine_kwargs['tp'] = tp
-        engine_kwargs['session_len'] = session_len
-        engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
-        engine_kwargs['quant_policy'] = quant_policy
+    def _get_processor(self):
+        return get_processor(
+            model_id_or_path=self.model_id_or_path,
+            torch_dtype=self.torch_dtype,
+            download_model=True,
+            model_type=self.model_type,
+            use_hf=self.use_hf,
+            hub_token=self.hub_token,
+            revision=self.revision)
+
+    def _prepare_engine_kwargs(self, engine_kwargs):
+        if engine_kwargs is None:
+            engine_kwargs = {}
+        engine_kwargs['tp'] = self.tp
+        engine_kwargs['session_len'] = self.session_len
+        engine_kwargs['cache_max_entry_count'] = self.cache_max_entry_count
+        engine_kwargs['quant_policy'] = self.quant_policy
         if 'devices' in inspect.signature(TurbomindEngineConfig).parameters:
-            engine_kwargs['devices'] = devices
+            engine_kwargs['devices'] = self.devices
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
         self.backend_config = backend_config
@@ -110,7 +113,7 @@ class LmdeployEngine(InferEngine):
             require_version(
                 'lmdeploy<0.9', 'LmdeployEngine will no longer maintain inference for '
                 'multimodal models in lmdeploy>=0.9.')
-            vision_config = VisionConfig(max_batch_size=vision_batch_size)
+            vision_config = VisionConfig(max_batch_size=self.vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config
             logger.info(f'vision_config: {vision_config}')
         self.pipeline_kwargs = pipeline_kwargs
@@ -335,5 +338,6 @@ class LmdeployEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         use_tqdm: Optional[bool] = None,
+        **kwargs,
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        return super().infer(infer_requests, request_config, metrics, use_tqdm=use_tqdm)
+        return super().infer(infer_requests, request_config, metrics, use_tqdm=use_tqdm, **kwargs)

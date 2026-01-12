@@ -94,8 +94,8 @@ class VllmEngine(InferEngine):
         num_labels: Optional[int] = None,
         reranker_use_activation: bool = True,
     ) -> None:
-        if engine_kwargs is None:
-            engine_kwargs = {}
+        self.model_id_or_path = model_id_or_path
+        self.torch_dtype = torch_dtype
         if isinstance(adapters, str):
             adapters = [adapters]
         self.default_adapter_request = None
@@ -103,47 +103,49 @@ class VllmEngine(InferEngine):
             assert len(adapters) == 1, 'Only one adapter is supported for now.'
             enable_lora = True
             self.default_adapter_request = AdapterRequest('default', adapters[0])
-        patch_vllm_memory_leak()
+        self.adapters = adapters
         self.use_async_engine = use_async_engine
-        self.reranker_use_activation = reranker_use_activation
-        self.processor = get_processor(
-            model_id_or_path,
-            torch_dtype=torch_dtype,
-            download_model=True,
-            model_type=model_type,
-            use_hf=use_hf,
-            hub_token=hub_token,
-            revision=revision,
-            num_labels=num_labels,
-            task_type=task_type)
-        self._post_init(template)
+        self.model_type = model_type
+        self.use_hf = use_hf
+        self.hub_token = hub_token
+        self.revision = revision
 
-        self._prepare_engine_kwargs(
-            gpu_memory_utilization=gpu_memory_utilization,
-            tensor_parallel_size=tensor_parallel_size,
-            pipeline_parallel_size=pipeline_parallel_size,
-            enable_expert_parallel=enable_expert_parallel,
-            max_model_len=max_model_len,
-            max_num_seqs=max_num_seqs,
-            disable_custom_all_reduce=disable_custom_all_reduce,
-            enforce_eager=enforce_eager,
-            limit_mm_per_prompt=limit_mm_per_prompt,
-            logprobs_mode=logprobs_mode,
-            enable_lora=enable_lora,
-            max_loras=max_loras,
-            max_lora_rank=max_lora_rank,
-            enable_prefix_caching=enable_prefix_caching,
-            seed=seed,
-            distributed_executor_backend=distributed_executor_backend,
-            enable_sleep_mode=enable_sleep_mode,
-            quantization=quantization,
-            task=task_type,
-            disable_cascade_attn=disable_cascade_attn,
-            load_format=load_format,
-            mm_processor_cache_gb=mm_processor_cache_gb,
-            speculative_config=speculative_config,
-            **engine_kwargs,
-        )
+        self.gpu_memory_utilization = gpu_memory_utilization
+        self.tensor_parallel_size = tensor_parallel_size
+        self.pipeline_parallel_size = pipeline_parallel_size
+        self.enable_expert_parallel = enable_expert_parallel
+        self.max_model_len = max_model_len
+        self.max_num_seqs = max_num_seqs
+        self.disable_custom_all_reduce = disable_custom_all_reduce
+        self.enforce_eager = enforce_eager
+        self.limit_mm_per_prompt = limit_mm_per_prompt
+        self.seed = seed
+        self.task_type = task_type
+        self.disable_cascade_attn = disable_cascade_attn
+        self.load_format = load_format
+        self.mm_processor_cache_gb = mm_processor_cache_gb
+        self.logprobs_mode = logprobs_mode
+        self.speculative_config = speculative_config
+
+        self.enable_lora = enable_lora
+        self.max_loras = max_loras
+        self.max_lora_rank = max_lora_rank
+        self.enable_prefix_caching = enable_prefix_caching
+        self.enable_sleep_mode = enable_sleep_mode
+        self.distributed_executor_backend = distributed_executor_backend
+        self.quantization = quantization
+        self.num_labels = num_labels
+        self.reranker_use_activation = reranker_use_activation
+
+        patch_vllm_memory_leak()
+        self._adapters_pool = {}
+        if template is None:
+            processor = self._get_processor()
+        else:
+            processor = template.processor
+            self.template = template
+        super().__init__(processor)
+        self._prepare_engine_kwargs(engine_kwargs)
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
             context = patch_npu_vllm(get_device())
@@ -155,44 +157,33 @@ class VllmEngine(InferEngine):
         self._request_count = 0
         self._prepare_reasoning_parser(reasoning_parser)
 
+    def _get_processor(self):
+        return get_processor(
+            model_id_or_path=self.model_id_or_path,
+            torch_dtype=self.torch_dtype,
+            download_model=True,
+            model_type=self.model_type,
+            use_hf=self.use_hf,
+            hub_token=self.hub_token,
+            revision=self.revision,
+            num_labels=self.num_labels,
+            task_type=self.task_type)
+
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(
-        self,
-        gpu_memory_utilization: float = 0.9,
-        tensor_parallel_size: int = 1,
-        pipeline_parallel_size: int = 1,
-        enable_expert_parallel: bool = False,
-        max_model_len: Optional[int] = None,
-        max_num_seqs: int = 256,
-        disable_custom_all_reduce: bool = True,
-        enforce_eager: bool = False,
-        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        seed: Optional[int] = None,
-        enable_lora: bool = False,
-        max_loras: int = 1,
-        max_lora_rank: int = 16,
-        enable_prefix_caching: Optional[bool] = None,
-        distributed_executor_backend: Optional[str] = None,
-        enable_sleep_mode: bool = False,
-        task: Optional[str] = None,
-        disable_cascade_attn: bool = False,
-        load_format: str = 'auto',
-        mm_processor_cache_gb: Optional[float] = None,
-        logprobs_mode: Optional[str] = None,
-        speculative_config: Optional[Union[str, dict]] = None,
-        **engine_kwargs,
-    ) -> None:
-        if task == 'embedding':
-            task = 'embed'
-        elif task == 'seq_cls':
-            task = 'classify'
-        elif task in ('reranker', 'generative_reranker'):
-            task = 'score'
+    def _prepare_engine_kwargs(self, engine_kwargs) -> None:
+        if engine_kwargs is None:
+            engine_kwargs = {}
+        if self.task_type == 'embedding':
+            self.task = 'embed'
+        elif self.task_type == 'seq_cls':
+            self.task = 'classify'
+        elif self.task_type in ('reranker', 'generative_reranker'):
+            self.task = 'score'
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
@@ -201,29 +192,31 @@ class VllmEngine(InferEngine):
         parameters = inspect.signature(engine_cls).parameters
         if self.use_async_engine and 'disable_log_requests' in parameters:
             engine_kwargs['disable_log_requests'] = True
-        if 'enable_lora' in parameters and enable_lora:
-            engine_kwargs['enable_lora'] = enable_lora
-            engine_kwargs['max_loras'] = max_loras
-            engine_kwargs['max_lora_rank'] = max_lora_rank
+        if 'enable_lora' in parameters and self.enable_lora:
+            engine_kwargs['enable_lora'] = self.enable_lora
+            engine_kwargs['max_loras'] = self.max_loras
+            engine_kwargs['max_lora_rank'] = self.max_lora_rank
         else:
-            assert not enable_lora, 'The current version of vLLM does not support `enable_lora`. Please upgrade vLLM.'
+            assert not self.enable_lora, (
+                'The current version of vLLM does not support `enable_lora`. Please upgrade vLLM.')
 
-        if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
-            engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
+        if 'limit_mm_per_prompt' in parameters and self.limit_mm_per_prompt:
+            engine_kwargs['limit_mm_per_prompt'] = self.limit_mm_per_prompt
         else:
-            assert not limit_mm_per_prompt, (
+            assert not self.limit_mm_per_prompt, (
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
                 'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode'
         ]:
             if key in parameters:
-                if locals()[key] is not None:
-                    engine_kwargs[key] = locals()[key]
+                value = getattr(self, key, None)
+                if value is not None:
+                    engine_kwargs[key] = value
             else:
                 logger.warning(f'The current version of vLLM does not support `{key}`. Ignored.')
         for key in ['task', 'seed']:
-            val = locals()[key]
+            val = getattr(self, key, None)
             if val is not None:
                 engine_kwargs[key] = val
 
@@ -234,28 +227,24 @@ class VllmEngine(InferEngine):
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
         self.template.set_mode('vllm')
         engine_kwargs.update(self.template.prepare_engine_kwargs())
-        if enable_prefix_caching is not None:
-            engine_kwargs['enable_prefix_caching'] = enable_prefix_caching
+        if self.enable_prefix_caching is not None:
+            engine_kwargs['enable_prefix_caching'] = self.enable_prefix_caching
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
-            gpu_memory_utilization=gpu_memory_utilization,
-            tensor_parallel_size=tensor_parallel_size,
-            pipeline_parallel_size=pipeline_parallel_size,
-            max_model_len=max_model_len,
-            max_num_seqs=max_num_seqs,
+            gpu_memory_utilization=self.gpu_memory_utilization,
+            tensor_parallel_size=self.tensor_parallel_size,
+            pipeline_parallel_size=self.pipeline_parallel_size,
+            max_model_len=self.max_model_len,
+            max_num_seqs=self.max_num_seqs,
             disable_log_stats=disable_log_stats,
-            disable_custom_all_reduce=disable_custom_all_reduce,
-            enforce_eager=enforce_eager,
+            disable_custom_all_reduce=self.disable_custom_all_reduce,
+            enforce_eager=self.enforce_eager,
             trust_remote_code=True,
-            distributed_executor_backend=distributed_executor_backend,
+            distributed_executor_backend=self.distributed_executor_backend,
             **engine_kwargs,
         )
         self.engine_args = engine_args
-        self.enable_lora = enable_lora
-        if max_model_len is not None:
-            self.max_model_len = max_model_len
-            logger.info(f'Setting max_model_len: {max_model_len}')
 
     def _prepare_reasoning_parser(self, reasoning_parser: Optional[str]) -> None:
         self.reasoning_parser = None

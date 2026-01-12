@@ -21,29 +21,30 @@ logger = get_logger()
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
 
-    def _post_init(self, template=None):
-        processor = self.processor
+    def __init__(self, processor):
+        self.processor = processor
+        if not hasattr(self, 'template'):
+            self._prepare_template()
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
         self.model_name = self.model_info.model_name
-        self.max_model_len = self.model_info.max_model_len
+        if not hasattr(self, 'max_model_len'):
+            self.max_model_len = self.model_info.max_model_len
         self.task_type = self.model_info.task_type
         self.config = self.model_info.config
         self.max_tokens_offset = 0
-        if template is None:
-            ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
-            logger.info('Create the template for the infer_engine')
-            if ckpt_dir:
-                from swift.arguments import BaseArguments
-                args = BaseArguments.from_pretrained(ckpt_dir)
-                self.template = args.get_template(self.processor)
-            else:
-                self.template = get_template(self.processor)
-        else:
-            self.template = template
 
-        self._adapters_pool = {}
+    def _prepare_template(self):
+        ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+        logger.info('Create the template for the infer_engine')
+        if ckpt_dir:
+            from swift.arguments import BaseArguments
+            args = BaseArguments.from_pretrained(ckpt_dir)
+            template = args.get_template(self.processor)
+        else:
+            template = get_template(self.processor)
+        self.template = template
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

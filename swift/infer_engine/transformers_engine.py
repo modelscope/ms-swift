@@ -7,7 +7,7 @@ import time
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import json
 import torch
@@ -20,7 +20,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.metrics import Metric
 from swift.model import get_model_processor
-from swift.template import Template, TemplateMeta
+from swift.template import Template
 from swift.tuners import Swift
 from swift.utils import get_generative_reranker_logits, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
@@ -65,41 +65,57 @@ class TransformersEngine(InferEngine):
             revision: Optional[str] = None,
             hub_token: Optional[str] = None,
             **kwargs):
+        if isinstance(adapters, str):
+            adapters = [adapters]
+        self.adapters = adapters or []
+        self.adapters = adapters
+        self.max_batch_size = max_batch_size
+        self.reranker_use_activation = reranker_use_activation
+
+        self.torch_dtype = torch_dtype
+        self.model_type = model_type
+        self.attn_impl = attn_impl
+        self.device_map = device_map
+        self.task_type = task_type
+        self.quantization_config = quantization_config
+        self.model_kwargs = model_kwargs
+
+        self.use_hf = use_hf
+        self.revision = revision
+        self.hub_token = hub_token
         if isinstance(model, str):
-            self.model, self.processor = get_model_processor(
-                model,
-                torch_dtype=torch_dtype,
-                model_type=model_type,
-                use_hf=use_hf,
-                hub_token=hub_token,
-                revision=revision,
-                device_map=device_map,
-                quantization_config=quantization_config,
-                attn_impl=attn_impl,
-                task_type=task_type,
-                model_kwargs=model_kwargs,
-                **kwargs)
+            self.model, processor = self._get_model_processor(model, **kwargs)
         elif isinstance(model, nn.Module):
             self.model = model
             if template is None:
                 raise ValueError('`template` is required when `model` is a nn.Module')
-            self.processor = template.processor
-        self.reranker_use_activation = reranker_use_activation
-        self.max_batch_size = max_batch_size
-        if isinstance(adapters, str):
-            adapters = [adapters]
-        self.adapters = adapters or []
+        if template is not None:
+            processor = template.processor
+            self.template = template
+        super().__init__(processor)
         for adapter in self.adapters:
-            self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
-        self._post_init(template)
-
-    def _post_init(self, template=None):
-        super()._post_init(template)
+            self._add_adapter(safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token))
         self.engine = self.model  # dummy
         self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
         self._task_pool = {}
+        self._adapters_pool = {}
         self._task_thread = None
+
+    def _get_model_processor(self, model_id_or_path, **kwargs):
+        return get_model_processor(
+            model_id_or_path,
+            torch_dtype=self.torch_dtype,
+            model_type=self.model_type,
+            use_hf=self.use_hf,
+            hub_token=self.hub_token,
+            revision=self.revision,
+            device_map=self.device_map,
+            quantization_config=self.quantization_config,
+            attn_impl=self.attn_impl,
+            task_type=self.task_type,
+            model_kwargs=self.model_kwargs,
+            **kwargs)
 
     def _start_infer_worker(self):
         self._task_thread = Thread(target=self._infer_worker, daemon=True)
@@ -340,7 +356,7 @@ class TransformersEngine(InferEngine):
             if task_type == 'generative_reranker':
                 # Qwen3-reranker like
                 logits = get_generative_reranker_logits(
-                    template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
+                    self.template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
             preds = logits.float()
             if self.reranker_use_activation:
                 preds = F.sigmoid(preds)
