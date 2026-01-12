@@ -245,6 +245,7 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
+from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # Retrieve the model and template, and add a trainable LoRA module
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
@@ -269,6 +270,7 @@ trainer.train()
 Inference:
 
 ```python
+from swift import TransformersEngine, InferRequest, RequestConfig
 # Perform inference using the native PyTorch engine
 engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])

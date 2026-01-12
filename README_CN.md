@@ -233,6 +233,7 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 
 训练：
 ```python
+from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # 获取模型和template，并加入可训练的LoRA模块
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
@@ -257,6 +258,7 @@ trainer.train()
 
 推理：
 ```python
+from swift import TransformersEngine, InferRequest, RequestConfig
 # 使用原生pytorch引擎进行推理
 engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])

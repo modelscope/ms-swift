@@ -6,6 +6,8 @@ from .utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
     from .tuners import Swift
+    from .infer_engine import (TransformersEngine, VllmEngine, SglangEngine, LmdeployEngine, InferRequest,
+                               RequestConfig, AdapterRequest)
     from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
     from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
                             AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
@@ -13,12 +15,16 @@ if TYPE_CHECKING:
                             sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
     from .model import get_model_processor
     from .template import get_template
-    from .dataset import load_dataset
+    from .dataset import load_dataset, EncodePreprocessor
     from .utils import get_logger, safe_snapshot_download
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],
         'tuners': ['Swift'],
+        'infer_engine': [
+            'TransformersEngine', 'VllmEngine', 'SglangEngine', 'LmdeployEngine', 'InferRequest', 'RequestConfig',
+            'AdapterRequest'
+        ],
         'trainers': ['TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer'],
         'arguments': [
             'PretrainArguments', 'SftArguments', 'RLHFArguments', 'ExportArguments', 'InferArguments', 'AppArguments',
@@ -30,7 +36,7 @@ else:
         ],
         'model': ['get_model_processor'],
         'template': ['get_template'],
-        'dataset': ['load_dataset'],
+        'dataset': ['load_dataset', 'EncodePreprocessor'],
         'utils': ['get_logger', 'safe_snapshot_download'],
     }
 
