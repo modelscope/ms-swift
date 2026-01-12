@@ -39,6 +39,9 @@ class TrainArgumentsMixin:
         enable_dft_loss (bool): Whether to enable Diversity-from-Diversity (DFD) loss.
             See https://arxiv.org/abs/2508.05629. Defaults to False.
         enable_channel_loss (bool): Whether to enable channel loss. Defaults to False.
+        enable_eaft_loss (bool): Whether to enable Entropy-Adaptive Fine-Tuning (EAFT) loss. Defaults to False.
+        eaft_alpha (float): The alpha parameter for EAFT loss. The final loss is calculated as
+            `(token_entropy / 3.0)^alpha * ce_loss`. Defaults to 1.0.
         weight_decay (float): The weight decay to apply (if not zero) to all layers except bias and LayerNorm weights.
             Defaults to 0.1.
         adam_beta2 (float): The beta2 hyperparameter for the AdamW optimizer. Defaults to 0.95.
@@ -106,6 +109,8 @@ class TrainArgumentsMixin:
     router_aux_loss_coef: float = 0.
     enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
     enable_channel_loss: bool = False
+    enable_eaft_loss: bool = False
+    eaft_alpha: float = 1.0
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
