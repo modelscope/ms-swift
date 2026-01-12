@@ -103,7 +103,6 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
 
 
 class MegatronRolloutMixin:
-    _moe_weight_loader_patched = False
 
     def _init_rollout_params(self):
         """Initialize rollout generation parameters."""
@@ -312,9 +311,8 @@ class MegatronRolloutMixin:
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            if not MegatronRolloutMixin._moe_weight_loader_patched:
-                patch_vllm_moe_model_weight_loader(llm_model)
-                MegatronRolloutMixin._moe_weight_loader_patched = True
+            # Patch MoE weight_loader if needed (idempotent)
+            patch_vllm_moe_model_weight_loader(llm_model)
             llm_model.load_weights(weight_iterator)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)

@@ -810,78 +810,58 @@ def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
 def patch_vllm_moe_model_weight_loader(model):
     """
     Patch vLLM MoE model to add weight_loader attribute to expert weights.
+
     This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
     don't have the weight_loader attribute, causing AttributeError during weight loading.
     Code adapted from verl/verl/utils/vllm/patch.py
+
     Args:
         model: The vLLM model to patch.
     """
-    # Build list of supported MOE models dynamically to handle different vLLM versions
+    import importlib
+
+    # Check if already patched (idempotent)
+    if getattr(model, '_swift_moe_weight_loader_patched', False):
+        return
+
+    # MoE model configurations: (module_path, class_names, mlp_attr)
+    # mlp_attr specifies the attribute name for the MoE layer in each model
+    moe_model_configs = [
+        ('vllm.model_executor.models.deepseek_v2', ('DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'), 'mlp'),
+        ('vllm.model_executor.models.mixtral', ('MixtralForCausalLM', ), 'block_sparse_moe'),
+        ('vllm.model_executor.models.qwen2_moe', ('Qwen2MoeForCausalLM', ), 'mlp'),
+        ('vllm.model_executor.models.qwen3_moe', ('Qwen3MoeForCausalLM', ), 'mlp'),
+        ('vllm.model_executor.models.qwen3_vl_moe', ('Qwen3MoeLLMForCausalLM', ), 'mlp'),
+        ('vllm.model_executor.models.qwen3_next', ('Qwen3NextForCausalLM', ), 'mlp'),
+        ('vllm.model_executor.models.kimi_vl', ('KimiVLForConditionalGeneration', ), 'mlp'),
+    ]
+
+    # Build supported models list and MLP attribute mapping
     supported_moe_models = []
+    mlp_attr_mapping = {}
 
-    try:
-        from vllm.model_executor.models.deepseek_v2 import DeepseekV2ForCausalLM, DeepseekV3ForCausalLM
-        supported_moe_models.append(DeepseekV2ForCausalLM)
-        supported_moe_models.append(DeepseekV3ForCausalLM)
-    except ImportError:
-        pass
+    for module_path, class_names, mlp_attr in moe_model_configs:
+        try:
+            module = importlib.import_module(module_path)
+            for class_name in class_names:
+                if hasattr(module, class_name):
+                    model_class = getattr(module, class_name)
+                    supported_moe_models.append(model_class)
+                    mlp_attr_mapping[model_class] = mlp_attr
+        except ImportError:
+            pass
 
-    try:
-        from vllm.model_executor.models.mixtral import MixtralForCausalLM
-        supported_moe_models.append(MixtralForCausalLM)
-    except ImportError:
-        pass
-
-    try:
-        from vllm.model_executor.models.qwen2_moe import Qwen2MoeForCausalLM
-        supported_moe_models.append(Qwen2MoeForCausalLM)
-    except ImportError:
-        pass
-
-    try:
-        from vllm.model_executor.models.qwen3_moe import Qwen3MoeForCausalLM
-        supported_moe_models.append(Qwen3MoeForCausalLM)
-    except ImportError:
-        pass
-
-    try:
-        from vllm.model_executor.models.qwen3_vl_moe import Qwen3MoeLLMForCausalLM
-        supported_moe_models.append(Qwen3MoeLLMForCausalLM)
-    except ImportError:
-        pass
-
-    try:
-        from vllm.model_executor.models.qwen3_next import Qwen3NextForCausalLM
-        supported_moe_models.append(Qwen3NextForCausalLM)
-    except ImportError:
-        pass
-
-    try:
-        from vllm.model_executor.models.kimi_vl import KimiVLForConditionalGeneration
-        supported_moe_models.append(KimiVLForConditionalGeneration)
-    except ImportError:
-        pass
-
-    # Early return if no MOE models are supported
+    # Early return if no MoE models are supported
     if not supported_moe_models:
         return
 
+    original_model = model
     original_model_type = type(model)
 
     # Handle NPU ACLGraphWrapper (for vllm_ascend compatibility)
     if hasattr(model, 'runnable') and 'ACLGraphWrapper' in str(original_model_type):
         model = model.runnable
         original_model_type = type(model)
-
-    # Define MLP attribute mapping for different model types
-    mlp_attr_mapping = {}
-    try:
-        from vllm.model_executor.models.mixtral import MixtralForCausalLM
-        mlp_attr_mapping[MixtralForCausalLM] = 'block_sparse_moe'
-    except ImportError:
-        pass
-
-    default_mlp_attr = 'mlp'
 
     # Get inner model (either model.model or model.language_model)
     inner_model = getattr(model, 'model', None) or getattr(model, 'language_model', None)
@@ -901,7 +881,7 @@ def patch_vllm_moe_model_weight_loader(model):
         return
 
     for layer in inner_model.layers:
-        mlp_attr = mlp_attr_mapping.get(original_model_type, default_mlp_attr)
+        mlp_attr = mlp_attr_mapping.get(original_model_type, 'mlp')
 
         mlp = getattr(layer, mlp_attr, None)
         if not mlp:
@@ -916,6 +896,9 @@ def patch_vllm_moe_model_weight_loader(model):
             if 'w13_weight' in name or 'w2_weight' in name:
                 if not hasattr(param, 'weight_loader'):
                     param.weight_loader = experts.weight_loader
+
+    # Mark the model as patched (for idempotency)
+    original_model._swift_moe_weight_loader_patched = True
 
 
 def patch_vllm_load_adapter():

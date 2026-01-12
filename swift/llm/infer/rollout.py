@@ -74,18 +74,6 @@ patch_vllm_load_adapter()
 
 
 class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
-    _moe_weight_loader_patched = False
-
-    def _ensure_moe_weight_loader_patched(self):
-        """
-        Ensure the MoE model weight_loader is patched before loading weights.
-        This patches vLLM MoE models to add weight_loader attribute to expert weights,
-        which is required for weight loading but missing in some vLLM versions (e.g., 0.8.2).
-        This is especially needed for NPU (Ascend) compatibility.
-        """
-        if not WeightSyncWorkerExtension._moe_weight_loader_patched:
-            patch_vllm_moe_model_weight_loader(self.model_runner.model)
-            WeightSyncWorkerExtension._moe_weight_loader_patched = True
 
     def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
         """
@@ -110,7 +98,8 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         self._comm.broadcast(weight, src=self.client_rank)
         self._comm.group.barrier()
 
-        self._ensure_moe_weight_loader_patched()
+        # Patch MoE weight_loader if needed (idempotent)
+        patch_vllm_moe_model_weight_loader(self.model_runner.model)
 
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
@@ -191,7 +180,8 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
 
-        self._ensure_moe_weight_loader_patched()
+        # Patch MoE weight_loader if needed (idempotent)
+        patch_vllm_moe_model_weight_loader(self.model_runner.model)
         # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 

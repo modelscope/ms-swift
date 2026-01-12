@@ -73,7 +73,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     """
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    _moe_weight_loader_patched = False
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
@@ -465,9 +464,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            if not RolloutTrainerMixin._moe_weight_loader_patched:
-                patch_vllm_moe_model_weight_loader(llm_model)
-                RolloutTrainerMixin._moe_weight_loader_patched = True
+            # Patch MoE weight_loader if needed (idempotent)
+            patch_vllm_moe_model_weight_loader(llm_model)
             llm_model.load_weights(state_dict.items())
         del state_dict
 
