@@ -680,7 +680,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 # 3. Subtract KL (if enabled)
                 if isinstance(kl_penalty, torch.Tensor) or kl_penalty != 0.0:
-                    advantages = advantages - kl_penalty
+                    advantages = advantages - kl_penalty * self.reward_weights.sum()
 
                 # 4. Batch-wise Normalization (Whitening)
                 adv_mean = advantages.mean()
