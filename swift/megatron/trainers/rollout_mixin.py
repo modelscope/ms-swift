@@ -23,7 +23,7 @@ from megatron.training import get_args
 from swift.llm import RequestConfig, RolloutInferRequest, Template, to_device
 from swift.llm.infer.protocol import RolloutOutput
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
-                                               set_expandable_segments)
+                                               patch_vllm_moe_model_weight_loader, set_expandable_segments)
 from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer, profiling_context, profiling_decorator)
@@ -103,6 +103,7 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
 
 
 class MegatronRolloutMixin:
+    _moe_weight_loader_patched = False
 
     def _init_rollout_params(self):
         """Initialize rollout generation parameters."""
@@ -311,6 +312,9 @@ class MegatronRolloutMixin:
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
+            if not MegatronRolloutMixin._moe_weight_loader_patched:
+                patch_vllm_moe_model_weight_loader(llm_model)
+                MegatronRolloutMixin._moe_weight_loader_patched = True
             llm_model.load_weights(weight_iterator)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)

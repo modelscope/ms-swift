@@ -42,7 +42,7 @@ from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                                UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
                                                UpdateFlattenedParamsRequest, check_vllm_version_ge,
-                                               patch_vllm_load_adapter)
+                                               patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -74,6 +74,18 @@ patch_vllm_load_adapter()
 
 
 class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
+    _moe_weight_loader_patched = False
+
+    def _ensure_moe_weight_loader_patched(self):
+        """
+        Ensure the MoE model weight_loader is patched before loading weights.
+        This patches vLLM MoE models to add weight_loader attribute to expert weights,
+        which is required for weight loading but missing in some vLLM versions (e.g., 0.8.2).
+        This is especially needed for NPU (Ascend) compatibility.
+        """
+        if not WeightSyncWorkerExtension._moe_weight_loader_patched:
+            patch_vllm_moe_model_weight_loader(self.model_runner.model)
+            WeightSyncWorkerExtension._moe_weight_loader_patched = True
 
     def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
         """
@@ -97,6 +109,8 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
         self._comm.broadcast(weight, src=self.client_rank)
         self._comm.group.barrier()
+
+        self._ensure_moe_weight_loader_patched()
 
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
@@ -177,6 +191,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
 
+        self._ensure_moe_weight_loader_patched()
         # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 

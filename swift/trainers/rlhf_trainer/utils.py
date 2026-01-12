@@ -807,6 +807,117 @@ def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
     return model
 
 
+def patch_vllm_moe_model_weight_loader(model):
+    """
+    Patch vLLM MoE model to add weight_loader attribute to expert weights.
+    This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
+    don't have the weight_loader attribute, causing AttributeError during weight loading.
+    Code adapted from verl/verl/utils/vllm/patch.py
+    Args:
+        model: The vLLM model to patch.
+    """
+    # Build list of supported MOE models dynamically to handle different vLLM versions
+    supported_moe_models = []
+
+    try:
+        from vllm.model_executor.models.deepseek_v2 import DeepseekV2ForCausalLM, DeepseekV3ForCausalLM
+        supported_moe_models.append(DeepseekV2ForCausalLM)
+        supported_moe_models.append(DeepseekV3ForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.mixtral import MixtralForCausalLM
+        supported_moe_models.append(MixtralForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.qwen2_moe import Qwen2MoeForCausalLM
+        supported_moe_models.append(Qwen2MoeForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.qwen3_moe import Qwen3MoeForCausalLM
+        supported_moe_models.append(Qwen3MoeForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.qwen3_vl_moe import Qwen3MoeLLMForCausalLM
+        supported_moe_models.append(Qwen3MoeLLMForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.qwen3_next import Qwen3NextForCausalLM
+        supported_moe_models.append(Qwen3NextForCausalLM)
+    except ImportError:
+        pass
+
+    try:
+        from vllm.model_executor.models.kimi_vl import KimiVLForConditionalGeneration
+        supported_moe_models.append(KimiVLForConditionalGeneration)
+    except ImportError:
+        pass
+
+    # Early return if no MOE models are supported
+    if not supported_moe_models:
+        return
+
+    original_model_type = type(model)
+
+    # Handle NPU ACLGraphWrapper (for vllm_ascend compatibility)
+    if hasattr(model, 'runnable') and 'ACLGraphWrapper' in str(original_model_type):
+        model = model.runnable
+        original_model_type = type(model)
+
+    # Define MLP attribute mapping for different model types
+    mlp_attr_mapping = {}
+    try:
+        from vllm.model_executor.models.mixtral import MixtralForCausalLM
+        mlp_attr_mapping[MixtralForCausalLM] = 'block_sparse_moe'
+    except ImportError:
+        pass
+
+    default_mlp_attr = 'mlp'
+
+    # Get inner model (either model.model or model.language_model)
+    inner_model = getattr(model, 'model', None) or getattr(model, 'language_model', None)
+    if inner_model is None:
+        # Model structure not recognized, skip patching
+        return
+
+    if not isinstance(model, tuple(supported_moe_models)) and not isinstance(inner_model, tuple(supported_moe_models)):
+        return
+
+    # Handle Qwen3-VL MoE structure
+    if type(inner_model).__name__ == 'Qwen3MoeLLMForCausalLM':
+        inner_model = inner_model.model
+
+    # Check if inner_model has layers attribute
+    if not hasattr(inner_model, 'layers'):
+        return
+
+    for layer in inner_model.layers:
+        mlp_attr = mlp_attr_mapping.get(original_model_type, default_mlp_attr)
+
+        mlp = getattr(layer, mlp_attr, None)
+        if not mlp:
+            continue
+
+        experts = getattr(mlp, 'experts', None)
+        if not experts or not hasattr(experts, 'weight_loader'):
+            continue
+
+        # Patch the weight loaders for MoE expert weights
+        for name, param in mlp.named_parameters():
+            if 'w13_weight' in name or 'w2_weight' in name:
+                if not hasattr(param, 'weight_loader'):
+                    param.weight_loader = experts.weight_loader
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     try:
