@@ -581,7 +581,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     soft_cache_length: Optional[int] = None
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
-    scale_rewards: Optional[Literal['group', 'batch', 'none']] = None
+    scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
 
     # entropy
     log_entropy: bool = False
