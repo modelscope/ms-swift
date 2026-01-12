@@ -16,7 +16,7 @@ from transformers.utils.versions import require_version
 from swift.template import TemplateType
 from swift.utils import (Processor, get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled,
                          to_device)
-from ..constant import LLMModelType, MLLMModelType, RerankerModelType, RMModelType
+from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
@@ -1550,7 +1550,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        RerankerModelType.qwen3_reranker,
+        LLMModelType.qwen3_reranker,
         [
             ModelGroup([
                 Model('Qwen/Qwen3-Reranker-0.6B', 'Qwen/Qwen3-Reranker-0.6B'),

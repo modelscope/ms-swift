@@ -7,7 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
-from ..constant import MLLMModelType, RerankerModelType
+from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_clone
@@ -256,13 +256,13 @@ class JinaRerankerM0Loader(ModelLoader):
 
 register_model(
     ModelMeta(
-        RerankerModelType.jina_reranker_m0,
+        MLLMModelType.jina_reranker_m0,
         [ModelGroup([Model('JinaAI/jina-reranker-m0', 'JinaAI/jina-reranker-m0')])],
         JinaRerankerM0Loader,
         template=TemplateType.jina_reranker_m0,
         model_arch=ModelArch.qwen2_vl,
         architectures=['JinaRerankerM0ForConditionalGeneration'],
-        # is_multimodal=True,
+        task_type='reranker',
         tags=['reranker', 'vision'],
     ))
 

@@ -12,6 +12,7 @@ class LLMModelType:
     qwen3_moe = 'qwen3_moe'
     qwen3_next = 'qwen3_next'
     qwen3_emb = 'qwen3_emb'
+    qwen3_reranker = 'qwen3_reranker'
 
     qwen2_gte = 'qwen2_gte'
 
@@ -110,6 +111,9 @@ class LLMModelType:
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+
+    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
+    bge_reranker = 'bge_reranker'
 
 
 class BertModelType:
@@ -241,19 +245,14 @@ class MLLMModelType:
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
     mistral3 = 'mistral3'
-    mistral_2506 = 'mistral3_2506'
+    mistral3_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
 
-
-class RerankerModelType:
-    bge_reranker = 'bge_reranker'
-    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     jina_reranker_m0 = 'jina_reranker_m0'
-    qwen3_reranker = 'qwen3_reranker'
 
 
-class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType):
+class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -271,4 +270,4 @@ class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType, Reranke
         return list(
             chain.from_iterable(
                 _get_model_name_list(model_type_cls)
-                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType, RerankerModelType]))
+                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))

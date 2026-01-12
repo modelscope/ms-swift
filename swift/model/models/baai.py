@@ -7,7 +7,7 @@ from transformers import AutoModel, AutoModelForSequenceClassification, Pretrain
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_device, git_clone_github, safe_snapshot_download
-from ..constant import MLLMModelType, RerankerModelType
+from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
@@ -99,7 +99,7 @@ class BgeRerankerLoader(ModelLoader):
 
 register_model(
     ModelMeta(
-        RerankerModelType.bge_reranker,
+        LLMModelType.bge_reranker,
         [
             ModelGroup([
                 Model('BAAI/bge-reranker-base', 'BAAI/bge-reranker-base'),
@@ -109,5 +109,6 @@ register_model(
         ],
         BgeRerankerLoader,
         template=TemplateType.bge_reranker,
+        task_type='reranker',
         architectures=['XLMRobertaForSequenceClassification'],
     ))

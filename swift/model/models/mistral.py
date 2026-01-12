@@ -197,7 +197,7 @@ class Mistral3_2506Loader(Mistral3Loader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.mistral_2506,
+        MLLMModelType.mistral3_2506,
         [
             ModelGroup([
                 Model('mistralai/Mistral-Small-3.2-24B-Instruct-2506', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'),

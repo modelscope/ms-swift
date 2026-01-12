@@ -4,7 +4,7 @@ from transformers import AutoModel, AutoModelForSequenceClassification, PreTrain
 
 from swift.template import TemplateType
 from swift.utils import get_logger
-from ..constant import BertModelType, RerankerModelType
+from ..constant import BertModelType, LLMModelType
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
 
@@ -69,7 +69,7 @@ class GTEBertReranker(ModelLoader):
 
 register_model(
     ModelMeta(
-        RerankerModelType.modern_bert_gte_reranker,
+        LLMModelType.modern_bert_gte_reranker,
         [ModelGroup([
             Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
         ])],
@@ -77,6 +77,7 @@ register_model(
         template=TemplateType.bert,
         requires=['transformers>=4.48'],
         architectures=['ModernBertForSequenceClassification'],
+        task_type='reranker',
         tags=['bert', 'reranker']))
 
 register_model(

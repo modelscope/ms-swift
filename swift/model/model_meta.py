@@ -80,7 +80,7 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from .constant import RMModelType, RerankerModelType, MLLMModelType
+        from .constant import RMModelType, MLLMModelType
         from .register import ModelLoader
         assert not isinstance(self.loader, str)  # check ms-swift4.0
         if self.loader is None:
@@ -97,8 +97,6 @@ class ModelMeta:
             self.is_multimodal = True
         if self.model_type in RMModelType.__dict__:
             self.is_reward = True
-        if self.model_type in RerankerModelType.__dict__:
-            self.task_type = 'reranker'
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
