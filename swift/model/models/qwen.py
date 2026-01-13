@@ -146,7 +146,8 @@ class QwenAudioLoader(QwenLoader):
         if not hasattr(tokenizer_cls, '_old_decode'):
             tokenizer_cls._old_decode = tokenizer_cls._decode
             tokenizer_cls._decode = _qwen_vl_audio_decode
-        return tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+        self.auto_tokenizer_cls = tokenizer_cls
+        return super().get_processor(model_dir, config)
 
 
 register_model(
@@ -222,7 +223,8 @@ class QwenVLLoader(QwenLoader):
         if not hasattr(tokenizer_cls, '_old_decode'):
             tokenizer_cls._old_decode = tokenizer_cls._decode
             tokenizer_cls._decode = _qwen_vl_audio_decode
-        return tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+        self.auto_tokenizer_cls = tokenizer_cls
+        return super().get_processor(model_dir, config)
 
 
 register_model(
