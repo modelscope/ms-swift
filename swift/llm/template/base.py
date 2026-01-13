@@ -1081,7 +1081,10 @@ class Template(ProcessorMixin):
                 if i < start_idx:
                     continue
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith(('<think>', non_thinking_prefix)) and need_add_non_thinking_prefix:
+                    if (
+                        not message['content'].startswith(('<think>', non_thinking_prefix))
+                        and need_add_non_thinking_prefix
+                    ):
                         # During multi-turn SFT training/validation:
                         # If the message has no <think> block and does not start with the non_thinking_prefix,
                         # prepend the non_thinking_prefix to the content.
