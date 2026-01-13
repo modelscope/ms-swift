@@ -236,7 +236,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
             engine = GRPOVllmEngine(
                 model.model_dir,
-                model.model_info.torch_dtype,
+                torch_dtype=model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,
                 use_async_engine=False,
                 tensor_parallel_size=self.vllm_tensor_parallel_size,
