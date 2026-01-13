@@ -1,6 +1,6 @@
 import os
 
-from swift.infer_engine import BaseArguments, InferRequest, TransformersEngine, get_template
+from swift import BaseArguments, InferRequest, TransformersEngine, get_template
 
 os.environ['MAX_PIXELS'] = '1003520'
 

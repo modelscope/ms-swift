@@ -1,6 +1,5 @@
 import atexit
 import logging
-import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -8,11 +7,10 @@ from dataclasses import asdict
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
-import json
 import requests
 import torch
 from packaging import version
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from requests import ConnectionError
 from torch import nn
 
