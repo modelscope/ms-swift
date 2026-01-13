@@ -36,7 +36,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_tokens_offset = 0
 
     def _get_template(self, processor: Processor):
-        ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+        ckpt_dir = get_ckpt_dir(processor.model_info.model_dir, getattr(self, 'adapters', None))
         logger.info('Create the template for the infer_engine')
         if ckpt_dir:
             from swift.arguments import BaseArguments
