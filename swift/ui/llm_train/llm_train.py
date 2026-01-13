@@ -177,6 +177,16 @@ class LLMTrain(BaseUI):
                 'en': 'Liger kernel can reduce memory usage'
             }
         },
+        'use_cce': {
+            'label': {
+                'zh': '使用CCE加速',
+                'en': 'Use CCE acceleration'
+            },
+            'info': {
+                'zh': 'CCE (ml-cross-entropy) 提供融合的交叉熵算子',
+                'en': 'CCE (ml-cross-entropy) provides fused cross-entropy kernels'
+            }
+        },
         'sequence_parallel_size': {
             'label': {
                 'zh': '序列并行大小',
@@ -257,6 +267,7 @@ class LLMTrain(BaseUI):
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                        gr.Checkbox(elem_id='use_cce', scale=4)
                     with gr.Row():
                         gr.Dropdown(
                             elem_id='gpu_id',
@@ -390,6 +401,9 @@ class LLMTrain(BaseUI):
         use_liger_kernel = kwargs.get('use_liger_kernel', None)
         if use_liger_kernel:
             kwargs.pop('use_liger_kernel')
+        use_cce = kwargs.get('use_cce', None)
+        if use_cce:
+            kwargs.pop('use_cce')
         if other_kwargs.get('use_muon'):
             kwargs['use_muon'] = other_kwargs.pop('use_muon')
 
@@ -428,6 +442,9 @@ class LLMTrain(BaseUI):
         if use_liger_kernel:
             params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote} '
             command.extend(['--use_liger_kernel', f'{use_liger_kernel}'])
+        if use_cce:
+            params += f'--use_cce {cls.quote}{use_cce}{cls.quote} '
+            command.extend(['--use_cce', f'{use_cce}'])
         if use_muon:
             params += f'--optimizer {cls.quote}muon{cls.quote} '
             command.extend(['--optimizer', 'muon'])

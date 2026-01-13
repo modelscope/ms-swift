@@ -157,6 +157,16 @@ class LLMGRPO(LLMTrain):
                 'en': 'Liger kernel can reduce memory usage'
             }
         },
+        'use_cce': {
+            'label': {
+                'zh': '使用CCE加速',
+                'en': 'Use CCE acceleration'
+            },
+            'info': {
+                'zh': 'CCE (ml-cross-entropy) 提供融合的交叉熵算子',
+                'en': 'CCE (ml-cross-entropy) provides fused cross-entropy kernels'
+            }
+        },
         'sequence_parallel_size': {
             'label': {
                 'zh': '序列并行大小',
@@ -233,6 +243,7 @@ class LLMGRPO(LLMTrain):
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                        gr.Checkbox(elem_id='use_cce', scale=4)
                         gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                     with gr.Row():
                         gr.Dropdown(

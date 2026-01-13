@@ -9,7 +9,7 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 from swift.plugin import loss_mapping
-from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
+from swift.utils import get_dist_setting, get_logger, is_cce_available, is_liger_available, is_mp, json_parse_to_dict
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -54,6 +54,7 @@ class TrainArgumentsMixin:
         dataloader_prefetch_factor (Optional[int]): The number of batches loaded in advance by each worker. Defaults
             to None.
         use_liger_kernel (bool): Whether to use the Liger kernel for optimization. Defaults to False.
+        use_cce (bool): Whether to use ml-cross-entropy fused kernels for optimization. Defaults to False.
         check_model (bool): If True, checks local model files for corruption or modification and provides a warning.
             Should be set to False in an offline environment. Defaults to True.
         acc_strategy (Literal['token', 'seq']): The strategy for calculating accuracy during training and validation.
@@ -116,6 +117,7 @@ class TrainArgumentsMixin:
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
     use_liger_kernel: bool = False
+    use_cce: bool = False
 
     # extra
     check_model: bool = True
@@ -166,10 +168,19 @@ class TrainArgumentsMixin:
             except Exception:
                 pass
 
+    def _init_cce(self):
+        if self.use_cce:
+            assert is_cce_available(), ('use_cce requires cut-cross-entropy, try '
+                                        '`pip install "cut-cross-entropy[transformers] @ '
+                                        'git+https://github.com/axolotl-ai-cloud/ml-cross-entropy.git@f643b88"`')
+
     def __post_init__(self):
         if is_mp() and self.use_liger_kernel:
             raise ValueError('liger_kernel does not support device_map. '
                              'Please use DDP/DeepSpeed for multi-GPU training.')
+
+        if self.use_cce and self.use_liger_kernel:
+            logger.warning('Enabling both use_cce and use_liger_kernel may lead to duplicated kernel patches.')
 
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
@@ -186,6 +197,7 @@ class TrainArgumentsMixin:
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         self._init_liger()
+        self._init_cce()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
                 self.dataloader_num_workers = 0
