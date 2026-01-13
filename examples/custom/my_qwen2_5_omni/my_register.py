@@ -10,8 +10,7 @@ from swift.model import (Model, ModelGroup, ModelLoader, ModelMeta, MultiModelKe
 from swift.model.models.qwen import patch_qwen_vl_utils
 from swift.model.patcher import patch_get_input_embeddings
 from swift.model.utils import use_submodel_func
-from swift.template import Template, TemplateMeta, get_template, register_template
-from swift.template.template_inputs import StdTemplateInputs
+from swift.template import StdTemplateInputs, Template, TemplateMeta, get_template, register_template
 from swift.template.utils import Context, findall
 from swift.template.vision_utils import load_audio
 from swift.utils import Processor, get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype

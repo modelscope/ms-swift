@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
     from .tuners import Swift
     from .infer_engine import (TransformersEngine, VllmEngine, SglangEngine, LmdeployEngine, InferRequest,
-                               RequestConfig, AdapterRequest)
+                               RequestConfig, AdapterRequest, InferEngine, InferClient)
     from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
     from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
                             AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
@@ -26,7 +26,7 @@ else:
         'tuners': ['Swift'],
         'infer_engine': [
             'TransformersEngine', 'VllmEngine', 'SglangEngine', 'LmdeployEngine', 'InferRequest', 'RequestConfig',
-            'AdapterRequest'
+            'AdapterRequest', 'InferEngine', 'InferClient'
         ],
         'trainers': ['TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer'],
         'arguments': [

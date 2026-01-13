@@ -126,8 +126,7 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 from transformers.integrations import is_deepspeed_zero3_enabled
 from swift import get_model_processor
-from swift.template import Template, TemplateMeta, get_template, register_template
-from swift.template.template_inputs import StdTemplateInputs
+from swift.template import StdTemplateInputs, Template, TemplateMeta, get_template, register_template
 from swift.template.utils import Context, findall
 from swift.template.vision_utils import load_audio
 from swift.utils import Processor, get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
