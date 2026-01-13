@@ -61,6 +61,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     Args:
         tuner_backend (str): The tuner backend to use. Choices are 'peft' or 'unsloth'. Default is 'peft'.
+        proc_title (str): The proc title name to be set. Default is 'ms-swift'.
         train_type (str): The training type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
             'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
         adapters (List[str]): A list of adapter IDs or paths. This is typically used for inference or deployment.
@@ -95,6 +96,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         use_swift_lora (bool): Whether to use swift lora. This is a compatible argument. Default is False.
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
+    proc_title: str = field(default="ms-swift", metadata={'help': f"proc name"})
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
