@@ -301,8 +301,7 @@ print()
 **Method 3: Swift Client**
 
 ```python
-from swift.infer_engine import InferRequest, InferClient, RequestConfig
-from swift.metrics import InferStats
+from swift import InferRequest, InferClient, RequestConfig, InferStats
 
 engine = InferClient(host='127.0.0.1', port=8000)
 print(f'models: {engine.models}')

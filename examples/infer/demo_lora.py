@@ -61,8 +61,8 @@ def infer_lora(infer_request: 'InferRequest'):
 
 
 if __name__ == '__main__':
-    from swift import TransformersEngine, RequestConfig, AdapterRequest, InferRequest, BaseArguments
-    from swift import get_model_processor, safe_snapshot_download, Swift, get_template
+    from swift import (TransformersEngine, RequestConfig, AdapterRequest, InferRequest, BaseArguments,
+                       get_model_processor, safe_snapshot_download, Swift, get_template)
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'pt')
