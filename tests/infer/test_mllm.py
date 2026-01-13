@@ -8,17 +8,15 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.infer_engine import InferRequest
-    from swift.template import get_template
     if infer_backend == 'lmdeploy':
         from swift.infer_engine import LmdeployEngine
-        engine = LmdeployEngine('Qwen/Qwen-VL-Chat', torch.float32)
+        engine = LmdeployEngine('Qwen/Qwen-VL-Chat', torch_dtype=torch.float32)
     elif infer_backend == 'pt':
         from swift.infer_engine import TransformersEngine
         engine = TransformersEngine('Qwen/Qwen2-VL-7B-Instruct')
     elif infer_backend == 'vllm':
         from swift.infer_engine import VllmEngine
         engine = VllmEngine('Qwen/Qwen2-VL-7B-Instruct')
-    template = get_template(engine.processor)
     infer_requests = [
         InferRequest([{
             'role': 'user',
@@ -33,10 +31,10 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
             }]
         }])
     ]
-    return engine, template, infer_requests
+    return engine, infer_requests
 
 
-def test_infer(engine, template, infer_requests):
+def test_infer(engine, infer_requests):
     from swift.infer_engine import RequestConfig
     from swift.metrics import InferStats
     request_config = RequestConfig(temperature=0)
@@ -49,7 +47,7 @@ def test_infer(engine, template, infer_requests):
     print(infer_stats.compute())
 
 
-def test_stream(engine, template, infer_requests):
+def test_stream(engine, infer_requests):
     from swift.infer_engine import RequestConfig
     from swift.metrics import InferStats
     infer_stats = InferStats()
@@ -73,6 +71,6 @@ def test_stream(engine, template, infer_requests):
 
 
 if __name__ == '__main__':
-    engine, template, infer_requests = _prepare(infer_backend='pt')
-    test_infer(engine, template, infer_requests)
-    test_stream(engine, template, infer_requests)
+    engine, infer_requests = _prepare(infer_backend='pt')
+    test_infer(engine, infer_requests)
+    test_stream(engine, infer_requests)

@@ -12,7 +12,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
 
     if infer_backend == 'lmdeploy':
         from swift.infer_engine import LmdeployEngine
-        engine = LmdeployEngine('Qwen/Qwen2-7B-Instruct', torch.float32)
+        engine = LmdeployEngine('Qwen/Qwen2-7B-Instruct', torch_dtype=torch.float32)
     elif infer_backend == 'pt':
         from swift.infer_engine import TransformersEngine
         engine = TransformersEngine('Qwen/Qwen2-7B-Instruct')

@@ -10,7 +10,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.infer_engine import InferRequest
     if infer_backend == 'lmdeploy':
         from swift.infer_engine import LmdeployEngine
-        engine = LmdeployEngine('OpenGVLab/InternVL2_5-2B', torch.float32)
+        engine = LmdeployEngine('OpenGVLab/InternVL2_5-2B', torch_dtype=torch.float32)
     elif infer_backend == 'pt':
         from swift.infer_engine import TransformersEngine
         engine = TransformersEngine('Qwen/Qwen2-7B-Instruct', max_batch_size=16)

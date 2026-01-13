@@ -16,7 +16,7 @@ def test_qwen2():
     model, tokenizer = get_model_processor('Qwen/Qwen2-7B-Instruct', load_model=False, use_hf=True)
 
     model, tokenizer = get_model_processor(
-        'Qwen/Qwen2-7B-Instruct', torch.float32, device_map=get_device(), attn_impl='flash_attn')
+        'Qwen/Qwen2-7B-Instruct', torch_dtype=torch.float32, device_map=get_device(), attn_impl='flash_attn')
     print(f'model: {model}, tokenizer: {tokenizer}')
 
 
