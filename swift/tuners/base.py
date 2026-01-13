@@ -728,8 +728,7 @@ class Swift:
         if isinstance(model, _PeftModel):
             model.merge_and_unload()
         elif isinstance(model, SwiftModel):
-            from swift import LoRAConfig
-            from swift.tuners import LoRA
+            from swift.tuners import LoRAConfig, LoRA
             adapter_name = kwargs.get('adapter_name', None)
             if isinstance(adapter_name, str):
                 adapter_name = [adapter_name]
@@ -808,7 +807,7 @@ class Swift:
                 logger.warn('Only LoRA can be converted to peft format')
                 return True
 
-            from swift import LoRAConfig
+            from swift.tuners import LoRAConfig
             return not LoRAConfig(**_json).can_be_saved_to_peft()
 
         for adapter in adapter_names:
@@ -837,7 +836,7 @@ class Swift:
                 new_state_dict[key] = value
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict, os.path.join(output_dir, adapter), safe_serialization)
-            from swift import LoRAConfig
+            from swift.tuners import LoRAConfig
             with open(os.path.join(output_dir, adapter, CONFIG_NAME), encoding='utf-8') as f:
                 _json = json.load(f)
                 peft_config = LoRAConfig(**_json).to_peft_config()
