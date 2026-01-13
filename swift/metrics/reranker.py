@@ -10,20 +10,7 @@ from .base import EvalMetrics
 class RerankerMetrics(EvalMetrics):
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        input_ids = eval_prediction.inputs
-        logits = eval_prediction.predictions
-        labels = eval_prediction.label_ids
-
-        if self.trainer.padding_free:
-            logits = logits[:, -1]
-        else:
-            if logits.ndim == 2 and logits.shape[1] > 1:
-                pad_token_id = self.trainer.tokenizer.pad_token_id
-                valid_mask = (input_ids != pad_token_id) & (input_ids != -100)
-                last_valid_indices = valid_mask[:, ::-1].argmax(axis=1)
-                last_valid_indices = input_ids.shape[1] - 1 - last_valid_indices
-                logits = logits[np.arange(logits.shape[0]), last_valid_indices]
-        return self._calculate_metrics(logits, labels)
+        return self._calculate_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
     def _calculate_metrics(self, logits, labels):
         """
