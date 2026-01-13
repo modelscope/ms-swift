@@ -346,6 +346,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     llm_architectures: Optional[str] = None
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
+    enable_eaft_loss: bool = False
+    eaft_alpha: float = 1.0
     enable_channel_loss: bool = False
     task_type: Literal['causal_lm', 'seq_cls'] = None
     num_labels: Optional[int] = None

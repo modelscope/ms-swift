@@ -56,7 +56,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, enable_eaft_loss=False, eaft_alpha=1.0, **kwargs) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -78,6 +78,24 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
+    if enable_eaft_loss:
+        with torch.no_grad():
+            logits_detach = logits.detach()
+            valid_mask = labels != -100
+            logits_valid = logits_detach[valid_mask]
+            
+            topk_logits, topk_indices = torch.topk(logits_valid, k=20, dim=-1)
+            logsumexp_topk = torch.logsumexp(topk_logits, dim=-1, keepdim=True)
+            log_probs_topk = topk_logits - logsumexp_topk
+            probs_topk = torch.exp(log_probs_topk)
+            entropy_approx = -(probs_topk * log_probs_topk).sum(dim=-1)
+            normalized_entropy = entropy_approx / 3.0
+            eaft_weight_valid = torch.pow(normalized_entropy, eaft_alpha)
+            
+            eaft_weight = torch.ones_like(loss)
+            eaft_weight[valid_mask] = eaft_weight_valid
+            
+        loss *= eaft_weight
     from swift.trainers.sequence_parallel import sequence_parallel
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
@@ -91,7 +109,8 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     return loss
 
 
-def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
+def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, enable_eaft_loss: bool = False,
+                        eaft_alpha: float = 1.0, **kwargs):
     logits = outputs.logits
     # Upcast to float if we need to compute the loss to avoid potential precision issues
     logits = logits.float()
@@ -106,4 +125,20 @@ def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
+    if enable_eaft_loss:
+        with torch.no_grad():
+            valid_mask = labels != -100
+            logits_detach = logits[valid_mask].detach()
+            topk_logits, topk_indices = torch.topk(logits_detach, k=20, dim=-1)
+            logsumexp_topk = torch.logsumexp(topk_logits, dim=-1, keepdim=True)
+            log_probs_topk = topk_logits - logsumexp_topk
+            probs_topk = torch.exp(log_probs_topk)
+            entropy_approx = -(probs_topk * log_probs_topk).sum(dim=-1)
+            normalized_entropy = entropy_approx / 3.0            
+            eaft_weight = torch.pow(normalized_entropy, eaft_alpha)
+            
+            eaft_weight_full = torch.ones_like(loss)
+            eaft_weight_full[valid_mask] = eaft_weight
+            
+        loss *= eaft_weight_full
     return loss

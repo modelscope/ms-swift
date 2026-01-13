@@ -52,13 +52,41 @@ class MegatronTrainer(BaseMegatronTrainer):
                   labels: torch.Tensor,
                   loss_scale: Optional[torch.Tensor] = None,
                   channels: Optional[List[str]] = None,
-                  packed_seq_params=None):
+                  packed_seq_params=None,
+                  logits: Optional[torch.Tensor] = None):
         args = get_args()
 
         losses = output_tensor.float()
         loss_mask = labels != -100
         if args.enable_dft_loss:
             losses = losses * torch.exp(-losses.detach())
+        if args.enable_eaft_loss and logits is not None:
+            with torch.no_grad():
+                logits_float = logits.float()
+                vocab_size = logits_float.shape[-1]
+                
+                batch_size = labels.shape[0]
+                seq_length = labels.shape[1]
+                
+                logits_transposed = logits_float.transpose(0, 1)
+                logits_reshaped = logits_transposed.view(batch_size * seq_length, vocab_size)
+                
+                logits_valid = logits_reshaped[loss_mask.view(-1)]
+                
+                topk_logits, topk_indices = torch.topk(logits_valid, k=20, dim=-1)
+                logsumexp_topk = torch.logsumexp(topk_logits, dim=-1, keepdim=True)
+                log_probs_topk = topk_logits - logsumexp_topk
+                probs_topk = torch.exp(log_probs_topk)
+                entropy_approx = -(probs_topk * log_probs_topk).sum(dim=-1)
+                normalized_entropy = entropy_approx / 3.0
+                eaft_weight_valid = torch.pow(normalized_entropy, args.eaft_alpha)
+                
+                eaft_weight = torch.ones(batch_size * seq_length, device=logits_float.device)
+                eaft_weight[loss_mask.view(-1)] = eaft_weight_valid
+                eaft_weight = eaft_weight.view(batch_size, seq_length)
+
+            losses = losses * eaft_weight
+        
         if loss_scale is not None:
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:
@@ -146,9 +174,15 @@ class MegatronTrainer(BaseMegatronTrainer):
         labels = data.get('labels')
         if self.args.task_type == 'seq_cls':
             data.pop('labels', None)
-        with self.stimer:
-            output_tensor = model(**data)
         packed_seq_params = data.get('packed_seq_params')
+        
+        
+        with self.stimer:
+            if self.args.task_type != 'seq_cls':
+                output_tensor, logits = model(**data, return_logits=True)
+            else:
+                output_tensor = model(**data)
+        
         if self.args.task_type == 'seq_cls':
             loss_func = partial(
                 self.seq_cls_loss_func,
@@ -161,5 +195,6 @@ class MegatronTrainer(BaseMegatronTrainer):
                 labels=labels,
                 loss_scale=loss_scale,
                 channels=channels,
-                packed_seq_params=packed_seq_params)
+                packed_seq_params=packed_seq_params,
+                logits=logits)
         return output_tensor, loss_func

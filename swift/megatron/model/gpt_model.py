@@ -272,6 +272,7 @@ class GPTModel(McoreGPTModel):
         *,
         inference_params: Optional[BaseInferenceContext] = None,
         loss_mask: Optional[torch.Tensor] = None,
+        return_logits: bool = False,
         **kwargs,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
@@ -327,6 +328,7 @@ class GPTModel(McoreGPTModel):
             runtime_gather_output=runtime_gather_output,
             extra_block_kwargs=extra_block_kwargs,
             inference_context=inference_context,
+            return_logits=return_logits,
         )
 
     def _postprocess(
@@ -347,6 +349,7 @@ class GPTModel(McoreGPTModel):
         runtime_gather_output=None,
         extra_block_kwargs=None,
         inference_context=None,
+        return_logits=False,
     ):
         """Postprocesses decoder hidden states to generate logits or compute loss.
 
@@ -472,6 +475,9 @@ class GPTModel(McoreGPTModel):
             return logits.transpose(0, 1).contiguous()
 
         loss = self.compute_language_model_loss(labels, logits)
+
+        if return_logits:
+            return loss, logits
 
         return loss
 
