@@ -96,6 +96,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     res = _convert_config(config)
     hf_model_type = res.get('hf_model_type')
     llm_model_type = res.get('llm_model_type') or hf_model_type
+    res['llm_model_type'] = llm_model_type
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)

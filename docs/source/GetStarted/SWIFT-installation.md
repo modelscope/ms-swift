@@ -15,6 +15,7 @@ pip install 'ms-swift[all]' -U
 
 ## 源代码安装
 
+当前main分支为 swift4.x 版本。
 ```shell
 # pip install git+https://github.com/modelscope/ms-swift.git
 
@@ -22,6 +23,21 @@ pip install 'ms-swift[all]' -U
 # pip install "git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]"
 
 git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
+
+# 全能力
+# pip install -e '.[all]'
+```
+
+安装swift3.x：
+```shell
+# pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12"
+
+# 全能力
+# pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12#egg=ms-swift[all]"
+
+git clone -b release/3.12 https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 

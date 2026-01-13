@@ -14,7 +14,7 @@ pip install 'ms-swift[all]' -U
 ```
 
 ## Source Code Installation
-
+The current main branch is for swift 4.x version.
 ```shell
 # pip install git+https://github.com/modelscope/ms-swift.git
 
@@ -22,6 +22,21 @@ pip install 'ms-swift[all]' -U
 # pip install "git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]"
 
 git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
+
+# Full capabilities
+# pip install -e '.[all]'
+```
+
+Installing swift 3.x:
+```shell
+# pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12"
+
+# Full capabilities
+# pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12#egg=ms-swift[all]"
+
+git clone -b release/3.12 https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
