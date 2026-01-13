@@ -748,8 +748,7 @@ class Template(ProcessorMixin):
             new_context_list: List[Context] = []
             new_loss_scale_list: List[float] = []
             for context, loss_scale in zip(context_list, loss_scale_list):
-                if (loss_scale > 0.0 and isinstance(context, str)
-                        and context.startswith(non_thinking_prefix)):
+                if (loss_scale > 0.0 and isinstance(context, str) and context.startswith(non_thinking_prefix)):
                     new_context_list.append(non_thinking_prefix)
                     new_loss_scale_list.append(0.0)
                     rest = context[len(non_thinking_prefix):]
@@ -1081,10 +1080,8 @@ class Template(ProcessorMixin):
                 if i < start_idx:
                     continue
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if (
-                        not message['content'].startswith(('<think>', non_thinking_prefix))
-                        and need_add_non_thinking_prefix
-                    ):
+                    if (not message['content'].startswith(('<think>', non_thinking_prefix))
+                            and need_add_non_thinking_prefix):
                         # During multi-turn SFT training/validation:
                         # If the message has no <think> block and does not start with the non_thinking_prefix,
                         # prepend the non_thinking_prefix to the content.
