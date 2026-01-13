@@ -743,7 +743,7 @@ class Template(ProcessorMixin):
         # That prefix is part of the template, not something the model should learn to generate.
         # Minimal fix: if a trainable string context starts with that prefix, split it out and
         # force its loss_scale to 0.0 (so labels are masked to -100) while keeping the rest trainable.
-        non_thinking_prefix = getattr(self.template_meta, 'non_thinking_prefix', '') or ''
+        non_thinking_prefix = getattr(self.template_meta, 'non_thinking_prefix', '')
         if non_thinking_prefix:
             new_context_list: List[Context] = []
             new_loss_scale_list: List[float] = []
