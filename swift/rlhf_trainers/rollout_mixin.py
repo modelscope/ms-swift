@@ -34,7 +34,7 @@ from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
 from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
-from .rlhf_arguments import RolloutTrainerArgumentsMixin
+from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,

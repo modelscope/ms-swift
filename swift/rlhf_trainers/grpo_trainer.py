@@ -50,7 +50,7 @@ from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
                          is_wandb_available, remove_response, seed_worker, shutdown_event_loop_in_daemon,
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
-from .rlhf_arguments import GRPOConfig
+from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_profiling_context,
