@@ -302,11 +302,15 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         if is_dist():
             set_device()
 
-    def get_template(self, processor: Optional[Processor], template_type: Optional[str] = None) -> Template:
+    def get_template(self, processor: Optional[Processor] = None, **kwargs) -> Template:
         if processor is None:
             processor = self.get_model_processor(load_model=False)[1]
         template_kwargs = self.get_template_kwargs()
-        template_kwargs['template_type'] = template_type or self.template
+        if 'template_type' in kwargs:
+            template_type = kwargs.get('template_type') 
+        else:
+            template_type = self.template
+        template_kwargs['template_type'] = template_type
         template = get_template(processor, **template_kwargs)
         return template
 

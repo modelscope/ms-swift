@@ -238,7 +238,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template())
     rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
@@ -271,7 +271,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
                            connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     args._import_external_plugins()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template())
 
     rollout_engine = get_rollout_engine_type(args, engine)
 

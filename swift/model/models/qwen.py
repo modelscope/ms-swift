@@ -541,9 +541,6 @@ register_model(
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ], TemplateType.qwen3_thinking),
             ModelGroup([
-                Model('iic/QwenLong-L1.5-30B-A3B', 'Tongyi-Zhiwen/QwenLong-L1.5-30B-A3B'),
-            ], TemplateType.qwen3_thinking),
-            ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
             ], TemplateType.qwen3_nothinking),
@@ -592,6 +589,9 @@ register_model(
             ],
                        TemplateType.qwen3_coder,
                        tags=['coding']),
+            ModelGroup([
+                Model('iic/QwenLong-L1.5-30B-A3B', 'Tongyi-Zhiwen/QwenLong-L1.5-30B-A3B'),
+            ], TemplateType.qwen3_thinking),
             ModelGroup(
                 [
                     Model('Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507'),
@@ -1089,7 +1089,7 @@ register_model(
         ],
         Qwen3VLMoeLoader,
         model_arch=ModelArch.qwen3_vl,
-        architectures=['Qwen3VLForConditionalGeneration'],
+        architectures=['Qwen3VLMoeForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
@@ -1497,7 +1497,7 @@ register_model(
         Ovis2_5Loader,
         template=TemplateType.ovis2_5,
         model_arch=ModelArch.ovis2_5,
-        architectures=['Ovis'],
+        architectures=['Ovis2_5'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],
     ))

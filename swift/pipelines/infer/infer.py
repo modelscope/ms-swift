@@ -36,7 +36,7 @@ class SwiftInfer(SwiftPipeline):
             self.infer_engine = TransformersEngine(model, template=self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
         else:
-            self.template = args.get_template(None)
+            self.template = args.get_template()
             self.infer_engine = self.get_infer_engine(args, self.template)
         self.random_state = np.random.RandomState(args.data_seed)
 

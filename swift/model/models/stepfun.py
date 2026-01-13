@@ -52,7 +52,7 @@ register_model(
         GotOCR2HfLoader,
         template=TemplateType.got_ocr2_hf,
         model_arch=ModelArch.llava_hf,
-        architectures=['GOTQwenForCausalLM'],
+        architectures=['GotOcr2ForConditionalGeneration'],
         tags=['vision']))
 
 

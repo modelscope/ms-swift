@@ -290,7 +290,6 @@ register_model(
         template=TemplateType.deepseek_vl2,
         model_arch=ModelArch.deepseek_vl2,
         requires=['transformers<4.42'],
-        architectures=['DeepseekV2ForCausalLM'],
         tags=['vision'],
     ))
 

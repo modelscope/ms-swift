@@ -287,7 +287,7 @@ register_model(
         ],
         template=TemplateType.keye_vl,
         model_arch=ModelArch.keye_vl,
-        architectures=['KeyeVLForConditionalGeneration'],
+        architectures=['KeyeForConditionalGeneration'],
         tags=['vision'],
         requires=['keye_vl_utils'],
     ))
