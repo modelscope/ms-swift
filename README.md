@@ -123,6 +123,8 @@ To install from source:
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# The main branch is for swift 4.x. To install swift 3.x, please run the following command:
+# git checkout release/3.12
 pip install -e .
 ```
 

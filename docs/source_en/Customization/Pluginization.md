@@ -1,5 +1,8 @@
 # Pluginization
 
+> [!WARNING]
+> This document is pending update to ms-swift 4.0
+
 Pluginization is a significant new feature introduced in SWIFT 3.0. We aim to make the customization of the development process more natural for developers through a plugin-based approach.
 
 ## Callback Mechanism

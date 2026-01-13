@@ -35,6 +35,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
+from swift.arguments import RolloutArguments
 from swift.infer_engine import GRPOVllmEngine, InferClient
 from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig, RolloutInferRequest,
                                          UpdateWeightsRequest)
@@ -43,7 +44,6 @@ from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMet
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
                                        UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter)
 from swift.utils import get_logger
-from ..arguments import RolloutArguments
 from ..base import SwiftPipeline
 
 try:
