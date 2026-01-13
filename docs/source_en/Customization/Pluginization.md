@@ -183,7 +183,7 @@ class PRM:
         raise NotImplementedError
 ```
 
-The InferRequest comes from `swift.llm`, and the returned `List[Union[float, List[float]]]` may contain a reward or several rewards. Developers can access queries and responses in infer_requests and split them according to their own methods, for example:
+The InferRequest comes from `swift.infer_engine`, and the returned `List[Union[float, List[float]]]` may contain a reward or several rewards. Developers can access queries and responses in infer_requests and split them according to their own methods, for example:
 
 ```text
 Let's think step by step.

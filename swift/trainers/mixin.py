@@ -1040,7 +1040,7 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel
+        from ..pipelines.eval.utils import EvalModel
         from evalscope import TaskConfig, run_task
 
         self.model.eval()

@@ -80,7 +80,7 @@ Set `--freeze_vit true` and the parameter `--max_pixels` to limit the maximum pi
 Yes, you can. Please refer to [Best Practices for MLLM Registration](https://swift.readthedocs.io/en/latest/BestPractices/MLLM-Registration.html).
 
 ### Q26: Can I use DPO to train Qwen2-VL in a Python script?
-Yes, import `rlhf_main` and `RLHFArguments` from `swift.llm`.
+Yes, import `rlhf_main` and `RLHFArguments` from `swift.pipelines`.
 
 ### Q27: Can I pre-train with pure text before fine-tuning on a VQA dataset for MLLM?
 Yes, you can mix training as well.

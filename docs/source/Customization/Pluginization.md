@@ -165,7 +165,7 @@ class PRM:
         raise NotImplementedError
 ```
 
-其中的InferRequest来自于`swift.llm`，返回的`List[Union[float, List[float]]]`，列表中可能是reward也可能是若干reward。开发者可以在infer_requests中拿到queries和responses，并按照自己的方式进行切分，例如：
+其中的InferRequest来自于`swift.infer_engine`，返回的`List[Union[float, List[float]]]`，列表中可能是reward也可能是若干reward。开发者可以在infer_requests中拿到queries和responses，并按照自己的方式进行切分，例如：
 ```text
 Let's think step by step.
 

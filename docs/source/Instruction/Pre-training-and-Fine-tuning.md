@@ -232,7 +232,7 @@ print(f'response1: {resp_list[1].choices[0].message.content}')
 
 如果使用ms-swift训练的模型，可以通过以下方式获取训练的配置：
 ```python
-from swift.llm import safe_snapshot_download, BaseArguments
+from swift import safe_snapshot_download, BaseArguments
 
 lora_adapters = safe_snapshot_download('swift/test_lora')
 args = BaseArguments.from_pretrained(lora_adapters)

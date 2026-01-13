@@ -2207,7 +2207,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 rm_template.set_mode('train')
                 rm_template.max_length = None
                 if rm_plugin not in rm_plugins:
-                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.llm.plugin')
+                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.plugins')
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])

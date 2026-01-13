@@ -390,7 +390,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
-        engine_kwargs.update({'worker_extension_cls': 'swift.llm.infer.rollout.WeightSyncWorkerExtension'})
+        engine_kwargs.update({'worker_extension_cls': 'swift.pipelines.infer.rollout.WeightSyncWorkerExtension'})
 
         # For RL rollout, we use 'dummy' load_format to prevent vLLM from loading weights from disk,
         # as they will be synced from the trainer process.

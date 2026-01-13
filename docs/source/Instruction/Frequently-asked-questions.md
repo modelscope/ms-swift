@@ -80,7 +80,7 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 可以。参考[注册多模态模型最佳实践](https://swift.readthedocs.io/zh-cn/latest/BestPractices/MLLM-Registration.html)。
 
 ### Q26: 可以在python脚本里面用DPO去训练qwen2-vl吗？
-可以。从`swift.llm`中导入`rlhf_main` 和`RLHFArguments`。
+可以。从`swift.pipelines`中导入`rlhf_main` 和`RLHFArguments`。
 
 ### Q27: 请问训练MLLM时，可否先进行纯文本的预训练，然后接入VQA数据集进行微调呢？
 可以。也可以混着训练。

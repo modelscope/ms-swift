@@ -244,7 +244,7 @@ print(f'response1: {resp_list[1].choices[0].message.content}')
 If you are using a model trained with ms-swift, you can obtain the training configuration as follows:
 
 ```python
-from swift.llm import safe_snapshot_download, BaseArguments
+from swift import safe_snapshot_download, BaseArguments
 
 lora_adapters = safe_snapshot_download('swift/test_lora')
 args = BaseArguments.from_pretrained(lora_adapters)
