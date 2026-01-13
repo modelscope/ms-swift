@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Union
 
+from swift.model import get_matched_model_meta
 from swift.utils import get_logger, json_parse_to_dict, to_abspath
 from .deploy_args import DeployArguments
 
@@ -123,6 +124,7 @@ class EvalArguments(DeployArguments):
 
     def _init_torch_dtype(self) -> None:
         if self.eval_url:
-            self.model_dir = self.eval_output_dir
+            self.model_meta = get_matched_model_meta(self.model)
+            self.model_info = None
             return
         super()._init_torch_dtype()

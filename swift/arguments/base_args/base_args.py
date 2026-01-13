@@ -307,7 +307,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             processor = self.get_model_processor(load_model=False)[1]
         template_kwargs = self.get_template_kwargs()
         if 'template_type' in kwargs:
-            template_type = kwargs.get('template_type') 
+            template_type = kwargs.get('template_type')
         else:
             template_type = self.template
         template_kwargs['template_type'] = template_type
