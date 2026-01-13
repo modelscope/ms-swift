@@ -7,10 +7,11 @@ if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
     from .tuners import Swift
     from .infer_engine import (TransformersEngine, VllmEngine, SglangEngine, LmdeployEngine, InferRequest,
-                               RequestConfig, AdapterRequest, InferEngine, InferClient)
+                               RequestConfig, AdapterRequest, InferEngine, InferClient, GRPOVllmEngine)
     from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
     from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
-                            AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments)
+                            AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments,
+                            BaseArguments)
     from .pipelines import (sft_main, pretrain_main, infer_main, rlhf_main, export_main, app_main, eval_main,
                             sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
     from .model import get_model_processor, get_processor
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from .utils import get_logger, safe_snapshot_download
     from .agent_template import agent_template_map, BaseAgentTemplate
     from .loss import loss_map, BaseLoss
+    from .metrics import metrics_map, InferStats, MeanMetric
     from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
 else:
     _import_structure = {
@@ -26,12 +28,12 @@ else:
         'tuners': ['Swift'],
         'infer_engine': [
             'TransformersEngine', 'VllmEngine', 'SglangEngine', 'LmdeployEngine', 'InferRequest', 'RequestConfig',
-            'AdapterRequest', 'InferEngine', 'InferClient'
+            'AdapterRequest', 'InferEngine', 'InferClient', 'GRPOVllmEngine'
         ],
         'trainers': ['TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer'],
         'arguments': [
             'PretrainArguments', 'SftArguments', 'RLHFArguments', 'ExportArguments', 'InferArguments', 'AppArguments',
-            'EvalArguments', 'SamplingArguments', 'RolloutArguments', 'DeployArguments'
+            'EvalArguments', 'SamplingArguments', 'RolloutArguments', 'DeployArguments', 'BaseArguments'
         ],
         'pipelines': [
             'sft_main', 'pretrain_main', 'infer_main', 'rlhf_main', 'export_main', 'app_main', 'eval_main',
@@ -43,6 +45,7 @@ else:
         'utils': ['get_logger', 'safe_snapshot_download'],
         'agent_template': ['agent_template_map', 'BaseAgentTemplate'],
         'loss': ['loss_map', 'BaseLoss'],
+        'metrics': ['metrics_map', 'InferStats', 'MeanMetric'],
         'loss_scale': ['loss_scale_map', 'LossScale', 'get_loss_scale', 'ALL_BASE_STRATEGY', 'ConfigLossScale'],
     }
 

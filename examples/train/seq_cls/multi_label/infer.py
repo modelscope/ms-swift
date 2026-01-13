@@ -1,7 +1,7 @@
 import os
 from typing import List
 
-from swift.infer_engine import BaseArguments, InferRequest, TransformersEngine, get_template
+from swift import BaseArguments, InferRequest, TransformersEngine, get_template
 
 os.environ['IMAGE_MAX_TOKEN_NUM'] = '1024'
 os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'

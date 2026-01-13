@@ -20,8 +20,7 @@ def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
 
 def infer_grounding():
     # use transformers==4.51.3
-    from swift.infer_engine import (TransformersEngine, RequestConfig, BaseArguments, InferRequest,
-                                    safe_snapshot_download)
+    from swift import (TransformersEngine, RequestConfig, BaseArguments, InferRequest, safe_snapshot_download)
     output_path = 'bbox.png'
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Task: Object Detection'}], images=[image])

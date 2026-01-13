@@ -18,8 +18,8 @@ def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
 
 if __name__ == '__main__':
     # This is an example of BERT with LoRA.
-    from swift.infer_engine import (InferEngine, InferRequest, TransformersEngine, load_dataset, safe_snapshot_download,
-                                    BaseArguments)
+    from swift import (InferEngine, InferRequest, TransformersEngine, load_dataset, safe_snapshot_download,
+                       BaseArguments)
     from swift.tuners import Swift
     adapter_path = safe_snapshot_download('swift/test_bert')
     args = BaseArguments.from_pretrained(adapter_path)
