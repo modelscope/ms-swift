@@ -58,7 +58,7 @@ class MegatronRLHF(MegatronSft):
         if not getattr(self.args, 'use_vllm', False):
             return None
 
-        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        from swift.rlhf_trainers.vllm_client import VLLMClient
         vllm_client = None
         if is_last_rank():
             logger.info('Start connecting to vLLM server')

@@ -28,7 +28,7 @@ register_megatron_model(
         ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4vVit))
 
 
-class Glm4_1vBridge(Glm4Bridge, MultimodalGPTBridge):
+class Glm4vBridge(Glm4Bridge, MultimodalGPTBridge):
     pass
 
 
@@ -38,5 +38,5 @@ register_megatron_model(
             ModelType.glm4v,
         ],
         get_transformer_layer_spec=get_glm4_transformer_layer_spec,
-        bridge_cls=Glm4_1vBridge,
+        bridge_cls=Glm4vBridge,
         visual_cls=Glm4vVit))

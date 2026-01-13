@@ -387,7 +387,7 @@ def test_qwen3_vl():
     assert response == response2 == response3
 
 
-def test_qwen3_moe_vl():
+def test_qwen3_vl_moe():
     engine = TransformersEngine('Qwen/Qwen3-VL-30B-A3B-Instruct')
     response = _infer_model(engine)
     engine.template.template_backend = 'jinja'
@@ -419,4 +419,4 @@ if __name__ == '__main__':
     # test_internvl3_5()
     # test_minicpmv4_5()
     test_qwen3_vl()
-    # test_qwen3_moe_vl()
+    # test_qwen3_vl_moe()
