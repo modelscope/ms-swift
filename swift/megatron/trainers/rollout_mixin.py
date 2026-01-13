@@ -246,7 +246,7 @@ class MegatronRolloutMixin:
 
         engine = GRPOVllmEngine(
             args.model_info.model_dir,
-            args.torch_dtype,
+            torch_dtype=args.torch_dtype,
             model_type=args.model_type,
             use_async_engine=False,
             tensor_parallel_size=self.vllm_tensor_parallel_size,

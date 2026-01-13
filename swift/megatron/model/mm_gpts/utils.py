@@ -59,7 +59,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         kwargs['model_type'] = args.hf_model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
             model, self.processor = get_model_processor(
-                args.model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
+                args.model_dir, torch_dtype=args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
         for hf_prefix, mg_prefix in self.module_mapping.items():
             setattr(self, mg_prefix, deep_getattr(model, hf_prefix))

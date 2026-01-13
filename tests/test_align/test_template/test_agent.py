@@ -228,7 +228,7 @@ def test_hermes():
     encoded2 = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded2["labels"])}')
-    assert encoded['input_ids'] == encoded2['input_ids'][:-1]
+    assert encoded['input_ids'] == encoded2['input_ids']
 
 
 def test_toolbench():
@@ -394,7 +394,7 @@ def test_qwen3_coder():
     encoded2 = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded2["labels"])}')
-    assert encoded['input_ids'] == encoded2['input_ids'][:-1]
+    assert encoded['input_ids'] == encoded2['input_ids']
 
 
 def test_deepseek_v3_1():
