@@ -4,13 +4,10 @@ Here is another way to register the model, by customizing the get_function.
 
 The get_function just needs to return the model + tokenizer/processor.
 """
-
-from typing import Any, Dict
-
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
-from swift.model import Model, ModelGroup, ModelInfo, ModelLoader, ModelMeta, register_model
+from swift.model import Model, ModelGroup, ModelLoader, ModelMeta, register_model
 from swift.template import TemplateMeta, register_template
 from swift.utils import Processor
 

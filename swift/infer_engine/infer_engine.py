@@ -23,6 +23,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def __init__(self, template: Template):
         processor = template.processor
+        self.template = template
         self.processor = processor
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
