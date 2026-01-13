@@ -8,6 +8,7 @@ import json
 import megatron.core
 import torch
 from packaging import version
+from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.llm import get_model_info_meta
@@ -15,6 +16,7 @@ from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
+MAX_NPU_EXPERTS_PER_EP = 128
 
 
 @dataclass
@@ -695,6 +697,15 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
+            if is_torch_npu_available() and self.num_experts > MAX_NPU_EXPERTS_PER_EP:
+                required_ep = (self.num_experts + MAX_NPU_EXPERTS_PER_EP - 1) // MAX_NPU_EXPERTS_PER_EP
+                if self.expert_model_parallel_size < required_ep:
+                    logger.warning(f'{">"*20} WARNING {"<"*20}\n'
+                                   f'MindSpeed on NPU supports up to {MAX_NPU_EXPERTS_PER_EP} experts per EP group. '
+                                   f'num_experts={self.num_experts}, '
+                                   f'expert_model_parallel_size={self.expert_model_parallel_size}. '
+                                   f'Please set expert_model_parallel_size (EP) to {required_ep} '
+                                   f'(num_experts / {MAX_NPU_EXPERTS_PER_EP}) or higher.')
 
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
