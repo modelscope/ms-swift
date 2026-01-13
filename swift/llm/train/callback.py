@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from transformers import TrainerCallback
 
-from swift.utils import ShutdownManager, get_logger
+from swift.utils import ShutdownManager, get_device, get_logger
 
 logger = get_logger()
 
@@ -89,11 +89,12 @@ class GracefulExitCallBack(TrainerCallback):
         self.shutdown_manager = shutdown_manager
 
     def on_step_end(self, args, state, control, **kwargs):
+        device_type = get_device()
 
         local_req = 1 if self.shutdown_manager.should_shutdown() else 0
         if dist.is_available() and dist.is_initialized():
 
-            t = torch.tensor([local_req], dtype=torch.uint8, device='cuda' if torch.cuda.is_available() else 'cpu')
+            t = torch.tensor([local_req], dtype=torch.uint8, device=device_type)
             # all_reduce with MAX: if any rank has 1 -> result 1 everywhere
             dist.all_reduce(t, op=dist.ReduceOp.MAX)
             any_req = bool(int(t.item()))
