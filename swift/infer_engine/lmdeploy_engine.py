@@ -71,10 +71,8 @@ class LmdeployEngine(InferEngine):
         self.devices = devices
         if template is None:
             processor = self._get_processor()
-        else:
-            processor = template.processor
-            self.template = template
-        super().__init__(processor)
+            template = self._get_template(processor)
+        super().__init__(template)
 
         if self.max_model_len is not None:
             self.max_model_len -= 1

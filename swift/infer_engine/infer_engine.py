@@ -11,7 +11,7 @@ from tqdm import tqdm
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir
 from swift.template import Template, get_template
-from swift.utils import ProcessorMixin, get_logger
+from swift.utils import Processor, ProcessorMixin, get_logger
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                        InferRequest, RequestConfig, UsageInfo)
@@ -21,10 +21,9 @@ logger = get_logger()
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
 
-    def __init__(self, processor):
+    def __init__(self, template: Template):
+        processor = template.processor
         self.processor = processor
-        if not hasattr(self, 'template'):
-            self._prepare_template()
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
@@ -35,16 +34,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.config = self.model_info.config
         self.max_tokens_offset = 0
 
-    def _prepare_template(self):
+    def _get_template(self, processor: Processor):
         ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
         logger.info('Create the template for the infer_engine')
         if ckpt_dir:
             from swift.arguments import BaseArguments
             args = BaseArguments.from_pretrained(ckpt_dir)
-            template = args.get_template(self.processor)
+            template = args.get_template(processor)
         else:
-            template = get_template(self.processor)
-        self.template = template
+            template = get_template(processor)
+        return template
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

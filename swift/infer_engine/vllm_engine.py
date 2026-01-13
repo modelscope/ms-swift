@@ -141,10 +141,8 @@ class VllmEngine(InferEngine):
         self._adapters_pool = {}
         if template is None:
             processor = self._get_processor()
-        else:
-            processor = template.processor
-            self.template = template
-        super().__init__(processor)
+            template = self._get_template(processor)
+        super().__init__(template)
         self._prepare_engine_kwargs(engine_kwargs)
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):

@@ -84,14 +84,12 @@ class TransformersEngine(InferEngine):
         self.hub_token = hub_token
         if isinstance(model, str):
             self.model, processor = self._get_model_processor(model, **kwargs)
+            template = self._get_template(processor)
         elif isinstance(model, nn.Module):
             self.model = model
             if template is None:
                 raise ValueError('`template` is required when `model` is a nn.Module')
-        if template is not None:
-            processor = template.processor
-            self.template = template
-        super().__init__(processor)
+        super().__init__(template)
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token))
         self.engine = self.model  # dummy

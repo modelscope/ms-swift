@@ -83,10 +83,8 @@ class SglangEngine(InferEngine):
         self.log_level = log_level
         if template is None:
             processor = self._get_processor()
-        else:
-            processor = template.processor
-            self.template = template
-        super().__init__(processor)
+            template = self._get_template(processor)
+        super().__init__(template)
         self._prepare_server_args(engine_kwargs)
         self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
