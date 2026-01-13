@@ -1,8 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict
-
-from transformers import EvalPrediction
-
 from swift.utils import get_logger
 from .trainer import Trainer
 from .utils import gather_for_unpadded_tensors

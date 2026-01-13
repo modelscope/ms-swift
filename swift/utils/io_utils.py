@@ -5,7 +5,6 @@ from threading import Thread
 from typing import Any, Dict, List, Literal, Union
 
 import json
-import requests
 import torch.distributed as dist
 from accelerate.utils import gather_object
 
