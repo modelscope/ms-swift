@@ -10,6 +10,7 @@ from torch.optim import Optimizer
 from transformers import Trainer, get_scheduler
 
 from swift.utils import get_dist_setting, get_logger
+from ..base import OptimizerCallback
 
 if TYPE_CHECKING:
     from swift.trainers import TrainingArguments
@@ -231,10 +232,20 @@ def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
     return max_steps
 
 
-def create_galore_optimizer(args: 'TrainingArguments', model, dataset):
-    training_steps = calculate_max_steps(args, dataset)
-    optimizer, lr_scheduler = _create_optimizer_and_scheduler(
-        model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
-    # trainer cannot serialize galore_config
-    args.galore_config = None
-    return optimizer, lr_scheduler
+class GaloreOptimizerCallback(OptimizerCallback):
+
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        trainer = self.trainer
+        args = self.args
+        training_steps = calculate_max_steps(args, trainer.train_dataset)
+        optimizer, lr_scheduler = _create_optimizer_and_scheduler(
+            trainer.model,
+            args,
+            args.galore_config,
+            training_steps,
+            lr=args.learning_rate,
+            weight_decay=args.weight_decay)
+        # trainer cannot serialize galore_config
+        args.galore_config = None
+        trainer.optimizer = optimizer
+        trainer.lr_scheduler = lr_scheduler

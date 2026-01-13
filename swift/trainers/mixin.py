@@ -43,7 +43,7 @@ from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
-from swift.optimizers import optimizers_map
+from swift.optimizers import OptimizerCallback, optimizers_map
 from swift.plugins import extra_tuners
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
@@ -836,8 +836,9 @@ class SwiftMixin:
             model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
-        model_arch = self.model_meta.model_arch
-        if self.model_meta.is_multimodal and model_arch:
+        model_meta = model.model_meta
+        model_arch = model_meta.model_arch
+        if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
@@ -964,14 +965,8 @@ class SwiftMixin:
         return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
-        if self.args.optimizer is not None:
-            create_optimizer_func = optimizers_map[self.args.optimizer]
-            self.optimizer = create_optimizer_func(self.args, self.model, self.train_dataset)
-            if self.optimizer is None:
-                self.create_optimizer()
-            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
-        else:
-            super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
+        optimizer_callback: OptimizerCallback = optimizers_map[self.args.optimizer or 'default'](self.args, self)
+        optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):
