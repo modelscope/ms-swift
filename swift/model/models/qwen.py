@@ -1392,6 +1392,10 @@ register_model(
 
 class OvisLoader(ModelLoader):
 
+    def get_processor(self, model_dir, config) -> Processor:
+        self.auto_tokenizer_cls = AutoTokenizer
+        return super().get_processor(model_dir, config)
+
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         self.attn_impl_keys = ['llm_attn_implementation']
         model = super().get_model(model_dir, *args, **kwargs)

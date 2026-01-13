@@ -285,6 +285,14 @@ class LlavaLoader(ModelLoader):
     llm_model_type = None
 
     def get_config(self, model_dir: str):
+        local_repo_path = self.local_repo_path
+        if not local_repo_path:
+            if 'next' in self.llm_model_type:
+                repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
+            else:
+                repo_path = 'https://github.com/haotian-liu/LLaVA'
+            local_repo_path = git_clone_github(repo_path)
+        sys.path.append(local_repo_path)
         if self.llm_model_type == 'mistral':
             from llava.model import LlavaMistralConfig
             self.auto_config_cls = LlavaMistralConfig
@@ -297,14 +305,6 @@ class LlavaLoader(ModelLoader):
         return config
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        local_repo_path = self.local_repo_path
-        if not local_repo_path:
-            if 'next' in self.llm_model_type:
-                repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
-            else:
-                repo_path = 'https://github.com/haotian-liu/LLaVA'
-            local_repo_path = git_clone_github(repo_path)
-        sys.path.append(local_repo_path)
         if self.llm_model_type == 'mistral':
             from llava.model import LlavaMistralForCausalLM
             auto_model_cls = LlavaMistralForCausalLM

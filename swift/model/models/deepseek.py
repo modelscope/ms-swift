@@ -167,9 +167,20 @@ register_model(
 
 class DeepseekVLLoader(ModelLoader):
 
-    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+    def get_config(self, model_dir: str):
+        # compat with python==3.10
+        if sys.version_info.minor >= 10:
+            import collections
+            import collections.abc
+            for type_name in collections.abc.__all__:
+                setattr(collections, type_name, getattr(collections.abc, type_name))
+        local_repo_path = self.local_repo_path
+        if not local_repo_path:
+            local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+        sys.path.append(local_repo_path)
         from deepseek_vl.models import VLChatProcessor
-        return VLChatProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        self.auto_tokenizer_cls = VLChatProcessor
+        return super().get_config(model_dir)
 
     def _get_model(self, model_dir: str, llm_prefix, *args, **kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, *args, **kwargs)
@@ -181,16 +192,6 @@ class DeepseekVLLoader(ModelLoader):
         return model
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        # compat with python==3.10
-        if sys.version_info.minor >= 10:
-            import collections
-            import collections.abc
-            for type_name in collections.abc.__all__:
-                setattr(collections, type_name, getattr(collections.abc, type_name))
-        local_repo_path = self.local_repo_path
-        if not local_repo_path:
-            local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
-        sys.path.append(local_repo_path)
         return self._get_model(model_dir, 'language_model', *args, **kwargs)
 
 
@@ -214,15 +215,16 @@ register_model(
 class DeepseekJanusLoader(DeepseekVLLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        return self._get_model(model_dir, 'language_model', *args, **kwargs)
+
+    def get_config(self, model_dir: str):
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
         sys.path.append(local_repo_path)
-        return self._get_model(model_dir, 'language_model', *args, **kwargs)
-
-    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         from janus.models import VLChatProcessor
-        return VLChatProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        self.auto_tokenizer_cls = VLChatProcessor
+        return super(DeepseekVLLoader, self).get_config(model_dir)
 
 
 register_model(
@@ -257,14 +259,11 @@ register_model(
 
 class DeepseekVL2Loader(DeepseekVLLoader):
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir: str):
         local_repo_path = self.local_repo_path
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
         sys.path.append(local_repo_path)
-        return super()._get_model(model_dir, 'language', *args, **kwargs)
-
-    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         try:
             from deepseek_vl2.models import DeepseekVLV2Processor
         except ImportError:
@@ -272,8 +271,11 @@ class DeepseekVL2Loader(DeepseekVLLoader):
             import transformers
             transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
             from deepseek_vl2.models import DeepseekVLV2Processor
-        processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
-        return processor
+        self.auto_tokenizer_cls = DeepseekVLV2Processor
+        return super(DeepseekVLLoader, self).get_config(model_dir)
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        return super()._get_model(model_dir, 'language', *args, **kwargs)
 
 
 register_model(
