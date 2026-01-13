@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .agent_template import agent_template_map, BaseAgentTemplate
     from .loss import loss_map, BaseLoss
     from .metrics import metrics_map, InferStats, MeanMetric
+    from .optimizers import optimizers_map, OptimizerCallback
     from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
 else:
     _import_structure = {
@@ -46,6 +47,7 @@ else:
         'agent_template': ['agent_template_map', 'BaseAgentTemplate'],
         'loss': ['loss_map', 'BaseLoss'],
         'metrics': ['metrics_map', 'InferStats', 'MeanMetric'],
+        'optimizers': ['optimizers_map', 'OptimizerCallback'],
         'loss_scale': ['loss_scale_map', 'LossScale', 'get_loss_scale', 'ALL_BASE_STRATEGY', 'ConfigLossScale'],
     }
 
