@@ -1,14 +1,13 @@
 # 2 * 62GiB, 5.10s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B \
     --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
-    --dataset 'swift/Qwen3-SFT-Mixin#2000' \
-              'swift/self-cognition:empty_think#600' \
+    --dataset '/root/autodl-tmp/swift_finetune_data/qwen3_finetune_self_cognition.jsonl' \
     --loss_scale ignore_empty_think \
     --train_type lora \
     --lora_rank 8 \
@@ -32,8 +31,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --save megatron_output/Qwen3-30B-A3B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 5 \
+    --save_interval 5 \
     --max_length 2048 \
     --num_workers 8 \
     --dataset_num_proc 8 \
@@ -43,3 +42,4 @@ megatron sft \
     --attention_backend flash \
     --model_author swift \
     --model_name swift-robot
+    --report_to wandb
