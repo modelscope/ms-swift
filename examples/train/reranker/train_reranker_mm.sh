@@ -4,7 +4,7 @@ MAX_NEGATIVE_SAMPLES=1 \
 swift sft \
     --model JinaAI/jina-reranker-m0 \
     --task_type reranker \
-    --loss_type reranker \
+    --loss_type pointwise_reranker \
     --train_type lora \
     --dataset swift/TextCaps:rerank \
     --split_dataset_ratio 0.05 \

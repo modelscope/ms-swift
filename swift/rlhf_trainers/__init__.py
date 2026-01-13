@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .args_mixin import GRPOArgumentsMixin
     from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
     from .vllm_client import VLLMClient
+    from .arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GRPOConfig, GKDConfig
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -30,6 +31,8 @@ else:
         'args_mixin': ['GRPOArgumentsMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
         'vllm_client': ['VLLMClient'],
+        'arguments':
+        ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig']
     }
 
     import sys
