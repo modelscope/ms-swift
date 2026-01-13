@@ -738,6 +738,29 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
+        # Some hybrid-thinking models (e.g. deepseek_v3_1) prepend a fixed `non_thinking_prefix`
+        # (like `</think>`) to the assistant response in `_add_non_thinking_prefix`.
+        # That prefix is part of the template, not something the model should learn to generate.
+        # Minimal fix: if a trainable string context starts with that prefix, split it out and
+        # force its loss_scale to 0.0 (so labels are masked to -100) while keeping the rest trainable.
+        non_thinking_prefix = getattr(self.template_meta, 'non_thinking_prefix', '') or ''
+        if non_thinking_prefix:
+            new_context_list: List[Context] = []
+            new_loss_scale_list: List[float] = []
+            for context, loss_scale in zip(context_list, loss_scale_list):
+                if (loss_scale > 0.0 and isinstance(context, str)
+                        and context.startswith(non_thinking_prefix)):
+                    new_context_list.append(non_thinking_prefix)
+                    new_loss_scale_list.append(0.0)
+                    rest = context[len(non_thinking_prefix):]
+                    if rest:
+                        new_context_list.append(rest)
+                        new_loss_scale_list.append(loss_scale)
+                else:
+                    new_context_list.append(context)
+                    new_loss_scale_list.append(loss_scale)
+            context_list, loss_scale_list = new_context_list, new_loss_scale_list
+
         context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
@@ -1051,15 +1074,20 @@ class Template(ProcessorMixin):
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
+            need_add_non_thinking_prefix = False
             for i, message in enumerate(messages):
+                if message['role'] == 'user':
+                    need_add_non_thinking_prefix = True
                 if i < start_idx:
                     continue
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith(('<think>', non_thinking_prefix)):
+                    if not message['content'].startswith(('<think>', non_thinking_prefix)) and need_add_non_thinking_prefix:
                         # During multi-turn SFT training/validation:
                         # If the message has no <think> block and does not start with the non_thinking_prefix,
                         # prepend the non_thinking_prefix to the content.
                         message['content'] = non_thinking_prefix + message['content']
+                        # In deepseek_v3_1, add non thinking prefix in first Assistant after User only
+                        need_add_non_thinking_prefix = False or not self.template_meta.template_type == 'deepseek_v3_1'
 
     def _remove_thinking_content(self, content: str) -> str:
         content = content.split('</think>')[-1].strip()
