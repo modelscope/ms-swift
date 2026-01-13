@@ -1087,7 +1087,7 @@ class Template(ProcessorMixin):
                         # prepend the non_thinking_prefix to the content.
                         message['content'] = non_thinking_prefix + message['content']
                         # In deepseek_v3_1, add non thinking prefix in first Assistant after User only
-                        need_add_non_thinking_prefix = False or not self.template_meta.template_type == 'deepseek_v3_1'
+                        need_add_non_thinking_prefix = self.template_meta.template_type != 'deepseek_v3_1'
 
     def _remove_thinking_content(self, content: str) -> str:
         content = content.split('</think>')[-1].strip()
