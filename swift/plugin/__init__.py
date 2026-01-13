@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .rm_plugin import rm_plugins
     from .env import envs, Env
     from .context_manager import context_managers, ContextManager
+    from .tiled_mlp import (TiledSwiGLUMLP, apply_tiled_mlp, is_fsdp2_enabled, is_fsdp1_enabled, get_tiled_mlp_mode)
 
 else:
     _import_structure = {
@@ -34,6 +35,8 @@ else:
         'rm_plugin': ['rm_plugins'],
         'env': ['envs', 'Env'],
         'context_manager': ['context_managers', 'ContextManager'],
+        'tiled_mlp':
+        ['TiledSwiGLUMLP', 'apply_tiled_mlp', 'is_fsdp2_enabled', 'is_fsdp1_enabled', 'get_tiled_mlp_mode'],
     }
 
     import sys

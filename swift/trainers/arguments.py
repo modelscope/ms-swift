@@ -54,6 +54,14 @@ class TrainArgumentsMixin:
         dataloader_prefetch_factor (Optional[int]): The number of batches loaded in advance by each worker. Defaults
             to None.
         use_liger_kernel (bool): Whether to use the Liger kernel for optimization. Defaults to False.
+        use_tiled_mlp (bool): Whether to use tiled MLP for memory-efficient training. When enabled, the MLP layers
+            are replaced with a tiled implementation that processes sequences in chunks to reduce memory usage.
+            - FSDP2: Uses custom TiledSwiGLUMLP implementation (compatible)
+            - DeepSpeed/Single GPU: Uses liger_kernel's LigerTiledSwiGLUMLP
+            - FSDP1: Raises error (not compatible)
+            Defaults to False.
+        tiled_mlp_num_shards (Optional[int]): Number of shards to split the sequence for tiled MLP computation.
+            If None, defaults to 4. Larger values reduce memory but may increase computation time. Defaults to None.
         check_model (bool): If True, checks local model files for corruption or modification and provides a warning.
             Should be set to False in an offline environment. Defaults to True.
         acc_strategy (Literal['token', 'seq']): The strategy for calculating accuracy during training and validation.
@@ -116,6 +124,8 @@ class TrainArgumentsMixin:
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
     use_liger_kernel: bool = False
+    use_tiled_mlp: bool = False
+    tiled_mlp_num_shards: Optional[int] = None
 
     # extra
     check_model: bool = True
