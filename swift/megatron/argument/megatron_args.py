@@ -487,6 +487,10 @@ class MegatronArguments(ExtraMegatronArguments):
     num_virtual_stages_per_pipeline_rank: Optional[int] = None
     microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
+    # fsdp
+    use_megatron_fsdp: bool = False
+    use_torch_fsdp2: bool = False
+    data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads', 'optim_grads_params'] = 'no_shard'
 
     # model
     num_layers: Optional[int] = None
@@ -705,7 +709,8 @@ class MegatronArguments(ExtraMegatronArguments):
                 require_version('peft>=0.12')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
-        os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
+        if not self.use_torch_fsdp2 and not self.use_megatron_fsdp:
+            os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
