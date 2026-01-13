@@ -1,8 +1,4 @@
-from typing import Optional
-
-import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from swift.utils import to_device

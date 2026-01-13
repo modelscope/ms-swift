@@ -185,7 +185,10 @@ class ModelArguments:
         logger.info(f'Setting args.max_model_len: {self.max_model_len}')
 
     def _init_model_info(self) -> torch.dtype:
-        self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
+        model_kwargs = self.get_model_kwargs()
+        if self.tuner_backend == 'unsloth':
+            model_kwargs['download_model'] = True
+        self.model_info, self.model_meta = get_model_info_meta(**model_kwargs)
         self.task_type = self.model_info.task_type
         self.num_labels = self.model_info.num_labels
 
