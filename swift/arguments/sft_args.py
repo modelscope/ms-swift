@@ -388,7 +388,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
             if self.task_type == 'causal_lm' and self.predict_with_generate:
                 self.metric = 'nlg'
             elif self.task_type == 'embedding':
-                self.metric = 'paired' if self.loss_type == 'infonce' else 'infonce'
+                self.metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
             elif self.task_type in {'reranker', 'generative_reranker'}:
                 self.metric = 'reranker'
         if self.metric_for_best_model is None:
