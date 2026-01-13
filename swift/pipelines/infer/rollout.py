@@ -43,7 +43,7 @@ from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMet
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
                                        UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter)
 from swift.utils import get_logger
-from ..arguments import RolloutArguments
+from swift.arguments import RolloutArguments
 from ..base import SwiftPipeline
 
 try:
