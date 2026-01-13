@@ -114,7 +114,6 @@ class VllmEngine(InferEngine):
         self.tensor_parallel_size = tensor_parallel_size
         self.pipeline_parallel_size = pipeline_parallel_size
         self.enable_expert_parallel = enable_expert_parallel
-        self.max_model_len = max_model_len
         self.max_num_seqs = max_num_seqs
         self.disable_custom_all_reduce = disable_custom_all_reduce
         self.enforce_eager = enforce_eager
@@ -143,7 +142,10 @@ class VllmEngine(InferEngine):
             processor = self._get_processor()
             template = self._get_template(processor)
         super().__init__(template)
-        self._prepare_engine_kwargs(engine_kwargs)
+        if max_model_len is not None:
+            self.max_model_len = max_model_len
+            logger.info(f'Setting max_model_len: {max_model_len}')
+        self._prepare_engine_kwargs(max_model_len, engine_kwargs)
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
             context = patch_npu_vllm(get_device())
@@ -173,7 +175,7 @@ class VllmEngine(InferEngine):
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(self, engine_kwargs) -> None:
+    def _prepare_engine_kwargs(self, max_model_len, engine_kwargs) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         if self.task_type == 'embedding':
@@ -233,7 +235,7 @@ class VllmEngine(InferEngine):
             gpu_memory_utilization=self.gpu_memory_utilization,
             tensor_parallel_size=self.tensor_parallel_size,
             pipeline_parallel_size=self.pipeline_parallel_size,
-            max_model_len=self.max_model_len,
+            max_model_len=max_model_len,
             max_num_seqs=self.max_num_seqs,
             disable_log_stats=disable_log_stats,
             disable_custom_all_reduce=self.disable_custom_all_reduce,

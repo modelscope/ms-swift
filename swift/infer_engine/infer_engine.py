@@ -29,8 +29,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
         self.model_name = self.model_info.model_name
-        if not hasattr(self, 'max_model_len'):
-            self.max_model_len = self.model_info.max_model_len
+        self.max_model_len = self.model_info.max_model_len
         self.task_type = self.model_info.task_type
         self.config = self.model_info.config
         self.max_tokens_offset = 0
