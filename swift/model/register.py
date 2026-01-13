@@ -183,7 +183,7 @@ class ModelLoader(BaseModelLoader):
         self.max_model_len = max_model_len
         self.auto_model_cls = auto_model_cls
         self.auto_config_cls = None
-        self.auto_tokenizer_class = None
+        self.auto_tokenizer_cls = None
         self.return_dummy_model = return_dummy_model
         self.new_special_tokens = new_special_tokens
         self.model_kwargs = model_kwargs
@@ -242,7 +242,7 @@ class ModelLoader(BaseModelLoader):
         return tokenizer
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        auto_tokenizer_cls = self.auto_tokenizer_class
+        auto_tokenizer_cls = self.auto_tokenizer_cls
         if auto_tokenizer_cls is None:
             if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')):
                 from transformers import AutoProcessor

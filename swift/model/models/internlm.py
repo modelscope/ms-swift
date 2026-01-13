@@ -1,11 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import PreTrainedModel
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
-from swift.utils import safe_snapshot_download
+from swift.utils import Processor, safe_snapshot_download
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -87,6 +87,10 @@ register_model(
 
 
 class InternVLLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        self.auto_tokenizer_cls = AutoTokenizer
+        return super().get_processor(model_dir, config)
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, *args, **kwargs)

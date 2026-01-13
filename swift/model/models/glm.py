@@ -226,6 +226,7 @@ class GLM4vLoader(ModelLoader):
         model = super().get_model(model_dir, *args, **kwargs)
         if hasattr(model, 'visual'):
             patch_get_input_embeddings(model.visual, 'patch_embed')
+        return model
 
 
 register_model(
@@ -376,7 +377,7 @@ class GLMEdgeVLoader(ModelLoader):
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         from transformers import AutoImageProcessor
-        self.auto_tokenizer_class = AutoImageProcessor
+        self.auto_tokenizer_cls = AutoImageProcessor
         return super().get_processor(model_dir, config)
 
 
