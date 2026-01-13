@@ -4,7 +4,9 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
+from packaging import version
 
+import swift
 from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
 from swift.plugins import extra_tuners
@@ -163,6 +165,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ]
 
     def __post_init__(self):
+        self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
@@ -279,6 +282,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'response_prefix',
         ]
         data_keys = list(f.name for f in fields(DataArguments))
+        swift_version = old_args.get('swift_version')
+        if swift_version is None or version.parse(swift_version) < version.parse('4.0.0.dev'):
+            load_keys.remove('model_type')
         for key, old_value in old_args.items():
             if old_value is None:
                 continue
