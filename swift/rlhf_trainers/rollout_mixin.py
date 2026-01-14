@@ -40,7 +40,7 @@ from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
                     get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
                     patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
-                    set_expandable_segments)
+                    patch_vllm_moe_model_weight_loader, set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -466,6 +466,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
+            # Patch MoE weight_loader if needed
+            patch_vllm_moe_model_weight_loader(llm_model)
             llm_model.load_weights(state_dict.items())
         del state_dict
 
