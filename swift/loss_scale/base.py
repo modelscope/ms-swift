@@ -106,7 +106,7 @@ class LossScale:
                 if isinstance(context, dict) and 'token_ids' in context:
                     context = context['token_ids']
                 if context_type == ContextType.RESPONSE and loss is not None:
-                    if getattr(self, 'loss_scale_config', None) == 'ignore_empty_think.json':
+                    if getattr(self, 'loss_scale_config', None) is not None:
                         new_context, loss_scale = self.get_loss_scale(context, query=query)
                         loss = float(loss)
                         loss_scale = [ls * loss for ls in loss_scale]
