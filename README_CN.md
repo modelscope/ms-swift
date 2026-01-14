@@ -404,7 +404,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 
 # LoRA
@@ -412,7 +412,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -422,7 +422,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift app \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048 \
     --lang zh
 ```
@@ -438,7 +438,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-    --sampler_engine pt \
+    --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```

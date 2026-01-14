@@ -98,6 +98,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
+    # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
+    custom_register_path: List[str] = field(default_factory=list)
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
@@ -143,6 +145,12 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _import_external_plugins(self):
         if isinstance(self.external_plugins, str):
             self.external_plugins = [self.external_plugins]
+        # swift v3.x compatibility
+        if isinstance(self.custom_register_path, str):
+            self.custom_register_path = [self.custom_register_path]
+        if self.custom_register_path:
+            self.external_plugins += self.custom_register_path
+
         if not self.external_plugins:
             return
         for external_plugin in self.external_plugins:

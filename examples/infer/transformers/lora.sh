@@ -4,7 +4,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters swift/test_lora \
-    --infer_backend pt \
+    --infer_backend transformers \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048

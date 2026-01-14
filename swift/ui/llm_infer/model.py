@@ -112,7 +112,7 @@ class Model(BaseUI):
             gr.Checkbox(elem_id='merge_lora', scale=4)
             gr.Button(elem_id='reset', scale=2)
         with gr.Row():
-            gr.Dropdown(elem_id='infer_backend', value='pt', scale=5)
+            gr.Dropdown(elem_id='infer_backend', value='transformers', scale=5)
         Generate.set_lang(cls.lang)
         Generate.build_ui(base_tab)
         with gr.Row(equal_height=True):

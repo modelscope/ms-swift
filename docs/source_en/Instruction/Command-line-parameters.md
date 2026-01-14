@@ -679,9 +679,9 @@ Soft overlong reward parameters:
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'pt', 'vllm', 'sglang', and 'lmdeploy'. The default is 'pt'.
+- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'transformers', 'vllm', 'sglang', and 'lmdeploy'. The default is 'transformers'.
   - Note: All four engines use SWIFT's template, controlled by `--template_backend`.
-- 🔥max_batch_size: Effective when infer_backend is set to 'pt'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
+- 🔥max_batch_size: Effective when infer_backend is set to 'transformers'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
 - 🔥result_path: Path to store inference results (jsonl). The default is None, meaning results are saved in the checkpoint directory (with args.json file) or './result' directory. The final storage path will be printed in the command line.
   - Note: If the `result_path` file already exists, it will be appended to.
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
@@ -771,10 +771,10 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 ### Sampling Parameters
 
-- prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
+- prm_model: The type of process reward model. It can be a model ID (triggered using `transformers`) or a `prm` key defined in a plugin (for custom inference processes).
 - orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
 - sampler_type: The type of sampling. Currently supports `sample` and `distill`.
-- sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
+- sampler_engine: Supports `transformers`, `lmdeploy`, `vllm`, `no`. Defaults to `transformers`. Specifies the inference engine for the sampling model.
 - output_dir: The output directory. Defaults to `sample_output`.
 - output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
 - override_exist_file: Whether to overwrite if `output_file` already exists.

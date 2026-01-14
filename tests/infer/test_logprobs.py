@@ -7,13 +7,13 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
+def _prepare(infer_backend: Literal['vllm', 'transformers', 'lmdeploy']):
     from swift.infer_engine import InferRequest
 
     if infer_backend == 'lmdeploy':
         from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine('Qwen/Qwen2-7B-Instruct', torch_dtype=torch.float32)
-    elif infer_backend == 'pt':
+    elif infer_backend == 'transformers':
         from swift.infer_engine import TransformersEngine
         engine = TransformersEngine('Qwen/Qwen2-7B-Instruct')
     elif infer_backend == 'vllm':
@@ -64,6 +64,6 @@ def test_stream(engine, infer_requests):
 
 
 if __name__ == '__main__':
-    engine, infer_requests = _prepare(infer_backend='pt')
+    engine, infer_requests = _prepare(infer_backend='transformers')
     test_infer(engine, infer_requests)
     test_stream(engine, infer_requests)

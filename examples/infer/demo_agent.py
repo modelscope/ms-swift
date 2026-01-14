@@ -98,9 +98,9 @@ if __name__ == '__main__':
     from swift.infer_engine import InferEngine, InferRequest, TransformersEngine, RequestConfig
     from swift.agent_template import agent_template_map
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
-    infer_backend = 'pt'
+    infer_backend = 'transformers'
 
-    if infer_backend == 'pt':
+    if infer_backend == 'transformers':
         engine = TransformersEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
         from swift.infer_engine import VllmEngine

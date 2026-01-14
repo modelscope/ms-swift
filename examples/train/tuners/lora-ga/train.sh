@@ -28,6 +28,6 @@ swift sft \
 # swift infer \
 #     --model Qwen/Qwen2-1.5B-Instruct \
 #     --ckpt_dir ./output/Qwen2-1.5B-Instruct/v0-20241214-191235/checkpoint-62/converted/default \
-#     --infer_backend pt \
+#     --infer_backend transformers \
 #     --stream true \
 #     --max_new_tokens 2048

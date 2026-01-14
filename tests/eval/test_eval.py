@@ -2,7 +2,7 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
-infer_backend = 'pt'
+infer_backend = 'transformers'
 
 
 def test_eval_native():
@@ -39,7 +39,7 @@ def test_eval_mllm():
         EvalArguments(
             model='Qwen/Qwen2.5-VL-3B-Instruct',
             eval_dataset=['realWorldQA'],
-            infer_backend='pt',
+            infer_backend='transformers',
             eval_backend='VLMEvalKit',
             eval_limit=10,
             eval_generation_config={

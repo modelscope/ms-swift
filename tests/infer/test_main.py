@@ -64,10 +64,10 @@ def test_emu3_gen(infer_backend):
 
 
 if __name__ == '__main__':
-    # test_cli('pt')
-    # test_cli_jinja('pt')
-    # test_dataset('pt')
-    # test_mllm_dataset('pt')
+    # test_cli('transformers')
+    # test_cli_jinja('transformers')
+    # test_dataset('transformers')
+    # test_mllm_dataset('transformers')
     # test_dataset_ddp()
     # test_dataset_mp_ddp()
-    test_emu3_gen('pt')
+    test_emu3_gen('transformers')

@@ -149,8 +149,8 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto'] = 'pt'  # train
+        self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang',  # infer
+                           'train', 'rlhf', 'kto'] = 'transformers'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
@@ -531,7 +531,7 @@ class Template(ProcessorMixin):
 
         chosen = inputs.chosen
         if self.task_type == 'causal_lm':
-            if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
+            if self.mode in {'train', 'transformers', 'vllm', 'lmdeploy', 'sglang'}:
                 encoded = self._encode_truncated(chosen)
             elif self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -657,7 +657,7 @@ class Template(ProcessorMixin):
     def generate_context(self):
         origin_mode = self.mode
         if self.mode in {'train', 'rlhf', 'kto'}:
-            self.set_mode('pt')
+            self.set_mode('transformers')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
             models = self.remove_post_encode_hook()
@@ -1465,9 +1465,12 @@ class Template(ProcessorMixin):
 
     @property
     def is_training(self):
-        return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
+        return self.mode not in {'transformers', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
+        if mode == 'pt':
+            mode = 'transformers'
+            logger.warning("The mode 'pt' is deprecated, please use 'transformers'.")
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1514,7 +1517,7 @@ class Template(ProcessorMixin):
             batch = sum(batch, start=[])
         num_samples = len(batch)
         if self.task_type == 'causal_lm':
-            if self.mode in {'pt', 'train'}:
+            if self.mode in {'transformers', 'train'}:
                 res = self._data_collator(batch, padding_to=padding_to)
             elif self.mode == 'rlhf':
                 res = self._rlhf_data_collator(batch, padding_to=padding_to)

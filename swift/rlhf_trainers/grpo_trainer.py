@@ -214,7 +214,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 results = self._infer_single_or_multi_turn(inputs, self.request_config)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
-                    # This is necessary as pt engines set the model to eval mode during generation
+                    # This is necessary as transformers engines set the model to eval mode during generation
                     self.model.train()
 
         return results

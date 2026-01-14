@@ -36,6 +36,9 @@ if __name__ == '__main__':
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(
-                model='Qwen/Qwen2.5-1.5B', verbose=False, log_interval=-1, infer_backend='pt',
+                model='Qwen/Qwen2.5-1.5B',
+                verbose=False,
+                log_interval=-1,
+                infer_backend='transformers',
                 use_chat_template=False)) as port:
         run_client(port=port)

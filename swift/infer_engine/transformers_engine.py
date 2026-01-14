@@ -497,7 +497,7 @@ class TransformersEngine(InferEngine):
             self.template.model = self.model
 
         if self.model_info.task_type == 'causal_lm':
-            self.template.set_mode('pt')
+            self.template.set_mode('transformers')
 
         batched_inputs, error_list = self._batch_encode(infer_requests, strict=getattr(self, 'strict', True))
         if len(batched_inputs) > 0:

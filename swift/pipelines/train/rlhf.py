@@ -176,7 +176,7 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        mode_mapping = {'kto': 'kto', 'gkd': 'train', 'ppo': 'pt', 'grpo': 'train'}
+        mode_mapping = {'kto': 'kto', 'gkd': 'train', 'ppo': 'transformers', 'grpo': 'train'}
         self.template.set_mode(mode_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'ppo':

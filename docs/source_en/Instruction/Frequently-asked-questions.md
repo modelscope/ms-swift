@@ -35,7 +35,7 @@ Check the [Supported Models and Datasets](https://swift.readthedocs.io/en/latest
 Currently, only export to ModelFile is supported. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
 ### Q10: Does Swift support pre-training? I only see SFT.
-Yes, it supports it. Use the command line `swift pt`, [pt example](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain). The dataset format is detailed in [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html).
+Yes, it supports it. Use the command line `swift pt`, [pretrain example](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain). The dataset format is detailed in [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html).
 
 ### Q11: For models fine-tuned with LoRA, should I merge them into one model for resuming training, or can I specify the original model and LoRA block by path directly?
 You do not need to merge. Use `--resume_from_checkpoint output/xxx/vx-xxx/checkpoint-xxx`. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
@@ -1075,7 +1075,7 @@ For multiple-choice question answering, this is a requirement. Alternatively, yo
 NPROC_PER_NODE=8
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 --model "$MODEL_PATH” \$EXTRA_ARGS \
---eval_backend Native \ --infer_backend pt\ --device_map auto \
+--eval_backend Native \ --infer_backend transformers\ --device_map auto \
 --eval_limit"$EVAL_LIMIT"\ --eval_dataset general_qa\
 --dataset_args "{\"general_qa\": {\"local_path\": \"${DATA_PATH}\", \"subset_list\": [\"${SUBSET_NAME}\"]}}" \ --host 127.0.0.1\> "$LOG_FILE" 2>&1
 ```

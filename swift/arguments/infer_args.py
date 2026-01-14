@@ -133,8 +133,8 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
     arguments required for model inference.
 
     Args:
-        infer_backend (Literal['pt', 'vllm', 'sglang', 'lmdeploy']): The inference acceleration backend to use.
-            Defaults to 'pt'.
+        infer_backend (Literal['transformers', 'vllm', 'sglang', 'lmdeploy']): The inference acceleration
+            backend to use. Defaults to 'transformers'.
         result_path (Optional[str]): The path to store inference results in JSONL format. If the file already exists,
             new results will be appended. If None, results are saved in the checkpoint directory (if available) or
             './result'. The final path will be printed to the console. Defaults to None.
@@ -142,19 +142,20 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
             Defaults to 1000.
         metric (Optional[str]): The metric to use for evaluating inference results. Supported values are 'acc' and
             'rouge'. If None, no evaluation is performed. Defaults to None.
-        max_batch_size (int): The maximum batch size for inference, effective only when `infer_backend` is 'pt'. A
-            value of -1 means no limit. Defaults to 1.
+        max_batch_size (int): The maximum batch size for inference, effective only when `infer_backend` is
+            'transformers'. A value of -1 means no limit. Defaults to 1.
         val_dataset_sample (Optional[int]): The number of samples to use from the inference dataset. If None, the
             entire dataset is used. Defaults to None.
         reranker_use_activation (bool): Whether to apply a sigmoid activation to the scores during reranker inference.
             Defaults to True.
     """
-    infer_backend: Literal['vllm', 'pt', 'sglang', 'lmdeploy'] = 'pt'
+    # `pt` is used for swift3.x shell script compatibility.
+    infer_backend: Literal['vllm', 'transformers', 'sglang', 'lmdeploy', 'pt'] = 'transformers'
 
     result_path: Optional[str] = None
     write_batch_size: int = 1000
     metric: Literal['acc', 'rouge'] = None
-    # for pt engine
+    # for transformers engine
     max_batch_size: int = 1
 
     # only for inference
@@ -198,6 +199,9 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
 
     def __post_init__(self) -> None:
+        if self.infer_backend == 'pt':
+            self.infer_backend = 'transformers'  # compat swift3.x
+            logger.warning('args.infer_backend: `pt` is deprecated, please use args.infer_backend: `transformers`.')
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         self._init_vllm_async_engine()

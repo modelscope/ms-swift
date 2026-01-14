@@ -31,7 +31,7 @@ class SwiftApp(SwiftPipeline):
                 studio_title=args.studio_title,
                 lang=args.lang,
                 default_system=args.system)
-            concurrency_count = 1 if args.infer_backend == 'pt' else 16
+            concurrency_count = 1 if args.infer_backend == 'transformers' else 16
             if version.parse(gradio.__version__) < version.parse('4'):
                 queue_kwargs = {'concurrency_count': concurrency_count}
             else:
