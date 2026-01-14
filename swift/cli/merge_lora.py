@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from swift.arguments import ExportArguments
 from swift.pipelines import SwiftPipeline, merge_lora
 

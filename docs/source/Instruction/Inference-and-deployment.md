@@ -4,7 +4,7 @@
 
 | 推理加速引擎 | OpenAI API | 多模态 |  量化模型 | 多LoRA | QLoRA | Batch推理 | 并行技术       |
 | ------------ | -------------- | ---------- | ------ | -------- | ------ | ----- | ----- |
-| pytorch      | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) |     ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh) |DDP/device_map |
+| transformers      | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) |     ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh) |DDP/device_map |
 | [vllm](https://github.com/vllm-project/vllm)         | ✅          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh) |    ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/lora/server.sh) | ❌    | ✅ |  TP/PP/DP   |
 | [sglang](https://github.com/sgl-project/sglang)    | ✅          | ❌ |      ✅        | ❌      | ❌     | ✅ | TP/PP/DP/EP |
 | [lmdeploy](https://github.com/InternLM/lmdeploy)    | ✅          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh) |      ✅        | ❌      | ❌     | ✅ | TP/DP     |

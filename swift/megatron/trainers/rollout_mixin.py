@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """
 Megatron Rollout Mixin - Provides vLLM integration for on-policy generation.
 

@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 

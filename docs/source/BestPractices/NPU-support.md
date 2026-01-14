@@ -281,7 +281,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## 部署
 
-### 使用原生pytorch进行部署
+### 使用原生transformers进行部署
 
 原始模型:
 

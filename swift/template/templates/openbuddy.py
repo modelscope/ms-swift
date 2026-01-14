@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template

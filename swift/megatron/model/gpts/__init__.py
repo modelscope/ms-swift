@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model

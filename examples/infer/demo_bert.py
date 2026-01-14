@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # demo_seq_cls: https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5_omni/infer.py
 import os
 from typing import List

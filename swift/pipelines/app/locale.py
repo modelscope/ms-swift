@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 locale_mapping = {
     'modify_system': {
         'en': '🛠️ Set system and clear history',

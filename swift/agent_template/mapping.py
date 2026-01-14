@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .extra import ReactGRPOAgentTemplate
 from .glm4 import ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate

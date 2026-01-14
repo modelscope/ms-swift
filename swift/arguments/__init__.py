@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .app_args import AppArguments
 from .base_args import BaseArguments, DataArguments, ModelArguments, TemplateArguments, get_supported_tuners
 from .deploy_args import DeployArguments, RolloutArguments

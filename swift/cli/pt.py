@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 if __name__ == '__main__':
     from swift.cli.utils import try_use_single_device_mode
