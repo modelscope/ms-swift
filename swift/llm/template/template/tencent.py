@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import MLLMTemplateType, LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
@@ -95,3 +95,73 @@ class HunYuanVLTemplate(Template):
 
 
 register_template(HunYuanVLTemplateMeta(MLLMTemplateType.hunyuan_ocr, template_cls=HunYuanVLTemplate))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan_moe,
+        prefix=['<|startoftext|>'],
+        system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
+        prompt=['{{QUERY}}<|extra_0|>'],
+        chat_sep=['<|eos|><|startoftext|>'],
+        suffix=['<|eos|>'],
+    ))
+
+
+class HunyuanTemplate(Template):
+
+    def _remove_thinking_content(self, content: str) -> str:
+        content = content.split('<answer>')[-1].rstrip()
+        if content.endswith('</answer>'):
+            content = content[:-len('</answer>')]
+        return self.template_meta.history_thinking_prefix + content.strip()
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}<｜hy_place▁holder▁no▁3｜>'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
+        suffix=['<｜hy_place▁holder▁no▁2｜>'],
+        template_cls=HunyuanTemplate,
+        is_thinking=True,
+        non_thinking_prefix='<think>\n\n</think>\n',
+        agent_template='hunyuan_hermes'))
+
+
+class HunYuanMT15_18B_Template(Template):
+    def format_prompt(self, messages, add_generation_prompt: bool = False, **kwargs):
+        s = "<｜hy_begin▁of▁sentence｜>"
+        for m in messages:
+            if m["role"] == "user":
+                s += "<｜hy_User｜>" + m["content"]
+            elif m["role"] == "assistant":
+                s += "<｜hy_Assistant｜>" + m["content"] + "<｜hy_place▁holder▁no▁2｜>"
+        if add_generation_prompt:
+            s += "<｜hy_Assistant｜>"
+        else:
+            s += "<｜hy_place▁holder▁no▁8｜>"
+        return s
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan_mt1_5_1_8b,
+        template_cls=HunYuanMT15_18B_Template,
+        prefix=["<｜hy_begin▁of▁sentence｜>"],
+        prompt=["<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>"],
+        chat_sep=[""],
+        suffix=["<｜hy_place▁holder▁no▁2｜><｜hy_place▁holder▁no▁8｜>"],
+    )
+)
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan_mt1_5_7b,
+        prefix=["<|startoftext|>"],
+        prompt=["{{QUERY}}<|extra_0|>"],
+        chat_sep=[""],
+        suffix=["<|eos|>"],
+    )
+)
