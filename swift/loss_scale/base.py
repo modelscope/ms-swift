@@ -106,7 +106,12 @@ class LossScale:
                 if isinstance(context, dict) and 'token_ids' in context:
                     context = context['token_ids']
                 if context_type == ContextType.RESPONSE and loss is not None:
-                    new_context, loss_scale = [context], [float(loss)]
+                    if getattr(self, 'loss_scale_config', None) == 'ignore_empty_think.json':
+                        new_context, loss_scale = self.get_loss_scale(context, query=query)
+                        loss = float(loss)
+                        loss_scale = [ls * loss for ls in loss_scale]
+                    else:
+                        new_context, loss_scale = [context], [float(loss)]
                 else:
                     is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
                     if self.base_strategy == 'all' or (self.base_strategy == 'default'
