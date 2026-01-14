@@ -2,7 +2,7 @@
 # pip install -U trl
 # GPU memory: 80GiB
 # You can set `--reward_model` to use a reward model to provide rewards.
-# TransformersEngine(pytorch) to rollout
+# TransformersEngine to rollout
 
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \

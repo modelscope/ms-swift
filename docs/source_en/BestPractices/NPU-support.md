@@ -263,7 +263,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## Deployment
 
-### Deployment with native PyTorch
+### Deployment with native Transformers
 
 Original model:
 ```shell
