@@ -4,12 +4,12 @@ from typing import Literal
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm', 'pt']):
+def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm', 'transformers']):
     # Dynamic LoRA
     adapter_path = safe_snapshot_download('swift/test_lora')
     adapter_path2 = safe_snapshot_download('swift/test_lora2')
     args = BaseArguments.from_pretrained(adapter_path)
-    if infer_backend == 'pt':
+    if infer_backend == 'transformers':
         engine = TransformersEngine(args.model)
     elif infer_backend == 'vllm':
         from swift.infer_engine import VllmEngine
@@ -65,4 +65,4 @@ if __name__ == '__main__':
                        get_model_processor, safe_snapshot_download, Swift, get_template)
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
-    infer_multilora(infer_request, 'pt')
+    infer_multilora(infer_request, 'transformers')

@@ -100,9 +100,9 @@ if __name__ == '__main__':
     # The inference of the trained model can be referred to as:
     # https://github.com/modelscope/ms-swift/tree/main/examples/notebook
     from swift import InferEngine, InferRequest, TransformersEngine, RequestConfig, load_dataset, InferStats
-    infer_backend = 'pt'
+    infer_backend = 'transformers'
 
-    if infer_backend == 'pt':
+    if infer_backend == 'transformers':
         # test env: transformers==4.55.2
         model = 'Qwen/Qwen2.5-Omni-7B'
         mm_type = 'audio'

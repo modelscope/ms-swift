@@ -31,7 +31,7 @@ class SwiftInfer(SwiftPipeline):
         if args.infer_backend == 'vllm' and args.adapters:
             self.infer_kwargs['adapter_request'] = AdapterRequest('_lora', args.adapters[0])
 
-        if args.infer_backend == 'pt':
+        if args.infer_backend == 'transformers':
             model, self.template = prepare_model_template(args)
             self.infer_engine = TransformersEngine(model, template=self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
@@ -58,9 +58,9 @@ class SwiftInfer(SwiftPipeline):
             'template': template,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
-        if infer_backend in {'pt', 'vllm'}:
+        if infer_backend in {'transformers', 'vllm'}:
             kwargs['reranker_use_activation'] = args.reranker_use_activation
-        if infer_backend == 'pt':
+        if infer_backend == 'transformers':
             infer_engine_cls = TransformersEngine
             kwargs.update(args.get_model_kwargs())
             if hasattr(args, 'max_batch_size'):

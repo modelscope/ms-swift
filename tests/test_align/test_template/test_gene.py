@@ -6,7 +6,7 @@ os.environ['SWIFT_DEBUG'] = '1'
 
 def test_deepseek_janus_pro_gene():
     from swift import infer_main, InferArguments
-    args = InferArguments(model='deepseek-ai/Janus-Pro-1B', infer_backend='pt')
+    args = InferArguments(model='deepseek-ai/Janus-Pro-1B', infer_backend='transformers')
     infer_main(args)
 
 

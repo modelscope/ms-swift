@@ -15,7 +15,7 @@ def test_mllm():
 
 def test_audio():
     from swift import AppArguments, app_main, DeployArguments, run_deploy
-    deploy_args = DeployArguments(model='Qwen/Qwen2-Audio-7B-Instruct', infer_backend='pt', verbose=False)
+    deploy_args = DeployArguments(model='Qwen/Qwen2-Audio-7B-Instruct', infer_backend='transformers', verbose=False)
 
     with run_deploy(deploy_args, return_url=True) as url:
         app_main(AppArguments(model='Qwen2-Audio-7B-Instruct', base_url=url, stream=True))

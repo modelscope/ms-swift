@@ -17,14 +17,15 @@ class SamplingArguments(BaseArguments):
     """A dataclass for configuring sampling parameters.
 
     Args:
-        prm_model (Optional[str]): The type of the Process Reward Model (PRM). Can be a model ID (loaded via 'pt'
-            engine) or a PRM key defined in a plugin for custom inference. Defaults to None.
+        prm_model (Optional[str]): The type of the Process Reward Model (PRM). Can be a model ID (loaded via
+            'transformers' engine) or a PRM key defined in a plugin for custom inference. Defaults to None.
         orm_model (Optional[str]): The type of the Outcome Reward Model (ORM). Typically a wildcard or test case,
             usually defined in a plugin. Defaults to None.
         sampler_type (Literal['sample', 'distill']): The type of sampling to perform. Supported types are 'sample' and
             'distill'. Defaults to 'sample'.
-        sampler_engine (Literal['pt', 'lmdeploy', 'vllm', 'no', 'client']): The inference engine for the sampling
-            model. Supported options are 'pt', 'lmdeploy', 'vllm', 'client', and 'no'. Defaults to 'pt'.
+        sampler_engine (Literal['transformers', 'lmdeploy', 'vllm', 'no', 'client']): The inference engine for the
+            sampling model. Supported options are 'transformers', 'lmdeploy', 'vllm', 'client', and 'no'.
+            Defaults to 'transformers'.
         output_dir (str): The directory to save the output files. Defaults to 'sample_output'.
         output_file (Optional[str]): The name of the output file. If None, a timestamp will be used as the filename.
             The path should not be included, only the filename. Only the '.jsonl' format is supported. Defaults to
@@ -61,7 +62,7 @@ class SamplingArguments(BaseArguments):
 
     # sampler settings
     sampler_type: Literal['sample', 'distill'] = 'sample'
-    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no', 'client'] = 'pt'
+    sampler_engine: Literal['transformers', 'lmdeploy', 'vllm', 'no', 'client'] = 'transformers'
     output_dir: str = 'sample_output'
     output_file: Optional[str] = None
     resume: bool = False

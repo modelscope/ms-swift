@@ -90,7 +90,7 @@ def test_lmdeploy():
 
 
 def test_pt():
-    _test('pt')
+    _test('transformers')
 
 
 def test_vllm_origin():

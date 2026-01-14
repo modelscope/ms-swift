@@ -24,7 +24,7 @@ class VanillaSampler(Sampler):
 
     @RayHelper.function(group='sampler')
     def _prepare_sampler(self):
-        if self.args.sampler_engine == 'pt':
+        if self.args.sampler_engine == 'transformers':
             _Engine = TransformersEngine
         elif self.args.sampler_engine == 'vllm':
             from swift.infer_engine import VllmEngine

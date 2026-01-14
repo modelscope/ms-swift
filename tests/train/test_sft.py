@@ -334,7 +334,7 @@ def test_emu3_gen():
     last_model_checkpoint = result['last_model_checkpoint']
     args = InferArguments(
         ckpt_dir=last_model_checkpoint,
-        infer_backend='pt',
+        infer_backend='transformers',
         stream=False,
         use_chat_template=False,
         top_k=2048,

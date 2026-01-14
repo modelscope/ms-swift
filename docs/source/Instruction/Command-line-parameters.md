@@ -656,9 +656,9 @@ soft overlong 奖励参数
 
 推理参数除包含[基本参数](#基本参数)、[合并参数](#合并参数)、[vLLM参数](#vllm参数)、[LMDeploy参数](#LMDeploy参数)外，还包含下面的部分：
 
-- 🔥infer_backend: 推理加速后端，支持'pt'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'pt'。
+- 🔥infer_backend: 推理加速后端，支持'transformers'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'transformers'。
   - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
-- 🔥max_batch_size: 指定infer_backend为pt时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
+- 🔥max_batch_size: 指定infer_backend为'transformers'时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
 - 🔥result_path: 推理结果存储路径（jsonl），默认为None，保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印。
   - 注意：若已存在`result_path`文件，则会进行追加写入。
 - write_batch_size: 结果写入`result_path`的batch_size。默认为1000。若设置为-1，则不受限制。
@@ -751,7 +751,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - prm_model: 过程奖励模型的类型，可以是模型id（以pt方式拉起），或者plugin中定义的prm key（自定义推理过程）。
 - orm_model: 结果奖励模型的类型，通常是通配符或测试用例等，一般定义在plugin中。
 - sampler_type：采样类型，目前支持 sample, distill
-- sampler_engine：支持`pt`, `lmdeploy`, `vllm`, `client`, `no`，默认为`pt`，采样模型的推理引擎。
+- sampler_engine：支持`transformers`, `lmdeploy`, `vllm`, `client`, `no`，默认为`transformers`，采样模型的推理引擎。
 - output_dir：输出目录，默认为`sample_output`。
 - output_file：输出文件名称，默认为`None`使用时间戳作为文件名。传入时不需要传入目录，仅支持jsonl格式。
 - override_exist_file：如`output_file`存在，是否覆盖。

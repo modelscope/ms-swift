@@ -280,8 +280,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         template = self.template
         batch_encoded_inputs = []
 
-        # Use 'pt' mode for prompt-only encoding, 'train' mode for full encoding
-        mode = 'pt' if encode_prompt_only else 'train'
+        # Use 'transformers' mode for prompt-only encoding, 'train' mode for full encoding
+        mode = 'transformers' if encode_prompt_only else 'train'
         with self._template_context(template, mode=mode):
             for data in inputs:
                 if 'response_token_ids' in data and data['response_token_ids']:

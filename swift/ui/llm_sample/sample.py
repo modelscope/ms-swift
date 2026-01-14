@@ -72,7 +72,10 @@ class Sample(BaseUI):
         with gr.Row():
             gr.Dropdown(elem_id='sampler_type', choices=['sample', 'distill'], value='sample', scale=5)
             gr.Dropdown(
-                elem_id='sampler_engine', choices=['pt', 'lmdeploy', 'vllm', 'no', 'client'], value='pt', scale=5)
+                elem_id='sampler_engine',
+                choices=['transformers', 'lmdeploy', 'vllm', 'no', 'client'],
+                value='transformers',
+                scale=5)
             gr.Slider(elem_id='num_return_sequences', minimum=1, maximum=128, step=1, value=64, scale=5)
             gr.Slider(elem_id='n_best_to_keep', minimum=1, maximum=64, step=1, value=5, scale=5)
         with gr.Row():
