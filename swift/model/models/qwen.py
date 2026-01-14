@@ -888,14 +888,14 @@ def _forward_qwen3_vl_or_qwen3_omni(
 
         image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
         video_mask = (input_ids == self.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+        image_mask = image_mask.to(inputs_embeds.device)
+        video_mask = video_mask.to(inputs_embeds.device)
         if image_embeds is not None:
             image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-            image_mask = image_mask.to(inputs_embeds.device)
             inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
         if video_embeds is not None:
             video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-            video_mask = video_mask.to(inputs_embeds.device)
             inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         image_mask, video_mask = image_mask[..., 0], video_mask[..., 0]
         visual_pos_masks = image_mask | video_mask
