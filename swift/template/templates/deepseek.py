@@ -432,7 +432,8 @@ class DeepseekV3_1Template(Template):
 
     def _is_add_non_thinking_round(self, messages, i, start_idx):
         # Additional condition: the previous turn needs to be 'user'
-        return super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0 and messages[i - 1]['role'] == 'user'
+        return super()._is_add_non_thinking_round(messages, i,
+                                                  start_idx) and i > 0 and messages[i - 1]['role'] == 'user'
 
 
 register_template(
