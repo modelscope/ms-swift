@@ -1057,9 +1057,9 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
-    def _is_add_round(self, messages, i, start_idx):
+    def _is_add_round(self, messages, i: int, start_idx: int):
         message = messages[i]
-        return i >= start_idx and message['role'] == 'assistant' and isinstance(message['content'], str)
+        return i >= start_idx and message['role'] == 'assistant'
 
     def _add_non_thinking_prefix(self, inputs) -> None:
         messages = inputs.messages
@@ -1073,8 +1073,8 @@ class Template(ProcessorMixin):
             else:
                 start_idx = -1
             for i, message in enumerate(messages):
-                if (self._is_add_round(messages, i, start_idx) and not message['content'].startswith(
-                    ('<think>', non_thinking_prefix))):
+                if (self._is_add_round(messages, i, start_idx) and isinstance(message['content'], str)
+                        and not message['content'].startswith(('<think>', non_thinking_prefix))):
                     # During multi-turn SFT training/validation:
                     # If the message has no <think> block and does not start with the non_thinking_prefix,
                     # prepend the non_thinking_prefix to the content.
