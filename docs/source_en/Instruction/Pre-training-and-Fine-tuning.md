@@ -125,7 +125,7 @@ To perform inference on a LoRA-trained checkpoint using the CLI:
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
@@ -142,14 +142,14 @@ For batch inference on the validation set of the dataset:
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --load_data_args true \
     --max_batch_size 1
 ```
 
-- You can set `--max_batch_size 8` to enable batch processing with `--infer_backend pt`. If you use `infer_backend vllm/sglang/lmdeploy`, it will automatically handle batching without needing to specify.
+- You can set `--max_batch_size 8` to enable batch processing with `--infer_backend transformers`. If you use `infer_backend vllm/sglang/lmdeploy`, it will automatically handle batching without needing to specify.
 - `--load_data_args true` will additionally read the data parameters from the training storage parameter file `args.json`.
 
 If you want to perform inference on an additional test set instead of using the training validation set, use `--val_dataset <dataset_path>` for inference:
@@ -158,7 +158,7 @@ If you want to perform inference on an additional test set instead of using the 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --val_dataset <dataset-path> \
@@ -270,7 +270,7 @@ Use the following command to start the deployment server. If the weights are tra
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --served_model_name '<model-name>'

@@ -1075,7 +1075,7 @@ For multiple-choice question answering, this is a requirement. Alternatively, yo
 NPROC_PER_NODE=8
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 --model "$MODEL_PATH” \$EXTRA_ARGS \
---eval_backend Native \ --infer_backend pt\ --device_map auto \
+--eval_backend Native \ --infer_backend transformers\ --device_map auto \
 --eval_limit"$EVAL_LIMIT"\ --eval_dataset general_qa\
 --dataset_args "{\"general_qa\": {\"local_path\": \"${DATA_PATH}\", \"subset_list\": [\"${SUBSET_NAME}\"]}}" \ --host 127.0.0.1\> "$LOG_FILE" 2>&1
 ```

@@ -23,7 +23,7 @@ To view the inference of a model fine-tuned with LoRA, please refer to the [Pre-
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -34,7 +34,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -59,7 +59,7 @@ FPS_MAX_FRAMES=12 \
 swift infer \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -87,7 +87,7 @@ A baby wearing glasses is sitting on a bed and reading a book. The baby is holdi
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --val_dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --max_new_tokens 2048
 ```

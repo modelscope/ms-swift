@@ -418,7 +418,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 
 # LoRA
@@ -426,7 +426,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -436,7 +436,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift app \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 

@@ -118,7 +118,7 @@ result = sft_main(SftArguments(
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
@@ -133,14 +133,14 @@ swift infer \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --load_data_args true \
     --max_batch_size 1
 ```
 
-- 你可以设置`--max_batch_size 8`，从而使用`--infer_backend pt`进行批量处理。若使用`infer_backend vllm/sglang/lmdeploy`则无需指定，会进行自动batch。
+- 你可以设置`--max_batch_size 8`，从而使用`--infer_backend transformers`进行批量处理。若使用`infer_backend vllm/sglang/lmdeploy`则无需指定，会进行自动batch。
 - `--load_data_args true`会额外读取训练存储参数文件`args.json`中的数据参数。
 
 若想对额外的测试集进行推理，而不使用训练时的验证集，使用`--val_dataset <dataset_path>`进行推理：
@@ -148,7 +148,7 @@ swift infer \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --val_dataset <dataset-path> \
@@ -258,7 +258,7 @@ print(f'args.default_system: {args.system}')
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --served_model_name '<model-name>'
