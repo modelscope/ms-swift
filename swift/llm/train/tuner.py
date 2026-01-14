@@ -86,6 +86,73 @@ def apply_liger(model_type: str):
                           'by running `pip install -U liger-kernel`')
 
 
+def apply_cce(model_type: str):
+    try:
+        from cut_cross_entropy.transformers import cce_patch
+        from swift.llm import ModelType
+    except ImportError:
+        raise ImportError('Please upgrade cut-cross-entropy to apply cce kernels to this model '
+                          'by running `pip install "cut-cross-entropy[transformers] @ '
+                          'git+https://github.com/axolotl-ai-cloud/ml-cross-entropy.git@f643b88"`')
+
+    model_type_map = {
+        # llama family
+        ModelType.llama: 'llama',
+        ModelType.llama3: 'llama',
+        ModelType.llama3_1: 'llama',
+        ModelType.llama3_2: 'llama',
+        ModelType.llama4: 'llama4',
+        ModelType.llama3_2_vision: 'mllama',
+        # mistral & mixtral family
+        ModelType.mistral: 'mistral',
+        ModelType.mixtral: 'mixtral',
+        # phi
+        ModelType.phi3: 'phi3',
+        # gemma family
+        ModelType.gemma: 'gemma',
+        ModelType.gemma2: 'gemma2',
+        ModelType.gemma3_text: 'gemma3_text',
+        ModelType.gemma3_vision: 'gemma3',
+        ModelType.gemma3n: 'gemma3n',
+        # glm4 family
+        ModelType.glm4: 'glm4',
+        ModelType.glm4_0414: 'glm4',
+        ModelType.glm4_5: 'glm4_moe',
+        ModelType.glm4_z1_rumination: 'glm4_moe',
+        ModelType.glm4v: 'glm4v',
+        ModelType.glm4_1v: 'glm4v',
+        ModelType.glm4_5v: 'glm4v_moe',
+        # llava
+        ModelType.llava1_5_hf: 'llava',
+        ModelType.llava_llama3_hf: 'llava',
+        # qwen2 family
+        ModelType.qwen2: 'qwen2',
+        ModelType.qwen2_5: 'qwen2',
+        ModelType.qwen2_vl: 'qwen2_vl',
+        ModelType.qwen2_5_vl: 'qwen2_5_vl',
+        # qwen3 family
+        ModelType.qwen3: 'qwen3',
+        ModelType.qwen3_guard: 'qwen3',
+        ModelType.qwen3_thinking: 'qwen3',
+        ModelType.qwen3_nothinking: 'qwen3',
+        ModelType.qwen3_coder: 'qwen3',
+        ModelType.qwen3_moe: 'qwen3_moe',
+        ModelType.qwen3_moe_thinking: 'qwen3_moe',
+        ModelType.qwen3_next: 'qwen3_next',
+        ModelType.qwen3_next_thinking: 'qwen3_next',
+        ModelType.qwen3_vl: 'qwen3_vl',
+        ModelType.qwen3_moe_vl: 'qwen3_vl_moe',
+    }
+
+    cce_model_type = model_type_map.get(model_type)
+    if cce_model_type:
+        cce_patch(cce_model_type)
+        return
+
+    supported_models = ', '.join(sorted(set(model_type_map.values())))
+    raise ValueError(f'Unsupported cce model_type: {model_type}. Supported types: {supported_models}')
+
+
 def get_multimodal_target_regex(
     model,
     *,
@@ -374,6 +441,9 @@ class TunerMixin:
         if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
+
+        if args.use_cce and 'use_cce' not in inspect.signature(TrainingArguments).parameters:
+            apply_cce(args.model_type)
 
         if args.is_adapter:
             if args.tuner_backend != 'unsloth' and args.train_type not in extra_tuners:

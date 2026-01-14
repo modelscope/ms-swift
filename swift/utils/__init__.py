@@ -2,7 +2,7 @@
 
 from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir, is_deepspeed_enabled,
                   is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
-from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
+from .import_utils import (is_cce_available, is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
                            is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
                            is_unsloth_available, is_vllm_ascend_available, is_vllm_available, is_wandb_available)
 from .io_utils import JsonlWriter, append_to_jsonl, download_ms_file, get_file_mm_type, read_from_jsonl, write_to_jsonl
