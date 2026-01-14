@@ -112,7 +112,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 **小帖士：**
 - SWIFT会将推理结果保存起来，你可以通过`--result_path`指定保存路径。
 - 如果要输出logprobs，只需要在推理时，指定`--logprobs true`即可。SWIFT会保存。注意，设置`--stream true`将不会存储。
-- infer_backend为pt支持所有swift已支持模型的推理，而infer_backend为vllm/sglang/lmdeploy只支持部分模型，具体请参考[vllm](https://docs.vllm.ai/en/latest/models/supported_models.html)、[sglang](https://docs.sglang.ai/supported_models/generative_models.html)、[lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html)文档。
+- infer_backend为'transformers'支持所有swift已支持模型的推理，而infer_backend为vllm/sglang/lmdeploy只支持部分模型，具体请参考[vllm](https://docs.vllm.ai/en/latest/models/supported_models.html)、[sglang](https://docs.sglang.ai/supported_models/generative_models.html)、[lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html)文档。
 - 使用`--infer_backend vllm`出现OOM，可以通过降低`--vllm_max_model_len`，`--vllm_max_num_seqs`，选择合适的`--vllm_gpu_memory_utilization`，设置`--vllm_enforce_eager true`。或者使用tensor并行`--vllm_tensor_parallel_size`来解决。
 - 使用`--infer_backend vllm`推理多模态模型，需要传入多张图片。可以设置`--vllm_limit_mm_per_prompt`解决，例如：`--vllm_limit_mm_per_prompt '{"image": 10, "video": 5}'`。
 - 推理qwen2-vl/qwen2.5-vl出现OOM，可以通过设置`MAX_PIXELS`、`VIDEO_MAX_PIXELS`、`FPS_MAX_FRAMES`解决，可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh)。
