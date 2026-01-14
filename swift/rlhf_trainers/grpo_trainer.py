@@ -432,7 +432,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
             group_rewards = rewards.view(-1, num_generations)
             rewards_mean = group_rewards.mean(-1).mean().item()
-            if self.scale_rewards in ['group', 'none']:
+            if self.scale_rewards in ['group', 'none', 'gdpo']:
                 # Handle edge case when num_generations_eval=1
                 if num_generations > 1:
                     rewards_std = group_rewards.std(-1).mean().item()
@@ -542,6 +542,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
                     else:  # edge case: num_generations_eval=1
                         rewards_std = torch.zeros_like(rewards)
+                elif self.scale_rewards == 'gdpo':
+                    num_reward_funcs = rewards_per_func.shape[1]
+                    normalized_advantages_list = []
+                    for i in range(num_reward_funcs):
+                        reward_i = rewards_per_func[:, i]
+                        grouped_reward_i = reward_i.view(-1, K)
+                        group_mean = grouped_reward_i.mean(dim=1, keepdim=True)
+                        group_std = grouped_reward_i.std(dim=1, keepdim=True) + 1e-8
+                        normalized_i = (grouped_reward_i - group_mean) / group_std
+                        normalized_i = normalized_i.view(-1)
+                        normalized_advantages_list.append(self.reward_weights[i] * normalized_i)
+                    summed_advantages = sum(normalized_advantages_list)
+                    batch_mean = summed_advantages.mean()
+                    batch_std = summed_advantages.std() + 1e-8
+                    advantages = (summed_advantages - batch_mean) / batch_std
+                    rewards_std = None
                 else:  # 'none'
                     rewards_std = None
                 if rewards_std is not None:
@@ -2145,6 +2161,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # RLOO,
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
+        if self.scale_rewards == 'gdpo' and self.kl_in_reward:
+            logger.warning('GDPO mode does not support kl_in_reward=True. Setting kl_in_reward=False.')
+            self.kl_in_reward = False
 
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode
