@@ -748,7 +748,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 
 ### 采样参数
 
-- prm_model: 过程奖励模型的类型，可以是模型id（以pt方式拉起），或者plugin中定义的prm key（自定义推理过程）。
+- prm_model: 过程奖励模型的类型，可以是模型id（以'transformers'方式拉起），或者plugin中定义的prm key（自定义推理过程）。
 - orm_model: 结果奖励模型的类型，通常是通配符或测试用例等，一般定义在plugin中。
 - sampler_type：采样类型，目前支持 sample, distill
 - sampler_engine：支持`transformers`, `lmdeploy`, `vllm`, `client`, `no`，默认为`transformers`，采样模型的推理引擎。
