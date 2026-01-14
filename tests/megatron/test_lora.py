@@ -4,9 +4,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_sft():
-    from swift.megatron import megatron_sft_main, MegatronTrainArguments
+    from swift.megatron import megatron_sft_main, MegatronSftArguments
     megatron_sft_main(
-        MegatronTrainArguments(
+        MegatronSftArguments(
             load='Qwen2.5-3B-Instruct-mcore',
             dataset=['AI-ModelScope/function-calling-chatml#10000'],
             loss_scale='hermes',
@@ -29,9 +29,9 @@ def test_sft():
 
 
 def test_moe():
-    from swift.megatron import megatron_sft_main, MegatronTrainArguments
+    from swift.megatron import megatron_sft_main, MegatronSftArguments
     megatron_sft_main(
-        MegatronTrainArguments(
+        MegatronSftArguments(
             load='Qwen1.5-MoE-A2.7B-mcore',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
             split_dataset_ratio=0.01,
@@ -56,7 +56,7 @@ def test_moe():
 
 
 def test_convert():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             mcore_adapters=['megatron_output/vx-xxx/checkpoint-xxx'],

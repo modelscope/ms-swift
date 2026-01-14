@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import ExportArguments, SwiftPipeline, merge_lora
+from swift.arguments import ExportArguments
+from swift.pipelines import SwiftPipeline, merge_lora
 
 
 class SwiftMergeLoRA(SwiftPipeline):

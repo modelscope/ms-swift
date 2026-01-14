@@ -6,8 +6,8 @@ from typing import Optional
 import torch
 from torch import nn
 
-from swift.llm import MODEL_ARCH_MAPPING, HfConfigFactory, ModelKeys
-from swift.utils.logger import get_logger
+from swift.model import MODEL_ARCH_MAPPING, ModelKeys
+from swift.utils import HfConfigFactory, get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
@@ -146,7 +146,7 @@ class LLaMAPro(SwiftAdapter):
                     getattr(module, attention).layer_idx = idx
                 except AttributeError:
                     getattr(module, 'cross_attn').layer_idx = idx
-        elif model_type in ('chatglm', 'glm4'):
+        elif model_type in ('chatglm', 'chatglm4'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_number = idx
         elif model_type in ('phi2', ):

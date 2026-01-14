@@ -5,8 +5,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # os.environ['SWIFT_DEBUG'] = '1'
 
 if __name__ == '__main__':
-    from swift.llm import InferRequest, PtEngine, RequestConfig
-    engine = PtEngine('deepseek-ai/DeepSeek-OCR')
+    from swift.infer_engine import InferRequest, TransformersEngine, RequestConfig
+    engine = TransformersEngine('deepseek-ai/DeepSeek-OCR')
     infer_request = InferRequest(
         messages=[{
             'role': 'user',

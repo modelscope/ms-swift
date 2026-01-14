@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_infer.runtime import Runtime
 from swift.utils import get_logger
+from ..llm_infer import Runtime
 
 logger = get_logger()
 

@@ -10,15 +10,16 @@ from typing import Dict, List, Union
 import json
 import torch
 
-from swift.llm import PtEngine, RequestConfig, RolloutInferRequest, Template, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice
-from swift.plugin import ORM, AsyncORM, orms, rm_plugins
+from swift.infer_engine import RequestConfig, TransformersEngine
+from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest
+from swift.plugins import ORM, AsyncORM, orms, rm_plugins
 # register context manager(used in gym training)
-from swift.plugin.context_manager import ContextManager, context_managers
-from swift.plugin.env import Env, envs
-from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
-from swift.plugin.rm_plugin import DefaultRMPlugin
-from swift.utils import get_logger
+from swift.plugins.context_manager import ContextManager, context_managers
+from swift.plugins.env import Env, envs
+from swift.plugins.multi_turn import MultiTurnScheduler, multi_turns
+from swift.plugins.rm_plugin import DefaultRMPlugin
+from swift.template import Template
+from swift.utils import get_logger, to_device
 
 logger = get_logger()
 """
@@ -37,7 +38,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 """
 
 
-# For additional reward functions, refer to swift/plugin/orm.py.
+# For additional reward functions, refer to swift/plugins/orm.py.
 class CountdownORM(ORM):
 
     def __call__(self, completions, target, nums, **kwargs) -> List[float]:
@@ -156,7 +157,7 @@ class MultiTurnThinkingTips(ORM):
     """
 
     def __init__(self):
-        from swift.plugin.orm import MathAccuracy
+        from swift.plugins.orm import MathAccuracy
         self.acc_func = MathAccuracy()
 
     def __call__(self, completions, **kwargs) -> List[float]:
@@ -901,7 +902,7 @@ TO CUSTOMIZE REWARD MODEL:
         --external_plugins /path/to/plugin.py \
         --reward_model_plugin my_rm_plugin
 
-For GenRM you can refer to swift/llm/plugin/rm_plugin/GenRMPlugin
+For GenRM you can refer to swift/plugins/rm_plugin/GenRMPlugin
 """
 
 
@@ -933,8 +934,8 @@ class QwenLongPlugin(DefaultRMPlugin):
     # ms_dataset: https://modelscope.cn/datasets/iic/DocQA-RL-1.6K
     def __init__(self, model, template, accuracy_orm=None):
         super().__init__(model, template)
-        # initilize PTEngine to infer
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        # initialize TransformersEngine to infer
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig(temperature=0)  # customise your request config here
         self.system = textwrap.dedent("""
             You are an expert in verifying if two answers are the same.

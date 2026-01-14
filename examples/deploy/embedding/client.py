@@ -46,7 +46,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 
 if __name__ == '__main__':
-    from swift.llm import run_deploy, DeployArguments
+    from swift import run_deploy, DeployArguments
     with run_deploy(
             DeployArguments(
                 model='Qwen/Qwen3-Embedding-0.6B',  # GME/GTE models or your checkpoints are also supported

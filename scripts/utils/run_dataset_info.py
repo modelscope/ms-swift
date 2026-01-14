@@ -3,7 +3,9 @@ import re
 
 import numpy as np
 
-from swift.llm import DATASET_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
+from swift.dataset import DATASET_MAPPING, EncodePreprocessor, load_dataset
+from swift.model import get_processor
+from swift.template import get_template
 from swift.utils import stat_array
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
@@ -87,8 +89,8 @@ def write_dataset_info() -> None:
 
     all_keys = list(DATASET_MAPPING.keys())
     all_keys = sorted(all_keys, key=lambda x: get_dataset_id(x))
-    _, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-7B-Instruct', load_model=False)
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('Qwen/Qwen2.5-7B-Instruct')
+    template = get_template(tokenizer)
     try:
         for i, key in enumerate(all_keys):
             res = run_dataset(key, template, cache_mapping)

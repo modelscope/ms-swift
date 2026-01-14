@@ -25,7 +25,7 @@ import yaml
 from model_tag import ModelTag, commit_model_ut_result
 from test_utils import get_case_model_info
 
-from swift.utils.logger import get_logger
+from swift.utils import get_logger
 
 logger = get_logger()
 

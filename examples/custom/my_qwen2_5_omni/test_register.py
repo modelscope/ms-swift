@@ -6,7 +6,7 @@ from modelscope import snapshot_download
 from qwen_omni_utils import process_mm_info
 from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 
-from swift.llm import InferRequest, PtEngine, RequestConfig
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 
 sys.path.append('examples/custom/my_qwen2_5_omni')
 
@@ -62,7 +62,7 @@ def infer_hf():
 
 
 def test_my_qwen2_5_omni():
-    engine = PtEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
+    engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
     infer_request = InferRequest(
         messages=[{
             'role': 'user',
@@ -72,7 +72,7 @@ def test_my_qwen2_5_omni():
         images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'],
     )
     request_config = RequestConfig(temperature=0, max_tokens=512)
-    input_ids = engine.default_template.encode(infer_request)['input_ids']
+    input_ids = engine.template.encode(infer_request)['input_ids']
     resp_list = engine.infer([infer_request], request_config)
     resp = resp_list[0].choices[0].message.content
     return input_ids, resp
@@ -80,7 +80,7 @@ def test_my_qwen2_5_omni():
 
 if __name__ == '__main__':
     import my_register
-    # Enable debug mode, will print input_ids and generate_ids from `PtEngine.infer`
+    # Enable debug mode, will print input_ids and generate_ids from `TransformersEngine.infer`
     os.environ['SWIFT_DEBUG'] = '1'
     input_ids_hf, response_hf = infer_hf()
     input_ids_swift, response_swift = test_my_qwen2_5_omni()

@@ -5,26 +5,14 @@ from threading import Thread
 from typing import Any, Dict, List, Literal, Union
 
 import json
-import requests
 import torch.distributed as dist
 from accelerate.utils import gather_object
-from modelscope.hub.api import ModelScopeConfig
-from tqdm import tqdm
 
 from .env import is_last_rank, is_master
 from .logger import get_logger
 from .utils import check_json_format
 
 logger = get_logger()
-
-
-def download_ms_file(url: str, local_path: str, cookies=None) -> None:
-    if cookies is None:
-        cookies = ModelScopeConfig.get_cookies()
-    resp = requests.get(url, cookies=cookies, stream=True)
-    with open(local_path, 'wb') as f:
-        for data in tqdm(resp.iter_lines()):
-            f.write(data)
 
 
 def read_from_jsonl(fpath: str, encoding: str = 'utf-8') -> List[Any]:

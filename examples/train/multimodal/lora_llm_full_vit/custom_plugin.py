@@ -4,14 +4,13 @@ from typing import TYPE_CHECKING, Optional
 import safetensors.torch
 import torch
 
-from swift.llm import deep_getattr, get_multimodal_target_regex
-from swift.plugin import Tuner, extra_tuners
+from swift.plugins import Tuner, extra_tuners
 from swift.tuners import LoraConfig, Swift
-from swift.utils import get_logger
+from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
 
 logger = get_logger()
 if TYPE_CHECKING:
-    from swift.llm import TrainArguments
+    from swift import SftArguments
 
 
 def is_vit_param(model_arch, parameter_name: str) -> bool:
@@ -52,7 +51,7 @@ class CustomTuner(Tuner):
             state_dict, os.path.join(save_directory, 'vit.safetensors'), metadata={'format': 'pt'})
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch = model.model_meta.model_arch
         target_regex = get_multimodal_target_regex(model)
         logger.info(f'target_regex: {target_regex}')

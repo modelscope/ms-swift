@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.01.15: **ms-swift v4.0** major version update is in progress. It is recommended to use the stable branch [release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12). You can provide your feedback in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
 - 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
@@ -122,6 +123,8 @@ To install from source:
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# The main branch is for swift 4.x. To install swift 3.x, please run the following command:
+# git checkout release/3.12
 pip install -e .
 ```
 
@@ -245,9 +248,10 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
+from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # Retrieve the model and template, and add a trainable LoRA module
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
+template = get_template(tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens
@@ -269,8 +273,9 @@ trainer.train()
 Inference:
 
 ```python
+from swift import TransformersEngine, InferRequest, RequestConfig
 # Perform inference using the native PyTorch engine
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 

@@ -73,6 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🎁 2025.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
@@ -117,6 +118,8 @@ pip install ms-swift -U
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# main分支为swift4.x。若安装swift3.x，请运行以下命令
+# git checkout release/3.12
 pip install -e .
 ```
 
@@ -233,9 +236,10 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 
 训练：
 ```python
+from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # 获取模型和template，并加入可训练的LoRA模块
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
+template = get_template(tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
 
 # 下载并载入数据集，并将文本encode成tokens
@@ -257,8 +261,9 @@ trainer.train()
 
 推理：
 ```python
+from swift import TransformersEngine, InferRequest, RequestConfig
 # 使用原生pytorch引擎进行推理
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 
