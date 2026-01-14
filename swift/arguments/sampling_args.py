@@ -94,6 +94,8 @@ class SamplingArguments(BaseArguments):
         return
 
     def __post_init__(self):
+        if self.sampler_engine == 'pt':
+            self.sampler_engine = 'transformers'  # compat swift3.x
         if self.output_file is None:
             now = datetime.now()
             formatted_time = now.strftime('%Y-%m-%d-%H-%M-%S')

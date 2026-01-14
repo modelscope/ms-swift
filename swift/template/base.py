@@ -1468,6 +1468,9 @@ class Template(ProcessorMixin):
         return self.mode not in {'transformers', 'vllm', 'lmdeploy', 'sglang'}
 
     def set_mode(self, mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto']) -> None:
+        if mode == 'pt':
+            mode = 'transformers'
+            logger.warning("The mode 'pt' is deprecated, please use 'transformers'.")
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
