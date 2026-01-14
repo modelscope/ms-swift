@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 from swift.model import Model, ModelGroup, ModelMeta, register_model
 from swift.template import TemplateMeta, register_template

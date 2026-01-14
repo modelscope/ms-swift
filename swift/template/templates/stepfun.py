@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import itertools
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional

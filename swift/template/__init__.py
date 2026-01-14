@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from . import templates
 from .base import MaxLengthError, Template
 from .constant import TemplateType

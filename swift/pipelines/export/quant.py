@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Dict, List, Optional

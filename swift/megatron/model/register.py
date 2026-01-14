@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Type

@@ -1,5 +1,5 @@
 # Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from typing import Any, Iterator, Optional, Tuple
 

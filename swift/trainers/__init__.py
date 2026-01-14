@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from . import callback
 from .arguments import RLHFArgumentsMixin, Seq2SeqTrainingArguments, TrainingArguments, VllmArguments
 from .embedding import EmbeddingTrainer

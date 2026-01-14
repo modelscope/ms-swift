@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .base_args import BaseArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments

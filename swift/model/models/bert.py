@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn.functional as F
 from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 
