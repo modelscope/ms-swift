@@ -79,10 +79,13 @@ class SwiftInfer(SwiftPipeline):
             from swift.infer_engine import SglangEngine
             infer_engine_cls = SglangEngine
             kwargs.update(args.get_sglang_engine_kwargs())
-        else:
+        elif infer_backend == 'lmdeploy':
             from swift.infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
+        else:
+            raise ValueError(f'Inference backend `{infer_backend}` is not supported. '
+                             'Please use one of: transformers, vllm, sglang, lmdeploy.')
         return infer_engine_cls(**kwargs)
 
     def run(self) -> List[Dict[str, Any]]:

@@ -149,7 +149,8 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         reranker_use_activation (bool): Whether to apply a sigmoid activation to the scores during reranker inference.
             Defaults to True.
     """
-    infer_backend: Literal['vllm', 'transformers', 'sglang', 'lmdeploy'] = 'transformers'
+    # `pt` is used for swift3.x shell script compatibility.
+    infer_backend: Literal['vllm', 'transformers', 'sglang', 'lmdeploy', 'pt'] = 'transformers'
 
     result_path: Optional[str] = None
     write_batch_size: int = 1000
@@ -198,6 +199,9 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
 
     def __post_init__(self) -> None:
+        if self.infer_backend == 'pt':
+            self.infer_backend = 'transformers'  # compat swift3.x
+            logger.warning('args.infer_backend: `pt` is deprecated, please use args.infer_backend: `transformers`.')
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         self._init_vllm_async_engine()
