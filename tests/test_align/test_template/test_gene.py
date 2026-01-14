@@ -23,5 +23,5 @@ def test_emu3_gen(infer_backend):
 
 
 if __name__ == '__main__':
-    # test_emu3_gen('pt')
+    # test_emu3_gen('transformers')
     test_deepseek_janus_pro_gene()
