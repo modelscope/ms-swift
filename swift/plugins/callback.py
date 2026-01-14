@@ -158,6 +158,7 @@ device_flops_map = {
     'RTX 3070 Ti': 21.75e12
 }
 
-extra_callbacks = []
-# This example shows a simple example of EarlyStop Callback, uncomment this to use
-# extra_callbacks = [EarlyStopCallback()]
+extra_callbacks = {
+    'early_stop': EarlyStopCallback,
+    'perf_log': PerfMetricsLogCallback,
+}
