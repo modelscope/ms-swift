@@ -67,6 +67,7 @@ class Template(ProcessorMixin):
     norm_bbox = 'norm1000'
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
+    jinja_enable_thinking_key = 'enable_thinking'
 
     is_encoder_decoder = False
 
@@ -1038,7 +1039,7 @@ class Template(ProcessorMixin):
         if 'thinking_budget' in inputs.extra_kwargs:
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
         if self.template_meta.is_thinking or self.enable_thinking:
-            kwargs['enable_thinking'] = self.enable_thinking
+            kwargs[self.jinja_enable_thinking_key] = self.enable_thinking
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
@@ -1056,23 +1057,28 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
+    def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
+        message = messages[i]
+        return i >= start_idx and message['role'] == 'assistant'
+
     def _add_non_thinking_prefix(self, inputs) -> None:
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
+            # Determine the starting index for processing messages
+            # During inference or when using 'last_round' strategy, only process the last round
+            # Otherwise, process all messages (start_idx = -1 means start from the beginning)
             if not self.is_training or self.loss_scale.base_strategy == 'last_round':
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
             for i, message in enumerate(messages):
-                if i < start_idx:
-                    continue
-                if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith(('<think>', non_thinking_prefix)):
-                        # During multi-turn SFT training/validation:
-                        # If the message has no <think> block and does not start with the non_thinking_prefix,
-                        # prepend the non_thinking_prefix to the content.
-                        message['content'] = non_thinking_prefix + message['content']
+                if (self._is_add_non_thinking_round(messages, i, start_idx) and isinstance(message['content'], str)
+                        and not message['content'].startswith(('<think>', non_thinking_prefix))):
+                    # During multi-turn SFT training/validation:
+                    # If the message has no <think> block and does not start with the non_thinking_prefix,
+                    # prepend the non_thinking_prefix to the content.
+                    message['content'] = non_thinking_prefix + message['content']
 
     def _remove_thinking_content(self, content: str) -> str:
         content = content.split('</think>')[-1].strip()
