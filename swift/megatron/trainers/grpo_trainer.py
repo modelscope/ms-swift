@@ -441,8 +441,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
                 encoded_batch_data = self._get_encoded_batch(encoded_batch_data, micro_batch_data, template)
                 with profiling_context(self, 'compute_ref_old_logps'):
-                    micro_batch_encoded = self._maybe_compute_logps(micro_batch_encoded)
-                mini_batch_data.append(micro_batch_encoded)
+                    encoded_batch_data = self._maybe_compute_logps(encoded_batch_data)
+                mini_batch_data.append(encoded_batch_data)
 
         # Step 2: Compute KL from logps if kl_in_reward is enabled
         kl_values = None
