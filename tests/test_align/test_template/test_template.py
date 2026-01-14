@@ -1,9 +1,10 @@
-from swift.llm import TemplateInputs, get_model_tokenizer, get_template
+from swift.model import get_processor
+from swift.template import TemplateInputs, get_template
 
 
 def test_deepseek_v2_5():
-    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V2.5-1210', load_model=False)[1]
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('deepseek-ai/DeepSeek-V2.5-1210')
+    template = get_template(tokenizer)
     inputs = TemplateInputs({
         'messages': [{
             'role': 'system',
@@ -28,8 +29,8 @@ def test_deepseek_v2_5():
 
 
 def test_qwen2_5_math_reward():
-    tokenizer = get_model_tokenizer('Qwen/Qwen2.5-Math-RM-72B', load_model=False)[1]
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('Qwen/Qwen2.5-Math-RM-72B')
+    template = get_template(tokenizer)
     inputs = TemplateInputs({
         'messages': [{
             'role':
@@ -65,8 +66,8 @@ def test_qwen2_5_math_reward():
 
 
 def test_minimax():
-    tokenizer = get_model_tokenizer('MiniMax/MiniMax-Text-01', load_model=False)[1]
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('MiniMax/MiniMax-Text-01')
+    template = get_template(tokenizer)
     inputs = TemplateInputs({
         'messages': [{
             'role': 'system',
@@ -85,8 +86,8 @@ def test_minimax():
 
 
 def test_minimax_vl():
-    tokenizer = get_model_tokenizer('MiniMax/MiniMax-VL-01', load_model=False)[1]
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('MiniMax/MiniMax-VL-01')
+    template = get_template(tokenizer)
     inputs = TemplateInputs({
         'messages': [{
             'role': 'system',
@@ -102,8 +103,8 @@ def test_minimax_vl():
 
 
 def test_deepseek_v3_1():
-    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1', load_model=False)[1]
-    template = get_template(tokenizer.model_meta.template, tokenizer)
+    tokenizer = get_processor('deepseek-ai/DeepSeek-V3.1')
+    template = get_template(tokenizer)
     inputs = {
         'messages': [{
             'role': 'system',

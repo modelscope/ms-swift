@@ -4,9 +4,10 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ExportArguments, ModelType
-from swift.llm.model.register import get_all_models
-from swift.ui.base import BaseUI
+from swift.arguments import ExportArguments
+from swift.model import ModelType, get_model_list
+from swift.template import TEMPLATE_MAPPING
+from ..base import BaseUI
 
 
 class Model(BaseUI):
@@ -64,7 +65,7 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             all_models = [
-                model for model in get_all_models() if not any([ignored in model for ignored in cls.ignored_models])
+                model for model in get_model_list() if not any([ignored in model for ignored in cls.ignored_models])
             ]
             gr.Dropdown(
                 elem_id='model',

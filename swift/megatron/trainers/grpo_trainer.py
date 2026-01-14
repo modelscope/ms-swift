@@ -2,7 +2,6 @@
 import asyncio
 import atexit
 import base64
-import gc
 import inspect
 import os
 import uuid
@@ -21,20 +20,18 @@ from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.training import get_args, get_wandb_writer, training
-from vllm.distributed import parallel_state as vllm_ps
 
-from swift.llm import RequestConfig, RolloutInferRequest, RowPreprocessor, Template, get_packed_seq_params, to_device
-from swift.llm.infer.protocol import RolloutOutput
-from swift.llm.template.template_inputs import TemplateInputs
-from swift.plugin import MultiTurnScheduler, multi_turns, orms
-from swift.trainers.rlhf_trainer.grpo_trainer import DataType
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
-                                               nanstd, pad_logps_back_to_batch, replace_assistant_response_with_ids,
-                                               set_expandable_segments)
-from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, is_wandb_available,
-                         remove_response, shutdown_event_loop_in_daemon, start_event_loop_in_daemon)
-from ..argument import MegatronArguments, MegatronRLHFArguments
-from ..utils import MegatronTrainerState, forward_step_helper, get_padding_to
+from swift.dataset import RowPreprocessor
+from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
+from swift.megatron.utils import MegatronTrainerState, forward_step_helper, get_padding_to
+from swift.plugins import MultiTurnScheduler, multi_turns, orms
+from swift.rlhf_trainers.grpo_trainer import DataType
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch,
+                                       replace_assistant_response_with_ids, set_expandable_segments)
+from swift.template import Template, TemplateInputs
+from swift.utils import (get_logger, get_packed_seq_params, is_wandb_available, remove_response,
+                         shutdown_event_loop_in_daemon, start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator

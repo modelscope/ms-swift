@@ -18,7 +18,8 @@ def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
 
 if __name__ == '__main__':
     # This is an example of BERT with LoRA.
-    from swift.llm import InferEngine, InferRequest, PtEngine, load_dataset, safe_snapshot_download, BaseArguments
+    from swift import (InferEngine, InferRequest, TransformersEngine, load_dataset, safe_snapshot_download,
+                       BaseArguments)
     from swift.tuners import Swift
     adapter_path = safe_snapshot_download('swift/test_bert')
     args = BaseArguments.from_pretrained(adapter_path)
@@ -28,13 +29,13 @@ if __name__ == '__main__':
     model, processor = args.get_model_processor()
     model = Swift.from_pretrained(model, adapter_path)
     template = args.get_template(processor)
-    engine = PtEngine.from_model_template(model, template, max_batch_size=64)
+    engine = TransformersEngine(model, template=template, max_batch_size=64)
 
     # method2
-    # engine = PtEngine(args.model, adapters=[adapter_path], max_batch_size=64,
+    # engine = TransformersEngine(args.model, adapters=[adapter_path], max_batch_size=64,
     #                   task_type=args.task_type, num_labels=args.num_labels)
     # template = args.get_template(engine.processor)
-    # engine.default_template = template
+    # engine.template = template
 
     # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
     dataset = load_dataset(['DAMO_NLP/jd:cls#1000'], seed=42)[0]

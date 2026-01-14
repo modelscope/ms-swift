@@ -6,7 +6,7 @@ You can load reward models with a classification head using the `reward_models` 
 
 ## Custom Reward Models
 
-For generative reward models, there are two common ways to use them: one is by directly defining the reward model logic inside the Trainer via the `reward_model_plugin`, and then using PTEngine for inference; the other is to call an externally deployed model service.
+For generative reward models, there are two common ways to use them: one is by directly defining the reward model logic inside the Trainer via the `reward_model_plugin`, and then using TransformersEngine for inference; the other is to call an externally deployed model service.
 
 - Using `reward_model_plugin`, the reward model will be embedded within the Trainer and does not require additional computational resources. The advantage of this approach is ease of integration, but generation speed is relatively slow, making it more suitable for small-parameter reward models.
 - When deploying reward models externally, you can use commands like `swift deploy` or `vllm serve` to deploy the model service on an independent device to greatly improve inference speed, which is more suitable for large models. However, this approach requires reserving extra hardware resources.
@@ -48,7 +48,7 @@ The reward model is called via the plugin's `__call__` method, which takes `inpu
         """
 ```
 
-When using PTEngine in the plugin for reward model inference, you only need to construct messages and call the infer interface:
+When using TransformersEngine in the plugin for reward model inference, you only need to construct messages and call the infer interface:
 
 ```python
 class RMPlugin(DefaultRMPlugin):
@@ -56,8 +56,8 @@ class RMPlugin(DefaultRMPlugin):
     def __init__(self, model, template):
 
         super().__init__(model, template)
-        # initilize PTEngine to infer
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)
+        # initilize TransformersEngine to infer
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)
 
     def __call__(self, inputs):
         system_prompt = ...
@@ -68,14 +68,14 @@ class RMPlugin(DefaultRMPlugin):
         return rewards
 ```
 
-We provide a simple example of a generative reward model (`GenRMPlugin`) in [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/rm_plugin.py).
+We provide a simple example of a generative reward model (`GenRMPlugin`) in [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/rm_plugin.py).
 
 You can customize your reward model plugin in [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) and register it using the `external_plugins` parameter.
 
 Note:
 1. In `GRPOTrainer`, the reward_model will be appended to reward_funcs one by one. Therefore, the order of `reward_weights` corresponds to `[reward_funcs, reward_model]`.
 2. The default for `reward_model_plugin` is `default`, which uses ORM logic.
-3. For models with a large number of parameters, PTEngine generation is slow. Please use [external deployment](#external-deployment).
+3. For models with a large number of parameters, TransformersEngine generation is slow. Please use [external deployment](#external-deployment).
 
 For models like BERT that cannot be loaded by `reward_model`, you can load them inside `reward_function`, see [issue](https://github.com/modelscope/ms-swift/issues/4580).
 

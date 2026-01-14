@@ -3,7 +3,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.ui.base import BaseUI
+from ..base import BaseUI
 
 
 class ReportTo(BaseUI):

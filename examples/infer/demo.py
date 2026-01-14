@@ -31,21 +31,20 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
 
 
 if __name__ == '__main__':
-    from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
-    from swift.plugin import InferStats
+    from swift import (InferEngine, InferRequest, TransformersEngine, RequestConfig, load_dataset, InferStats)
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
     infer_backend = 'pt'
 
     if infer_backend == 'pt':
-        engine = PtEngine(model, max_batch_size=64)
+        engine = TransformersEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
-        from swift.llm import VllmEngine
+        from swift.infer_engine import VllmEngine
         engine = VllmEngine(model, max_model_len=8192)
     elif infer_backend == 'sglang':
-        from swift.llm import SglangEngine
+        from swift.infer_engine import SglangEngine
         engine = SglangEngine(model)
     elif infer_backend == 'lmdeploy':
-        from swift.llm import LmdeployEngine
+        from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine(model)
 
     # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.

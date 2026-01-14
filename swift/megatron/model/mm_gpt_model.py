@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
-from typing import Optional
 
 import megatron.core
 import torch

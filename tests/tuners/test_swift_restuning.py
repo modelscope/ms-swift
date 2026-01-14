@@ -7,7 +7,7 @@ import unittest
 import torch
 from modelscope import snapshot_download
 
-from swift import ResTuningConfig, Swift, SwiftModel
+from swift.tuners import ResTuningConfig, Swift, SwiftModel
 
 
 class TestSwiftResTuning(unittest.TestCase):

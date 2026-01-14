@@ -5,7 +5,7 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
-    --loss_type generative_reranker \
+    --loss_type pointwise_reranker \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import InferClient, InferRequest
+from swift.infer_engine import InferClient, InferRequest
 
 if __name__ == '__main__':
     engine = InferClient(host='127.0.0.1', port=8000)

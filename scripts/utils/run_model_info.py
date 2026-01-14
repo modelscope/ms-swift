@@ -1,6 +1,7 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
+from swift.model import MODEL_MAPPING, ModelType
+from swift.template import TEMPLATE_MAPPING, TemplateType
 from swift.utils import is_megatron_available
 
 
@@ -49,7 +50,6 @@ def get_model_info_table():
 
     for model_type in ModelType.get_model_name_list():
         model_meta = MODEL_MAPPING[model_type]
-        template = model_meta.template
         for group in model_meta.model_groups:
             for model in group.models:
                 ms_model_id = model.ms_model_id
@@ -64,6 +64,7 @@ def get_model_info_table():
                     hf_model_id = '-'
                 tags = ', '.join(group.tags or model_meta.tags) or '-'
                 requires = ', '.join(group.requires or model_meta.requires) or '-'
+                template = group.template or model_meta.template
                 if is_megatron_available():
                     from swift.megatron import model
                     support_megatron = getattr(model_meta, 'support_megatron', False)

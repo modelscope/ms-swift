@@ -17,9 +17,9 @@ import psutil
 from packaging import version
 from transformers import is_tensorboard_available
 
-from swift.ui.base import BaseUI
-from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
+from ..base import BaseUI
+from .utils import close_loop, run_command_in_subprocess
 
 logger = get_logger()
 
