@@ -426,11 +426,21 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True, thinking_prefix='<think>\n'))
 
+
+class DeepseekV3_1Template(Template):
+    jinja_enable_thinking_key = 'thinking'
+
+    def _is_add_round(self, messages, i, start_idx):
+        # Additional condition: the previous turn needs to be 'user'
+        return super()._is_add_round(messages, i, start_idx) and i > 0 and messages[i - 1]['role'] == 'user'
+
+
 register_template(
     DeepseekV2_5TemplateMeta(
         LLMTemplateType.deepseek_v3_1,
         agent_template='deepseek_v3_1',
         is_thinking=True,
+        template_cls=DeepseekV3_1Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))
