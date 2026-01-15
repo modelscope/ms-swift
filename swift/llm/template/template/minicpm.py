@@ -196,8 +196,6 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         """
         if self.padding_free:
             # packing 场景：完全自己处理，避免调用父类的 _data_collator_mm_data
-            self._update_dataset_progress(batch)
-            
             # 1. 调用 packing_row 合并多个样本
             packed = self.packing_row(batch)
             batch[:] = [packed]
@@ -281,10 +279,6 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         channels = [x.get('channel') for x in row]
         if any(c is not None for c in channels):
             packed['channel'] = channels
-
-        sources = [x.get('_dataset_source') for x in row]
-        if any(s is not None for s in sources):
-            packed['_dataset_source'] = sources
 
         packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
