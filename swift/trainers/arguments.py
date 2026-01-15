@@ -244,7 +244,7 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     """A dataclass for configuring additional training parameters.
 
     Args:
-        train_type (Optional[str]): The training type. Can be 'lora', 'full', 'longlora', 'adalora', 'llamapro',
+        tuner_type (Optional[str]): The tuner type. Can be 'lora', 'full', 'longlora', 'adalora', 'llamapro',
             'adapter', 'vera', 'boft', 'fourierft', or 'reft'. Defaults to 'lora'.
         local_repo_path (Optional[str]): Path to a local repository. Some models (e.g., deepseek-vl2) depend on a
             GitHub repo for loading. Using a local repo avoids network issues during 'git clone'. Defaults to None.
@@ -258,7 +258,7 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
             'single_label_classification' otherwise.
         """
     # Value copied from SftArguments
-    train_type: Optional[str] = None
+    tuner_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     task_type: Optional[str] = None
     problem_type: Optional[str] = None

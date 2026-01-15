@@ -6,7 +6,7 @@ max_position_embeddings=10240 \
 image_area=518400 \
 swift sft \
     --model BAAI/Emu3-Gen \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/TextCaps#40' \
     --torch_dtype bfloat16 \
     --num_train_epochs 10 \

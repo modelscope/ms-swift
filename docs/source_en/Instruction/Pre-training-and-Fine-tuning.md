@@ -93,7 +93,7 @@ You can use the following method for debugging, which is equivalent to using the
 from swift import sft_main, SftArguments
 result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
-    train_type='lora',
+    tuner_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',
              'AI-ModelScope/alpaca-gpt4-data-en#500',
              'swift/self-cognition#500'],

@@ -7,7 +7,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \

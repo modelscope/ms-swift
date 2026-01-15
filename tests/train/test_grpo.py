@@ -23,7 +23,7 @@ def test_llm():
         RLHFArguments(
             rlhf_type='grpo',
             model='Qwen/Qwen2.5-1.5B-Instruct',
-            train_type='full',
+            tuner_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
             split_dataset_ratio=0.1,
             system=SYSTEM_PROMPT,
@@ -41,7 +41,7 @@ def test_llm_zero2():
         RLHFArguments(
             rlhf_type='grpo',
             model='Qwen/Qwen2.5-1.5B-Instruct',
-            train_type='full',
+            tuner_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
             system=SYSTEM_PROMPT,
             reward_funcs=['accuracy', 'format'],
@@ -60,7 +60,7 @@ def test_llm_vllm():
             rlhf_type='grpo',
             model='Qwen/Qwen2.5-1.5B-Instruct',
             reward_model='AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft',
-            train_type='full',
+            tuner_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
             system=SYSTEM_PROMPT,
             reward_funcs=['accuracy', 'format'],
@@ -78,7 +78,7 @@ def test_llm_vllm_zero2():
         RLHFArguments(
             rlhf_type='grpo',
             model='Qwen/Qwen2.5-1.5B-Instruct',
-            train_type='full',
+            tuner_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
             system=SYSTEM_PROMPT,
             reward_funcs=['accuracy', 'format'],
@@ -97,7 +97,7 @@ def test_mllm_pt():
         RLHFArguments(
             rlhf_type='grpo',
             model='Qwen/Qwen2-VL-2B-Instruct',
-            train_type='full',
+            tuner_type='full',
             # dataset=['AI-MO/NuminaMath-TIR#100'],
             dataset=['modelscope/coco_2014_caption:validation#100'],
             system=SYSTEM_PROMPT,

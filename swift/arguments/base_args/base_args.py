@@ -63,7 +63,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     Args:
         tuner_backend (str): The tuner backend to use. Choices are 'peft' or 'unsloth'. Default is 'peft'.
-        train_type (str): The training type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
+        tuner_type (str): The tuner type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
             'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
         adapters (List[str]): A list of adapter IDs or paths. This is typically used for inference or deployment.
             It can also resume training by only loading adapter weights, differing from `resume_from_checkpoint`
@@ -95,7 +95,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         use_swift_lora (bool): Whether to use swift lora. This is a compatible argument. Default is False.
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
-    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
+    tuner_type: str = field(default='lora', metadata={'help': f'tuner_type choices: {list(get_supported_tuners())}'})
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
     # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
@@ -186,7 +186,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
-        if self.train_type not in extra_tuners:
+        if self.tuner_type not in extra_tuners:
             for adapter in self.adapters:
                 assert self._check_is_adapter(adapter), (
                     f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
@@ -214,7 +214,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     @property
     def is_adapter(self) -> bool:
-        return self.train_type not in {'full'}
+        return self.tuner_type not in {'full'}
 
     @property
     def supported_tuners(self):
@@ -254,7 +254,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             old_args = json.load(f)
         force_load_keys = [
             # base_args
-            'train_type',
+            'tuner_type',
             # model_args
             'task_type',
             # quant_args

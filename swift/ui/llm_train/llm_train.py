@@ -110,14 +110,14 @@ class LLMTrain(BaseUI):
                 'en': 'Select GPU to train'
             }
         },
-        'train_type': {
+        'tuner_type': {
             'label': {
                 'zh': '训练方式',
                 'en': 'Train type'
             },
             'info': {
                 'zh': '选择训练的方式',
-                'en': 'Select the training type'
+                'en': 'Select the tuner type'
             }
         },
         'seed': {
@@ -252,7 +252,7 @@ class LLMTrain(BaseUI):
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
                         gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=4)
-                        gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
+                        gr.Dropdown(elem_id='tuner_type', scale=4, choices=list(get_supported_tuners()))
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
@@ -292,8 +292,8 @@ class LLMTrain(BaseUI):
                     with gr.Row():
                         gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
-                cls.element('train_type').change(
-                    Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
+                cls.element('tuner_type').change(
+                    Hyper.update_lr, inputs=[base_tab.element('tuner_type')], outputs=[cls.element('learning_rate')])
 
                 submit.click(cls.train_local, list(cls.valid_elements().values()), [
                     cls.element('running_cmd'),
@@ -543,7 +543,7 @@ class LLMTrain(BaseUI):
     def prepare_sub_to_filter(cls):
         tabs_relation_dict = {
             key: val
-            for key, val in zip(['train_type', 'optimizer', 'task_type'],
+            for key, val in zip(['tuner_type', 'optimizer', 'task_type'],
                                 [Tuner.tabs_to_filter, Optimizer.tabs_to_filter, Task.tabs_to_filter])
         }
         return tabs_relation_dict
@@ -552,7 +552,7 @@ class LLMTrain(BaseUI):
     def remove_useless_args(cls, uncleaned_kwargs, tabs_relation_dict):
         for target, tabs_to_filter in tabs_relation_dict.items():
             target_value = uncleaned_kwargs.get(target)
-            if target == 'train_type' and target_value is None:
+            if target == 'tuner_type' and target_value is None:
                 target_value = 'lora'
             elif target == 'vllm_mode' and target_value is None:
                 target_value = 'colocate'

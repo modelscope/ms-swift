@@ -10,7 +10,7 @@
 ## 基本参数
 
 - 🔥tuner_backend: 可选为'peft'，'unsloth'。默认为'peft'。
-- 🔥train_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。
+- 🔥tuner_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。（在ms-swift3.x中参数名为`train_type`）
 - 🔥adapters: 用于指定adapter的id/path的list，默认为`[]`。该参数通常用于推理/部署命令，例如：`swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`。该参数偶尔也用于断点续训，该参数与`resume_from_checkpoint`的区别在于，**该参数只读取adapter权重**，而不加载优化器和随机种子，并不跳过已训练的数据集部分。
   - `--model`与`--adapters`的区别：`--model`后接完整权重的目录路径，内包含model/tokenizer/config等完整权重信息，例如`model.safetensors`。`--adapters`后接增量adapter权重目录路径的列表，内涵adapter的增量权重信息，例如`adapter_model.safetensors`。
 - 🔥external_plugins: 外部`plugin.py`文件列表，这些文件会被额外加载（即对模块进行`import`）。默认为`[]`。你可以传入自定义模型、对话模板和数据集注册的`.py`文件路径，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh)；或者自定义GRPO的组件，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)。
@@ -349,7 +349,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### LISA
 
-注意: LISA仅支持全参数，即`--train_type full`。
+注意: LISA仅支持全参数，即`--tuner_type full`。
 
 - 🔥lisa_activated_layers: 默认值`0`, 代表不使用LISA，改为非0代表需要激活的layers个数，建议设置为2或8.
 - lisa_step_interval: 默认值`20`, 多少iter切换可反向传播的layers.
@@ -360,7 +360,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 
@@ -371,7 +371,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### AdaLoRA
 
-以下参数`train_type`设置为`adalora`时生效. adalora的`target_modules`等参数继承于lora的对应参数，但`lora_dtype`参数不生效。
+以下参数`tuner_type`设置为`adalora`时生效. adalora的`target_modules`等参数继承于lora的对应参数，但`lora_dtype`参数不生效。
 
 - adalora_target_r: 默认值`8`, adalora的平均rank.
 - adalora_init_r: 默认值`12`, adalora的初始rank.
@@ -384,7 +384,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### ReFT
 
-以下参数`train_type`设置为`reft`时生效.
+以下参数`tuner_type`设置为`reft`时生效.
 
 > 1. ReFT无法合并tuner
 > 2. ReFT和gradient_checkpointing不兼容

@@ -50,7 +50,7 @@ class TestRun(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model='Qwen/Qwen1.5-0.5B',
-                train_type='full',
+                tuner_type='full',
                 dataset='DAMO_NLP/jd',
                 val_dataset='DAMO_NLP/jd#20',
                 streaming=True,
@@ -77,7 +77,7 @@ class TestRun(unittest.TestCase):
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         output = sft_main(
             SftArguments(
-                model='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+                model='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', tuner_type='lora', dataset=dataset, use_hf=True, **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, val_dataset_sample=2))

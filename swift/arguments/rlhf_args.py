@@ -275,7 +275,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.ref_adapters = [self.ref_adapters]
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
             self.ref_model = None
-        elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
+        elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.tuner_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision

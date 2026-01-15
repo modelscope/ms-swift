@@ -184,11 +184,11 @@ def prepare_adapter(model):
 
 def prepare_mcore_model(model):
     args = get_args()
-    if args.train_type == 'full':
+    if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-    elif args.train_type == 'lora':
+    elif args.tuner_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(model)
     logger.info(f'model: {model}')

@@ -6,7 +6,7 @@ MAX_PIXELS=1003520 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model iic/gme-Qwen2-VL-2B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/TextCaps:emb' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

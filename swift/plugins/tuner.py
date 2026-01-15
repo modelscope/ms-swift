@@ -94,5 +94,5 @@ class DummyTuner(PeftTuner):
         return model
 
 
-# Add your own tuner here, use --train_type xxx to begin
+# Add your own tuner here, use --tuner_type xxx to begin
 extra_tuners = {'ia3': IA3, 'dummy': DummyTuner}

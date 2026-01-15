@@ -19,7 +19,7 @@ class TrainerAdapterCallback(TrainerCallback):
     # offload original_modules to cpu, to save memory
     def on_train_begin(self, _args, state, control, **kwargs):
         model = kwargs['model']
-        if self.args.train_type == 'adalora':
+        if self.args.tuner_type == 'adalora':
             model.peft_config['default'].total_step = state.max_steps
 
             def zero_grad(_self, *args, **kwargs):
@@ -30,7 +30,7 @@ class TrainerAdapterCallback(TrainerCallback):
             model.zero_grad = types.MethodType(zero_grad, model)
 
     def on_step_end(self, _args, state, control, **kwargs):
-        if self.args.train_type == 'adalora':
+        if self.args.tuner_type == 'adalora':
             self.global_step = state.global_step
 
 

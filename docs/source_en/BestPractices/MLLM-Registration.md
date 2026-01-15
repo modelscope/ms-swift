@@ -549,7 +549,7 @@ if __name__ == '__main__':
         template='my_qwen2_5_omni',
         load_from_cache_file=True,
         split_dataset_ratio=0.01,
-        train_type='lora',
+        tuner_type='lora',
         torch_dtype='bfloat16',
         attn_impl='flash_attn',
         padding_free=True,
@@ -596,7 +596,7 @@ swift sft \
               'swift/VideoChatGPT:all#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --padding_free true \

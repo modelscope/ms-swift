@@ -60,7 +60,7 @@ class MegatronExport(SwiftPipeline):
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
         logger.info('Converting weights and saving the model...')
-        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         bridge.save_weights([mg_model], args.save, is_peft_format=save_peft_format)
         args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
         if os.path.exists(args_path):
@@ -120,7 +120,7 @@ class MegatronExport(SwiftPipeline):
         if not _test_convert_precision:
             args.save_args(args.save)
             logger.info('Saving the model...')
-            save_peft_format = args.train_type == 'lora' and not args.merge_lora
+            save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
             with adapter_state_dict_context(is_peft_format=save_peft_format):
                 mg_save_checkpoint(1, [mg_model], None, None, 0)
             logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())

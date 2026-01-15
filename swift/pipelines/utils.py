@@ -21,15 +21,15 @@ def prepare_adapter(args, model, adapters=None):
             from unsloth import FastLanguageModel as UnslothModel
         UnslothModel.for_inference(model)
         return model
-    if args.train_type in extra_tuners:
-        tuner = extra_tuners[args.train_type]
+    if args.tuner_type in extra_tuners:
+        tuner = extra_tuners[args.tuner_type]
     else:
         tuner = Swift
     # compat deploy
     adapters = adapters if adapters is not None else args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
-    if args.train_type == 'bone':
+    if args.tuner_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
         model.to(model.dtype)
     return model

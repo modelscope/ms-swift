@@ -1,6 +1,6 @@
 model: Qwen/Qwen2.5-7B-Instruct
 split_dataset_ratio: 0.0
-train_type: lora
+tuner_type: lora
 target_modules:
   - q_proj
   - k_proj

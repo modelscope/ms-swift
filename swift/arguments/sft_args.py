@@ -170,7 +170,7 @@ class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, B
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.
             if self.resume_only_model:
-                if self.train_type == 'full':
+                if self.tuner_type == 'full':
                     self.model = self.resume_from_checkpoint
                 else:
                     self.adapters = [self.resume_from_checkpoint]
@@ -210,7 +210,7 @@ class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, B
         self._init_metric()
 
         if self.learning_rate is None:
-            if self.train_type == 'full':
+            if self.tuner_type == 'full':
                 self.learning_rate = 1e-5
             else:
                 self.learning_rate = 1e-4

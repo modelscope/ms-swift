@@ -142,7 +142,7 @@ swift infer \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-8B \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
     --load_from_cache_file true \
@@ -221,7 +221,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen3-8B \
-    --train_type full \
+    --tuner_type full \
     --dataset '<your-dataset>' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -292,7 +292,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-8B \
-    --train_type full \
+    --tuner_type full \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
