@@ -721,7 +721,7 @@ class SwiftMixin:
                 if sp_enabled:
 
                     def sp_gather_hook(module, args, input, output):
-                        return gather_sequence_parallel_outputs(output, input)
+                        return gather_sequence_parallel_outputs(output)
 
                     hooks.append(sp_gather_hook)
 
