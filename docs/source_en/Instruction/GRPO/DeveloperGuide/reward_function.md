@@ -83,7 +83,7 @@ Swift supports using both synchronous and asynchronous reward functions simultan
 The [plugin](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) file provides an example of a generative reward model (async_genrm) that calls the `swift deploy` service.
 
 ## Built-in Reward Functions
-Swift includes five rule-based reward functions (code can be found in swift/plugins/orm.py).
+Swift includes five rule-based reward functions (code can be found in swift/rewards/orm.py).
 
 | Reward Function | Paper |
 |----------------|----------------------------------------------------------------------------|

@@ -12,12 +12,11 @@ import torch
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest
-from swift.plugins import ORM, AsyncORM, orms, rm_plugins
+from swift.rewards import ORM, AsyncORM, orms, rm_plugins
+from swift.rewards.rm_plugin import DefaultRMPlugin
 # register context manager(used in gym training)
-from swift.plugins.context_manager import ContextManager, context_managers
-from swift.plugins.env import Env, envs
-from swift.plugins.multi_turn import MultiTurnScheduler, multi_turns
-from swift.plugins.rm_plugin import DefaultRMPlugin
+from swift.rollout.gym_env import ContextManager, Env, context_managers, envs
+from swift.rollout.multi_turn import MultiTurnScheduler, multi_turns
 from swift.template import Template
 from swift.utils import get_logger, to_device
 
@@ -38,7 +37,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 """
 
 
-# For additional reward functions, refer to swift/plugins/orm.py.
+# For additional reward functions, refer to swift/rewards/orm.py.
 class CountdownORM(ORM):
 
     def __call__(self, completions, target, nums, **kwargs) -> List[float]:
@@ -157,7 +156,7 @@ class MultiTurnThinkingTips(ORM):
     """
 
     def __init__(self):
-        from swift.plugins.orm import MathAccuracy
+        from swift.rewards.orm import MathAccuracy
         self.acc_func = MathAccuracy()
 
     def __call__(self, completions, **kwargs) -> List[float]:
@@ -902,7 +901,7 @@ TO CUSTOMIZE REWARD MODEL:
         --external_plugins /path/to/plugin.py \
         --reward_model_plugin my_rm_plugin
 
-For GenRM you can refer to swift/plugins/rm_plugin/GenRMPlugin
+For GenRM you can refer to swift/rewards/rm_plugin/GenRMPlugin
 """
 
 

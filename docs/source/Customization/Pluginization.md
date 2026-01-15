@@ -154,7 +154,7 @@ class IA3(Tuner):
 
 ## PRM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/prm.py)。
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py)。
 
 PRM是过程奖励模型，PRM会在`swift sample`命令中使用。PRM需要支持的接口比较简单：
 ```python
@@ -182,7 +182,7 @@ So, the answer is ...
 
 ## ORM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/orm.py)。
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py)。
 
 ORM是结果奖励模型。ORM一般使用正则表达式来进行，ORM决定了response是否是正确的。例如：
 

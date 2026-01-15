@@ -1,3 +1,7 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+# Process Reward Model (PRM) implementations for sampling.
+# GRPO training is not currently supported.
+
 import os
 from typing import Any, Dict, List, Union
 
@@ -22,7 +26,7 @@ You are a process reward model, give the reward value of the answer, you must fo
 3. A ground truth answer will be given to you, it may be not the best one, consider it as a reference example.
 
 Begin!
-""" # noqa
+"""  # noqa
 
 QUERY = """
 The original question or the previous conversation:

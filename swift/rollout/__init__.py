@@ -4,13 +4,13 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .callback import extra_callbacks, EarlyStopCallback
-    from .tuner import Tuner, extra_tuners, PeftTuner
+    from .multi_turn import multi_turns, RolloutScheduler, MultiTurnScheduler
+    from .gym_env import envs, Env, context_managers, ContextManager
 
 else:
     _import_structure = {
-        'callback': ['extra_callbacks', 'EarlyStopCallback'],
-        'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
+        'multi_turn': ['multi_turns', 'RolloutScheduler', 'MultiTurnScheduler'],
+        'gym_env': ['envs', 'Env', 'context_managers', 'ContextManager'],
     }
 
     import sys

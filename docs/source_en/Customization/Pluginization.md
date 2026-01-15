@@ -171,7 +171,7 @@ These three methods are invoked during the SWIFT training process, allowing deve
 
 ## PRM (Process Reward Model)
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/prm.py).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py).
 
 PRM stands for Process Reward Model, which is used in the `swift sample` command. PRM needs to support simple interfaces:
 
@@ -202,7 +202,7 @@ Developers can split the process here, batch them into PRM for inference, and re
 
 ## ORM (Outcome Reward Model)
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/orm.py).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py).
 
 ORM stands for Outcome Reward Model. ORM typically uses regular expressions to determine whether a response is correct. For example:
 

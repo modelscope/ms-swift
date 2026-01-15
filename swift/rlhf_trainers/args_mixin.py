@@ -193,7 +193,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
 
-    # reward function args, see details in swift/plugins/orm.py
+    # reward function args, see details in swift/rewards/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
     cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
     cosine_max_len_value_wrong: float = 0.0  # r^w_L in paper, Reward for wrong answers with max completion length.

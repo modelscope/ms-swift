@@ -1,3 +1,9 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+# Reward Model Plugin implementations for GRPO training.
+# This module provides plugins for integrating external reward models,
+# including both discriminative reward models (with value heads) and
+# generative reward models (LLM-as-judge style).
+
 import re
 import textwrap
 from copy import deepcopy
