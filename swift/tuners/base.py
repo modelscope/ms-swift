@@ -900,7 +900,7 @@ class Swift:
                 else:
                     _model.load_adapter(
                         os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
-                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id, _new_name)
+                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id, _new_name, *kwargs)
                     return _model
 
             if not adapter_name:
