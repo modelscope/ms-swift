@@ -31,10 +31,10 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
-                                  ParallelMode, TrainerCallback, reissue_pt_warnings)
-from transformers.trainer_utils import IntervalStrategy
+from transformers.trainer import OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME, ParallelMode
 from transformers.trainer import Trainer as HfTrainer
+from transformers.trainer import TrainerCallback, reissue_pt_warnings
+from transformers.trainer_utils import IntervalStrategy
 
 from swift.callbacks import callbacks_map
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
@@ -142,13 +142,13 @@ class SwiftMixin:
             self.args.resume_from_checkpoint = None
 
     def _get_data_collator(self, args, template):
-        padding_to = template.max_length if args.train_type == 'longlora' else None
+        padding_to = template.max_length if args.tuner_type == 'longlora' else None
         return partial(template.data_collator, padding_to=padding_to)
 
     def _create_callbacks(self, args, model):
         callbacks = []
         if args.lisa_activated_layers > 0:
-            assert args.train_type == 'full', 'LISA only supports full parameter training.'
+            assert args.tuner_type == 'full', 'LISA only supports full parameter training.'
             lisa_callback = DynamicLayerActivationCallback(
                 n_layers=args.lisa_activated_layers,  # Number of layers to activate
                 step_interval=args.lisa_step_interval,  # Step interval to update active layers
@@ -156,7 +156,7 @@ class SwiftMixin:
             lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
             callbacks.append(lisa_callback)
 
-        if args.train_type == 'adalora':
+        if args.tuner_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))
         callbacks += extra_callbacks
 
