@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import re
 from typing import List, Optional, Tuple, Union
 

@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional
 
 import datasets
 import numpy as np
@@ -27,16 +27,16 @@ from datasets import Dataset as HfDataset
 from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
-from torch.nn import Module
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
-from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
-                                  ParallelMode, Trainer, TrainerCallback, reissue_pt_warnings)
+                                  ParallelMode, TrainerCallback, reissue_pt_warnings)
 from transformers.trainer_utils import IntervalStrategy
+from transformers.trainer import Trainer as HfTrainer
 
+from swift.callbacks import callbacks_map
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
 from swift.loss import loss_map
@@ -44,12 +44,13 @@ from swift.metrics import MeanMetric, compute_acc, metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
 from swift.optimizers import OptimizerCallback, optimizers_map
-from swift.plugins import extra_tuners
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
+from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
 from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
                          get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+from . import patcher
 from .arguments import TrainingArguments
 from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
 
@@ -60,20 +61,17 @@ except (ImportError, RuntimeError):
 
 logger = get_logger()
 
+FLASH_CKPT_WAIT_TIMEOUT = 1800
+
 
 class SwiftMixin:
-    FLASH_CKPT_WAIT_TIMEOUT = 1800
 
     def __init__(self,
-                 model: Union[PreTrainedModel, Module] = None,
-                 args: TrainingArguments = None,
-                 data_collator: Optional[DataCollator] = None,
-                 train_dataset: Optional[HfDataset] = None,
-                 eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-                 template: Optional[Template] = None,
-                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 callbacks: Optional[List[TrainerCallback]] = None,
-                 optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+                 args: TrainingArguments,
+                 model: PreTrainedModel,
+                 template: Template,
+                 train_dataset: HfDataset,
+                 eval_dataset: Optional[HfDataset] = None,
                  **kwargs) -> None:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
@@ -112,8 +110,10 @@ class SwiftMixin:
         self.model_meta = model.model_meta
         self.model_info = model.model_info
 
+        callbacks = self._create_callbacks(args, model)
+        data_collator = self._get_data_collator(args, template)
         kwargs.update(self.create_loss_and_metric(args))
-        trainer_parameters = inspect.signature(Trainer.__init__).parameters
+        trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
         with self.hub.patch_hub():
@@ -123,9 +123,7 @@ class SwiftMixin:
                 data_collator=data_collator,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
-                model_init=model_init,
                 callbacks=callbacks,
-                optimizers=optimizers,
                 **kwargs)
 
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -142,6 +140,32 @@ class SwiftMixin:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    def _get_data_collator(self, args, template):
+        padding_to = template.max_length if args.train_type == 'longlora' else None
+        return partial(template.data_collator, padding_to=padding_to)
+
+    def _create_callbacks(self, args, model):
+        callbacks = []
+        if args.lisa_activated_layers > 0:
+            assert args.train_type == 'full', 'LISA only supports full parameter training.'
+            lisa_callback = DynamicLayerActivationCallback(
+                n_layers=args.lisa_activated_layers,  # Number of layers to activate
+                step_interval=args.lisa_step_interval,  # Step interval to update active layers
+                model=model)
+            lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
+            callbacks.append(lisa_callback)
+
+        if args.train_type == 'adalora':
+            callbacks.append(TrainerAdapterCallback(args))
+        callbacks += extra_callbacks
+
+        if args.early_stop_interval is not None and args.early_stop_interval > 0:
+            callbacks.append(EarlyStopCallback(args.early_stop_interval))
+            logger.info('You are using the default early stop callback, this is a implementation of '
+                        'stopping training when the best metric showing no improvement within {} steps, '
+                        'you can write a new implementation in the plugin/callback.py.')
+        return callbacks
 
     @contextmanager
     def _patch_timeout(self):

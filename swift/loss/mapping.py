@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .causal_lm import CustomCrossEntropyLoss
 from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
 from .reranker import ListwiseRerankerLoss, RerankerLoss

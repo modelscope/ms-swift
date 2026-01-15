@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .acc import AccMetrics
 from .embedding import InfonceMetrics, PairedMetrics
 from .nlg import NlgMetrics
