@@ -15,6 +15,7 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 from packaging import version
+from peft import LoraConfig, get_peft_model
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
@@ -155,7 +156,6 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(model):
-    from swift.tuners import LoraConfig, Swift
     args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
@@ -172,7 +172,7 @@ def prepare_adapter(model):
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
-        model = Swift.prepare_model(model, lora_config)
+        model = get_peft_model(model, lora_config)
     if args.ref_adapter_load or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)

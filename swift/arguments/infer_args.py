@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 import torch.distributed as dist
 
-from swift.trainers import VllmArguments
+from swift.rlhf_trainers import VllmArguments
 from swift.utils import get_logger, init_process_group, is_dist, to_abspath
 from .base_args import BaseArguments
 from .merge_args import MergeArguments

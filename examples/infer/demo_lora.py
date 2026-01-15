@@ -45,13 +45,13 @@ def infer_lora(infer_request: 'InferRequest'):
 
     # method2
     # model, processor = args.get_model_processor()
-    # model = Swift.from_pretrained(model, adapter_path)
+    # model = PeftModel.from_pretrained(model, adapter_path)
     # template = args.get_template(processor)
     # engine = TransformersEngine(model, template=template)
 
     # method3
     model, tokenizer = get_model_processor(args.model)
-    model = Swift.from_pretrained(model, adapter_path)
+    model = PeftModel.from_pretrained(model, adapter_path)
     template = get_template(tokenizer, args.system, template_type=args.template)
     engine = TransformersEngine(model, template=template)
 
@@ -61,8 +61,9 @@ def infer_lora(infer_request: 'InferRequest'):
 
 
 if __name__ == '__main__':
+    from peft import PeftModel
     from swift import (TransformersEngine, RequestConfig, AdapterRequest, InferRequest, BaseArguments,
-                       get_model_processor, safe_snapshot_download, Swift, get_template)
+                       get_model_processor, safe_snapshot_download, get_template)
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'transformers')
