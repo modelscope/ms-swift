@@ -73,7 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
-- 🎁 2025.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
+- 🎁 2026.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
