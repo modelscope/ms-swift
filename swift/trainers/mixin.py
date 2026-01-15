@@ -1204,7 +1204,7 @@ class DataLoaderMixin:
             if hasattr(train_dataset, '__len__'):
                 if args.group_by_length:
                     batch_sampler_params['group_by_length'] = args.group_by_length
-                    batch_sampler_params['lengths'] = train_dataset['length']
+                    batch_sampler_params['lengths'] = train_dataset['lengths']
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader_params['worker_init_fn'] = partial(

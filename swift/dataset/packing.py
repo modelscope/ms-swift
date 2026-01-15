@@ -53,7 +53,7 @@ class PackingDataset(Dataset):
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
         self._out_queue = mp.Queue()
         if is_master():
-            lengths = self.dataset['length']
+            lengths = self.dataset['lengths']
             offset = 0
             chunked_lengths = split_list(lengths, self.packing_num_proc)
             for i in range(self.packing_num_proc):
