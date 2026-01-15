@@ -9,7 +9,6 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 from swift.loss import loss_map
-from swift.optimizers.galore import GaLoreConfig
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 
 logger = get_logger()
@@ -77,6 +76,13 @@ class TrainArgumentsMixin:
             function is used. Defaults to None.
         metric (Optional[str]): The name of a custom metric from a plugin. If None, it defaults to 'nlg' when
             `predict_with_generate=True`. Defaults to None.
+        callback (List[str]) 使用的TrainerCallback. 将会在使用`swift.callbacks.callbacks_map`进行映射。
+        early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
+            `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
+            recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the
+            callback plugin. For more complex requirements, you can directly override the implementation in
+            `callback.py`. Defaults to None.
+
         eval_use_evalscope (bool): Whether to use EvalScope for evaluation during training. Must be set to `True` to
             enable it. Refer to examples for usage details. Defaults to False.
         eval_dataset (List[str]): A list of evaluation dataset names. Multiple datasets can be specified, separated
@@ -88,6 +94,26 @@ class TrainArgumentsMixin:
             a JSON string or a dictionary, e.g., `{'max_tokens': 512}`. Defaults to None.
         extra_eval_args (Optional[Union[str, dict]]): Extra arguments for evaluation, provided as a JSON string or a
             dictionary.
+
+        use_galore (bool): Flag to indicate if Galore is used. Default is False.
+        galore_target_modules (Optional[List[str]]): List of target modules for Galore. Default is None.
+        galore_rank (int): Rank for Galore. Default is 128.
+        galore_update_proj_gap (int): Update projection gap for Galore. Default is 50.
+        galore_scale (float): Scaling factor for Galore. Default is 1.0.
+        galore_proj_type (str): Projection type for Galore. Default is 'std'.
+        galore_optim_per_parameter (bool): Flag to indicate if optimization is per parameter for Galore.
+            Default is False.
+        galore_with_embedding (bool): Flag to indicate if embedding is used with Galore. Default is False.
+        galore_quantization (bool): Flag to indicate if use Q-Galore. Default is False.
+        galore_proj_quant (bool): Flag to indicate if projection quantization is used for Galore. Default is False.
+        galore_proj_bits (int): Number of bits for projection quantization. Default is 4.
+        galore_proj_group_size (int): Group size for projection quantization. Default is 256.
+        galore_cos_threshold (float): Cosine threshold for projection quantization. Default is 0.4.
+        galore_gamma_proj (int): Gamma for projection quantization. Default is 2.
+        galore_queue_size (int): Queue size for projection quantization. Default is 5.
+        lisa_activated_layers (int): Number of activated layers for LISA. Default is 0.
+        lisa_step_interval (int): Step interval for LISA activation. Default is 20.
+
         use_flash_ckpt (bool): Whether to enable DLRover Flash Checkpoint. When enabled, weights are first saved to
             shared memory and then asynchronously persisted to disk. Currently does not support the safetensors format.
             It is recommended to use this with `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to prevent CUDA OOM
@@ -128,9 +154,13 @@ class TrainArgumentsMixin:
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
 
+    # plugins
     optimizer: Optional[str] = None
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_map.keys())}'})
     metric: Optional[str] = None
+    callback: List[str] = field(default_factory=list)
+    # early_step
+    early_stop_interval: Optional[int] = None
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -139,6 +169,29 @@ class TrainArgumentsMixin:
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Union[str, dict]] = None
     extra_eval_args: Optional[Union[str, dict]] = None
+
+    # Value copied from SftArguments
+    tuner_type: Optional[str] = None
+
+    # galore
+    use_galore: bool = False
+    galore_target_modules: Optional[List[str]] = None
+    galore_rank: int = 128
+    galore_update_proj_gap: int = 50
+    galore_scale: float = 1.0
+    galore_proj_type: str = 'std'
+    galore_optim_per_parameter: bool = False
+    galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
+    # lisa
+    lisa_activated_layers: int = 0
+    lisa_step_interval: int = 20
 
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
@@ -167,6 +220,8 @@ class TrainArgumentsMixin:
                 pass
 
     def __post_init__(self):
+        if hasattr(self, 'output_dir'):
+            self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         if is_mp() and self.use_liger_kernel:
             raise ValueError('liger_kernel does not support device_map. '
                              'Please use DDP/DeepSpeed for multi-GPU training.')
@@ -203,168 +258,12 @@ class TrainArgumentsMixin:
             self.eval_generation_config = json_parse_to_dict(self.eval_generation_config)
             self.extra_eval_args = json_parse_to_dict(self.extra_eval_args)
 
-        super().__post_init__()
-
 
 @dataclass
-class RLHFArgumentsMixin:
-    """A dataclass mixin for GKD and CHORD training.
-
-    Args:
-        sft_alpha (float): The weight for the SFT loss component in GKD. The final loss is calculated as
-            `gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
-        chord_sft_dataset (List[str]): The SFT dataset(s) used to provide expert data for the CHORD algorithm. Defaults
-            to `[]`.
-        chord_sft_per_device_train_batch_size (Optional[int]): The SFT mini-batch size per device for the CHORD
-            algorithm. Defaults to None.
-        chord_enable_phi_function (bool): Whether to enable the token-wise weighting function phi (φ) in the CHORD
-            algorithm. Defaults to False.
-        chord_mu_warmup_steps (Optional[int]): The number of training steps for the mu (μ) value to warm up to its peak
-            value. Defaults to None.
-        chord_mu_decay_steps (Optional[int]): The number of training steps for the mu (μ) value to decay from its peak
-            to its valley value. Defaults to None.
-        chord_mu_peak (Optional[float]): The peak value for mu (μ) during its schedule. Defaults to None.
-        chord_mu_valley (Optional[float]): The final (valley) value for mu (μ) after decay. Defaults to None.
-    """
-    # gkd
-    sft_alpha: float = 0
-    # chord
-    chord_sft_dataset: List[str] = field(default_factory=list)
-    chord_sft_per_device_train_batch_size: Optional[int] = None
-
-    chord_enable_phi_function: bool = False
-    chord_mu_warmup_steps: Optional[int] = None
-    chord_mu_decay_steps: Optional[int] = None
-    chord_mu_peak: Optional[float] = None
-    chord_mu_valley: Optional[float] = None
-
-
-@dataclass
-class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
-    """A dataclass for configuring additional training parameters.
-
-    Args:
-        train_type (Optional[str]): The training type. Can be 'lora', 'full', 'longlora', 'adalora', 'llamapro',
-            'adapter', 'vera', 'boft', 'fourierft', or 'reft'. Defaults to 'lora'.
-        local_repo_path (Optional[str]): Path to a local repository. Some models (e.g., deepseek-vl2) depend on a
-            GitHub repo for loading. Using a local repo avoids network issues during 'git clone'. Defaults to None.
-        galore_config (Optional[GaLoreConfig]): GaLore configuration. Defaults to None.
-        task_type (Optional[str]): The type of task. Can be 'causal_lm', 'seq_cls', 'embedding', 'reranker', or
-            'generative_reranker'. Defaults to 'causal_lm'. If set to 'seq_cls', you usually need to also set
-            '--num_labels' and '--problem_type'.
-        problem_type (Optional[str]): Required for classification models (i.e., when task_type is 'seq_cls'). Can be
-            'regression', 'single_label_classification', or 'multi_label_classification'. Defaults to None, which is
-            resolved to 'regression' if the model is a reward_model or num_labels is 1, and
-            'single_label_classification' otherwise.
-        """
-    # Value copied from SftArguments
-    train_type: Optional[str] = None
-    local_repo_path: Optional[str] = None
-    task_type: Optional[str] = None
-    problem_type: Optional[str] = None
-
-    def __post_init__(self):
-        if hasattr(self, 'output_dir'):
-            self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
-        super().__post_init__()
-
-
-@dataclass
-class VllmArguments:
-    """VllmArguments is a dataclass that holds the configuration for vllm.
-
-    Args:
-        vllm_gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
-        vllm_tensor_parallel_size (int): Tensor parallelism size. Default is 1.
-        vllm_pipeline_parallel_size (int): Pipeline parallelism size. Default is 1.
-        vllm_enable_expert_parallel (bool): Flag to enable expert parallelism for MoE models. Default is False.
-        vllm_max_num_seqs (int): Maximum number of sequences. Default is 256.
-        vllm_max_model_len (Optional[int]): Maximum model length. Default is None.
-        vllm_disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
-        vllm_enforce_eager (bool): Flag to enforce eager execution. Default is False.
-        vllm_limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
-        vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
-        vllm_enable_prefix_caching (Optional[bool]): Flag to enable automatic prefix caching. Default is None.
-        vllm_use_async_engine (Optional[bool]): Whether to use async engine for vLLM. Default is None,
-            which will be set to True for encode tasks (embedding, seq_cls, reranker, generative_reranker),
-            deployment scenarios (swift deploy) and False otherwise.
-        vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
-        vllm_reasoning_parser (Optional[str]): The reasoning parser for vLLM. Default is None.
-        vllm_disable_cascade_attn (bool): Flag to disable cascade attention. Default is False.
-        vllm_mm_processor_cache_gb (Optional[float]): MM processor cache size in GB. Default is None.
-        vllm_speculative_config (Optional[Union[dict, str]]): Speculative decoding configuration, passed in as a JSON
-            string. Defaults to None.
-        vllm_engine_kwargs (Optional[Union[dict, str]]): Additional parameters for vllm, formatted as a JSON string.
-            Defaults to None.
-        vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
-    """
-    # vllm
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_tensor_parallel_size: int = 1
-    vllm_pipeline_parallel_size: int = 1
-    vllm_enable_expert_parallel: bool = False
-    vllm_max_num_seqs: int = 256
-    vllm_max_model_len: Optional[int] = None
-    vllm_disable_custom_all_reduce: bool = True
-    vllm_enforce_eager: bool = False
-    vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
-    vllm_max_lora_rank: int = 16
-    vllm_enable_prefix_caching: Optional[bool] = None
-    vllm_use_async_engine: Optional[bool] = None
-    vllm_quantization: Optional[str] = None
-    vllm_reasoning_parser: Optional[str] = None
-    vllm_disable_cascade_attn: bool = False
-    vllm_mm_processor_cache_gb: Optional[float] = None
-    vllm_speculative_config: Optional[Union[dict, str]] = None
-    vllm_engine_kwargs: Optional[Union[dict, str]] = None
-    # rollout
-    vllm_data_parallel_size: int = 1
-
-    def __post_init__(self):
-        if self.vllm_limit_mm_per_prompt is not None:
-            self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
-        if self.vllm_speculative_config is not None:
-            self.vllm_speculative_config = json_parse_to_dict(self.vllm_speculative_config)
-        self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
-
-    def get_vllm_engine_kwargs(self):
-        adapters = self.adapters
-        if hasattr(self, 'adapter_mapping'):
-            adapters = adapters + list(self.adapter_mapping.values())
-        kwargs = {
-            'gpu_memory_utilization': self.vllm_gpu_memory_utilization,
-            'tensor_parallel_size': self.vllm_tensor_parallel_size,
-            'pipeline_parallel_size': self.vllm_pipeline_parallel_size,
-            'enable_expert_parallel': self.vllm_enable_expert_parallel,
-            'max_num_seqs': self.vllm_max_num_seqs,
-            'max_model_len': self.vllm_max_model_len,
-            'disable_custom_all_reduce': self.vllm_disable_custom_all_reduce,
-            'enforce_eager': self.vllm_enforce_eager,
-            'limit_mm_per_prompt': self.vllm_limit_mm_per_prompt,
-            'max_lora_rank': self.vllm_max_lora_rank,
-            'enable_lora': len(adapters) > 0,
-            'max_loras': max(len(adapters), 1),
-            'enable_prefix_caching': self.vllm_enable_prefix_caching,
-            'use_async_engine': self.vllm_use_async_engine,
-            'quantization': self.vllm_quantization,
-            'reasoning_parser': self.vllm_reasoning_parser,
-            'disable_cascade_attn': self.vllm_disable_cascade_attn,
-            'mm_processor_cache_gb': self.vllm_mm_processor_cache_gb,
-            'speculative_config': self.vllm_speculative_config,
-            'num_labels': self.num_labels,
-            'engine_kwargs': self.vllm_engine_kwargs,
-        }
-        if self.task_type in ('embedding', 'seq_cls') or 'reranker' in self.task_type:
-            kwargs['task_type'] = self.task_type
-
-        return kwargs
-
-
-@dataclass
-class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
+class TrainingArguments(TrainArgumentsMixin, HfTrainingArguments):
     pass
 
 
 @dataclass
-class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
+class Seq2SeqTrainingArguments(TrainArgumentsMixin, HfSeq2SeqTrainingArguments):
     pass
