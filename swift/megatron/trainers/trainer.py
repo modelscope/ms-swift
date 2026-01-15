@@ -7,6 +7,7 @@ import torch.nn
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_timers
+from megatron.core import parallel_state
 from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
@@ -178,10 +179,14 @@ class MegatronTrainer(BaseMegatronTrainer):
         
         
         with self.stimer:
-            if self.args.task_type != 'seq_cls':
-                output_tensor, logits = model(**data, return_logits=True)
+            is_last = parallel_state.is_pipeline_last_stage()
+
+            if is_last:
+                loss, logits = model(**data, return_logits=True)
+                output_tensor = loss
             else:
-                output_tensor = model(**data)
+                output_tensor = model(**data)   # only hidden_states tensor
+                logits = None
         
         if self.args.task_type == 'seq_cls':
             loss_func = partial(
