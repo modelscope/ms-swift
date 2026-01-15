@@ -49,7 +49,7 @@ def prepare_model_template(args, **kwargs):
 
 def _select_dataset(dataset, max_length):
     idxs = [
-        i for i, length in enumerate(dataset['length'])
+        i for i, length in enumerate(dataset['lengths'])
         if (max(length) if isinstance(length, list) else length) <= max_length
     ]
     new_dataset = dataset.select(idxs)
