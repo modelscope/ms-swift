@@ -120,9 +120,6 @@ class Template(ProcessorMixin):
         self.sequence_parallel_size = sequence_parallel_size
         self.padding_free = padding_free  # padding_free/packing
         self.packing = False
-        # Dataset progress tracking
-        self.track_dataset_progress = False
-        self.dataset_progress_counts: Dict[str, int] = {}
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.agent_template = agent_templates[agent_template]()
@@ -582,33 +579,11 @@ class Template(ProcessorMixin):
                 packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
-            elif key == '_dataset_source':
-                # Preserve dataset sources as list for progress tracking
-                packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
         packed.update(self._data_collator_mm_data(row))
         return packed
-
-    def _update_dataset_progress(self, batch: List[Dict[str, Any]]) -> None:
-        """Update dataset progress counts and remove _dataset_source from batch."""
-        if not self.track_dataset_progress:
-            # Just remove the field without tracking
-            for b in batch:
-                b.pop('_dataset_source', None)
-            return
-
-        for b in batch:
-            sources = b.pop('_dataset_source', None)
-            if sources is None:
-                continue
-            # Handle both single value and list (from packing)
-            if isinstance(sources, str):
-                sources = [sources]
-            for source in sources:
-                if source is not None:
-                    self.dataset_progress_counts[source] = self.dataset_progress_counts.get(source, 0) + 1
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
@@ -1679,9 +1654,6 @@ class Template(ProcessorMixin):
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
-        # Track dataset progress if enabled
-        self._update_dataset_progress(batch)
-
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
