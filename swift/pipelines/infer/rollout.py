@@ -39,11 +39,11 @@ from swift.arguments import RolloutArguments
 from swift.infer_engine import GRPOVllmEngine, InferClient
 from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig, RolloutInferRequest,
                                          UpdateWeightsRequest)
-from swift.plugins import RolloutScheduler, multi_turns
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
                                        UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader)
+from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import get_logger
 from ..base import SwiftPipeline
 

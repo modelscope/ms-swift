@@ -5,14 +5,14 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .prm import prms, PRM
-    from .orm import orms, ORM, AsyncORM, MathAccuracy
-    from .rm_plugin import rm_plugins, DefaultRMPlugin, GenRMPlugin
+    from .orm import orms, ORM, AsyncORM
+    from .rm_plugin import rm_plugins
 
 else:
     _import_structure = {
         'prm': ['prms', 'PRM'],
-        'orm': ['orms', 'ORM', 'AsyncORM', 'MathAccuracy'],
-        'rm_plugin': ['rm_plugins', 'DefaultRMPlugin', 'GenRMPlugin'],
+        'orm': ['orms', 'ORM', 'AsyncORM'],
+        'rm_plugin': ['rm_plugins'],
     }
 
     import sys
