@@ -207,7 +207,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         is_moe = model.model_info.is_moe_model
         vllm_enable_lora = args.vllm_enable_lora
 
-        if args.train_type == 'lora' and vllm_enable_lora:
+        if args.tuner_type == 'lora' and vllm_enable_lora:
             lora_kwargs = {
                 'enable_lora': args.vllm_enable_lora,
                 'max_loras': 1,
@@ -377,9 +377,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if args.async_generate and not skip_async_check:
             self._wait_queue()
 
-        train_type = args.train_type
+        tuner_type = args.tuner_type
 
-        if train_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()

@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from .seq2seq_trainer import Seq2SeqTrainer
     from .trainer import Trainer
     from .trainer_factory import TrainerFactory
-    from .utils import disable_gradient_checkpointing, dynamic_gradient_checkpointing, per_token_loss_func, calculate_max_steps
+    from .utils import (disable_gradient_checkpointing, dynamic_gradient_checkpointing, per_token_loss_func,
+                        calculate_max_steps)
 else:
     _import_structure = {
         'arguments': ['TrainArgumentsMixin', 'Seq2SeqTrainingArguments', 'TrainingArguments'],

@@ -242,7 +242,7 @@
 - mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
 
 **Tuner参数**:
-- train_type: 可选为'lora'和'full'。默认为'full'。
+- tuner_type: 可选为'lora'和'full'。默认为'full'。（在ms-swift3.x中参数名为`train_type`）
 - 🔥freeze_llm: 该参数只对多模态模型生效，可用于全参数训练和LoRA训练，但会产生不同的效果。若是全参数训练，将freeze_llm设置为True会将LLM部分权重进行冻结；若是LoRA训练且`target_modules`设置为'all-linear'，将freeze_llm设置为True将会取消在LLM部分添加LoRA模块。该参数默认为False。
 - 🔥freeze_vit: 该参数只对多模态模型生效，可用于全参数训练和LoRA训练，但会产生不同的效果。若是全参数训练，将freeze_vit设置为True会将vit部分权重进行冻结；若是LoRA训练且`target_modules`设置为'all-linear'，将freeze_vit设置为True将会取消在vit部分添加LoRA模块。该参数默认为True。
   - 注意：**这里的vit不仅限于vision_tower, 也包括audio_tower**。若是Omni模型，若你只希望对vision_tower加LoRA，而不希望对audio_tower加LoRA，你可以修改[这里的代码](https://github.com/modelscope/ms-swift/blob/a5d4c0a2ce0658cef8332d6c0fa619a52afa26ff/swift/llm/model/model_arch.py#L544-L554)。

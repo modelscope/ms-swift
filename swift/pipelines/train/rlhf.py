@@ -3,6 +3,9 @@ import os
 from contextlib import nullcontext
 from typing import List, Optional, Union
 
+import peft
+from packaging import version
+
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
 from swift.model import get_model_info_meta
@@ -162,12 +165,16 @@ class SwiftRLHF(SwiftSft):
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
         model = super().prepare_model(args, model, template=template, train_dataset=train_dataset, task_type=task_type)
         if args.ref_adapters:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
+            if args.tuner_type in extra_tuners:
+                tuner: Tuner = extra_tuners[args.tuner_type]
             else:
                 tuner = Swift
             assert len(args.ref_adapters) == 1, f'args.ref_adapters: {args.ref_adapters}'
-            model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter')
+            # is_trainable: fix peft0.18.1
+            kwargs = {}
+            if version.parse(peft.__version__) >= version.parse('0.18'):
+                kwargs['is_trainable'] = True
+            model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter', **kwargs)
             assert args.rlhf_type in {'dpo', 'kto',
                                       'grpo'}, 'Currently, only DPO, KTO, and GRPO support `ref_adapters`.'
             args.training_args.ref_adapter_name = 'ref_adapter'

@@ -11,7 +11,7 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥train_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`.
+- 🔥tuner_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`. (In ms-swift 3.x, the parameter name is `train_type`)
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
 - 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
@@ -356,7 +356,7 @@ Vera uses the three parameters `target_modules`, `target_regex`, and `modules_to
 
 #### LISA
 
-Note: LISA only supports full parameters, i.e., `--train_type full`.
+Note: LISA only supports full parameters, i.e., `--tuner_type full`.
 
 - 🔥lisa_activated_layers: Default value is `0`, representing LISA is not used. Setting to a non-zero value activates that many layers, it is recommended to set to 2 or 8.
 - lisa_step_interval: Default value is `20`, number of iter to switch to layers that can be backpropagated.
@@ -367,7 +367,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 
@@ -378,7 +378,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 #### AdaLoRA
 
-When the `train_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
+When the `tuner_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
 
 - adalora_target_r: Default value is `8`, average rank of AdaLoRA.
 - adalora_init_r: Default value is `12`, initial rank of AdaLoRA.
@@ -391,7 +391,7 @@ When the `train_type` parameter is set to `adalora`, the following parameters ta
 
 #### ReFT
 
-The following parameters are effective when `train_type` is set to `reft`.
+The following parameters are effective when `tuner_type` is set to `reft`.
 
 > 1. ReFT cannot merge tuners.
 > 2. ReFT is not compatible with gradient checkpointing.

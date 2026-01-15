@@ -76,7 +76,7 @@ class TrainArgumentsMixin:
             function is used. Defaults to None.
         metric (Optional[str]): The name of a custom metric from a plugin. If None, it defaults to 'nlg' when
             `predict_with_generate=True`. Defaults to None.
-        callback (List[str]) 使用的TrainerCallback. 将会在使用`swift.callbacks.callbacks_map`进行映射。
+        callback (List[str]) The TrainerCallback to use. Will be mapped via `swift.callbacks.callbacks_map`.
         early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
             `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
             recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the

@@ -13,7 +13,7 @@ swift sft \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
     --split_dataset_ratio 0.01 \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \

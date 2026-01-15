@@ -1,5 +1,8 @@
 # Supported Models and Datasets
 
+> [!WARNING]
+> This document is compatible with swift 4.0.0. To view the model_type and template corresponding to swift 3.x models, please refer to the [v3.12 documentation](https://swift.readthedocs.io/en/v3.12/Instruction/Supported-models-and-datasets.html).
+
 ## Models
 The table below introduces the models integrated with ms-swift:
 

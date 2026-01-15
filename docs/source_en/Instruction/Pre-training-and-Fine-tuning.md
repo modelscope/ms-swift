@@ -93,7 +93,7 @@ You can use the following method for debugging, which is equivalent to using the
 from swift import sft_main, SftArguments
 result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
-    train_type='lora',
+    tuner_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',
              'AI-ModelScope/alpaca-gpt4-data-en#500',
              'swift/self-cognition#500'],
@@ -175,7 +175,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 from swift import get_model_processor, get_template
 from swift.utils import safe_snapshot_download
-from swift.tuners import Swift
+from peft import PeftModel
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-7B-Instruct'
 lora_checkpoint = safe_snapshot_download('swift/test_lora')  # Change to your checkpoint_dir
@@ -185,7 +185,7 @@ default_system = "You are a helpful assistant."  # None: use the default system 
 # Load model and dialogue template
 model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
-    model = Swift.from_pretrained(model, lora_checkpoint)
+    model = PeftModel.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(tokenizer, template_type=template_type, default_system=default_system)
 engine = TransformersEngine(model, template=template, max_batch_size=2)
@@ -213,7 +213,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 from swift import get_model_processor, get_template
 from swift.utils import safe_snapshot_download
-from swift.tuners import Swift
+from peft import PeftModel
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-VL-7B-Instruct'
 lora_checkpoint = safe_snapshot_download('swift/test_grounding')  # Change to your checkpoint_dir
@@ -223,7 +223,7 @@ default_system = None  # None: use the default system prompt of the correspondin
 # Load model and dialogue template
 model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
-    model = Swift.from_pretrained(model, lora_checkpoint)
+    model = PeftModel.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
 template = get_template(tokenizer, template_type=template_type, default_system=default_system)
 engine = TransformersEngine(model, template=template, max_batch_size=2)

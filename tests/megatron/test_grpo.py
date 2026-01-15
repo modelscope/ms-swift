@@ -12,7 +12,7 @@ if __name__ == '__main__':
             load_safetensors=True,
             save_safetensors=True,
             context_parallel_size=1,
-            train_type='lora',
+            tuner_type='lora',
             tensor_model_parallel_size=2,
             dataset=['AI-ModelScope/clevr_cogen_a_train#10000'],
             max_epochs=1,

@@ -257,10 +257,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if isinstance(dataset, LazyLLMDataset):
             dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
-            length = dataset['length']
+            lengths = dataset['lengths']
+            lengths = [max(length) if isinstance(length, list) else length for length in lengths]
         else:
-            length = dataset.packed_length
-        _, stat_str = stat_array(length)
+            lengths = dataset.packed_length
+        _, stat_str = stat_array(lengths)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
 

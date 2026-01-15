@@ -284,7 +284,7 @@ class RLHFMegatronArgumentsMixin:
 
 @dataclass
 class MegatronTunerMixin:
-    train_type: Literal['lora', 'full'] = 'full'
+    tuner_type: Literal['lora', 'full'] = 'full'
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -393,7 +393,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 if old_value is not None:
                     res[key] = old_value
             res.pop('adapter_load', None)
-            if res['train_type'] != 'lora':
+            if res['tuner_type'] != 'lora':
                 res.pop('load', None)
         return res
 
@@ -614,7 +614,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
-            if self.train_type == 'full':
+            if self.tuner_type == 'full':
                 self.lr = 1e-5
             else:
                 self.lr = 1e-4
@@ -710,7 +710,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
-        if self.train_type == 'lora':
+        if self.tuner_type == 'lora':
             if self.num_experts is not None:
                 require_version('peft>=0.15')
             else:
@@ -757,9 +757,9 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
         if self.adapters or self.adapter_load or self.ref_adapter_load:
-            if self.train_type == 'full':
-                self.train_type = 'lora'
-                logger.info('Setting args.train_type: lora')
+            if self.tuner_type == 'full':
+                self.tuner_type = 'lora'
+                logger.info('Setting args.tuner_type: lora')
         if self.adapters:
             self._load_adapter_config()
         self._init_moe()

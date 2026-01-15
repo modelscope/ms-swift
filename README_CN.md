@@ -73,7 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
-- 🎁 2025.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
+- 🎁 2026.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
@@ -155,7 +155,7 @@ pip install -e .
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -236,11 +236,12 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 
 训练：
 ```python
-from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
+from peft import get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # 获取模型和template，并加入可训练的LoRA模块
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+model = get_peft_model(model, lora_config)
 
 # 下载并载入数据集，并将文本encode成tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -317,7 +318,7 @@ swift pt \
     --model Qwen/Qwen2.5-7B \
     --dataset swift/chinese-c4 \
     --streaming true \
-    --train_type full \
+    --tuner_type full \
     --deepspeed zero2 \
     --output_dir output \
     --max_steps 10000 \
@@ -329,7 +330,7 @@ swift pt \
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -340,7 +341,7 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -366,7 +367,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --save output \
     ...
 ```
@@ -391,7 +392,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
     --dataset AI-MO/NuminaMath-TIR#10000 \

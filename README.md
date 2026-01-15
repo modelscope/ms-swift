@@ -77,7 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
-- 🎁 2025.01.15: **ms-swift v4.0** major version update is in progress. It is recommended to use the stable branch [release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12). You can provide your feedback in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
+- 🎁 2026.01.15: **ms-swift v4.0** major version update is in progress. It is recommended to use the stable branch [release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12). You can provide your feedback in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
 - 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
@@ -161,7 +161,7 @@ For more optional dependencies, you can refer to [here](https://github.com/model
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -248,11 +248,12 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
-from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
+from peft import get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # Retrieve the model and template, and add a trainable LoRA module
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+model = get_peft_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -329,7 +330,7 @@ swift pt \
     --model Qwen/Qwen2.5-7B \
     --dataset swift/chinese-c4 \
     --streaming true \
-    --train_type full \
+    --tuner_type full \
     --deepspeed zero2 \
     --output_dir output \
     --max_steps 10000 \
@@ -341,7 +342,7 @@ Fine-tuning:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -352,7 +353,7 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -379,7 +380,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --save output \
     ...
 ```
@@ -404,7 +405,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
     --dataset AI-MO/NuminaMath-TIR#10000 \

@@ -1,5 +1,8 @@
 # 支持的模型和数据集
 
+> [!WARNING]
+> 本文档适配swift4.0.0，若要查看swift3.x模型对应的model_type和template，请查看[v3.12文档](https://swift.readthedocs.io/zh-cn/v3.12/Instruction/Supported-models-and-datasets.html)
+
 ## 模型
 下表介绍了ms-swift接入的模型的相关信息:
 - Model ID: ModelScope模型id

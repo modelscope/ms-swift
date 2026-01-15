@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Optional
 
 import safetensors.torch
 import torch
+from peft import LoraConfig, get_peft_model
 
-from swift.tuners import LoraConfig, Swift
 from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
 from .base import Tuner
 
@@ -27,7 +27,7 @@ class LLMLoraTuner(Tuner):
 
     @staticmethod
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
-        model = Swift.from_pretrained(model, model_id, **kwargs)
+        model = PeftModel.from_pretrained(model, model_id, **kwargs)
         state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
         model.load_state_dict(state_dict, strict=False)
         return model
@@ -59,7 +59,7 @@ class LLMLoraTuner(Tuner):
         logger.info(f'target_regex: {target_regex}')
         lora_config = LoraConfig(
             task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
-        model = Swift.prepare_model(model, lora_config)
+        model = get_peft_model(model, lora_config)
         for module_prefix in model_arch.vision_tower + model_arch.aligner:
             deep_getattr(model, module_prefix).requires_grad_(True)
         return model

@@ -78,5 +78,4 @@ class PeftTuner(Tuner):
 
     @staticmethod
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
-        """Load a PEFT model from a checkpoint."""
         return PeftModel.from_pretrained(model, model_id, **kwargs)

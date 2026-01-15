@@ -54,7 +54,7 @@ def test_mllm_mp():
             dataset=['modelscope/coco_2014_caption:validation#20'],
             # dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
-            train_type='lora',
+            tuner_type='lora',
             target_modules=['all-linear'],
             freeze_aligner=False,
             **kwargs))
@@ -118,7 +118,7 @@ def test_qwen2_audio():
             split_dataset_ratio=0.01,
             freeze_parameters_ratio=1,
             trainable_parameters=['audio_tower'],
-            train_type='full',
+            tuner_type='full',
             **kwargs))
 
 
