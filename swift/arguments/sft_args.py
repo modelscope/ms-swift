@@ -3,11 +3,9 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.trainers import TrainerFactory
-from swift.trainers.arguments import TrainArgumentsMixin
+from swift.trainers import Seq2SeqTrainingArguments, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
                          is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
@@ -95,7 +93,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments):
+class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, BaseArguments):
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
@@ -131,11 +129,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
         deepspeed_autotp_size (Optional[int]): The tensor parallelism size for DeepSpeed AutoTP. To use this, the
             `--deepspeed` argument must be set to 'zero0', 'zero1', or 'zero2'. Note: This feature only supports
             full-parameter fine-tuning. Defaults to None.
-        early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
-            `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
-            recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the
-            callback plugin. For more complex requirements, you can directly override the implementation in
-            `callback.py`. Defaults to None.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
@@ -160,9 +153,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
 
     # fsdp
     fsdp: Optional[str] = None
-
-    # early_step
-    early_stop_interval: Optional[int] = None
 
     def _check_padding_free(self):
         if self.padding_free or self.packing:

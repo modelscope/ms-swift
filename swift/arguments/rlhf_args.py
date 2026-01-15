@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.model import MODEL_MAPPING
 from swift.rlhf_trainers import GRPOArgumentsMixin
-from swift.trainers import RLHFArgumentsMixin
 from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
 from .sft_args import SftArguments
 
@@ -148,8 +147,7 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 
 @dataclass
-class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, RLHFArgumentsMixin,
-                    SftArguments):
+class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, SftArguments):
     """A dataclass holding arguments for Reinforcement Learning from Human Feedback.
 
     Args:
@@ -195,6 +193,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         temperature (float): The temperature for sampling, used in PPO, GRPO, and GKD algorithms. Defaults to 0.9.
         center_rewards_coefficient (Optional[float]): Used for Reward Model (RM) training. A coefficient to encourage
             the reward model to output rewards with a mean of zero. A value of 0.01 is recommended. Defaults to None.
+        sft_alpha (float): The weight for the SFT loss component in GKD. The final loss is calculated as
+            gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
         seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
         offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
@@ -231,6 +231,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     # RM
     center_rewards_coefficient: Optional[float] = None
     # GKD
+    sft_alpha: float = 0
     lmbda: float = 0.5
     seq_kd: bool = False
     offload_teacher_model: bool = False

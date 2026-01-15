@@ -377,14 +377,14 @@ class Runtime(BaseUI):
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
-        train_type = args.get('rlhf_type', 'dpo')
-        if train_type in ('dpo', 'cpo', 'simpo'):
+        rlhf_type = args.get('rlhf_type', 'dpo')
+        if rlhf_type in ('dpo', 'cpo', 'simpo'):
             return cls.dpo_plot
-        elif train_type == 'kto':
+        elif rlhf_type == 'kto':
             return cls.kto_plot
-        elif train_type == 'orpo':
+        elif rlhf_type == 'orpo':
             return cls.orpo_plot
-        elif train_type == 'grpo':
+        elif rlhf_type == 'grpo':
             return cls.grpo_plot
 
     @classmethod

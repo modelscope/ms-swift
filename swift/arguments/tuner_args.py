@@ -95,23 +95,6 @@ class TunerArguments:
         adapter_act (str): Activation function for adapter. Default is 'gelu'.
         adapter_length (int): Length of the adapter. Default is 128.
 
-        use_galore (bool): Flag to indicate if Galore is used. Default is False.
-        galore_target_modules (Optional[List[str]]): List of target modules for Galore. Default is None.
-        galore_rank (int): Rank for Galore. Default is 128.
-        galore_update_proj_gap (int): Update projection gap for Galore. Default is 50.
-        galore_scale (float): Scaling factor for Galore. Default is 1.0.
-        galore_proj_type (str): Projection type for Galore. Default is 'std'.
-        galore_optim_per_parameter (bool): Flag to indicate if optimization is per parameter for Galore.
-            Default is False.
-        galore_with_embedding (bool): Flag to indicate if embedding is used with Galore. Default is False.
-        galore_quantization (bool): Flag to indicate if use Q-Galore. Default is False.
-        galore_proj_quant (bool): Flag to indicate if projection quantization is used for Galore. Default is False.
-        galore_proj_bits (int): Number of bits for projection quantization. Default is 4.
-        galore_proj_group_size (int): Group size for projection quantization. Default is 256.
-        galore_cos_threshold (float): Cosine threshold for projection quantization. Default is 0.4.
-        galore_gamma_proj (int): Gamma for projection quantization. Default is 2.
-        galore_queue_size (int): Queue size for projection quantization. Default is 5.
-
         adalora_target_r (int): Target rank for AdaLoRA. Default is 8.
         adalora_init_r (int): Initial rank for AdaLoRA. Default is 12.
         adalora_tinit (int): Initial T value for AdaLoRA. Default is 100.
@@ -123,9 +106,6 @@ class TunerArguments:
 
         llamapro_num_new_blocks (int): Number of new blocks for LLaMAPro. Default is 4.
         llamapro_num_groups (Optional[int]): Number of groups for LLaMAPro. Default is None.
-
-        lisa_activated_layers (int): Number of activated layers for LISA. Default is 0.
-        lisa_step_interval (int): Step interval for LISA activation. Default is 20.
 
         reft_layer_key (Optional[str]): Key identifier for ReFT layer. Default is None.
         reft_layers (Optional[List[int]]): List of layers involved in ReFT. Default is None.
@@ -192,23 +172,6 @@ class TunerArguments:
     adapter_act: str = 'gelu'
     adapter_length: int = 128
 
-    # galore
-    use_galore: bool = False
-    galore_target_modules: Optional[List[str]] = None
-    galore_rank: int = 128
-    galore_update_proj_gap: int = 50
-    galore_scale: float = 1.0
-    galore_proj_type: str = 'std'
-    galore_optim_per_parameter: bool = False
-    galore_with_embedding: bool = False
-    galore_quantization: bool = False
-    galore_proj_quant: bool = False
-    galore_proj_bits: int = 4
-    galore_proj_group_size: int = 256
-    galore_cos_threshold: float = 0.4
-    galore_gamma_proj: int = 2
-    galore_queue_size: int = 5
-
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
@@ -222,10 +185,6 @@ class TunerArguments:
     # llamapro
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
-
-    # lisa
-    lisa_activated_layers: int = 0
-    lisa_step_interval: int = 20
 
     # reft
     reft_layer_key: Optional[str] = None
