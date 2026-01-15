@@ -166,14 +166,19 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                dataset = packing_dataset_cls(
-                    template,
-                    dataset,
-                    num_proc=args.dataset_num_proc,
-                    packing_length=args.packing_length,
-                    packing_num_proc=args.packing_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                origin_model = template.model
+                template.model = None
+                try:
+                    dataset = packing_dataset_cls(
+                        template,
+                        dataset,
+                        num_proc=args.dataset_num_proc,
+                        packing_length=args.packing_length,
+                        packing_num_proc=args.packing_num_proc,
+                        strict=args.strict,
+                        load_from_cache_file=args.load_from_cache_file)
+                finally:
+                    template.model = origin_model
             elif args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
                 dataset = preprocessor(

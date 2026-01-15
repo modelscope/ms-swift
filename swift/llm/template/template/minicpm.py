@@ -100,14 +100,18 @@ class MiniCPMVTemplate(Template):
                 images, placeholder = self.model.get_slice_image_placeholder(images[0], self.processor)
                 pixel_values = [[self.model.transform(img) for img in images]]
             placeholder += '\n'
-            placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             input_tensor_ids = torch.tensor(input_ids)
-            image_start_idx = torch.where(input_tensor_ids == self.processor.im_start_id)[0]
+            # Use cached im_start_id/im_end_id if available, fallback to processor property (risky in spawn)
+            im_start_id = getattr(self, 'im_start_id', getattr(self.processor, 'im_start_id', None))
+            im_end_id = getattr(self, 'im_end_id', getattr(self.processor, 'im_end_id', None))
+            
+            image_start_idx = torch.where(input_tensor_ids == im_start_id)[0]
             image_start_idx += 1
-            image_end_idx = torch.where(input_tensor_ids == self.processor.im_end_id)[0]
+            image_end_idx = torch.where(input_tensor_ids == im_end_id)[0]
             valid_image_nums = max(len(image_start_idx), len(image_end_idx))
             image_bound = [
                 torch.hstack(
@@ -115,7 +119,7 @@ class MiniCPMVTemplate(Template):
             ]
         else:
             placeholder = '<image>' + '<unk>' * self.config.query_num + '</image>\n'
-            placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
@@ -158,6 +162,27 @@ register_template(Llama3TemplateMeta(
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
     support_padding_free = True
+
+    def _convert_mm_dtype(self, res: Dict[str, Any]) -> Dict[str, Any]:
+        """在 _data_collator 中转换多模态数据的 dtype。
+        
+        把 dtype 转换从 _encode 延迟到这里，避免在子进程中访问 model_info。
+        这样可以支持 streaming + packing 模式。
+        """
+        target_dtype = self.model_info.torch_dtype
+        pixel_values = res.get('pixel_values')
+        if pixel_values is not None:
+            # pixel_values 是 list[list[Tensor]] 格式
+            converted = []
+            for pv_list in pixel_values:
+                if isinstance(pv_list, (list, tuple)):
+                    converted.append([t.to(target_dtype) if isinstance(t, torch.Tensor) else t for t in pv_list])
+                elif isinstance(pv_list, torch.Tensor):
+                    converted.append(pv_list.to(target_dtype))
+                else:
+                    converted.append(pv_list)
+            res['pixel_values'] = converted
+        return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """重写 _data_collator 以正确处理 packing 场景。
@@ -213,10 +238,16 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             if ts is not None:
                 res['tgt_sizes'] = ts
             
+            # 4. 在主进程中转换 dtype（延迟从 _encode 移到这里）
+            res = self._convert_mm_dtype(res)
+            
             return res
         else:
             # 非 packing 场景，使用原有逻辑
-            return super()._data_collator(batch, padding_to=padding_to)
+            res = super()._data_collator(batch, padding_to=padding_to)
+            # 同样需要转换 dtype
+            res = self._convert_mm_dtype(res)
+            return res
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         """处理 packing 时的多模态数据合并。
@@ -303,6 +334,12 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         self.max_num_frames = get_env_args('max_num_frames', int, 64)
         self.max_slice_nums = get_env_args('max_slice_nums', int, None)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
+        
+        # Cache im_start_id/im_end_id from processor to self for spawn multiprocessing safety
+        if hasattr(self.processor, 'im_start_id'):
+            self.im_start_id = self.processor.im_start_id
+        if hasattr(self.processor, 'im_end_id'):
+            self.im_end_id = self.processor.im_end_id
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -329,20 +366,22 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         idx_list = findall(input_ids, -100)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+        # 注意：不在这里调用 .to(self.model_info.torch_dtype)
+        # dtype 转换延迟到 _data_collator 中进行，以支持 streaming + packing 模式
+        # （因为 streaming packing 会在子进程中调用 _encode，而子进程无法访问 model_info）
+        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums)
 
         def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(
                 image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
-            return self.processor.encode(placeholder, add_special_tokens=False)
+            return self.tokenizer.encode(placeholder, add_special_tokens=False)
 
         input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
 
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
-            unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]
+            unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
             indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
 
             ranges = []
@@ -417,20 +456,21 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         idx_list = findall(input_ids, -100)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+        # 注意：不在这里调用 .to(self.model_info.torch_dtype)
+        # dtype 转换延迟到 _data_collator 中进行，以支持 streaming + packing 模式
+        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums)
 
         def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(
                 image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
-            return self.processor.encode(placeholder, add_special_tokens=False)
+            return self.tokenizer.encode(placeholder, add_special_tokens=False)
 
         input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
 
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
-            unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]
+            unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
             indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
 
             ranges = []
@@ -460,6 +500,8 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         for k in ['pixel_values', 'image_bound', 'tgt_sizes', 'temporal_ids']:
             res[k] = self.gather_list(batch, k)
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        # 在主进程中转换 dtype
+        res = self._convert_mm_dtype(res)
         return res
 
 

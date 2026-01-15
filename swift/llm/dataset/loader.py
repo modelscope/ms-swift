@@ -145,6 +145,15 @@ class DatasetSyntax:
         return dataset_meta
 
 
+class _AddDatasetSource:
+    def __init__(self, source):
+        self.source = source
+
+    def __call__(self, example):
+        example['_dataset_source'] = self.source
+        return example
+
+
 class DatasetLoader:
 
     @staticmethod
@@ -198,10 +207,7 @@ class DatasetLoader:
         """Add _dataset_source column for progress tracking."""
         if streaming:
             # For IterableDataset, add source via map
-            def add_source(example):
-                example['_dataset_source'] = source
-                return example
-            return dataset.map(add_source)
+            return dataset.map(_AddDatasetSource(source))
         else:
             # For regular Dataset, add column directly
             return dataset.add_column('_dataset_source', [source] * len(dataset))

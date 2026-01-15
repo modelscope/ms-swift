@@ -237,12 +237,13 @@ class IterablePackingDataset(IterableDataset):
         self.packing_length = packing_length or self.template.max_length
 
         self.packing_interval = packing_interval
-        self._in_queue = mp.Queue()
-        self._out_queue = mp.Queue()
+        ctx = mp.get_context('spawn')
+        self._in_queue = ctx.Queue()
+        self._out_queue = ctx.Queue()
         self.workers = []
         self.cyclic = cyclic
         for _ in range(self.num_proc):
-            worker = mp.Process(target=self._processor, daemon=True)
+            worker = ctx.Process(target=self._processor, daemon=True)
             worker.start()
             self.workers.append(worker)
 
@@ -253,6 +254,8 @@ class IterablePackingDataset(IterableDataset):
             try:
                 encoded_data = self.template.encode(data, return_length=True)
             except Exception as e:
+                import traceback
+                logger.error(f'Error encoding index {i}: {e}\n{traceback.format_exc()}')
                 if self.strict and not isinstance(e, MaxLengthError):
                     raise
             self._out_queue.put((i, encoded_data))
