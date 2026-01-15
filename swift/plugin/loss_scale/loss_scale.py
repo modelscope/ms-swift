@@ -65,16 +65,14 @@ class LossScale:
             else:
                 if isinstance(context, dict) and 'token_ids' in context:
                     context = context['token_ids']
-                if context_type == ContextType.RESPONSE and loss is not None:
-                    new_context, loss_scale = [context], [float(loss)]
+                is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
+                if loss is True or loss is None and (self.base_strategy == 'all' or
+                                                     (self.base_strategy == 'default' and is_assistant) or
+                                                     (self.base_strategy == 'last_round' and is_assistant
+                                                      and is_last_round)):
+                    new_context, loss_scale = self.get_loss_scale(context, query=query)
                 else:
-                    is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
-                    if self.base_strategy == 'all' or (self.base_strategy == 'default'
-                                                       and is_assistant) or (self.base_strategy == 'last_round'
-                                                                             and is_assistant and is_last_round):
-                        new_context, loss_scale = self.get_loss_scale(context, query=query)
-                    else:
-                        new_context, loss_scale = [context], [0.]
+                    new_context, loss_scale = [context], [0.]
             res_context_list += new_context
             res_loss_scale += loss_scale
         # The values in loss_scale_list correspond one-to-one with the values in context_list.
