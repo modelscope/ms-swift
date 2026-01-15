@@ -3,6 +3,9 @@ import os
 from contextlib import nullcontext
 from typing import List, Optional, Union
 
+import peft
+from packaging import version
+
 from swift.llm import safe_snapshot_download
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
@@ -168,7 +171,11 @@ class SwiftRLHF(SwiftSft):
             else:
                 tuner = Swift
             assert len(args.ref_adapters) == 1, f'args.ref_adapters: {args.ref_adapters}'
-            model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter')
+            # is_trainable: fix peft0.18.1
+            kwargs = {}
+            if version.parse(peft.__version__) >= version.parse('0.18'):
+                kwargs['is_trainable'] = True
+            model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter', **kwargs)
             assert args.rlhf_type in {'dpo', 'kto',
                                       'grpo'}, 'Currently, only DPO, KTO, and GRPO support `ref_adapters`.'
             args.training_args.ref_adapter_name = 'ref_adapter'
