@@ -576,7 +576,7 @@ class Template(ProcessorMixin):
             if return_length:
                 if not lengths:
                     raise ValueError(f'lengths should not be empty. batched: {batched}')
-                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
+                encoded['length'] = lengths
             else:
                 encoded.pop('length', None)
             if return_template_inputs:
