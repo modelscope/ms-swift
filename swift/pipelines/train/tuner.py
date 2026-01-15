@@ -8,8 +8,8 @@ from packaging import version
 from transformers import TrainingArguments
 
 from swift.arguments import SftArguments
-from swift.optimizers.galore import GaLoreConfig, calculate_max_steps
 from swift.plugins import Tuner, extra_tuners
+from swift.trainers import calculate_max_steps
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)
@@ -367,20 +367,4 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
-            args.galore_config = GaLoreConfig(
-                target_modules=args.galore_target_modules,
-                rank=args.galore_rank,
-                update_proj_gap=args.galore_update_proj_gap,
-                galore_scale=args.galore_scale,
-                proj_type=args.galore_proj_type,
-                optim_per_parameter=args.galore_optim_per_parameter,
-                quantize=args.galore_quantization,
-                proj_quant=args.galore_proj_quant,
-                proj_bits=args.galore_proj_bits,
-                proj_group_size=args.galore_proj_group_size,
-                cos_threshold=args.galore_cos_threshold,
-                gamma_proj=args.galore_gamma_proj,
-                queue_size=args.galore_queue_size,
-            )
-            args.training_args.galore_config = args.galore_config
         return model
