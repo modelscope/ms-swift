@@ -172,7 +172,7 @@ class SwiftRLHF(SwiftSft):
             assert len(args.ref_adapters) == 1, f'args.ref_adapters: {args.ref_adapters}'
             # is_trainable: fix peft0.18.1
             kwargs = {}
-            if verision.parse(peft.__version__) >= verision.parse('0.18'):
+            if version.parse(peft.__version__) >= version.parse('0.18'):
                 kwargs['is_trainable'] = True
             model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter', **kwargs)
             assert args.rlhf_type in {'dpo', 'kto',
