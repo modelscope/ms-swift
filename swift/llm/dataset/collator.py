@@ -44,21 +44,33 @@ class ProgressTrackingCollator:
         # 1. Collect sources before calling original collator
         # (original collator may modify batch in place)
         batch_sources = []
-        if self.track_progress:
-            for b in batch:
-                sources = b.pop('_dataset_source', None)
-                if sources is None:
-                    continue
-                # Handle both single value (non-packing) and list (packing)
-                if isinstance(sources, str):
-                    sources = [sources]
-                for s in sources:
-                    if s is not None:
-                        batch_sources.append(s)
-        else:
-            # Not tracking, just remove the field to avoid issues
-            for b in batch:
-                b.pop('_dataset_source', None)
+        
+        def _extract_source(item):
+            if isinstance(item, dict):
+                sources = item.get('_dataset_source')
+                if sources is not None:
+                    del item['_dataset_source']
+                    return sources
+            return None
+
+        for b in batch:
+            # Handle Packing scenario where batch item is a list of samples
+            if isinstance(b, list):
+                for sub_item in b:
+                    sources = _extract_source(sub_item)
+                    if self.track_progress and sources:
+                        if isinstance(sources, str):
+                            batch_sources.append(sources)
+                        elif isinstance(sources, list):
+                            batch_sources.extend(sources)
+            # Handle normal scenario where batch item is a single sample dict
+            elif isinstance(b, dict):
+                sources = _extract_source(b)
+                if self.track_progress and sources:
+                     if isinstance(sources, str):
+                        batch_sources.append(sources)
+                     elif isinstance(sources, list):
+                        batch_sources.extend(sources)
 
         # 2. Call original collator
         result = self.collator(batch)
