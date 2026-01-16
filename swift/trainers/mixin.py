@@ -78,7 +78,7 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
         self.template = template
-        
+
         self.is_encoder_decoder = self.template.is_encoder_decoder
         self.padding_free = self.template.padding_free
         self.task_type = self.template.task_type
