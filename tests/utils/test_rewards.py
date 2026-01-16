@@ -6,7 +6,7 @@ class TestMathAccuracy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            from swift.plugins.orm import MathAccuracy
+            from swift.rewards.orm import MathAccuracy
             cls.math_accuracy = MathAccuracy()
             cls.available = True
         except (ImportError, AssertionError) as e:

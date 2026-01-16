@@ -43,7 +43,7 @@ from trl.trainer.utils import selective_log_softmax
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine import TransformersEngine
-from swift.plugins import orms, rm_plugins
+from swift.rewards import orms, rm_plugins
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing

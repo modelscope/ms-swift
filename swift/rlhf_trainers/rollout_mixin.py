@@ -29,7 +29,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
-from swift.plugins import MultiTurnScheduler, multi_turns
+from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift

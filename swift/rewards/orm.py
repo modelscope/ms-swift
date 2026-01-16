@@ -1,3 +1,6 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+# Outcome Reward Model (ORM) implementations for GRPO training.
+
 import os
 import re
 from typing import Dict, List, Union
@@ -52,6 +55,174 @@ class AsyncORM:
 
     async def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
+
+
+class MathAccuracy(ORM):
+
+    def __init__(self):
+        import importlib.util
+        assert importlib.util.find_spec('math_verify') is not None, (
+            'The math_verify package is required but not installed. '
+            "Please install it using 'pip install math_verify'.")
+
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
+        from latex2sympy2_extended import NormalizationConfig
+        from math_verify import LatexExtractionConfig, parse, verify
+        rewards = []
+        for content, sol in zip(completions, solution):
+            content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
+            content_to_parse = content_match.group(1).strip() if content_match else content
+            has_answer_tag = content_match is not None
+
+            sol_match = re.search(r'<answer>(.*?)</answer>', sol, re.DOTALL)
+            sol_to_parse = sol_match.group(1).strip() if sol_match else sol
+
+            gold_parsed = parse(sol_to_parse, extraction_mode='first_match')
+            if len(gold_parsed) != 0:
+                if has_answer_tag:
+                    answer_parsed = parse(content_to_parse, extraction_mode='first_match')
+                else:
+                    answer_parsed = parse(
+                        content_to_parse,
+                        extraction_config=[
+                            LatexExtractionConfig(
+                                normalization_config=NormalizationConfig(
+                                    nits=False,
+                                    malformed_operators=False,
+                                    basic_latex=True,
+                                    boxed=True,
+                                    units=True,
+                                ),
+                                boxed_match_priority=0,
+                                try_extract_without_anchor=False,
+                            )
+                        ],
+                        extraction_mode='first_match',
+                    )
+                try:
+                    reward = float(verify(gold_parsed, answer_parsed))
+                except Exception:
+                    reward = 0.0
+            else:
+                # If the gold solution is not parseable, we reward 0 to skip this example
+                reward = 0.0
+            rewards.append(reward)
+        return rewards
+
+
+class Format(ORM):
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """Reward function that checks if the completion has a specific format."""
+        pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>(?![\s\S])'
+        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
+        return [1.0 if match else 0.0 for match in matches]
+
+
+class ReActFormat(ORM):
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """Reward function that checks if the completion has a specific format."""
+        pattern = r'^<think>.*?</think>\s*Action:.*?Action Input:.*?$'
+        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
+        return [1.0 if match else 0.0 for match in matches]
+
+
+class CosineReward(ORM):
+    # https://arxiv.org/abs/2502.03373
+    def __init__(self,
+                 cosine_min_len_value_wrong: float = -0.5,
+                 cosine_max_len_value_wrong: float = 0.0,
+                 cosine_min_len_value_correct: float = 1.0,
+                 cosine_max_len_value_correct: float = 0.5,
+                 cosine_max_len: int = 1000,
+                 accuracy_orm=None):
+        self.min_len_value_wrong = cosine_min_len_value_wrong
+        self.max_len_value_wrong = cosine_max_len_value_wrong
+        self.min_len_value_correct = cosine_min_len_value_correct
+        self.max_len_value_correct = cosine_max_len_value_correct
+        self.max_len = cosine_max_len
+        self.accuracy_orm = accuracy_orm or MathAccuracy()
+
+    @staticmethod
+    def cosfn(t, T, min_value, max_value):
+        import math
+        return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
+
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
+        acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
+        response_token_ids = kwargs.get('response_token_ids')
+        rewards = []
+        for ids, acc_reward in zip(response_token_ids, acc_rewards):
+            is_correct = acc_reward >= 1.
+            if is_correct:
+                # Swap min/max for correct answers
+                min_value = self.max_len_value_correct
+                max_value = self.min_len_value_correct
+            else:
+                min_value = self.max_len_value_wrong
+                max_value = self.min_len_value_wrong
+            gen_len = len(ids)
+            reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
+            rewards.append(reward)
+        return rewards
+
+
+class RepetitionPenalty(ORM):
+    # https://arxiv.org/abs/2502.03373
+    def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
+        self.ngram_size = repetition_n_grams
+        self.max_penalty = repetition_max_penalty
+
+    @staticmethod
+    def zipngram(text: str, ngram_size: int):
+        words = text.lower().split()
+        return zip(*[words[i:] for i in range(ngram_size)])
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """
+        reward function the penalizes repetitions
+
+        Args:
+            completions: List of model completions
+        """
+        rewards = []
+        for completion in completions:
+            if completion == '':
+                rewards.append(0.0)
+                continue
+            if len(completion.split()) < self.ngram_size:
+                rewards.append(0.0)
+                continue
+
+            ngrams = set()
+            total = 0
+            for ng in self.zipngram(completion, self.ngram_size):
+                ngrams.add(ng)
+                total += 1
+
+            scaling = 1 - len(ngrams) / total
+            reward = scaling * self.max_penalty
+            rewards.append(reward)
+        return rewards
+
+
+class SoftOverlong(ORM):
+
+    def __init__(self, soft_max_length, soft_cache_length):
+        assert soft_cache_length < soft_max_length
+        self.soft_max_length = soft_max_length
+        self.soft_cache_length = soft_cache_length
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        rewards = []
+        response_token_ids = kwargs.get('response_token_ids')
+        for ids in response_token_ids:
+            completion_length = len(ids)
+            expected_len = self.soft_max_length - self.soft_cache_length
+            exceed_len = completion_length - expected_len
+            rewards.append(min(-exceed_len / self.soft_cache_length, 0))
+        return rewards
 
 
 class ReactORM(ORM):
@@ -270,174 +441,6 @@ class MathORM(ORM):
             else:
                 reward = MathORM.compare_consecutive(prediction, ground_truth)
             rewards.append(float(reward))
-        return rewards
-
-
-class MathAccuracy(ORM):
-
-    def __init__(self):
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            'The math_verify package is required but not installed. '
-            "Please install it using 'pip install math_verify'.")
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from latex2sympy2_extended import NormalizationConfig
-        from math_verify import LatexExtractionConfig, parse, verify
-        rewards = []
-        for content, sol in zip(completions, solution):
-            content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
-            content_to_parse = content_match.group(1).strip() if content_match else content
-            has_answer_tag = content_match is not None
-
-            sol_match = re.search(r'<answer>(.*?)</answer>', sol, re.DOTALL)
-            sol_to_parse = sol_match.group(1).strip() if sol_match else sol
-
-            gold_parsed = parse(sol_to_parse, extraction_mode='first_match')
-            if len(gold_parsed) != 0:
-                if has_answer_tag:
-                    answer_parsed = parse(content_to_parse, extraction_mode='first_match')
-                else:
-                    answer_parsed = parse(
-                        content_to_parse,
-                        extraction_config=[
-                            LatexExtractionConfig(
-                                normalization_config=NormalizationConfig(
-                                    nits=False,
-                                    malformed_operators=False,
-                                    basic_latex=True,
-                                    boxed=True,
-                                    units=True,
-                                ),
-                                boxed_match_priority=0,
-                                try_extract_without_anchor=False,
-                            )
-                        ],
-                        extraction_mode='first_match',
-                    )
-                try:
-                    reward = float(verify(gold_parsed, answer_parsed))
-                except Exception:
-                    reward = 0.0
-            else:
-                # If the gold solution is not parseable, we reward 0 to skip this example
-                reward = 0.0
-            rewards.append(reward)
-        return rewards
-
-
-class Format(ORM):
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>(?![\s\S])'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
-
-
-class ReActFormat(ORM):
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think>\s*Action:.*?Action Input:.*?$'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
-
-
-class CosineReward(ORM):
-    # https://arxiv.org/abs/2502.03373
-    def __init__(self,
-                 cosine_min_len_value_wrong: float = -0.5,
-                 cosine_max_len_value_wrong: float = 0.0,
-                 cosine_min_len_value_correct: float = 1.0,
-                 cosine_max_len_value_correct: float = 0.5,
-                 cosine_max_len: int = 1000,
-                 accuracy_orm=None):
-        self.min_len_value_wrong = cosine_min_len_value_wrong
-        self.max_len_value_wrong = cosine_max_len_value_wrong
-        self.min_len_value_correct = cosine_min_len_value_correct
-        self.max_len_value_correct = cosine_max_len_value_correct
-        self.max_len = cosine_max_len
-        self.accuracy_orm = accuracy_orm or MathAccuracy()
-
-    @staticmethod
-    def cosfn(t, T, min_value, max_value):
-        import math
-        return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
-        response_token_ids = kwargs.get('response_token_ids')
-        rewards = []
-        for ids, acc_reward in zip(response_token_ids, acc_rewards):
-            is_correct = acc_reward >= 1.
-            if is_correct:
-                # Swap min/max for correct answers
-                min_value = self.max_len_value_correct
-                max_value = self.min_len_value_correct
-            else:
-                min_value = self.max_len_value_wrong
-                max_value = self.min_len_value_wrong
-            gen_len = len(ids)
-            reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
-            rewards.append(reward)
-        return rewards
-
-
-class RepetitionPenalty(ORM):
-    # https://arxiv.org/abs/2502.03373
-    def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
-        self.ngram_size = repetition_n_grams
-        self.max_penalty = repetition_max_penalty
-
-    @staticmethod
-    def zipngram(text: str, ngram_size: int):
-        words = text.lower().split()
-        return zip(*[words[i:] for i in range(ngram_size)])
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """
-        reward function the penalizes repetitions
-
-        Args:
-            completions: List of model completions
-        """
-        rewards = []
-        for completion in completions:
-            if completion == '':
-                rewards.append(0.0)
-                continue
-            if len(completion.split()) < self.ngram_size:
-                rewards.append(0.0)
-                continue
-
-            ngrams = set()
-            total = 0
-            for ng in self.zipngram(completion, self.ngram_size):
-                ngrams.add(ng)
-                total += 1
-
-            scaling = 1 - len(ngrams) / total
-            reward = scaling * self.max_penalty
-            rewards.append(reward)
-        return rewards
-
-
-class SoftOverlong(ORM):
-
-    def __init__(self, soft_max_length, soft_cache_length):
-        assert soft_cache_length < soft_max_length
-        self.soft_max_length = soft_max_length
-        self.soft_cache_length = soft_cache_length
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        rewards = []
-        response_token_ids = kwargs.get('response_token_ids')
-        for ids in response_token_ids:
-            completion_length = len(ids)
-            expected_len = self.soft_max_length - self.soft_cache_length
-            exceed_len = completion_length - expected_len
-            rewards.append(min(-exceed_len / self.soft_cache_length, 0))
         return rewards
 
 

@@ -67,7 +67,7 @@ class RMPlugin(DefaultRMPlugin):
         return rewards
 ```
 
-我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
 
 在 [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) 中自定义奖励模型插件，并使用 `external_plugins` 参数进行注册。
 

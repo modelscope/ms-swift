@@ -93,7 +93,7 @@ class RolloutArguments(DeployArguments):
 
     Args:
         multi_turn_scheduler (Optional[str]): The scheduler for multi-turn GRPO training. Pass the name of the
-            corresponding plugin implemented in `swift/plugins/multi_turn.py`. Defaults to None. Refer to the
+            corresponding plugin implemented in `swift/rollout/multi_turn.py`. Defaults to None. Refer to the
             documentation for details.
         max_turns (Optional[int]): The maximum number of turns in multi-turn GRPO training. If None, no limit is
             imposed. Defaults to None.
@@ -104,7 +104,7 @@ class RolloutArguments(DeployArguments):
     """
     vllm_use_async_engine: Optional[bool] = None
     use_gym_env: Optional[bool] = None
-    # only for GRPO rollout with AsyncEngine, see details in swift/plugins/multi_turn
+    # only for GRPO rollout with AsyncEngine, see details in swift/rollout/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     vllm_enable_lora: bool = False

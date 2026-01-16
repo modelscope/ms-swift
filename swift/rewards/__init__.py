@@ -4,13 +4,15 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .callback import extra_callbacks, EarlyStopCallback
-    from .tuner import Tuner, extra_tuners, PeftTuner
+    from .prm import prms, PRM
+    from .orm import orms, ORM, AsyncORM
+    from .rm_plugin import rm_plugins
 
 else:
     _import_structure = {
-        'callback': ['extra_callbacks', 'EarlyStopCallback'],
-        'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
+        'prm': ['prms', 'PRM'],
+        'orm': ['orms', 'ORM', 'AsyncORM'],
+        'rm_plugin': ['rm_plugins'],
     }
 
     import sys
