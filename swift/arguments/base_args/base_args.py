@@ -29,36 +29,11 @@ def get_supported_tuners():
 
 
 @dataclass
-class CompatArguments:
-    ckpt_dir: Optional[str] = None
-    lora_modules: List[str] = field(default_factory=list)
-
-    def _handle_ckpt_dir(self: 'BaseArguments'):
-        assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
-        if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
-                or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
-                or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
-            if self.ckpt_dir in self.adapters:
-                return
-            self.adapters.insert(0, self.ckpt_dir)
-        else:
-            self.model = self.ckpt_dir
-        self.ckpt_dir = None
-
-    def __post_init__(self: 'BaseArguments'):
-        if self.ckpt_dir is not None:
-            self._handle_ckpt_dir()
-
-        if len(self.lora_modules) > 0:
-            self.adapters += self.lora_modules
-
-
-@dataclass
-class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
-                    ModelArguments, RayArguments):
+class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments,
+                    RayArguments):
     """BaseArguments class is a dataclass that inherits from multiple argument classes.
 
-    This class consolidates arguments from CompatArguments, GenerationArguments, QuantizeArguments, DataArguments,
+    This class consolidates arguments from GenerationArguments, QuantizeArguments, DataArguments,
     TemplateArguments, ModelArguments, RayArguments.
 
     Args:
@@ -96,6 +71,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     tuner_type: str = field(default='lora', metadata={'help': f'tuner_type choices: {list(get_supported_tuners())}'})
+    train_type: Optional[str] = None  # compat swift3.x
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
     # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
@@ -173,11 +149,12 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ]
 
     def __post_init__(self):
+        if self.train_type is not None:
+            self.tuner_type = self.train_type
         self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
-        CompatArguments.__post_init__(self)
         self._init_adapters()
         self._init_ckpt_dir()
         self._import_external_plugins()
