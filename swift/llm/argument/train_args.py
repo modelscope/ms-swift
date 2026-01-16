@@ -185,12 +185,21 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     # dataset progress tracking
     track_dataset_progress: bool = False
+    
+    # greedy packing (non-streaming alternative to binpacking)
+    greedy_packing: bool = False  # Use greedy packing instead of binpacking to avoid preprocessing
 
     def _check_padding_free(self):
+        # greedy_packing requires padding_free (like packing)
+        if self.greedy_packing:
+            self.padding_free = True
+        
         if self.padding_free or self.packing:
             if self.packing:
                 feature = 'packing'
                 self.padding_free = True
+            elif self.greedy_packing:
+                feature = 'greedy_packing'
             else:
                 feature = 'padding_free'
             if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:

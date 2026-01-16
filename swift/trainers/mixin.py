@@ -1109,6 +1109,11 @@ class SwiftMixin:
 
 class DataLoaderMixin:
 
+    @staticmethod
+    def _list_collator(batch):
+        """List collator for greedy packing - returns samples as list without padding."""
+        return batch
+
     def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
         from swift.trainers.sequence_parallel import sequence_parallel
         from swift.trainers.sequence_parallel.utils import SequenceParallelSampler
@@ -1164,8 +1169,13 @@ class DataLoaderMixin:
             args = self.args
             train_dataset = self.train_dataset
 
+            # Check if greedy packing is needed (non-streaming only)
+            use_greedy_packing = (getattr(args, 'greedy_packing', False)
+                                  and hasattr(train_dataset, '__len__'))
+            collate_fn = self._list_collator if use_greedy_packing else self.data_collator
+
             dataloader_params = {
-                'collate_fn': self.data_collator,
+                'collate_fn': collate_fn,
                 'num_workers': args.dataloader_num_workers,
                 'pin_memory': args.dataloader_pin_memory,
                 'persistent_workers': args.dataloader_persistent_workers,
@@ -1193,6 +1203,17 @@ class DataLoaderMixin:
                     batch_sampler = SkipBatchSampler(batch_sampler, skip_batches=skip_batches)
                 dataloader_params['batch_sampler'] = batch_sampler
                 dataloader = DataLoaderShard(train_dataset, device=self.accelerator.device, **dataloader_params)
+                
+                # Wrap with GreedyPackingDataLoader if needed
+                if use_greedy_packing:
+                    from swift.llm.dataset.utils import GreedyPackingDataLoader
+                    packing_length = getattr(args, 'packing_length', None) or self.template.max_length
+                    dataloader = GreedyPackingDataLoader(
+                        dataloader=dataloader,
+                        packing_length=packing_length,
+                        packing_collator=partial(self.template.data_collator, padding_to=None),
+                    )
+                    logger.info(f'GreedyPackingDataLoader enabled with packing_length={packing_length}')
             else:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:
