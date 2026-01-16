@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from transformers.utils.versions import require_version
 
-from swift.trainers import Seq2SeqTrainingArguments, TrainerFactory
+from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
                          is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
@@ -174,6 +174,7 @@ class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, B
                     self.model = self.resume_from_checkpoint
                 else:
                     self.adapters = [self.resume_from_checkpoint]
+        TrainArgumentsMixin.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_override()
         TunerArguments.__post_init__(self)

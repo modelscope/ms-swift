@@ -261,9 +261,15 @@ class TrainArgumentsMixin:
 
 @dataclass
 class TrainingArguments(TrainArgumentsMixin, HfTrainingArguments):
-    pass
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfTrainingArguments.__post_init__(self)
 
 
 @dataclass
 class Seq2SeqTrainingArguments(TrainArgumentsMixin, HfSeq2SeqTrainingArguments):
-    pass
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfSeq2SeqTrainingArguments.__post_init__(self)
