@@ -1,3 +1,5 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+# Multi-turn Rollout Schedulers for GRPO training.
 import asyncio
 from abc import ABC
 from copy import deepcopy
@@ -8,8 +10,7 @@ from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionR
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
 from swift.utils import remove_response
-from .context_manager import ContextManager, context_managers
-from .env import Env, envs
+from .gym_env import ContextManager, Env, context_managers, envs
 
 
 class RolloutScheduler(ABC):
@@ -442,7 +443,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
         super().__init__(*args, **kwargs)
         acc_func = kwargs.get('acc_function', None)
         if acc_func is None:
-            from .orm import MathAccuracy
+            from swift.rewards.orm import MathAccuracy
             acc_func = MathAccuracy()
         self.acc_func = acc_func
         self.tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
@@ -582,7 +583,7 @@ class MathTipsScheduler(MultiTurnScheduler):
     tips_prompt = 'But wait... It seems I made a mistake,'
 
     def __init__(self, *args, **kwargs):
-        from .orm import MathAccuracy
+        from swift.rewards.orm import MathAccuracy
         super().__init__(*args, **kwargs)
         self.acc_func = kwargs.get('acc_function', MathAccuracy())
         # Cache the tokenized tips_prompt length for loss mask computation

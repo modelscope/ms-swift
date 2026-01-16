@@ -68,7 +68,7 @@ class RMPlugin(DefaultRMPlugin):
         return rewards
 ```
 
-We provide a simple example of a generative reward model (`GenRMPlugin`) in [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/rm_plugin.py).
+We provide a simple example of a generative reward model (`GenRMPlugin`) in [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/rm_plugin.py).
 
 You can customize your reward model plugin in [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) and register it using the `external_plugins` parameter.
 
