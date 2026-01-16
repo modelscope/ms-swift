@@ -1,5 +1,5 @@
 def test_export_cached_dataset():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model='Qwen/Qwen2.5-7B-Instruct',
@@ -11,9 +11,9 @@ def test_export_cached_dataset():
 
 
 def test_sft():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-7B-Instruct',
             dataset='liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT#1000',
             dataset_num_proc=2,

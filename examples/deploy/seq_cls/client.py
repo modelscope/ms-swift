@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 
 from openai import OpenAI
@@ -33,7 +33,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 
 if __name__ == '__main__':
-    from swift.llm import run_deploy, DeployArguments
+    from swift import run_deploy, DeployArguments
     with run_deploy(
             DeployArguments(
                 model='/your/seq_cls/checkpoint-xxx',

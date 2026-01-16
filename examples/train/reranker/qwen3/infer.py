@@ -1,11 +1,11 @@
 # For full-parameter training, please refer to:
 # https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py
 
-from swift.llm import InferRequest, PtEngine
+from swift.infer_engine import InferRequest, TransformersEngine
 
 
 def run_qwen3_reranker():
-    engine = PtEngine(
+    engine = TransformersEngine(
         'Qwen/Qwen3-Reranker-4B',
         task_type='generative_reranker',
         attn_impl='flash_attention_2',

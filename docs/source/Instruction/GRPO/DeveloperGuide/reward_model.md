@@ -5,7 +5,7 @@
 我们可以通过使用参数 `reward_models` 来加载具有分类头的奖励模型，或者加载经过[奖励建模](../../RLHF.md#rm)训练的奖励模型，进而使用模型的logits作为奖励。
 
 ## 自定义奖励模型
-对于生成式奖励模型，有两种常见的调用方式：一种是在 Trainer 内部直接使用 reward_model_plugin 定义奖励模型的逻辑，可以使用PTEngine对奖励模型进行推理，另一种是通过外部部署的模型服务进行调用。
+对于生成式奖励模型，有两种常见的调用方式：一种是在 Trainer 内部直接使用 reward_model_plugin 定义奖励模型的逻辑，可以使用TransformersEngine对奖励模型进行推理，另一种是通过外部部署的模型服务进行调用。
 
 - 使用 reward_model_plugin 调用奖励模型时，模型会被内嵌在 Trainer 内部，无需额外占用计算资源。该方式优点是方便集成，但生成速度相对较慢，更适合参数量较小的奖励模型场景。
 
@@ -48,15 +48,15 @@
 
 ```
 
-在插件中使用 PTEngine 进行奖励模型的推理， 我们只需构造 messages ，并通过 infer 接口调用：
+在插件中使用 TransformersEngine 进行奖励模型的推理， 我们只需构造 messages ，并通过 infer 接口调用：
 ```python
 class RMPlugin(DefaultRMPlugin):
 
     def __init__(self, model, template):
 
         super().__init__(model, template)
-        # initilize PTEngine to infer
-        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)
+        # initilize TransformersEngine to infer
+        self.engine = TransformersEngine(self.model, template=self.template, max_batch_size=0)
 
     def __call__(self, inputs):
         system_prompt = ...
@@ -67,7 +67,7 @@ class RMPlugin(DefaultRMPlugin):
         return rewards
 ```
 
-我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
 
 在 [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) 中自定义奖励模型插件，并使用 `external_plugins` 参数进行注册。
 
@@ -75,7 +75,7 @@ class RMPlugin(DefaultRMPlugin):
 注意：
 1. 在 GRPOTrainer 中，reward_model 会依次append到 reward_funcs 中。因此，reward_weights 的顺序对应 [reward_funcs, reward_model]。
 2. reward_model_plugin 默认为 default，即使用 ORM 处理逻辑。
-3. 对于参数量较大的模型，PTEngine 生成速度较慢，请使用[外部部署](#外部部署)方法
+3. 对于参数量较大的模型，TransformersEngine 生成速度较慢，请使用[外部部署](#外部部署)方法
 
 对于 BERT 这类无法通过 reward_model 加载的模型，我们可以内置在 reward_function 中进行加载，参考[issue](https://github.com/modelscope/ms-swift/issues/4580)
 

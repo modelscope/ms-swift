@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import logging
 import os
@@ -36,12 +36,13 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
-from swift.llm import Template, dynamic_gradient_checkpointing
-from swift.plugin import MeanMetric
-from swift.trainers import SwiftMixin
+from swift.megatron.tuners import LoraParallelLinear
+from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, patch_merge_fn,
+                                  prepare_mcore_model)
+from swift.metrics import MeanMetric
+from swift.template import Template
+from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
-from ..tuners import LoraParallelLinear
-from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
                     get_packed_seq_params, get_swift_datasets_provider)
 

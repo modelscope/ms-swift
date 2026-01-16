@@ -90,8 +90,8 @@ Additionally, we offer a series of scripts to help you understand the training c
 You can use the following method for debugging, which is equivalent to using the command line for fine-tuning, but this method does not support distributed training. You can refer to the entry point for the fine-tuning command line [here](https://github.com/modelscope/ms-swift/blob/main/swift/cli/sft.py).
 
 ```python
-from swift.llm import sft_main, TrainArguments
-result = sft_main(TrainArguments(
+from swift import sft_main, SftArguments
+result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
     train_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',
@@ -125,7 +125,7 @@ To perform inference on a LoRA-trained checkpoint using the CLI:
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --stream true \
     --temperature 0 \
     --max_new_tokens 2048
@@ -142,14 +142,14 @@ For batch inference on the validation set of the dataset:
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --load_data_args true \
     --max_batch_size 1
 ```
 
-- You can set `--max_batch_size 8` to enable batch processing with `--infer_backend pt`. If you use `infer_backend vllm/sglang/lmdeploy`, it will automatically handle batching without needing to specify.
+- You can set `--max_batch_size 8` to enable batch processing with `--infer_backend transformers`. If you use `infer_backend vllm/sglang/lmdeploy`, it will automatically handle batching without needing to specify.
 - `--load_data_args true` will additionally read the data parameters from the training storage parameter file `args.json`.
 
 If you want to perform inference on an additional test set instead of using the training validation set, use `--val_dataset <dataset_path>` for inference:
@@ -158,7 +158,7 @@ If you want to perform inference on an additional test set instead of using the 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --val_dataset <dataset-path> \
@@ -172,9 +172,9 @@ Example of Inference on LoRA-Trained Model Using Python:
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import (
-    PtEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
-)
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
+from swift import get_model_processor, get_template
+from swift.utils import safe_snapshot_download
 from swift.tuners import Swift
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-7B-Instruct'
@@ -183,12 +183,12 @@ template_type = None  # None: use the default template_type of the corresponding
 default_system = "You are a helpful assistant."  # None: use the default system prompt of the corresponding model
 
 # Load model and dialogue template
-model, tokenizer = get_model_tokenizer(model)
+model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
-template = get_template(template_type, tokenizer, default_system=default_system)
-engine = PtEngine.from_model_template(model, template, max_batch_size=2)
+template = get_template(tokenizer, template_type=template_type, default_system=default_system)
+engine = TransformersEngine(model, template=template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # Using 2 infer_requests to demonstrate batch inference
@@ -210,9 +210,9 @@ Example of LoRA Inference for Multi-Modal Model:
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import (
-    PtEngine, RequestConfig, safe_snapshot_download, get_model_tokenizer, get_template, InferRequest
-)
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
+from swift import get_model_processor, get_template
+from swift.utils import safe_snapshot_download
 from swift.tuners import Swift
 # Please adjust the following lines
 model = 'Qwen/Qwen2.5-VL-7B-Instruct'
@@ -221,12 +221,12 @@ template_type = None  # None: use the default template_type of the corresponding
 default_system = None  # None: use the default system prompt of the corresponding model
 
 # Load model and dialogue template
-model, tokenizer = get_model_tokenizer(model)
+model, tokenizer = get_model_processor(model)
 if lora_checkpoint is not None:
     model = Swift.from_pretrained(model, lora_checkpoint)
 template_type = template_type or model.model_meta.template
-template = get_template(template_type, tokenizer, default_system=default_system)
-engine = PtEngine.from_model_template(model, template, max_batch_size=2)
+template = get_template(tokenizer, template_type=template_type, default_system=default_system)
+engine = TransformersEngine(model, template=template, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # Using 2 infer_requests to demonstrate batch inference
@@ -244,7 +244,7 @@ print(f'response1: {resp_list[1].choices[0].message.content}')
 If you are using a model trained with ms-swift, you can obtain the training configuration as follows:
 
 ```python
-from swift.llm import safe_snapshot_download, BaseArguments
+from swift import safe_snapshot_download, BaseArguments
 
 lora_adapters = safe_snapshot_download('swift/test_lora')
 args = BaseArguments.from_pretrained(lora_adapters)
@@ -270,7 +270,7 @@ Use the following command to start the deployment server. If the weights are tra
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048 \
     --served_model_name '<model-name>'

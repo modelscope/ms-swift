@@ -64,12 +64,15 @@ Listwise方法将排序问题转化为多分类问题，从多个候选文档中
 - **Pointwise：** 独立判断相关性，训练简单，但忽略了文档间的相对关系
 - **Listwise：** 学习相对排序，性能更优，更适合排序任务的本质需求
 
-loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)找到。
+loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)找到。
 
 ## 数据集格式
 
 ```json lines
+# LLM
 {"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
+# MLLM
+{"messages": [{"role": "user", "content": "<image>query"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "assistant", "content": "<image>relevant_doc1"}]], "positive_images": [["/some/positive_images.jpg"]], "negative_messages": [[{"role": "assistant", "content": "<image><image>irrelevant_doc1"}], [{"role": "assistant", "content": "<image>irrelevant_doc2"}]], "negative_images": [["/some/negative_images1.jpg", "/some/negative_images2.jpg"], ["/some/negative_images3.jpg"]]}
 ```
 
 **字段说明：**

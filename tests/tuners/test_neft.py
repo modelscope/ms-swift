@@ -8,8 +8,7 @@ from modelscope import AutoModel, Preprocessor
 from peft.utils import SAFETENSORS_WEIGHTS_NAME
 from transformers import PreTrainedModel
 
-from swift import LoRAConfig, Swift
-from swift.tuners import NEFTuneConfig
+from swift.tuners import LoRAConfig, NEFTuneConfig, Swift
 
 
 class TestNEFT(unittest.TestCase):

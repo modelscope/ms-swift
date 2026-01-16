@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from copy import copy
 from typing import List, Optional, Union
@@ -15,10 +15,10 @@ from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
-from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
+from swift.model import get_model_processor, save_checkpoint
+from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, get_logger,
+                         get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank, safe_snapshot_download)
 from ..tuners import LoraParallelLinear
-from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -103,7 +103,7 @@ class GPTBridge:
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
-            self.hf_model, self.processor = get_model_tokenizer(
+            self.hf_model, self.processor = get_model_processor(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
     def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
@@ -714,7 +714,7 @@ class GPTBridge:
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         if version.parse(
-                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4v_moe':
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:
@@ -801,7 +801,7 @@ class GPTBridge:
                                 gate_up_proj_bias = hf_state_dict['gate_up_proj_bias'].load()
                                 gate_up_proj_bias = gate_up_proj_bias[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
-                            if args.llm_architectures == 'GptOssForCausalLM':
+                            if args.llm_model_type == 'gpt_oss':
                                 gate_proj_weight = gate_up_proj_weight[:, ::2]
                                 up_proj_weight = gate_up_proj_weight[:, 1::2]
                                 gate_proj_bias, up_proj_bias = gate_up_proj_bias[:, ::2], gate_up_proj_bias[:, 1::2]
@@ -952,7 +952,7 @@ class GPTBridge:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
-                                if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                     gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
                                     new_gate_up_proj_weight[..., ::2] = gate_proj_weight
@@ -971,7 +971,7 @@ class GPTBridge:
                                     if 'gate_up_proj_bias' in hf_state_dict:
                                         gate_up_proj_bias = torch.concat(
                                             [hf_state_dict['gate_up_proj_bias'], gate_up_proj_bias], dim=0)
-                                    if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                    if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                         gate_proj_bias, up_proj_bias = gate_up_proj_bias.chunk(2, dim=1)
                                         new_gate_up_proj_bias = torch.empty_like(gate_up_proj_bias)
                                         new_gate_up_proj_bias[:, ::2] = gate_proj_bias
@@ -1446,7 +1446,6 @@ class GPTBridge:
         args = self.args
         if is_last_rank():
             if is_peft_format:
-                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.task_type == 'seq_cls':
                     peft_config.task_type = 'SEQ_CLS'

@@ -1,6 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from contextlib import contextmanager
-from copy import deepcopy
 from typing import Optional, Tuple
 
 import megatron.core

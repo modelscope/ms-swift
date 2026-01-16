@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 import os
 import time
@@ -9,8 +9,8 @@ from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
-from swift.utils import append_to_jsonl, format_time, get_device_count, get_logger, is_mp, is_pai_training_job
-from swift.utils.torch_utils import get_torch_device
+from swift.utils import (append_to_jsonl, format_time, get_device_count, get_logger, get_torch_device, is_mp,
+                         is_pai_training_job)
 from .arguments import TrainingArguments
 
 logger = get_logger()

@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import os
 import re
@@ -6,7 +6,7 @@ import sys
 import time
 from copy import deepcopy
 from functools import partial
-from subprocess import DEVNULL, PIPE, STDOUT, Popen
+from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
@@ -14,23 +14,22 @@ import json
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import ExportArguments, RLHFArguments
-from swift.llm.argument.base_args.base_args import get_supported_tuners
-from swift.ui.base import BaseUI
-from swift.ui.llm_train.advanced import Advanced
-from swift.ui.llm_train.dataset import Dataset
-from swift.ui.llm_train.hyper import Hyper
-from swift.ui.llm_train.model import Model
-from swift.ui.llm_train.optimizer import Optimizer
-from swift.ui.llm_train.quantization import Quantization
-from swift.ui.llm_train.report_to import ReportTo
-from swift.ui.llm_train.runtime import Runtime
-from swift.ui.llm_train.save import Save
-from swift.ui.llm_train.self_cog import SelfCog
-from swift.ui.llm_train.task import Task
-from swift.ui.llm_train.tuner import Tuner
-from swift.ui.llm_train.utils import run_command_in_background_with_popen
+from swift.arguments import ExportArguments, RLHFArguments, get_supported_tuners
 from swift.utils import get_device_count, get_logger
+from ..base import BaseUI
+from .advanced import Advanced
+from .dataset import Dataset
+from .hyper import Hyper
+from .model import Model
+from .optimizer import Optimizer
+from .quantization import Quantization
+from .report_to import ReportTo
+from .runtime import Runtime
+from .save import Save
+from .self_cog import SelfCog
+from .task import Task
+from .tuner import Tuner
+from .utils import run_command_in_background_with_popen
 
 logger = get_logger()
 

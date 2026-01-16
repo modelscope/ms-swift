@@ -1,12 +1,12 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Type
 
 import gradio as gr
 
-from swift.ui.base import BaseUI
-from swift.ui.llm_rlhf.lora import RLHFLoRA
-from swift.ui.llm_rlhf.target import RLHFTarget
-from swift.ui.llm_train.tuner import Tuner
+from ..base import BaseUI
+from ..llm_train import Tuner
+from .lora import RLHFLoRA
+from .target import RLHFTarget
 
 
 class RLHFTuner(Tuner):

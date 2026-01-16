@@ -1,6 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import OrderedDict
-from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
 

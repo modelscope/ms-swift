@@ -8,9 +8,9 @@ import json
 from tree_rollout import (DataSampleTree, DivergenceStrategyMapping, FinishedReason, SampleStatus,
                           _increment_tree_idx_depth, _repeat_list_interleave, extract_last_boxed)
 
-from swift.llm import RequestConfig, RolloutInferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
-from swift.plugin import MultiTurnScheduler, multi_turns
+from swift.infer_engine import RequestConfig
+from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
+from swift.plugins import MultiTurnScheduler, multi_turns
 
 
 class TreeRolloutScheduler(MultiTurnScheduler):

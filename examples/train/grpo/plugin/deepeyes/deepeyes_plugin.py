@@ -12,8 +12,8 @@ import json
 from openai import OpenAI
 from PIL import Image
 
-from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
-from swift.plugin.orm import ORM, orms
+from swift.rewards.orm import ORM, orms
+from swift.rollout.multi_turn import MultiTurnScheduler, multi_turns
 
 try:
     from math_verify import parse, verify

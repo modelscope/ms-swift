@@ -11,9 +11,9 @@ kwargs = {
 
 
 def test_llm():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen3-Embedding-0.6B',
             task_type='embedding',
             dataset=['sentence-transformers/stsb:positive'],
@@ -29,16 +29,16 @@ def test_llm():
 
 
 def test_reranker():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen3-Reranker-4B',
             train_type='lora',
             load_from_cache_file=True,
             task_type='generative_reranker',
             dataset=['MTEB/scidocs-reranking#10000'],
             split_dataset_ratio=0.05,
-            loss_type='generative_reranker',
+            loss_type='pointwise_reranker',
             dataloader_drop_last=True,
             eval_strategy='steps',
             eval_steps=10,
@@ -56,9 +56,9 @@ def test_reranker():
 
 
 def test_reranker2():
-    from swift.llm import sft_main, TrainArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-VL-3B-Instruct',
             train_type='lora',
             load_from_cache_file=True,

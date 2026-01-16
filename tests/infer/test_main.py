@@ -4,19 +4,19 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_cli(infer_backend):
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(model='Qwen/Qwen2-VL-7B-Instruct', infer_backend=infer_backend)
     infer_main(args)
 
 
 def test_cli_jinja(infer_backend):
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(model='Qwen/Qwen2-VL-7B-Instruct', infer_backend=infer_backend, template_backend='jinja')
     infer_main(args)
 
 
 def test_dataset(infer_backend):
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(
         model='Qwen/Qwen2-7B-Instruct',
         infer_backend=infer_backend,
@@ -26,7 +26,7 @@ def test_dataset(infer_backend):
 
 
 def test_mllm_dataset(infer_backend):
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(
         model='Qwen/Qwen2-VL-7B-Instruct',
         infer_backend=infer_backend,
@@ -37,7 +37,7 @@ def test_mllm_dataset(infer_backend):
 
 def test_dataset_ddp():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(
         model='Qwen/Qwen2-7B-Instruct', max_batch_size=64, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000'])
     infer_main(args)
@@ -45,14 +45,14 @@ def test_dataset_ddp():
 
 def test_dataset_mp_ddp():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(
         model='Qwen/Qwen2-7B-Instruct', max_batch_size=64, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000'])
     infer_main(args)
 
 
 def test_emu3_gen(infer_backend):
-    from swift.llm import infer_main, InferArguments
+    from swift import infer_main, InferArguments
     args = InferArguments(
         model='BAAI/Emu3-Gen',
         infer_backend=infer_backend,
@@ -64,10 +64,10 @@ def test_emu3_gen(infer_backend):
 
 
 if __name__ == '__main__':
-    # test_cli('pt')
-    # test_cli_jinja('pt')
-    # test_dataset('pt')
-    # test_mllm_dataset('pt')
+    # test_cli('transformers')
+    # test_cli_jinja('transformers')
+    # test_dataset('transformers')
+    # test_mllm_dataset('transformers')
     # test_dataset_ddp()
     # test_dataset_mp_ddp()
-    test_emu3_gen('pt')
+    test_emu3_gen('transformers')

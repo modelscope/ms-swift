@@ -1,10 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Type
 
 import gradio as gr
 
-from swift.llm.dataset.register import get_dataset_list
-from swift.ui.base import BaseUI
+from swift.dataset import get_dataset_list
+from ..base import BaseUI
 
 
 class Dataset(BaseUI):

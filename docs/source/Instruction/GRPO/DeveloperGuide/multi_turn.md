@@ -159,7 +159,7 @@ swift rollout \
 
 对于这类场景，我们需要重写多轮规划器中的交互逻辑，即重载 `run` 方法，从而单独返回每一轮的 Rollout 的结果。
 
-框架内置的 `ThinkingModelTipsScheduler` 类展示了如何通过重写 `run()` 方法来实现完全自定义的多轮推理逻辑。请参考[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+框架内置的 `ThinkingModelTipsScheduler` 类展示了如何通过重写 `run()` 方法来实现完全自定义的多轮推理逻辑。请参考[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)
 
 **注意**: 这种情况下，相同轨迹的数据会拆分为多条数据，在奖励相关的处理中，需要对相同轨迹的数据分配同样的reward。
 
@@ -182,7 +182,7 @@ swift rollout \
 - 在 response_choice 对象中读取 token_ids 属性，即可获得本次 rollout 生成的 token 序列。
 - 在 step/run 方法的返回值里加入 response_token_ids，trainer 便能直接使用这些 token id 参与训练，无需重新编码。
 
-具体实现可以参考[ThinkingModelTipsScheduler](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)类
+具体实现可以参考[ThinkingModelTipsScheduler](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)类
 
 ### 损失掩码
 
@@ -247,4 +247,4 @@ swift >= 3.11 支持从 vLLM 侧返回 rollouot 的 logps 用于纠正训推不�
 
 如果你完全重写了 `run` 方法，需要手动收集和传递 `rollout_logprobs`
 
-具体的实现请参考[内置实现](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+具体的实现请参考[内置实现](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)

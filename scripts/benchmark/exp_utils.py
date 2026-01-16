@@ -8,9 +8,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List
 
 import json
-import torch
 
-from swift.llm import ExportArguments
+from swift.arguments import ExportArguments
 from swift.utils import find_free_port, get_device_count, get_logger
 
 logger = get_logger()
@@ -162,9 +161,9 @@ class ExpManager:
         if best_model_checkpoint is not None:
             if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
                 cmd = f'swift eval --ckpt_dir {best_model_checkpoint} ' \
-                      + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
+                      + f'--infer_backend transformers --train_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
-            cmd = f'swift eval --model {exp.args.get("model")} --infer_backend pt ' \
+            cmd = f'swift eval --model {exp.args.get("model")} --infer_backend transformers ' \
                   f'--eval_dataset {" ".join(eval_dataset)}'
 
         return {
@@ -187,9 +186,9 @@ class ExpManager:
             env['MASTER_PORT'] = str(find_free_port())
 
         if exp.cmd == 'sft':
-            from swift.llm import TrainArguments
+            from swift import SftArguments
             args = exp.args
-            sft_args = TrainArguments(**args)
+            sft_args = SftArguments(**args)
             args['output_dir'] = sft_args.output_dir
             args['logging_dir'] = sft_args.logging_dir
             args['add_version'] = False
@@ -199,7 +198,7 @@ class ExpManager:
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         elif exp.cmd == 'rlhf':
-            from swift.llm import RLHFArguments
+            from swift import RLHFArguments
             args = exp.args
             rlhf_args = RLHFArguments(**args)
             args['output_dir'] = rlhf_args.output_dir

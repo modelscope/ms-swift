@@ -71,12 +71,13 @@ You can contact us and communicate with us by adding our group:
 - 🍉 **Reinforcement Learning**: Built-in **rich GRPO family algorithms**, including GRPO, DAPO, GSPO, SAPO, CISPO, CHORD, RLOO, Reinforce++, etc. Supports synchronous and asynchronous vLLM engine inference acceleration, with extensible reward functions, multi-turn inference Schedulers, and environments through plugins.
 - **Full-Pipeline Capabilities**: Covers the entire workflow of training, inference, evaluation, quantization, and deployment.
 - **UI Training**: Provides Web-UI interface for training, inference, evaluation, and quantization, completing the full pipeline for large models.
-- **Inference Acceleration**: Supports PyTorch, vLLM, SGLang, and LmDeploy inference acceleration engines, providing OpenAI interfaces for accelerating inference, deployment, and evaluation modules.
+- **Inference Acceleration**: Supports Transformers, vLLM, SGLang, and LmDeploy inference acceleration engines, providing OpenAI interfaces for accelerating inference, deployment, and evaluation modules.
 - **Model Evaluation**: Uses EvalScope as the evaluation backend, supporting 100+ evaluation datasets for evaluating text-only and multimodal models.
 - **Model Quantization**: Supports quantization export for AWQ, GPTQ, FP8, and BNB. Exported models support inference acceleration using vLLM/SGLang/LmDeploy.
 
 
 ## 🎉 News
+- 🎁 2026.01.15: **ms-swift v4.0** major version update is in progress. It is recommended to use the stable branch [release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12). You can provide your feedback in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
 - 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
@@ -91,7 +92,7 @@ You can contact us and communicate with us by adding our group:
 <details><summary>More</summary>
 
 - 🎁 2025.06.11: Support for using Megatron parallelism techniques for RLHF training. The training script can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf).
-- 🎁 2025.05.29: Support sequence parallel in pt, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
+- 🎁 2025.05.29: Support sequence parallel in pretrain, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO/DeveloperGuide/reward_model.md).
 - 🎁 2025.04.15: The ms-swift paper has been accepted by AAAI 2025. You can find the paper at [this link](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: Multi-round GRPO is now supported for training multi-turn dialogue scenarios (e.g., agent tool calling). Please refer to the [doc](./docs/source_en/Instruction/GRPO/DeveloperGuide/multi_turn.md).
@@ -122,6 +123,8 @@ To install from source:
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# The main branch is for swift 4.x. To install swift 3.x, please run the following command:
+# git checkout release/3.12
 pip install -e .
 ```
 
@@ -131,14 +134,14 @@ Running Environment:
 |--------------|--------------|---------------------|-------------------------------------------|
 | python       | >=3.9        | 3.10/3.11                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
-| torch        | >=2.0        | 2.8.0               |                                           |
+| torch        | >=2.0        | 2.8.0/2.9.0         |                                           |
 | transformers | >=4.33       | 4.57.3              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.25 | 0.24.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.17.6              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0                | Inference/Deployment                      |
+| vllm         | >=0.5.1      | 0.11.0/0.13.0       | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.5.5.post3         | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
@@ -245,9 +248,10 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
+from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
 # Retrieve the model and template, and add a trainable LoRA module
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
+template = get_template(tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens
@@ -269,8 +273,9 @@ trainer.train()
 Inference:
 
 ```python
-# Perform inference using the native PyTorch engine
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+from swift import TransformersEngine, InferRequest, RequestConfig
+# Perform inference using the native Transformers engine
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 
@@ -413,7 +418,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 
 # LoRA
@@ -421,7 +426,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -431,7 +436,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift app \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -446,7 +451,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-    --sampler_engine pt \
+    --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```

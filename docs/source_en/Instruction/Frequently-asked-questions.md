@@ -1,5 +1,8 @@
 # Frequently-asked-questions
 
+> [!WARNING]
+> This document is pending update to ms-swift 4.0
+
 Here are some common questions encountered during the use of Swift.
 
 ## Training
@@ -32,7 +35,7 @@ Check the [Supported Models and Datasets](https://swift.readthedocs.io/en/latest
 Currently, only export to ModelFile is supported. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
 ### Q10: Does Swift support pre-training? I only see SFT.
-Yes, it supports it. Use the command line `swift pt`, [pt example](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain). The dataset format is detailed in [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html).
+Yes, it supports it. Use the command line `swift pt`, [pretrain example](https://github.com/modelscope/ms-swift/tree/main/examples/train/pretrain). The dataset format is detailed in [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html).
 
 ### Q11: For models fine-tuned with LoRA, should I merge them into one model for resuming training, or can I specify the original model and LoRA block by path directly?
 You do not need to merge. Use `--resume_from_checkpoint output/xxx/vx-xxx/checkpoint-xxx`. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
@@ -77,7 +80,7 @@ Set `--freeze_vit true` and the parameter `--max_pixels` to limit the maximum pi
 Yes, you can. Please refer to [Best Practices for MLLM Registration](https://swift.readthedocs.io/en/latest/BestPractices/MLLM-Registration.html).
 
 ### Q26: Can I use DPO to train Qwen2-VL in a Python script?
-Yes, import `rlhf_main` and `RLHFArguments` from `swift.llm`.
+Yes, import `rlhf_main` and `RLHFArguments` from `swift.pipelines`.
 
 ### Q27: Can I pre-train with pure text before fine-tuning on a VQA dataset for MLLM?
 Yes, you can mix training as well.
@@ -469,7 +472,7 @@ No, it does not contribute to the loss. You can verify this by checking the prin
 Add the environment variable `PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'`.
 
 ### Q135: How can I use focal loss during training? Where can I find the list of currently supported loss types?
-You can add new losses [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+You can add new losses [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 ### Q136: When pipeline_parallel_size is set for rollout, it seems that the world_size value cannot be retrieved in TRL and vLLM.
 Rollout is likely incompatible with pipeline parallelism.
@@ -668,7 +671,7 @@ KeyError: 'architectures'
 Try using `transformers==4.44.*`.
 
 ### Q20: How can I specify where to save evaluation results during swift infer? I can't find where the results are saved.
-Set `--result_path your_path`. See [InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/llm/argument/infer_args.py).
+Set `--result_path your_path`. See [InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/infer_args.py).
 
 ### Q21: I get an error while using AWQ quantized yi-vl-6b:
 ```text
@@ -775,8 +778,8 @@ Setting top_k=1 is sufficient.
 ### Q41: When using Swift for quantization, which components—activations or weights—are quantized by the GPTQ, AWQ, and FP8 methods respectively?
 Only the weights.
 
-### Q42: When using ms-swift for inference, I'm seeing a large discrepancy in the results between the PT engine and the vLLM engine. What could be the reason?
-Check if the parameters are aligned. Also, note that there are inherent differences between the vLLM engine and the PT engine. The PT engine's inference is aligned with the standard Transformers library.
+### Q42: When using ms-swift for inference, I'm seeing a large discrepancy in the results between the Transformers engine and the vLLM engine. What could be the reason?
+Check if the parameters are aligned. Also, note that there are inherent differences between the vLLM engine and the Transformers engine. The Transformers engine's inference is aligned with the standard Transformers library.
 
 ### Q43: When using Swift for Qwen2-Audio inference, the output is garbled/chaotic. What could be the potential cause?
 Use transformers==4.48.
@@ -882,7 +885,7 @@ The transformers versions used for training and inference must be consistent.
 ### Q21: Regarding the system prompt, you can specify it via the --system parameter, prepend it to each data entry in the dataset, or define it in the template. Is it sufficient to use just one of these methods? And are they all treated the same way by the model?
 System prompt priority: The one in the dataset > The one from the command line > The default one in the template.
 
-### Q22: After deploying a model using the Swift PT engine, inference is not parallelized, and data is not distributed to other GPUs. Everything is running on the first GPU.
+### Q22: After deploying a model using the Swift Transformers engine, inference is not parallelized, and data is not distributed to other GPUs. Everything is running on the first GPU.
 Try using swift infer. The deploy command does not support DDP.
 
 ### Q23: For a model deployed with swift deploy, how can I disable the "thinking" status on the client side? Adding it to the extra_body of the request doesn't work.
@@ -1072,7 +1075,7 @@ For multiple-choice question answering, this is a requirement. Alternatively, yo
 NPROC_PER_NODE=8
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 --model "$MODEL_PATH” \$EXTRA_ARGS \
---eval_backend Native \ --infer_backend pt\ --device_map auto \
+--eval_backend Native \ --infer_backend transformers\ --device_map auto \
 --eval_limit"$EVAL_LIMIT"\ --eval_dataset general_qa\
 --dataset_args "{\"general_qa\": {\"local_path\": \"${DATA_PATH}\", \"subset_list\": [\"${SUBSET_NAME}\"]}}" \ --host 127.0.0.1\> "$LOG_FILE" 2>&1
 ```
