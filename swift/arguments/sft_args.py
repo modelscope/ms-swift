@@ -375,13 +375,13 @@ class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, B
         self.evaluation_strategy = self.eval_strategy
 
     def _init_metric(self):
-        if self.metric is None:
+        if self.eval_metric is None:
             if self.task_type == 'causal_lm' and self.predict_with_generate:
-                self.metric = 'nlg'
+                self.eval_metric = 'nlg'
             elif self.task_type == 'embedding':
-                self.metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
+                self.eval_metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
             elif self.task_type in {'reranker', 'generative_reranker'}:
-                self.metric = 'reranker'
+                self.eval_metric = 'reranker'
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

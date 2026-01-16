@@ -8,8 +8,8 @@ from packaging import version
 from transformers import TrainingArguments
 
 from swift.arguments import SftArguments
-from swift.tuner_plugin import Tuner, tuners_map
 from swift.trainers import calculate_max_steps
+from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)

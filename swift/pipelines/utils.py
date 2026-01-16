@@ -5,8 +5,8 @@ import numpy as np
 from datasets import load_from_disk
 
 from swift.dataset import DatasetSyntax, sample_dataset
-from swift.tuner_plugin import tuners_map
 from swift.template import update_generation_config_eos_token
+from swift.tuner_plugin import tuners_map
 from swift.tuners import Swift
 from swift.utils import get_logger
 

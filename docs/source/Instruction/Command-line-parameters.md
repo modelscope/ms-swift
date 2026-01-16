@@ -99,7 +99,7 @@
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
-- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
+- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
 - norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
@@ -351,8 +351,8 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 注意: LISA仅支持全参数，即`--tuner_type full`。
 
-- 🔥lisa_activated_layers: 默认值`0`, 代表不使用LISA，改为非0代表需要激活的layers个数，建议设置为2或8.
-- lisa_step_interval: 默认值`20`, 多少iter切换可反向传播的layers.
+- 🔥lisa_activated_layers: 默认值`0`，代表不使用LISA，改为非0代表需要激活的layers个数，建议设置为2或8。
+- lisa_step_interval: 默认值`20`，多少iter切换可反向传播的layers。
 
 #### UNSLOTH
 
@@ -475,16 +475,18 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
 - temperature: 覆盖生成参数。predict_with_generate=True时的temperature，默认0。
-- optimizer: plugin的自定义optimizer名称，默认为None。可选optimizer参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py)。
-- loss_type: plugin的自定义loss_type名称。默认为None，使用模型自带损失函数。
-- metric: plugin的自定义metric名称。默认为None，在predict_with_generate=True的情况下默认设置为'nlg'。
+- optimizer: 使用的optimizers插件（优先级高于`--optim`），默认为None。可选optimizers参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py)。
+- loss_type: 自定义的loss_type名称。默认为None，使用模型自带损失函数。可选loss参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)。
+- eval_metric: 自定义eval metric名称。默认为None。可选eval_metric参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py)。
+  - 关于默认值：当`task_type`为'causal_lm', 且`predict_with_generate=True`的情况下默认设置为'nlg'。`task_type` 为'embedding'，根据loss_type，默认值为'infonce' 或 'paired'。`task_type`为'reranker/generative_reranker'，默认值为'reranker'。
+- callbacks: 自定义trainer callback，默认为`[]`。可选callbacks参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py)。
+- early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。设置该参数时，自动加入`early_stop`的trainer callback。
 - eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/Evaluation.md#训练中评测)。
 - eval_dataset: 评测数据集，可设置多个数据集，用空格分割。
 - eval_dataset_args: 评测数据集参数，json格式，可设置多个数据集的参数。
 - eval_limit: 评测数据集采样数。
 - eval_generation_config: 评测时模型推理配置，json格式，默认为`{'max_tokens': 512}`。
 - use_flash_ckpt: 是否启用[DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover)的flash checkpoint。默认为`false`，启用后，权重会先保存至共享内存，之后异步持久化，目前暂不支持safetensors格式；建议搭配`PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` 一起使用，避免训练过程CUDA OOM。
-- early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[callback plugin](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。
 
 #### SWANLAB
 

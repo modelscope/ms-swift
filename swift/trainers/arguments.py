@@ -70,13 +70,15 @@ class TrainArgumentsMixin:
             Defaults to True.
         resume_only_model (bool): When resuming from a checkpoint, whether to load only the model weights and not the
             optimizer/scheduler states. Defaults to False.
-        optimizer (Optional[str]): The name of a custom optimizer from a plugin. If None, a default optimizer is used.
-            See documentation for available choices. Defaults to None.
-        loss_type (Optional[str]): The name of a custom loss function from a plugin. If None, the model's default loss
-            function is used. Defaults to None.
-        metric (Optional[str]): The name of a custom metric from a plugin. If None, it defaults to 'nlg' when
-            `predict_with_generate=True`. Defaults to None.
-        callbacks (List[str]) The TrainerCallback to use. Will be mapped via `swift.callbacks.callbacks_map`.
+
+        optimizer (Optional[str]):The optimizer plugin to use (takes priority over `--optim`), default is None.
+            Available optimizers can be found in `optimizers/mapping.py`
+        loss_type (Optional[str]): Custom loss_type name. Default is None, uses the model's built-in loss function.
+            Available loss options can be found in `loss/mapping.py`
+        metric (Optional[str]): Custom eval metric name. Default is None. Available eval_metric options can be found
+            in `eval_metric/mapping.py`.
+        callbacks (List[str]): Custom trainer callbacks, default is `[]`. Available callbacks can be found
+            in `callbacks/mapping.py`.
         early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
             `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
             recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the

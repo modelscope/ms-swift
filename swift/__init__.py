@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .utils import get_logger, safe_snapshot_download
     from .agent_template import agent_template_map, BaseAgentTemplate
     from .loss import loss_map, BaseLoss
-    from .metrics import metrics_map, InferStats, MeanMetric
+    from .metrics import eval_metrics_map, InferStats, MeanMetric
     from .optimizers import optimizers_map, OptimizerCallback
     from .callbacks import callbacks_map, TrainerCallback
     from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
@@ -49,7 +49,7 @@ else:
         'utils': ['get_logger', 'safe_snapshot_download'],
         'agent_template': ['agent_template_map', 'BaseAgentTemplate'],
         'loss': ['loss_map', 'BaseLoss'],
-        'metrics': ['metrics_map', 'InferStats', 'MeanMetric'],
+        'metrics': ['eval_metrics_map', 'InferStats', 'MeanMetric'],
         'optimizers': ['optimizers_map', 'OptimizerCallback'],
         'callbacks': ['callbacks_map', 'TrainerCallback'],
         'loss_scale': ['loss_scale_map', 'LossScale', 'get_loss_scale', 'ALL_BASE_STRATEGY', 'ConfigLossScale'],

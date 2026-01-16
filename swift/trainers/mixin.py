@@ -33,14 +33,14 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME, ParallelMode
 from transformers.trainer import Trainer as HfTrainer
-from transformers.trainer import TrainerCallback, reissue_pt_warnings
+from transformers.trainer import reissue_pt_warnings
 from transformers.trainer_utils import IntervalStrategy
 
 from swift.callbacks import callbacks_map
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
 from swift.loss import loss_map
-from swift.metrics import MeanMetric, compute_acc, metrics_map
+from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
 from swift.optimizers import OptimizerCallback, optimizers_map
@@ -110,9 +110,8 @@ class SwiftMixin:
         self.model_meta = model.model_meta
         self.model_info = model.model_info
 
-        callbacks = self._create_callbacks(args, model)
         data_collator = self._get_data_collator(args, template)
-        kwargs.update(self.create_loss_and_metric(args))
+        kwargs.update(self.create_loss_and_eval_metric(args))
         trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
@@ -123,9 +122,8 @@ class SwiftMixin:
                 data_collator=data_collator,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
-                callbacks=callbacks,
                 **kwargs)
-
+        self._add_callbacks()
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
@@ -145,7 +143,8 @@ class SwiftMixin:
         padding_to = template.max_length if args.tuner_type == 'longlora' else None
         return partial(template.data_collator, padding_to=padding_to)
 
-    def _create_callbacks(self, args, model):
+    def _add_callbacks(self):
+        args = self.args
         callbacks_cls = []
         if args.lisa_activated_layers > 0:
             callbacks_cls.append(callbacks_map['lisa'])
@@ -156,8 +155,8 @@ class SwiftMixin:
             callbacks_cls.append(callbacks_map['early_stop'](args))
         for callback in args.callbacks:
             callbacks_cls.append(callbacks_map[callback])
-        callbacks = [callback_cls(args, self) for callback_cls in callbacks_cls]
-        return callbacks
+        for callback_cls in callbacks_cls:
+            self.add_callback(callback_cls(args, cls))
 
     @contextmanager
     def _patch_timeout(self):
@@ -970,12 +969,12 @@ class SwiftMixin:
                 self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
-    def create_loss_and_metric(self, args):
+    def create_loss_and_eval_metric(self, args):
         res = {}
-        if args.metric is not None:
-            metric = metrics_map[args.metric](args, self)
-            res['compute_metrics'], res['preprocess_logits_for_metrics'] = (metric.compute_metrics,
-                                                                            metric.preprocess_logits_for_metrics)
+        if args.eval_metric is not None:
+            eval_metric = eval_metrics_map[args.eval_metric](args, self)
+            res['compute_metrics'], res['preprocess_logits_for_metrics'] = (eval_metric.compute_metrics,
+                                                                            eval_metric.preprocess_logits_for_metrics)
         if args.loss_type is not None:
             res['compute_loss_func'] = loss_map[args.loss_type](args, self)
         return res
