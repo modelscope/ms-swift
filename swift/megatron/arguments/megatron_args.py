@@ -285,6 +285,7 @@ class RLHFMegatronArgumentsMixin:
 @dataclass
 class MegatronTunerMixin:
     tuner_type: Literal['lora', 'full'] = 'full'
+    train_type: Optional[str] = None  # compat swift3.x
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -309,6 +310,8 @@ class MegatronTunerMixin:
     use_rslora: bool = False
 
     def __post_init__(self):
+        if self.train_type is not None:
+            self.tuner_type = self.train_type
         if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
